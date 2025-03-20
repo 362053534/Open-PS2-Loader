@@ -523,13 +523,13 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 
         // Set DMA mode and spindown time.
-        if (dmaMode < 3)
+        if (pDeviceData->ataHighestUDMAMode == 6){
             dmaType = 0x20;
-        else if (dmaMode >= 7){
-            dmaMode = pDeviceData->ataHighestUDMAMode;
+            dmaMode = 0;
         }
         else {
-            dmaMode = pDeviceData->ataHighestUDMAMode < dmaMode - 3 ? pDeviceData->ataHighestUDMAMode : dmaMode - 3;
+            dmaType = 0x40;
+            dmaMode = 6;
         }
         
         
