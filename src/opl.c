@@ -187,7 +187,6 @@ unsigned char gDefaultSelTextColor[3];
 unsigned char gDefaultUITextColor[3];
 hdl_game_info_t *gAutoLaunchGame;
 base_game_info_t *gAutoLaunchBDMGame;
-bdm_device_data_t *gAutoLaunchDeviceData;
 char gOPLPart[128];
 char *gHDDPrefix;
 char gExportName[32];
@@ -431,8 +430,13 @@ static void initAllSupport(int force_reinit)
 static void deinitAllSupport(int exception, int modeSelected)
 {
     for (int i = 0; i < MODE_COUNT; i++) {
-        if (list_support[i].support != NULL)
+        if (list_support[i].support != NULL) {
+            // If the selected mode is one of the mass devices then skip deinit for all mass device objects.
+            if (modeSelected >= BDM_MODE && modeSelected <= BDM_MODE4 && i <= BDM_MODE4)
+                continue;
+
             moduleCleanup(&list_support[i], exception, modeSelected);
+        }
     }
 }
 
@@ -893,7 +897,7 @@ static void _loadConfig()
             if (!(getKeyPressed(KEY_TRIANGLE) && getKeyPressed(KEY_CROSS))) {
                 configGetInt(configOPL, CONFIG_OPL_VMODE, &gVMode);
             } else {
-                LOG("--- Triangle + Cross held at boot - setting Video Mode to Auto ---\n");
+                LOG("--- Select held at boot - setting Video Mode to Auto ---\n");
                 gVMode = 0;
                 configSetInt(configOPL, CONFIG_OPL_VMODE, gVMode);
             }
@@ -1176,13 +1180,6 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
                 continue;
 
             moduleUpdateMenuInternal(&list_support[i], changed, langChanged);
-        }
-    } else {
-        if (changed) {
-            for (int i = 0; i < MODE_COUNT; i++) {
-                if (list_support[i].support && list_support[i].subMenu)
-                    submenuRebuildCache(list_support[i].subMenu);
-            }
         }
     }
 
@@ -1658,12 +1655,13 @@ void setDefaultColors(void)
 
 static void setDefaults(void)
 {
-    for (int i = 0; i < MODE_COUNT; i++)
-        clearIOModuleT(&list_support[i]);
+    clearIOModuleT(&list_support[BDM_MODE]);
+    clearIOModuleT(&list_support[ETH_MODE]);
+    clearIOModuleT(&list_support[HDD_MODE]);
+    clearIOModuleT(&list_support[APP_MODE]);
 
     gAutoLaunchGame = NULL;
     gAutoLaunchBDMGame = NULL;
-    gAutoLaunchDeviceData = NULL;
     gOPLPart[0] = '\0';
     gHDDPrefix = "pfs0:";
     gBaseMCDir = "mc?:OPL";
@@ -1941,25 +1939,10 @@ static void autoLaunchBDMGame(char *argv[])
     gAutoLaunchBDMGame->format = format;
     gAutoLaunchBDMGame->parts = 1; // ul not supported.
 
-    gAutoLaunchDeviceData = malloc(sizeof(bdm_device_data_t));
-    memset(gAutoLaunchDeviceData, 0, sizeof(bdm_device_data_t));
-
-    snprintf(path, sizeof(path), "mass0:");
-    int dir = fileXioDopen(path);
-    if (dir >= 0) {
-        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &gAutoLaunchDeviceData->bdmDriver, sizeof(gAutoLaunchDeviceData->bdmDriver) - 1);
-        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &gAutoLaunchDeviceData->massDeviceIndex, sizeof(gAutoLaunchDeviceData->massDeviceIndex));
-
-        fileXioDclose(dir);
-    }
-
-    if (gBDMPrefix[0] != '\0') {
+    if (gBDMPrefix[0] != '\0')
         snprintf(path, sizeof(path), "mass0:%s/CFG/%s.cfg", gBDMPrefix, gAutoLaunchBDMGame->startup);
-        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "mass0:%s/", gBDMPrefix);
-    } else {
+    else
         snprintf(path, sizeof(path), "mass0:CFG/%s.cfg", gAutoLaunchBDMGame->startup);
-        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "mass0:");
-    }
 
     configSet = configAlloc(0, NULL, path);
     configRead(configSet);

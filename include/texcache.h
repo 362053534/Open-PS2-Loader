@@ -1,6 +1,7 @@
 #ifndef __TEX_CACHE_H
 #define __TEX_CACHE_H
 
+#include <gsToolkit.h>
 #include "include/iosupport.h"
 
 /// A single cache entry...
