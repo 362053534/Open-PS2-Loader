@@ -26,6 +26,7 @@
 #include <debug.h>
 #include <gsKit.h>
 #include <dmaKit.h>
+#include <gsToolkit.h>
 #include <malloc.h>
 #include <math.h>
 #include <osd_config.h>

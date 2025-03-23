@@ -1,6 +1,8 @@
 #ifndef __UTIL_H
 #define __UTIL_H
 
+#include <gsToolkit.h>
+
 int getmcID(void);
 int getFileSize(int fd);
 void checkMCFolder(void);
