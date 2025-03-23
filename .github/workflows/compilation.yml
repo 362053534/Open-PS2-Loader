@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:d471b41a2a1d25353d8309e0a76dccb76b9d331ee4ccd323461499ad510353a7
+    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:41d653f51f204a5e6503cab53cc15ec6140508185cb8d7e6f7dd80871d6f3de2
     steps:
     - name: git checkout
       uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
         extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
         pademu: [PADEMU=0, PADEMU=1]
     runs-on: ubuntu-latest
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:d471b41a2a1d25353d8309e0a76dccb76b9d331ee4ccd323461499ad510353a7
+    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:41d653f51f204a5e6503cab53cc15ec6140508185cb8d7e6f7dd80871d6f3de2
     steps:
     - name: git checkout
       uses: actions/checkout@v4
@@ -91,7 +91,7 @@ jobs:
 
   build-lang:
     runs-on: ubuntu-latest
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:d471b41a2a1d25353d8309e0a76dccb76b9d331ee4ccd323461499ad510353a7
+    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:41d653f51f204a5e6503cab53cc15ec6140508185cb8d7e6f7dd80871d6f3de2
     steps:
     - name: git checkout
       uses: actions/checkout@v4
