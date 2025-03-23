@@ -97,7 +97,7 @@ static char *appGetBoot(char *device, int max, char *path)
     return path;
 }
 
-void appInit(item_list_t *itemList)
+void appInit(void)
 {
     LOG("APPSUPPORT Init\n");
     appForceUpdate = 1;
@@ -114,7 +114,7 @@ item_list_t *appGetObject(int initOnly)
     return &appItemList;
 }
 
-static int appNeedsUpdate(item_list_t *itemList)
+static int appNeedsUpdate(void)
 {
     int update;
 
@@ -238,7 +238,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     return -1;
 }
 
-static int appUpdateItemList(item_list_t *itemList)
+static int appUpdateItemList(void)
 {
     struct app_info_linked *appsLinkedList, *appNext;
 
@@ -284,24 +284,24 @@ static void appFreeList(void)
     }
 }
 
-static int appGetItemCount(item_list_t *itemList)
+static int appGetItemCount(void)
 {
     return appItemCount;
 }
 
-static char *appGetItemName(item_list_t *itemList, int id)
+static char *appGetItemName(int id)
 {
     return appsList[id].title;
 }
 
-static int appGetItemNameLength(item_list_t *itemList, int id)
+static int appGetItemNameLength(int id)
 {
     return CONFIG_KEY_NAME_LEN;
 }
 
 /* appGetItemStartup() is called to get the startup path for display & for the art assets.
    The path is used immediately, before a subsequent call to appGetItemStartup(). */
-static char *appGetItemStartup(item_list_t *itemList, int id)
+static char *appGetItemStartup(int id)
 {
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
@@ -311,7 +311,7 @@ static char *appGetItemStartup(item_list_t *itemList, int id)
     }
 }
 
-static void appDeleteItem(item_list_t *itemList, int id)
+static void appDeleteItem(int id)
 {
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
@@ -326,7 +326,7 @@ static void appDeleteItem(item_list_t *itemList, int id)
     appForceUpdate = 1;
 }
 
-static void appRenameItem(item_list_t *itemList, int id, char *newName)
+static void appRenameItem(int id, char *newName)
 {
     char value[256];
 
@@ -355,7 +355,7 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
     appForceUpdate = 1;
 }
 
-static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
+static void appLaunchItem(int id, config_set_t *configSet)
 {
     int fd;
     const char *filename;
@@ -394,7 +394,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
 }
 
-static config_set_t *appGetConfig(item_list_t *itemList, int id)
+static config_set_t *appGetConfig(int id)
 {
     config_set_t *config;
     char tmp[8];
@@ -433,7 +433,7 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
     return config;
 }
 
-static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int appGetImage(char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
     char device[8], *startup;
 
@@ -445,18 +445,18 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
         return oplGetAppImage(device, folder, isRelative, value, suffix, resultTex, psm);
 }
 
-static int appGetTextId(item_list_t *itemList)
+static int appGetTextId(void)
 {
     return _STR_APPS;
 }
 
-static int appGetIconId(item_list_t *itemList)
+static int appGetIconId(void)
 {
     return APP_ICON;
 }
 
 // This may be called, even if appInit() was not.
-static void appCleanUp(item_list_t *itemList, int exception)
+static void appCleanUp(int exception)
 {
     if (appItemList.enabled) {
         LOG("APPSUPPORT CleanUp\n");
@@ -466,7 +466,7 @@ static void appCleanUp(item_list_t *itemList, int exception)
 }
 
 // This may be called, even if appInit() was not.
-static void appShutdown(item_list_t *itemList)
+static void appShutdown(void)
 {
     if (appItemList.enabled) {
         LOG("APPSUPPORT Shutdown\n");
@@ -476,6 +476,6 @@ static void appShutdown(item_list_t *itemList)
 }
 
 static item_list_t appItemList = {
-    APP_MODE, -1, 0, MODE_FLAG_NO_COMPAT | MODE_FLAG_NO_UPDATE, MENU_MIN_INACTIVE_FRAMES, APP_MODE_UPDATE_DELAY, NULL, NULL, &appGetTextId, NULL, &appInit, &appNeedsUpdate, &appUpdateItemList,
+    APP_MODE, -1, 0, MODE_FLAG_NO_COMPAT | MODE_FLAG_NO_UPDATE, MENU_MIN_INACTIVE_FRAMES, APP_MODE_UPDATE_DELAY, &appGetTextId, NULL, &appInit, &appNeedsUpdate, &appUpdateItemList,
     &appGetItemCount, NULL, &appGetItemName, &appGetItemNameLength, &appGetItemStartup, &appDeleteItem, &appRenameItem, &appLaunchItem,
     &appGetConfig, &appGetImage, &appCleanUp, &appShutdown, NULL, &appGetIconId};

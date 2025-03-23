@@ -8,10 +8,6 @@
 
 enum IO_MODES {
     BDM_MODE = 0,
-    BDM_MODE1,
-    BDM_MODE2,
-    BDM_MODE3,
-    BDM_MODE4,
     ETH_MODE,
     HDD_MODE,
     APP_MODE,
@@ -79,9 +75,7 @@ enum ERROR_CODE {
 #define MENU_UPD_DELAY_NOUPDATE   -1 // Auto refresh is disabled for the item. The refresh button may be used to manually refresh the item.
 #define MENU_UPD_DELAY_GENREFRESH 0  // The item will be refreshed every MENU_GENERAL_UPDATE_DELAY frames, regardless of whether automatic refresh is enabled or not.
 
-typedef struct _item_list_t item_list_t;
-
-typedef struct _item_list_t
+typedef struct
 {
     short int mode;
 
@@ -99,53 +93,47 @@ typedef struct _item_list_t
     /// 0 = General refresh, which means that it will be refreshed every MENU_GENERAL_UPDATE_DELAY frames, regardless of whether automatic refresh is enabled or not.
     int updateDelay;
 
-    // Per-device data
-    void *priv;
-
-    // opl_io_module_t instance that owns this item list.
-    void *owner;
-
     /// item description in localised form (used if value is not negative)
-    int (*itemTextId)(item_list_t *itemList);
+    int (*itemTextId)(void);
 
     /// @return path to device prefix (set callback to NULL if not applicable).
-    char *(*itemGetPrefix)(item_list_t *itemList);
+    char *(*itemGetPrefix)(void);
 
-    void (*itemInit)(item_list_t *itemList);
+    void (*itemInit)(void);
 
     /** @return 1 if update is needed, 0 otherwise */
-    int (*itemNeedsUpdate)(item_list_t *itemList);
+    int (*itemNeedsUpdate)(void);
 
     /** @return game count (0 on error) */
-    int (*itemUpdate)(item_list_t *itemList);
+    int (*itemUpdate)(void);
 
-    int (*itemGetCount)(item_list_t *itemList);
+    int (*itemGetCount)(void);
 
-    void *(*itemGet)(item_list_t *itemList, int id);
+    void *(*itemGet)(int id);
 
-    char *(*itemGetName)(item_list_t *itemList, int id);
+    char *(*itemGetName)(int id);
 
-    int (*itemGetNameLength)(item_list_t *itemList, int id);
+    int (*itemGetNameLength)(int id);
 
-    char *(*itemGetStartup)(item_list_t *itemList, int id);
+    char *(*itemGetStartup)(int id);
 
-    void (*itemDelete)(item_list_t *itemList, int id);
+    void (*itemDelete)(int id);
 
-    void (*itemRename)(item_list_t *itemList, int id, char *newName);
+    void (*itemRename)(int id, char *newName);
 
-    void (*itemLaunch)(item_list_t *itemList, int id, config_set_t *configSet);
+    void (*itemLaunch)(int id, config_set_t *configSet);
 
-    config_set_t *(*itemGetConfig)(item_list_t *itemList, int id);
+    config_set_t *(*itemGetConfig)(int id);
 
-    int (*itemGetImage)(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
+    int (*itemGetImage)(char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 
-    void (*itemCleanUp)(item_list_t *itemList, int exception);
+    void (*itemCleanUp)(int exception);
 
-    void (*itemShutdown)(item_list_t *itemList);
+    void (*itemShutdown)(void);
 
-    int (*itemCheckVMC)(item_list_t *itemList, char *name, int createSize);
+    int (*itemCheckVMC)(char *name, int createSize);
 
-    int (*itemIconId)(item_list_t *itemList);
+    int (*itemIconId)(void);
 } item_list_t;
 
 #endif

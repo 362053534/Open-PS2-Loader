@@ -19,6 +19,8 @@ enum INTERNAL_TEXTURE {
     APP_ICON,
     LEFT_ICON,
     RIGHT_ICON,
+    UP_ICON,
+    DOWN_ICON,
     CROSS_ICON,
     TRIANGLE_ICON,
     CIRCLE_ICON,
@@ -26,8 +28,6 @@ enum INTERNAL_TEXTURE {
     SELECT_ICON,
     START_ICON,
     /* currently unused.
-    UP_ICON,
-    DOWN_ICON,
     L1_ICON,
     L2_ICON,
     L3_ICON,
