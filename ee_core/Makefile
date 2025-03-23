@@ -35,12 +35,7 @@ endif
 ifeq ($(LOAD_DEBUG_MODULES),1)
 EE_CFLAGS += -D__LOAD_DEBUG_MODULES
 	ifeq ($(DECI2_DEBUG),1)
-    EE_CFLAGS += -D__DECI2_DEBUG
-	endif
-	ifeq ($(TTY_APPROACH),UDP)
-    EE_CFLAGS += -DTTY_UDP
-	else ifeq ($(TTY_APPROACH),PPC_UART)
-    EE_CFLAGS += -DTTY_PPC
+	EE_CFLAGS += -D__DECI2_DEBUG
 	endif
 endif
 

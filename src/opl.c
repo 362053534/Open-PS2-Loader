@@ -191,9 +191,6 @@ char gOPLPart[128];
 char *gHDDPrefix;
 char gExportName[32];
 
-int gXSensitivity;
-int gYSensitivity;
-
 int gOSDLanguageValue;
 int gOSDTVAspectRatio;
 int gOSDVideOutput;
@@ -893,15 +890,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_ENABLE_NOTIFICATIONS, &gEnableNotifications);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, &gEnableArt);
             configGetInt(configOPL, CONFIG_OPL_WIDESCREEN, &gWideScreen);
-
-            if (!(getKeyPressed(KEY_TRIANGLE) && getKeyPressed(KEY_CROSS))) {
-                configGetInt(configOPL, CONFIG_OPL_VMODE, &gVMode);
-            } else {
-                LOG("--- Select held at boot - setting Video Mode to Auto ---\n");
-                gVMode = 0;
-                configSetInt(configOPL, CONFIG_OPL_VMODE, gVMode);
-            }
-
+            configGetInt(configOPL, CONFIG_OPL_VMODE, &gVMode);
             configGetInt(configOPL, CONFIG_OPL_XOFF, &gXOff);
             configGetInt(configOPL, CONFIG_OPL_YOFF, &gYOff);
             configGetInt(configOPL, CONFIG_OPL_OVERSCAN, &gOverscan);
@@ -919,8 +908,6 @@ static void _loadConfig()
             if (configGetInt(configOPL, CONFIG_OPL_SWAP_SEL_BUTTON, &value))
                 gSelectButton = value == 0 ? KEY_CIRCLE : KEY_CROSS;
 
-            configGetInt(configOPL, CONFIG_OPL_XSENSITIVITY, &gXSensitivity);
-            configGetInt(configOPL, CONFIG_OPL_YSENSITIVITY, &gYSensitivity);
             configGetInt(configOPL, CONFIG_OPL_DISABLE_DEBUG, &gEnableDebug);
             configGetInt(configOPL, CONFIG_OPL_PS2LOGO, &gPS2Logo);
             configGetInt(configOPL, CONFIG_OPL_HDD_GAME_LIST_CACHE, &gHDDGameListCache);
@@ -1106,8 +1093,6 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_BOOT_SND_VOLUME, gBootSndVolume);
         configSetInt(configOPL, CONFIG_OPL_BGM_VOLUME, gBGMVolume);
         configSetStr(configOPL, CONFIG_OPL_DEFAULT_BGM_PATH, gDefaultBGMPath);
-        configSetInt(configOPL, CONFIG_OPL_XSENSITIVITY, gXSensitivity);
-        configSetInt(configOPL, CONFIG_OPL_YSENSITIVITY, gYSensitivity);
 
         configSetInt(configOPL, CONFIG_OPL_SWAP_SEL_BUTTON, gSelectButton == KEY_CIRCLE ? 0 : 1);
     }
@@ -1724,8 +1709,6 @@ static void setDefaults(void)
     gBootSndVolume = 80;
     gBGMVolume = 70;
     gDefaultBGMPath[0] = '\0';
-    gXSensitivity = 1;
-    gYSensitivity = 1;
 
     gBDMStartMode = START_MODE_DISABLED;
     gHDDStartMode = START_MODE_DISABLED;
