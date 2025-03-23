@@ -27,13 +27,13 @@
 
 #include "dev9.h"
 
-#if defined(HDD_DRIVER) || defined(USE_BDM_ATA)
+#ifdef HDD_DRIVER
 extern char atad_inited;
 #endif
 
 #ifdef DEV9_DEBUG
 #define M_PRINTF(format, args...) \
-    printf("dev9: " format, ##args)
+    printf(MODNAME ": " format, ##args)
 #else
 #define M_PRINTF(format, args...) \
     do {                          \
@@ -163,7 +163,7 @@ int dev9d_init(void)
 /* Export 4 */
 void SpdRegisterIntrHandler(int intr, dev9_intr_cb_t cb)
 {
-#if defined(HDD_DRIVER) || defined(USE_BDM_ATA)
+#ifdef HDD_DRIVER
     //Don't let anything else change the HDD interrupt handlers.
     if (intr < 2) {
         if (atad_inited)

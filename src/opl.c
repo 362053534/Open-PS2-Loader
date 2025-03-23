@@ -138,7 +138,6 @@ int hddCacheSize;
 int smbCacheSize;
 int gEnableILK;
 int gEnableMX4SIO;
-int gEnableBdmHDD;
 int gAutosort;
 int gAutoRefresh;
 int gEnableNotifications;
@@ -798,7 +797,6 @@ static int checkLoadConfigHDD(int types)
     char path[64];
 
     hddLoadModules();
-    hddLoadSupportModules();
 
     snprintf(path, sizeof(path), "%sconf_opl.cfg", gHDDPrefix);
     value = open(path, O_RDONLY);
@@ -938,7 +936,6 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_APP_MODE, &gAPPStartMode);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, &gEnableILK);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, &gEnableMX4SIO);
-            configGetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, &gEnableBdmHDD);
             configGetInt(configOPL, CONFIG_OPL_SFX, &gEnableSFX);
             configGetInt(configOPL, CONFIG_OPL_BOOT_SND, &gEnableBootSND);
             configGetInt(configOPL, CONFIG_OPL_BGM, &gEnableBGM);
@@ -1098,7 +1095,6 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_SMB_CACHE, smbCacheSize);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, gEnableILK);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, gEnableMX4SIO);
-        configSetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, gEnableBdmHDD);
         configSetInt(configOPL, CONFIG_OPL_SFX, gEnableSFX);
         configSetInt(configOPL, CONFIG_OPL_BOOT_SND, gEnableBootSND);
         configSetInt(configOPL, CONFIG_OPL_BGM, gEnableBGM);
@@ -1740,7 +1736,6 @@ static void setDefaults(void)
 
     gEnableILK = 0;
     gEnableMX4SIO = 0;
-    gEnableBdmHDD = 0;
 
     frameCounter = 0;
 
@@ -1843,18 +1838,13 @@ static void miniInit(int mode)
     LOG_ENABLE();
 
     if (mode == BDM_MODE) {
-        bdmInitSemaphore();
-
         // Force load iLink & mx4sio modules.. we aren't using the gui so this is fine.
         gEnableILK = 1; // iLink will break pcsx2 however.
         gEnableMX4SIO = 1;
-        gEnableBdmHDD = 1;
         bdmLoadModules();
-
-    } else if (mode == HDD_MODE) {
+        delay(3); // Wait for the device to be detected.
+    } else if (mode == HDD_MODE)
         hddLoadModules();
-        hddLoadSupportModules();
-    }
 
     InitConsoleRegionData();
 
@@ -1872,12 +1862,13 @@ static void miniInit(int mode)
 
             configGetInt(configOPL, CONFIG_OPL_PS2LOGO, &gPS2Logo);
             configGetStrCopy(configOPL, CONFIG_OPL_EXIT_PATH, gExitPath, sizeof(gExitPath));
-            configGetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, &gHDDSpindown);
             if (mode == BDM_MODE) {
                 configGetStrCopy(configOPL, CONFIG_OPL_BDM_PREFIX, gBDMPrefix, sizeof(gBDMPrefix));
                 configGetInt(configOPL, CONFIG_OPL_BDM_CACHE, &bdmCacheSize);
-            } else if (mode == HDD_MODE)
+            } else if (mode == HDD_MODE) {
+                configGetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, &gHDDSpindown);
                 configGetInt(configOPL, CONFIG_OPL_HDD_CACHE, &hddCacheSize);
+            }
         }
     }
 }
@@ -1953,46 +1944,22 @@ static void autoLaunchBDMGame(char *argv[])
     gAutoLaunchDeviceData = malloc(sizeof(bdm_device_data_t));
     memset(gAutoLaunchDeviceData, 0, sizeof(bdm_device_data_t));
 
-    char apaDevicePrefix[8] = {0};
-    delay(8);
-    snprintf(apaDevicePrefix, sizeof(apaDevicePrefix), "mass0:");
-    // Loop through mass0: to mass4:
-    for (int i = 0; i <= 4; i++) {
-        snprintf(path, sizeof(path), "mass%d:", i);
-        int dir = fileXioDopen(path);
+    snprintf(path, sizeof(path), "mass0:");
+    int dir = fileXioDopen(path);
+    if (dir >= 0) {
+        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &gAutoLaunchDeviceData->bdmDriver, sizeof(gAutoLaunchDeviceData->bdmDriver) - 1);
+        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &gAutoLaunchDeviceData->massDeviceIndex, sizeof(gAutoLaunchDeviceData->massDeviceIndex));
 
-        if (dir >= 0) {
-            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &gAutoLaunchDeviceData->bdmDriver, sizeof(gAutoLaunchDeviceData->bdmDriver) - 1);
-            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &gAutoLaunchDeviceData->massDeviceIndex, sizeof(gAutoLaunchDeviceData->massDeviceIndex));
-
-            if (!strcmp(gAutoLaunchDeviceData->bdmDriver, "ata") && strlen(gAutoLaunchDeviceData->bdmDriver) == 3) {
-                bdmResolveLBA_UDMA(gAutoLaunchDeviceData);
-                snprintf(apaDevicePrefix, sizeof(apaDevicePrefix), "mass%d:", i);
-                fileXioDclose(dir);
-                break; // Exit the loop if "ata" device is found
-            }
-
-            fileXioDclose(dir);
-        } else {
-            // Retry for mass0: only
-            if (i == 0) {
-                delay(6);
-                i--;
-            } else {
-                break;
-            }
-        }
-        delay(6);
+        fileXioDclose(dir);
     }
 
     if (gBDMPrefix[0] != '\0') {
-        snprintf(path, sizeof(path), "%s%s/CFG/%s.cfg", apaDevicePrefix, gBDMPrefix, gAutoLaunchBDMGame->startup);
-        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "%s%s/", apaDevicePrefix, gBDMPrefix);
+        snprintf(path, sizeof(path), "mass0:%s/CFG/%s.cfg", gBDMPrefix, gAutoLaunchBDMGame->startup);
+        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "mass0:%s/", gBDMPrefix);
     } else {
-        snprintf(path, sizeof(path), "%sCFG/%s.cfg", apaDevicePrefix, gAutoLaunchBDMGame->startup);
-        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "%s", apaDevicePrefix);
+        snprintf(path, sizeof(path), "mass0:CFG/%s.cfg", gAutoLaunchBDMGame->startup);
+        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "mass0:");
     }
-
 
     configSet = configAlloc(0, NULL, path);
     configRead(configSet);
