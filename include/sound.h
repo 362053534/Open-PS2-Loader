@@ -2,14 +2,12 @@
 #define __SOUND_H
 
 enum SFX {
-    SFX_BOOT = 0,
+    SFX_BOOT,
     SFX_CANCEL,
     SFX_CONFIRM,
     SFX_CURSOR,
     SFX_MESSAGE,
     SFX_TRANSITION,
-    SFX_BD_CONNECT,
-    SFX_BD_DISCONNECT,
 
     SFX_COUNT
 };

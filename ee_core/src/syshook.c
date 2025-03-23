@@ -15,11 +15,12 @@
 #include "patches.h"
 #include "padhook.h"
 #include "syshook.h"
-#include "coreconfig.h"
 
 #include <syscallnr.h>
 #include <ee_regs.h>
 #include <ps2_reg_defs.h>
+
+ConfigParam CustomOSDConfigParam;
 
 int set_reg_hook;
 int set_reg_disabled;
@@ -28,6 +29,8 @@ int iop_reboot_count = 0;
 int padOpen_hooked = 0;
 int disable_padOpen_hook = 1;
 
+extern void *ModStorageStart, *ModStorageEnd;
+extern void *eeloadCopy, *initUserMemory;
 extern void *_end;
 
 // Global data
@@ -36,8 +39,8 @@ int (*Old_SifSetReg)(u32 register_num, int register_value);
 int (*Old_ExecPS2)(void *entry, void *gp, int num_args, char *args[]);
 int (*Old_CreateThread)(ee_thread_t *thread_param);
 void (*Old_Exit)(s32 exit_code);
-void (*Old_SetOsdConfigParam)(ConfigParam *osdconfig);
-void (*Old_GetOsdConfigParam)(ConfigParam *osdconfig);
+void (*Old_SetOsdConfigParam)(ConfigParam *config);
+void (*Old_GetOsdConfigParam)(ConfigParam *config);
 
 /*----------------------------------------------------------------------------------------*/
 /* This function is called when SifSetDma catches a reboot request.                       */
@@ -65,7 +68,6 @@ u32 New_SifSetDma(SifDmaTransfer_t *sdd, s32 len)
 // ------------------------------------------------------------------------
 void sysLoadElf(char *filename, int argc, char **argv)
 {
-    USE_LOCAL_EECORE_CONFIG;
     int r;
     t_ExecData elf;
 
@@ -92,7 +94,7 @@ void sysLoadElf(char *filename, int argc, char **argv)
     DPRINTF("t_loadElf: cleaning user memory...");
 
     // wipe user memory
-    WipeUserMemory((void *)&_end, (void *)config->ModStorageStart);
+    WipeUserMemory((void *)&_end, (void *)ModStorageStart);
     // The upper half (from ModStorageEnd to GetMemorySize()) is taken care of by LoadExecPS2().
     // WipeUserMemory((void *)ModStorageEnd, (void *)GetMemorySize());
 
@@ -134,8 +136,7 @@ void sysLoadElf(char *filename, int argc, char **argv)
 
 static void unpatchEELOADCopy(void)
 {
-    USE_LOCAL_EECORE_CONFIG;
-    vu32 *p = (vu32 *)config->eeloadCopy;
+    vu32 *p = (vu32 *)eeloadCopy;
 
     p[1] = 0x0240302D; /* daddu    a2, s2, zero */
     p[2] = 0x8FA50014; /* lw       a1, 0x0014(sp) */
@@ -144,8 +145,7 @@ static void unpatchEELOADCopy(void)
 
 static void unpatchInitUserMemory(void)
 {
-    USE_LOCAL_EECORE_CONFIG;
-    vu16 *p = (vu16 *)config->initUserMemory;
+    vu16 *p = (vu16 *)initUserMemory;
 
     /*
      * Reset the start of user memory to 0x00082000, by changing the immediate value being loaded into $a0.
@@ -163,34 +163,30 @@ void sysExit(s32 exit_code)
     IGR_Exit(exit_code);
 }
 
-void hook_SetOsdConfigParam(ConfigParam *osdconfig)
+void hook_SetOsdConfigParam(ConfigParam *config)
 {
-    USE_LOCAL_EECORE_CONFIG;
-
     DPRINTF("%s: called\n", __func__);
-    config->CustomOSDConfigParam.spdifMode = osdconfig->spdifMode;
-    config->CustomOSDConfigParam.screenType = osdconfig->screenType;
-    config->CustomOSDConfigParam.videoOutput = osdconfig->videoOutput;
-    config->CustomOSDConfigParam.japLanguage = osdconfig->japLanguage;
-    config->CustomOSDConfigParam.ps1drvConfig = osdconfig->ps1drvConfig;
-    config->CustomOSDConfigParam.version = osdconfig->version;
-    config->CustomOSDConfigParam.language = osdconfig->language;
-    config->CustomOSDConfigParam.timezoneOffset = osdconfig->timezoneOffset;
+    CustomOSDConfigParam.spdifMode = config->spdifMode;
+    CustomOSDConfigParam.screenType = config->screenType;
+    CustomOSDConfigParam.videoOutput = config->videoOutput;
+    CustomOSDConfigParam.japLanguage = config->japLanguage;
+    CustomOSDConfigParam.ps1drvConfig = config->ps1drvConfig;
+    CustomOSDConfigParam.version = config->version;
+    CustomOSDConfigParam.language = config->language;
+    CustomOSDConfigParam.timezoneOffset = config->timezoneOffset;
 }
 
-void hook_GetOsdConfigParam(ConfigParam *osdconfig)
+void hook_GetOsdConfigParam(ConfigParam *config)
 {
-    USE_LOCAL_EECORE_CONFIG;
-
     DPRINTF("%s: called\n", __func__);
-    osdconfig->spdifMode = config->CustomOSDConfigParam.spdifMode;
-    osdconfig->screenType = config->CustomOSDConfigParam.screenType;
-    osdconfig->videoOutput = config->CustomOSDConfigParam.videoOutput;
-    osdconfig->japLanguage = config->CustomOSDConfigParam.japLanguage;
-    osdconfig->ps1drvConfig = config->CustomOSDConfigParam.ps1drvConfig;
-    osdconfig->version = config->CustomOSDConfigParam.version;
-    osdconfig->language = config->CustomOSDConfigParam.language;
-    osdconfig->timezoneOffset = config->CustomOSDConfigParam.timezoneOffset;
+    config->spdifMode = CustomOSDConfigParam.spdifMode;
+    config->screenType = CustomOSDConfigParam.screenType;
+    config->videoOutput = CustomOSDConfigParam.videoOutput;
+    config->japLanguage = CustomOSDConfigParam.japLanguage;
+    config->ps1drvConfig = CustomOSDConfigParam.ps1drvConfig;
+    config->version = CustomOSDConfigParam.version;
+    config->language = CustomOSDConfigParam.language;
+    config->timezoneOffset = CustomOSDConfigParam.timezoneOffset;
 }
 
 /*----------------------------------------------------------------------------------------*/
@@ -199,8 +195,7 @@ void hook_GetOsdConfigParam(ConfigParam *osdconfig)
 /*----------------------------------------------------------------------------------------*/
 void Install_Kernel_Hooks(void)
 {
-    USE_LOCAL_EECORE_CONFIG;
-    if (config->enforceLanguage) {
+    if (enforceLanguage) {
         Old_SetOsdConfigParam = GetSyscallHandler(__NR_SetOsdConfigParam);
         SetSyscall(__NR_SetOsdConfigParam, &hook_SetOsdConfigParam);
         Old_GetOsdConfigParam = GetSyscallHandler(__NR_GetOsdConfigParam);
@@ -232,8 +227,7 @@ void Install_Kernel_Hooks(void)
 /*----------------------------------------------------------------------------------------------*/
 void Remove_Kernel_Hooks(void)
 {
-    USE_LOCAL_EECORE_CONFIG;
-    if (config->enforceLanguage) {
+    if (enforceLanguage) {
         SetSyscall(__NR_SetOsdConfigParam, Old_SetOsdConfigParam);
         SetSyscall(__NR_GetOsdConfigParam, Old_GetOsdConfigParam);
     }

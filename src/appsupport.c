@@ -97,7 +97,7 @@ static char *appGetBoot(char *device, int max, char *path)
     return path;
 }
 
-void appInit(item_list_t *itemList)
+void appInit(void)
 {
     LOG("APPSUPPORT Init\n");
     appForceUpdate = 1;
@@ -114,7 +114,7 @@ item_list_t *appGetObject(int initOnly)
     return &appItemList;
 }
 
-static int appNeedsUpdate(item_list_t *itemList)
+static int appNeedsUpdate(void)
 {
     int update;
 
@@ -238,7 +238,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     return -1;
 }
 
-static int appUpdateItemList(item_list_t *itemList)
+static int appUpdateItemList(void)
 {
     struct app_info_linked *appsLinkedList, *appNext;
 
@@ -284,24 +284,24 @@ static void appFreeList(void)
     }
 }
 
-static int appGetItemCount(item_list_t *itemList)
+static int appGetItemCount(void)
 {
     return appItemCount;
 }
 
-static char *appGetItemName(item_list_t *itemList, int id)
+static char *appGetItemName(int id)
 {
     return appsList[id].title;
 }
 
-static int appGetItemNameLength(item_list_t *itemList, int id)
+static int appGetItemNameLength(int id)
 {
     return CONFIG_KEY_NAME_LEN;
 }
 
 /* appGetItemStartup() is called to get the startup path for display & for the art assets.
    The path is used immediately, before a subsequent call to appGetItemStartup(). */
-static char *appGetItemStartup(item_list_t *itemList, int id)
+static char *appGetItemStartup(int id)
 {
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
@@ -311,7 +311,7 @@ static char *appGetItemStartup(item_list_t *itemList, int id)
     }
 }
 
-static void appDeleteItem(item_list_t *itemList, int id)
+static void appDeleteItem(int id)
 {
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
@@ -326,7 +326,7 @@ static void appDeleteItem(item_list_t *itemList, int id)
     appForceUpdate = 1;
 }
 
-static void appRenameItem(item_list_t *itemList, int id, char *newName)
+static void appRenameItem(int id, char *newName)
 {
     char value[256];
 
@@ -355,26 +355,14 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
     appForceUpdate = 1;
 }
 
-static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
+static void appLaunchItem(int id, config_set_t *configSet)
 {
     int fd;
-    char filename[256];
+    const char *filename;
     const char *argv1;
 
     // Retrieve configuration set by appGetConfig()
-    configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
-
-    // If legacy apps state mass? find the first connected mass device with the corresponding filename and set the unit number for launch.
-    if (!strncmp("mass?", filename, 5)) {
-        for (int i = 0; i < BDM_MODE4; i++) {
-            filename[4] = i + '0';
-            fd = open(filename, O_RDONLY);
-            if (fd >= 0) {
-                close(fd);
-                break;
-            }
-        }
-    }
+    configGetStr(configSet, CONFIG_ITEM_STARTUP, &filename);
 
     fd = open(filename, O_RDONLY);
     if (fd >= 0) {
@@ -406,7 +394,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
 }
 
-static config_set_t *appGetConfig(item_list_t *itemList, int id)
+static config_set_t *appGetConfig(int id)
 {
     config_set_t *config;
     char tmp[8];
@@ -419,8 +407,6 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
         configSetStr(config, CONFIG_ITEM_NAME, appGetELFName(cur->val));
         configSetStr(config, CONFIG_ITEM_LONGNAME, cur->key);
         configSetStr(config, CONFIG_ITEM_STARTUP, cur->val);
-        configSetStr(config, CONFIG_ITEM_MEDIA, "APP");
-        configSetStr(config, CONFIG_ITEM_FORMAT, "ELF");
 
         snprintf(tmp, sizeof(tmp), "%.2f", appGetELFSize(cur->val));
         configSetStr(config, CONFIG_ITEM_SIZE, tmp);
@@ -436,8 +422,6 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
         configSetStr(config, CONFIG_ITEM_ALTSTARTUP, appsList[id].argv1); // reuse AltStartup for argument 1
         snprintf(path, sizeof(path), "%s/%s", appsList[id].path, appsList[id].boot);
         configSetStr(config, CONFIG_ITEM_STARTUP, path);
-        configSetStr(config, CONFIG_ITEM_MEDIA, "APP");
-        configSetStr(config, CONFIG_ITEM_FORMAT, "ELF");
 
         snprintf(tmp, sizeof(tmp), "%.2f", appGetELFSize(path));
         configSetStr(config, CONFIG_ITEM_SIZE, tmp);
@@ -445,30 +429,27 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
     return config;
 }
 
-static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int appGetImage(char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
     char device[8], *startup;
 
     startup = appGetBoot(device, sizeof(device), value);
 
-    if (!strcmp(folder, "ART"))
-        return oplGetAppImage(device, folder, isRelative, startup, suffix, resultTex, psm);
-    else
-        return oplGetAppImage(device, folder, isRelative, value, suffix, resultTex, psm);
+    return oplGetAppImage(device, folder, isRelative, startup, suffix, resultTex, psm);
 }
 
-static int appGetTextId(item_list_t *itemList)
+static int appGetTextId(void)
 {
     return _STR_APPS;
 }
 
-static int appGetIconId(item_list_t *itemList)
+static int appGetIconId(void)
 {
     return APP_ICON;
 }
 
 // This may be called, even if appInit() was not.
-static void appCleanUp(item_list_t *itemList, int exception)
+static void appCleanUp(int exception)
 {
     if (appItemList.enabled) {
         LOG("APPSUPPORT CleanUp\n");
@@ -478,7 +459,7 @@ static void appCleanUp(item_list_t *itemList, int exception)
 }
 
 // This may be called, even if appInit() was not.
-static void appShutdown(item_list_t *itemList)
+static void appShutdown(void)
 {
     if (appItemList.enabled) {
         LOG("APPSUPPORT Shutdown\n");
@@ -488,6 +469,6 @@ static void appShutdown(item_list_t *itemList)
 }
 
 static item_list_t appItemList = {
-    APP_MODE, -1, 0, MODE_FLAG_NO_COMPAT | MODE_FLAG_NO_UPDATE, MENU_MIN_INACTIVE_FRAMES, APP_MODE_UPDATE_DELAY, NULL, NULL, &appGetTextId, NULL, &appInit, &appNeedsUpdate, &appUpdateItemList,
+    APP_MODE, -1, 0, MODE_FLAG_NO_COMPAT | MODE_FLAG_NO_UPDATE, MENU_MIN_INACTIVE_FRAMES, APP_MODE_UPDATE_DELAY, &appGetTextId, NULL, &appInit, &appNeedsUpdate, &appUpdateItemList,
     &appGetItemCount, NULL, &appGetItemName, &appGetItemNameLength, &appGetItemStartup, &appDeleteItem, &appRenameItem, &appLaunchItem,
     &appGetConfig, &appGetImage, &appCleanUp, &appShutdown, NULL, &appGetIconId};

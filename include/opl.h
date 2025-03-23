@@ -40,7 +40,6 @@
 
 #include "include/hddsupport.h"
 #include "include/supportbase.h"
-#include "include/bdmsupport.h"
 
 // Last Played Auto Start
 #include <time.h>
@@ -74,7 +73,7 @@ void setErrorMessage(int strId);
 void setErrorMessageWithCode(int strId, int error);
 int loadConfig(int types);
 int saveConfig(int types, int showUI);
-void applyConfig(int themeID, int langID, int skipDeviceRefresh);
+void applyConfig(int themeID, int langID);
 void menuDeferredUpdate(void *data);
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged);
 void handleLwnbdSrv();
@@ -147,9 +146,6 @@ extern int gBootSndVolume;
 extern int gBGMVolume;
 extern char gDefaultBGMPath[128];
 
-extern int gXSensitivity;
-extern int gYSensitivity;
-
 extern int gCheatSource;
 extern int gGSMSource;
 extern int gPadEmuSource;
@@ -180,7 +176,7 @@ extern int gPadMacroSettings;
 // 0,1,2 scrolling speed
 extern int gScrollSpeed;
 // Exit path
-extern char gExitPath[256];
+extern char gExitPath[32];
 // Enable Debug Colors
 extern int gEnableDebug;
 
@@ -208,31 +204,14 @@ extern unsigned char gDefaultTextColor[3];
 extern unsigned char gDefaultSelTextColor[3];
 extern unsigned char gDefaultUITextColor[3];
 
-// Launching games with args
 extern hdl_game_info_t *gAutoLaunchGame;
 extern base_game_info_t *gAutoLaunchBDMGame;
-extern bdm_device_data_t *gAutoLaunchDeviceData;
 extern char *gHDDPrefix;
 extern char gOPLPart[128];
-
-void initSupport(item_list_t *itemList, int mode, int force_reinit);
 
 void setDefaultColors(void);
 
 #define MENU_ITEM_HEIGHT 19
-
-#include "include/menusys.h"
-
-typedef struct
-{
-    item_list_t *support;
-
-    /// menu item used with this list support
-    menu_item_t menuItem;
-
-    /// submenu list
-    submenu_list_t *subMenu;
-} opl_io_module_t;
 
 /*
 BLURT output char blurttext[128];
