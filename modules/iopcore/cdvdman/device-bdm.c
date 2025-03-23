@@ -26,8 +26,7 @@ void bdm_connect_bd(struct block_device *bd)
 {
     DPRINTF("connecting device %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
 
-    if (g_bd == NULL && bd->devNr == cdvdman_settings.bdDeviceId) {
-        DPRINTF("attaching to %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
+    if (g_bd == NULL) {
         g_bd = bd;
         g_bd_sectors_per_sector = (2048 / bd->sectorSize);
         // Free usage of block device
@@ -39,14 +38,10 @@ void bdm_disconnect_bd(struct block_device *bd)
 {
     DPRINTF("disconnecting device %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
 
-    if (bd->devNr == cdvdman_settings.bdDeviceId) {
-        DPRINTF("detatching from %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
-
-        // Lock usage of block device
-        WaitSema(bdm_io_sema);
-        if (g_bd == bd)
-            g_bd = NULL;
-    }
+    // Lock usage of block device
+    WaitSema(bdm_io_sema);
+    if (g_bd == bd)
+        g_bd = NULL;
 }
 
 //
