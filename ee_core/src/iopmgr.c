@@ -154,7 +154,7 @@ int New_Reset_Iop(const char *arg, int arglen)
     USE_LOCAL_EECORE_CONFIG;
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
-        GS_BGCOLOUR = 0xFF00FF; // Purple
+        DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
 
     SifInitRpc(0);
 
@@ -175,12 +175,12 @@ int New_Reset_Iop(const char *arg, int arglen)
 
     ResetIopSpecial(NULL, 0);
     if (EnableDebug)
-        GS_BGCOLOUR = 0x00A5FF; // Orange
+        DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
     if (arglen > 0) {
         ResetIopSpecial(&arg[10], arglen - 10);
         if (EnableDebug)
-            GS_BGCOLOUR = 0x00FFFF; // Yellow
+            DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }
 
     if (iop_reboot_count >= 2) {
@@ -211,7 +211,7 @@ int New_Reset_Iop(const char *arg, int arglen)
         set_reg_hook = 4;
 
     if (EnableDebug)
-        GS_BGCOLOUR = 0x000000; // Black
+        BGCOLND(0x000000);
 
     return 1;
 }
