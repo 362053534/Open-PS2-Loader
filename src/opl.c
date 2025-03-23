@@ -180,7 +180,7 @@ int gPadMacroSource;
 int gPadMacroSettings;
 #endif
 int gScrollSpeed;
-char gExitPath[32];
+char gExitPath[256];
 int gEnableDebug;
 int gPS2Logo;
 int gDefaultDevice;
@@ -1701,6 +1701,8 @@ static void init(void)
     menuInit();
 
     startPads();
+
+    bdmInitSemaphore();
 
     // compatibility update handler
     ioRegisterHandler(IO_COMPAT_UPDATE_DEFFERED, &compatDeferredUpdate);
