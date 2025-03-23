@@ -13,6 +13,8 @@
 #include <tamtypes.h>
 #include <osd_config.h>
 
+extern ConfigParam CustomOSDConfigParam;
+
 void Install_Kernel_Hooks(void);
 void Remove_Kernel_Hooks(void);
 
@@ -21,8 +23,8 @@ extern int (*Old_SifSetReg)(u32 register_num, int register_value);
 extern int (*Old_ExecPS2)(void *entry, void *gp, int num_args, char *args[]);
 extern int (*Old_CreateThread)(ee_thread_t *thread_param);
 extern void (*Old_Exit)(s32 exit_code);
-extern void (*Old_SetOsdConfigParam)(ConfigParam *osdconfig);
-extern void (*Old_GetOsdConfigParam)(ConfigParam *osdconfig);
+extern void (*Old_SetOsdConfigParam)(ConfigParam *config);
+extern void (*Old_GetOsdConfigParam)(ConfigParam *config);
 void sysLoadElf(char *filename, int argc, char **argv);
 void sysExit(s32 exit_code);
 

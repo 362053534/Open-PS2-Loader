@@ -19,6 +19,10 @@
 #include "include/nbns.h"
 #include "httpclient.h"
 
+#ifdef __DEBUG
+#include "include/debug.h"
+#endif
+
 static char ethPrefix[40]; // Contains the full path to the folder where all the games are.
 static char *ethBase;
 static int ethULSizePrev = -2;
@@ -279,24 +283,26 @@ static int ethLoadModules(void)
 
         sysInitDev9();
 
-        LOG("[NETMAN]:\n");
         if (sysLoadModuleBuffer(&netman_irx, size_netman_irx, 0, NULL) >= 0) {
             NetManInit();
-            LOG("[SMSUTILS]:\n");
+
             sysLoadModuleBuffer(&smsutils_irx, size_smsutils_irx, 0, NULL);
-            LOG("[SMAP]:\n");
             if (sysLoadModuleBuffer(&smap_irx, size_smap_irx, 0, NULL) >= 0) {
                 // Before the network stack is loaded, attempt to set the link settings in order to avoid needing double-initialization of the IF.
                 // But do not fail here because there is currently no way to re-start initialization.
                 ethApplyNetIFConfig();
-                LOG("[PS2IP]:\n");
+
                 if (sysLoadModuleBuffer(&ps2ip_irx, size_ps2ip_irx, 0, NULL) >= 0) {
-                    LOG("[PS2IPS]:\n");
                     sysLoadModuleBuffer(&ps2ips_irx, size_ps2ips_irx, 0, NULL);
-                    LOG("[HTTPCLIENT]:\n");
                     sysLoadModuleBuffer(&httpclient_irx, size_httpclient_irx, 0, NULL);
                     ps2ip_init();
                     HttpInit();
+
+#ifdef __DEBUG
+                    LOG("ETHSUPPORT loading debugging modules...\n");
+                    debugApplyConfig();
+                    debugSetActive();
+#endif
 
                     LOG("ETHSUPPORT Modules loaded\n");
                     return 0;
@@ -400,9 +406,7 @@ static void smbLoadModules(void)
 
     if (ret == 0) {
         gNetworkStartup = ERROR_ETH_MODULE_SMBMAN_FAILURE;
-        LOG("[SMBMAN]:\n");
         if (sysLoadModuleBuffer(&smbman_irx, size_smbman_irx, 0, NULL) >= 0) {
-            LOG("[NBNS]:\n");
             sysLoadModuleBuffer(&nbns_irx, size_nbns_irx, 0, NULL);
             nbnsInit();
 
@@ -415,7 +419,7 @@ static void smbLoadModules(void)
     ethDisplayErrorStatus();
 }
 
-void ethInit(item_list_t *itemList)
+void ethInit(item_list_t* pItemList)
 {
     if (ethInitSema() < 0)
         return;
@@ -448,7 +452,7 @@ item_list_t *ethGetObject(int initOnly)
     return &ethGameList;
 }
 
-static int ethNeedsUpdate(item_list_t *itemList)
+static int ethNeedsUpdate(item_list_t* pItemList)
 {
     int result;
 
@@ -484,7 +488,7 @@ static int ethNeedsUpdate(item_list_t *itemList)
     return result;
 }
 
-static int ethUpdateGameList(item_list_t *itemList)
+static int ethUpdateGameList(item_list_t* pItemList)
 {
     if (gPCShareName[0]) {
         if (gNetworkStartup != 0)
@@ -530,22 +534,22 @@ static int ethUpdateGameList(item_list_t *itemList)
     return ethGameCount;
 }
 
-static int ethGetGameCount(item_list_t *itemList)
+static int ethGetGameCount(item_list_t* pItemList)
 {
     return ethGameCount;
 }
 
-static void *ethGetGame(item_list_t *itemList, int id)
+static void *ethGetGame(item_list_t* pItemList, int id)
 {
     return (void *)&ethGames[id];
 }
 
-static char *ethGetGameName(item_list_t *itemList, int id)
+static char *ethGetGameName(item_list_t* pItemList, int id)
 {
     return ethGames[id].name;
 }
 
-static int ethGetGameNameLength(item_list_t *itemList, int id)
+static int ethGetGameNameLength(item_list_t* pItemList, int id)
 {
     if (ethGames[id].format != GAME_FORMAT_USBLD)
         return ISO_GAME_NAME_MAX + 1;
@@ -553,24 +557,24 @@ static int ethGetGameNameLength(item_list_t *itemList, int id)
         return UL_GAME_NAME_MAX + 1;
 }
 
-static char *ethGetGameStartup(item_list_t *itemList, int id)
+static char *ethGetGameStartup(item_list_t* pItemList, int id)
 {
     return ethGames[id].startup;
 }
 
-static void ethDeleteGame(item_list_t *itemList, int id)
+static void ethDeleteGame(item_list_t* pItemList, int id)
 {
     sbDelete(&ethGames, ethPrefix, "\\", ethGameCount, id);
     ethULSizePrev = -2;
 }
 
-static void ethRenameGame(item_list_t *itemList, int id, char *newName)
+static void ethRenameGame(item_list_t* pItemList, int id, char *newName)
 {
     sbRename(&ethGames, ethPrefix, "\\", ethGameCount, id, newName);
     ethULSizePrev = -2;
 }
 
-static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
+static void ethLaunchGame(item_list_t* pItemList, int id, config_set_t *configSet)
 {
     int i, compatmask;
     int EnablePS2Logo = 0;
@@ -651,13 +655,13 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
 
     switch (game->format) {
         case GAME_FORMAT_OLD_ISO:
-            snprintf(settings->filename, sizeof(settings->filename), "%s.%s%s", game->startup, game->name, game->extension);
+            sprintf(settings->filename, "%s.%s%s", game->startup, game->name, game->extension);
             break;
         case GAME_FORMAT_ISO:
-            snprintf(settings->filename, sizeof(settings->filename), "%s%s", game->name, game->extension);
+            sprintf(settings->filename, "%s%s", game->name, game->extension);
             break;
         default: // USBExtreme format.
-            snprintf(settings->filename, sizeof(settings->filename), "ul.%08X.%s", USBA_crc32(game->name), game->startup);
+            sprintf(settings->filename, "ul.%08X.%s", USBA_crc32(game->name), game->startup);
             settings->common.flags |= IOPCORE_SMB_FORMAT_USBLD;
     }
 
@@ -714,12 +718,12 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask);
 }
 
-static config_set_t *ethGetConfig(item_list_t *itemList, int id)
+static config_set_t *ethGetConfig(item_list_t* pItemList, int id)
 {
     return sbPopulateConfig(&ethGames[id], ethPrefix, "\\");
 }
 
-static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int ethGetImage(item_list_t* pItemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
     char path[256];
     if (isRelative)
@@ -729,18 +733,18 @@ static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char
     return texDiscoverLoad(resultTex, path, -1);
 }
 
-static int ethGetTextId(item_list_t *itemList)
+static int ethGetTextId(item_list_t* pItemList)
 {
     return _STR_NET_GAMES;
 }
 
-static int ethGetIconId(item_list_t *itemList)
+static int ethGetIconId(item_list_t* pItemList)
 {
     return ETH_ICON;
 }
 
 // This may be called, even if ethInit() was not.
-static void ethCleanUp(item_list_t *itemList, int exception)
+static void ethCleanUp(item_list_t* pItemList, int exception)
 {
     if (ethGameList.enabled) {
         LOG("ETHSUPPORT CleanUp\n");
@@ -757,7 +761,7 @@ static void ethCleanUp(item_list_t *itemList, int exception)
 }
 
 // This may be called, even if ethInit() was not.
-static void ethShutdown(item_list_t *itemList)
+static void ethShutdown(item_list_t* pItemList)
 {
     if (ethGameList.enabled) {
         LOG("ETHSUPPORT Shutdown\n");
@@ -776,12 +780,12 @@ static void ethShutdown(item_list_t *itemList)
         sysShutdownDev9();
 }
 
-static int ethCheckVMC(item_list_t *itemList, char *name, int createSize)
+static int ethCheckVMC(item_list_t* pItemList, char *name, int createSize)
 {
     return sysCheckVMC(ethPrefix, "\\", name, createSize, NULL);
 }
 
-static char *ethGetPrefix(item_list_t *itemList)
+static char *ethGetPrefix(item_list_t* pItemList)
 {
     return ethPrefix;
 }

@@ -83,8 +83,8 @@ typedef struct
     short inMenu;
 } gui_screen_handler_t;
 
-static gui_screen_handler_t screenHandlers[] = {{&menuHandleInputMain, &menuRenderMain, 0},
-                                                {&menuHandleInputMenu, &menuRenderMenu, 1},
+static gui_screen_handler_t screenHandlers[] = {{&menuHandleInputMain, &menuRenderMain, 0},             // GUI_SCREEN_MAIN - Game selection menu
+                                                {&menuHandleInputMenu, &menuRenderMenu, 1},             // GUI_SCREEN_MENU - Settings menu
                                                 {&menuHandleInputInfo, &menuRenderInfo, 1},
                                                 {&menuHandleInputGameMenu, &menuRenderGameMenu, 1},
                                                 {&menuHandleInputAppMenu, &menuRenderAppMenu, 1}};
@@ -214,6 +214,9 @@ void guiShowAbout()
 #endif
 #ifdef PADEMU
                                                        " - PADEMU"
+#endif
+#ifdef ATA_UDMA_PLUS
+                                                       " - UDMA+"
 #endif
              // Version numbers
              ,
@@ -441,11 +444,13 @@ static void guiShowBlockDeviceConfig(void)
 
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
+    diaSetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, gEnableBdmHDD);
 
     ret = diaExecuteDialog(diaBlockDevicesConfig, -1, 1, NULL);
     if (ret) {
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
+        diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
     }
 }
 
@@ -479,21 +484,17 @@ int guiDeviceTypeToIoMode(int deviceType)
 
 int guiIoModeToDeviceType(int ioMode)
 {
-    switch (ioMode) {
+    switch (ioMode)
+    {
         case BDM_MODE:
         case BDM_MODE1:
         case BDM_MODE2:
         case BDM_MODE3:
-        case BDM_MODE4:
-            return 0;
-        case ETH_MODE:
-            return 1;
-        case HDD_MODE:
-            return 2;
-        case APP_MODE:
-            return 3;
-        default:
-            return 0;
+        case BDM_MODE4: return 0;
+        case ETH_MODE: return 1;
+        case HDD_MODE: return 2;
+        case APP_MODE: return 3;
+        default: return 0;
     }
 }
 
@@ -1420,7 +1421,7 @@ static void guiDrawOverlays()
         clock_t diff = curtime - prevtime;
         if (diff == 0)
             diff = 1;
-
+            
         // Raw FPS value with 2 decimal places
         float rawfps = ((100 * CLOCKS_PER_SEC) / diff) / 100.0f;
 
@@ -1590,12 +1591,12 @@ void guiSetFrameHook(gui_callback_t cback)
 void guiSwitchScreen(int target)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
-    if (screenHandlerTarget != NULL) {
-        return;
+    if (screenHandlerTarget == NULL)
+    {
+        sfxPlay(SFX_TRANSITION);
+        transIndex = 0;
+        screenHandlerTarget = &screenHandlers[target];
     }
-    sfxPlay(SFX_TRANSITION);
-    transIndex = 0;
-    screenHandlerTarget = &screenHandlers[target];
 }
 
 struct gui_update_t *guiOpCreate(gui_op_type_t type)

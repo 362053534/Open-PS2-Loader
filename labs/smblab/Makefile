@@ -6,7 +6,7 @@ EE_LIBS = -lfileXio -lpatches -ldebug -lc -lkernel
 EE_CFLAGS = -g
 EE_LDFLAGS = -s
 
-BIN2C = $(PS2SDK)/bin/bin2c
+BIN2S = $(PS2SDK)/bin/bin2s
 
 all:
 	$(MAKE) $(EE_BIN)
@@ -23,45 +23,45 @@ clean:
 
 rebuild: clean all
 
-poweroff.c: $(PS2SDK)/iop/irx/poweroff.irx
-	$(BIN2C) $< $@ $(*F)
+poweroff.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/poweroff.irx poweroff.s poweroff_irx
 
-ps2dev9.c: ../../modules/dev9/ps2dev9.irx
+ps2dev9.s:
 	$(MAKE) -C ../../modules/dev9
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/dev9/ps2dev9.irx ps2dev9.s ps2dev9_irx
 
-smsutils.c: ../../modules/network/SMSUTILS/SMSUTILS.irx
+smsutils.s:
 	$(MAKE) -C ../../modules/network/SMSUTILS
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/network/SMSUTILS/SMSUTILS.irx smsutils.s smsutils_irx
 
-smstcpip.c: ../../modules/network/SMSTCPIP/SMSTCPIP.irx
+smstcpip.s:
 	$(MAKE) -C ../../modules/network/SMSTCPIP
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/network/SMSTCPIP/SMSTCPIP.irx smstcpip.s smstcpip_irx
 
-smsmap.c: ../../modules/network/SMSMAP/SMSMAP.irx
+smsmap.s:
 	$(MAKE) -C ../../modules/network/SMSMAP
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/network/SMSMAP/SMSMAP.irx smsmap.s smsmap_irx
 
-smbman.c: $(PS2SDK)/iop/irx/smbman.irx
-	$(BIN2C) $< $@ $(*F)
+smbman.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/smbman.irx smbman.s smbman_irx
 
-udptty.c: ../../modules/debug/udptty/udptty.irx
+udptty.s:
 	$(MAKE) -C ../../modules/debug/udptty
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/debug/udptty/udptty.irx udptty.s udptty_irx
 
-ioptrap.c: ../../modules/debug/ioptrap/ioptrap.irx
+ioptrap.s:
 	$(MAKE) -C ../../modules/debug/ioptrap
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/debug/ioptrap/ioptrap.irx ioptrap.s ioptrap_irx
 
-ps2link.c: ../../modules/debug/ps2link/ps2link.irx
+ps2link.s:
 	$(MAKE) -C ../../modules/debug/ps2link
-	$(BIN2C) $< $@ $(*F)
+	$(BIN2S) ../../modules/debug/ps2link/ps2link.irx ps2link.s ps2link_irx
 
-iomanx.c: $(PS2SDK)/iop/irx/iomanX.irx
-	$(BIN2C) $< $@ $(*F)
+iomanx.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/iomanX.irx iomanx.s iomanx_irx
 
-filexio.c: $(PS2SDK)/iop/irx/fileXio.irx
-	$(BIN2C) $< $@ $(*F)
+filexio.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/fileXio.irx filexio.s filexio_irx
 
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal

@@ -44,7 +44,7 @@ struct cdvdman_settings_hdd
 struct cdvdman_settings_smb
 {
     struct cdvdman_settings_common common;
-    char filename[160];
+    char filename[88];
     union
     {
         struct
@@ -78,11 +78,14 @@ struct cdvdman_settings_bdm
     // 0 = ISO
     struct cdvdman_fragfile fragfile[BDM_MAX_FILES];
 
+    // Fragment table, containing the fragments of all files
+    bd_fragment_t frags[BDM_MAX_FRAGS];
+
     // Device ID of the block device to bind to.
     u32 bdDeviceId;
 
-    // Fragment table, containing the fragments of all files
-    bd_fragment_t frags[BDM_MAX_FRAGS];
+    // Indicates the supported LBA size of the HDD (1 for LBA48, 0 for LBA28).
+    u32 hddIsLBA48;
 } __attribute__((packed));
 
 #define CDVDMAN_SETTINGS_DEFAULT_COMMON                    \

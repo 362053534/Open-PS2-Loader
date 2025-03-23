@@ -100,52 +100,52 @@ typedef struct _item_list_t
     int updateDelay;
 
     // Per-device data
-    void *priv;
+    void* priv;
 
     // opl_io_module_t instance that owns this item list.
-    void *owner;
+    void* owner;
 
     /// item description in localised form (used if value is not negative)
-    int (*itemTextId)(item_list_t *itemList);
+    int (*itemTextId)(item_list_t* pItemList);
 
     /// @return path to device prefix (set callback to NULL if not applicable).
-    char *(*itemGetPrefix)(item_list_t *itemList);
+    char *(*itemGetPrefix)(item_list_t* pItemList);
 
-    void (*itemInit)(item_list_t *itemList);
+    void (*itemInit)(item_list_t* pItemList);
 
     /** @return 1 if update is needed, 0 otherwise */
-    int (*itemNeedsUpdate)(item_list_t *itemList);
+    int (*itemNeedsUpdate)(item_list_t* pItemList);
 
     /** @return game count (0 on error) */
-    int (*itemUpdate)(item_list_t *itemList);
+    int (*itemUpdate)(item_list_t* pItemList);
 
-    int (*itemGetCount)(item_list_t *itemList);
+    int (*itemGetCount)(item_list_t* pItemList);
 
-    void *(*itemGet)(item_list_t *itemList, int id);
+    void *(*itemGet)(item_list_t* pItemList, int id);
 
-    char *(*itemGetName)(item_list_t *itemList, int id);
+    char *(*itemGetName)(item_list_t* pItemList, int id);
 
-    int (*itemGetNameLength)(item_list_t *itemList, int id);
+    int (*itemGetNameLength)(item_list_t* pItemList, int id);
 
-    char *(*itemGetStartup)(item_list_t *itemList, int id);
+    char *(*itemGetStartup)(item_list_t* pItemList, int id);
 
-    void (*itemDelete)(item_list_t *itemList, int id);
+    void (*itemDelete)(item_list_t* pItemList, int id);
 
-    void (*itemRename)(item_list_t *itemList, int id, char *newName);
+    void (*itemRename)(item_list_t* pItemList, int id, char *newName);
 
-    void (*itemLaunch)(item_list_t *itemList, int id, config_set_t *configSet);
+    void (*itemLaunch)(item_list_t* pItemList, int id, config_set_t *configSet);
 
-    config_set_t *(*itemGetConfig)(item_list_t *itemList, int id);
+    config_set_t *(*itemGetConfig)(item_list_t* pItemList, int id);
 
-    int (*itemGetImage)(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
+    int (*itemGetImage)(item_list_t* pItemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 
-    void (*itemCleanUp)(item_list_t *itemList, int exception);
+    void (*itemCleanUp)(item_list_t* pItemList, int exception);
 
-    void (*itemShutdown)(item_list_t *itemList);
+    void (*itemShutdown)(item_list_t* pItemList);
 
-    int (*itemCheckVMC)(item_list_t *itemList, char *name, int createSize);
+    int (*itemCheckVMC)(item_list_t* pItemList, char *name, int createSize);
 
-    int (*itemIconId)(item_list_t *itemList);
+    int (*itemIconId)(item_list_t* pItemList);
 } item_list_t;
 
 #endif

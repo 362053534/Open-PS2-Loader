@@ -52,8 +52,6 @@
 #error Unknown driver type. Please check the Makefile.
 #endif
 
-#define btoi(b) ((b) / 16 * 10 + (b) % 16) /* BCD to u_char */
-#define itob(i) ((i) / 10 * 16 + (i) % 10) /* u_char to BCD */
 struct SteamingData
 {
     unsigned short int StBufmax;
@@ -71,13 +69,12 @@ struct SteamingData
 typedef struct
 {
     int err;
-    u8 status; // SCECdvdDriveState
+    int status;
     struct SteamingData StreamingData;
     int intr_ef;
-    int disc_type_reg; // SCECdvdMediaType
+    int disc_type_reg;
     u32 cdread_lba;
     u32 cdread_sectors;
-    u16 sector_size;
     void *cdread_buf;
 } cdvdman_status_t;
 
@@ -100,8 +97,8 @@ typedef void (*StmCallback_t)(void);
 
 // Internal (common) function prototypes
 extern void SetStm0Callback(StmCallback_t callback);
-extern int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
-extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
+extern int cdvdman_AsyncRead(u32 lsn, u32 sectors, void *buf);
+extern int cdvdman_SyncRead(u32 lsn, u32 sectors, void *buf);
 extern int cdvdman_sendSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 extern void cdvdman_cb_event(int reason);
 
@@ -112,7 +109,7 @@ extern void cdvdman_initdev(void);
 
 extern struct CDVDMAN_SETTINGS_TYPE cdvdman_settings;
 
-#ifdef HDD_DRIVER
+#if defined(HDD_DRIVER) || defined(USE_BDM_ATA)
 // HDD driver also uses this buffer, for aligning unaligned reads.
 #define CDVDMAN_BUF_SECTORS 2
 #else
@@ -128,6 +125,5 @@ extern cdvdman_status_t cdvdman_stat;
 
 extern unsigned char sync_flag;
 extern unsigned char cdvdman_cdinited;
-extern u32 mediaLsnCount;
 
 #endif

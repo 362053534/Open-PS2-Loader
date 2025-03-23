@@ -22,8 +22,12 @@
 #include <smod.h>
 
 #ifdef __EESIO_DEBUG
-#define DPRINTF(args...) _print(args);
-#define DINIT()          InitDebug();
+extern void print(const char* format, ...);
+
+void eecoreDebugInit();
+
+#define DPRINTF(...) print(__VA_ARGS__)
+#define DINIT()          eecoreDebugInit()
 #else
 #define DPRINTF(args...) \
     do {                 \
@@ -39,6 +43,8 @@ extern int iop_reboot_count;
 
 extern int padOpen_hooked;
 
+extern int enforceLanguage;
+
 enum ETH_OP_MODES {
     ETH_OP_MODE_AUTO = 0,
     ETH_OP_MODE_100M_FDX,
@@ -52,6 +58,10 @@ enum ETH_OP_MODES {
 #define IPCONFIG_MAX_LEN 64
 extern char g_ipconfig[IPCONFIG_MAX_LEN];
 extern int g_ipconfig_len;
+extern char g_ps2_ip[16];
+extern char g_ps2_netmask[16];
+extern char g_ps2_gateway[16];
+extern unsigned char g_ps2_ETHOpMode;
 extern u32 g_compat_mask;
 
 #define COMPAT_MODE_1 0x01
@@ -63,15 +73,30 @@ extern u32 g_compat_mask;
 #define COMPAT_MODE_7 0x40
 #define COMPAT_MODE_8 0x80
 
+extern char GameID[16];
+extern int GameMode;
 enum GAME_MODE {
     BDM_ILK_MODE,
     BDM_M4S_MODE,
     BDM_USB_MODE,
+    BDM_HDD_MODE,
     ETH_MODE,
     HDD_MODE,
 };
 
+extern char ExitPath[32];
+extern int HDDSpindown;
+extern int EnableGSMOp;
+extern int EnableCheatOp;
+#ifdef PADEMU
+extern int EnablePadEmuOp;
+extern int PadEmuSettings;
+extern int PadMacroSettings;
+#endif
+
 extern int EnableDebug;
 #define GS_BGCOLOUR *((volatile unsigned long int *)0x120000E0)
+
+extern int *gCheatList; // Store hooks/codes addr+val pairs
 
 #endif

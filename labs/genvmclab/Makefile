@@ -6,7 +6,7 @@ EE_LIBS = -lfileXio -lpatches -ldebug -lc -lkernel
 EE_CFLAGS = -g
 EE_LDFLAGS = -s
 
-BIN2C = $(PS2SDK)/bin/bin2c
+BIN2S = $(PS2SDK)/bin/bin2s
 
 all:
 	$(MAKE) $(EE_BIN)
@@ -26,57 +26,57 @@ clean:
 
 rebuild: clean all
 
-poweroff.c: $(PS2SDK)/iop/irx/poweroff.irx
-	$(BIN2C) $< $@ $(*F)_irx
+poweroff.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/poweroff.irx poweroff.s poweroff_irx
 
-ps2dev9.c: ../../modules/dev9/ps2dev9.irx
+ps2dev9.s:
 	$(MAKE) -C ../../modules/dev9
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/dev9/ps2dev9.irx ps2dev9.s ps2dev9_irx
 
-smsutils.c: ../../modules/network/SMSUTILS/SMSUTILS.irx
+smsutils.s:
 	$(MAKE) -C ../../modules/network/SMSUTILS
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/network/SMSUTILS/SMSUTILS.irx smsutils.s smsutils_irx
 
-smstcpip.c: ../../modules/network/SMSTCPIP/SMSTCPIP.irx
+smstcpip.s:
 	$(MAKE) -C ../../modules/network/SMSTCPIP
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/network/SMSTCPIP/SMSTCPIP.irx smstcpip.s smstcpip_irx
 
-smsmap.c: ../../modules/network/SMSMAP/SMSMAP.irx
+smsmap.s:
 	$(MAKE) -C ../../modules/network/SMSMAP
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/network/SMSMAP/SMSMAP.irx smsmap.s smsmap_irx
 
-iomanx.c: $(PS2SDK)/iop/irx/iomanX.irx
-	$(BIN2C) $< $@ $(*F)_irx
+iomanx.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/iomanX.irx iomanx.s iomanx_irx
 
-filexio.c: $(PS2SDK)/iop/irx/fileXio.irx
-	$(BIN2C) $< $@ $(*F)_irx
+filexio.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/fileXio.irx filexio.s filexio_irx
 
-usbd.c: $(PS2SDK)/iop/irx/usbd.irx
-	$(BIN2C) $< $@ $(*F)_irx
+usbd.s:
+	$(BIN2S) $(PS2SDK)/iop/irx/usbd.irx usbd.s usbd_irx
 
-usbhdfsd.c: ../../modules/usb/usbhdfsd/usbhdfsd.irx
+usbhdfsd.s:
 	$(MAKE) -C ../../modules/usb/usbhdfsd
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/usb/usbhdfsd/usbhdfsd.irx usbhdfsd.s usbhdfsd_irx
 
-udptty.c: ../../modules/debug/udptty/udptty.irx
+udptty.s:
 	$(MAKE) -C ../../modules/debug/udptty
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/debug/udptty/udptty.irx udptty.s udptty_irx
 
-ioptrap.c: ../../modules/debug/ioptrap/ioptrap.irx
+ioptrap.s:
 	$(MAKE) -C ../../modules/debug/ioptrap
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/debug/ioptrap/ioptrap.irx ioptrap.s ioptrap_irx
 
-ps2link.c: ../../modules/debug/ps2link/ps2link.irx
+ps2link.s:
 	$(MAKE) -C ../../modules/debug/ps2link
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/debug/ps2link/ps2link.irx ps2link.s ps2link_irx
 
-mcman.c: ../../modules/vmc/mcman/mcman.irx
+mcman.s:
 	$(MAKE) -C ../../modules/vmc/mcman
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/vmc/mcman/mcman.irx mcman.s mcman_irx
 
-genvmc.c: ../../modules/vmc/genvmc/genvmc.irx
+genvmc.s:
 	$(MAKE) -C ../../modules/vmc/genvmc
-	$(BIN2C) $< $@ $(*F)_irx
+	$(BIN2S) ../../modules/vmc/genvmc/genvmc.irx genvmc.s genvmc_irx
 
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal

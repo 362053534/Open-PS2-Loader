@@ -33,7 +33,6 @@
 
 #include "include/cheatman.h"
 #include "include/sound.h"
-#include "include/xparam.h"
 
 // FIXME: We should not need this function.
 //        Use newlib's 'stat' to get GMT time.
@@ -49,7 +48,7 @@ int configGetStat(config_set_t *configSet, iox_stat_t *stat);
 
 #ifdef __EESIO_DEBUG
 #include "SIOCookie.h"
-#define LOG_INIT() ee_sio_start(38400, 0, 0, 0, 0, 1)
+#define LOG_INIT() ee_sio_start(38400, 0, 0, 0, 0)
 #define LOG_ENABLE() \
     do {             \
     } while (0)
@@ -68,6 +67,10 @@ int configGetStat(config_set_t *configSet, iox_stat_t *stat);
     do {             \
     } while (0)
 #endif
+#endif
+
+#ifdef CATCH_EXCEPTIONS
+#include "include/exceptions.h"
 #endif
 
 // App support stuff.
@@ -138,6 +141,7 @@ int hddCacheSize;
 int smbCacheSize;
 int gEnableILK;
 int gEnableMX4SIO;
+int gEnableBdmHDD;
 int gAutosort;
 int gAutoRefresh;
 int gEnableNotifications;
@@ -169,7 +173,7 @@ int gPadMacroSource;
 int gPadMacroSettings;
 #endif
 int gScrollSpeed;
-char gExitPath[256];
+char gExitPath[32];
 int gEnableDebug;
 int gPS2Logo;
 int gDefaultDevice;
@@ -192,23 +196,49 @@ char *gHDDPrefix;
 char gExportName[32];
 
 int gOSDLanguageValue;
-int gOSDTVAspectRatio;
-int gOSDVideOutput;
 int gOSDLanguageEnable;
 int gOSDLanguageSource;
 
-void moduleUpdateMenuInternal(opl_io_module_t *mod, int themeChanged, int langChanged);
+void __assert_fail (const char *__assertion, const char *__file, unsigned int __line, const char *__function)
+{
+    LOG("*** ASSERTION FAILURE ***\n");
+    LOG("File: %s\n", __file);
+    LOG("Line Number: %d\n", __line);
+    LOG("Function: %s\n", __function);
+    LOG("Expression: %s\n", __assertion);
+    SleepThread();
+}
+
+# if defined __cplusplus ? __GNUC_PREREQ (2, 6) : __GNUC_PREREQ (2, 4)
+#   define __ASSERT_FUNCTION	__extension__ __PRETTY_FUNCTION__
+# else
+#  if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901L
+#   define __ASSERT_FUNCTION	__func__
+#  else
+#   define __ASSERT_FUNCTION	((const char *) 0)
+#  endif
+# endif
+
+#  define assert(expr)							\
+  ((void) sizeof ((expr) ? 1 : 0), __extension__ ({			\
+      if (expr)								\
+        ; /* empty */							\
+      else								\
+        __assert_fail (#expr, __FILE__, __LINE__, __ASSERT_FUNCTION);	\
+    }))
+
+void moduleUpdateMenuInternal(opl_io_module_t* mod, int themeChanged, int langChanged);
 
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged)
 {
     if (mode == -1)
         return;
 
-    opl_io_module_t *mod = &list_support[mode];
+    opl_io_module_t* mod = &list_support[mode];
     moduleUpdateMenuInternal(mod, themeChanged, langChanged);
 }
 
-void moduleUpdateMenuInternal(opl_io_module_t *mod, int themeChanged, int langChanged)
+void moduleUpdateMenuInternal(opl_io_module_t* mod, int themeChanged, int langChanged)
 {
     if (!mod->support)
         return;
@@ -247,7 +277,7 @@ void moduleUpdateMenuInternal(opl_io_module_t *mod, int themeChanged, int langCh
 static void itemInitSupport(item_list_t *support)
 {
     support->itemInit(support);
-    moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
+    moduleUpdateMenuInternal((opl_io_module_t*)support->owner, 0, 0);
     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
     if (!gAutoRefresh || (support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
@@ -266,13 +296,20 @@ static void itemExecSelect(struct menu_item *curMenu)
             }
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
-            if (support->mode == BDM_MODE) {
+            if (support->mode == BDM_MODE)
+            {
                 // Initialize support for all bdm modules.
-                for (int i = 0; i <= BDM_MODE4; i++) {
+                for (int i = 0; i <= BDM_MODE4; i++)
+                {
                     opl_io_module_t *mod = &list_support[i];
+                    assert(mod);
+                    assert(mod->support);
+
                     itemInitSupport(mod->support);
                 }
-            } else {
+            }
+            else
+            {
                 // Normal initialization.
                 itemInitSupport(support);
             }
@@ -284,11 +321,13 @@ static void itemExecSelect(struct menu_item *curMenu)
 static void itemExecRefresh(struct menu_item *curMenu)
 {
     item_list_t *support = curMenu->userdata;
+    //LOG("itemExecRefresh for %d (0x%08x)\n", support->mode, support->owner);
 
     if (support && support->enabled) {
         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
         sfxPlay(SFX_CONFIRM);
     }
+    //LOG("itemExecRefresh exit\n");
 }
 
 static void itemExecCross(struct menu_item *curMenu)
@@ -333,7 +372,7 @@ static void itemExecTriangle(struct menu_item *curMenu)
         guiMsgBox("NULL Support object. Please report", 0, NULL);
 }
 
-static void initMenuForListSupport(opl_io_module_t *mod)
+static void initMenuForListSupport(opl_io_module_t* mod)
 {
     mod->menuItem.icon_id = mod->support->itemIconId(mod->support);
     mod->menuItem.text = NULL;
@@ -410,7 +449,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
         }
-    } else {
+    }
+    else
+    {
         // If the module has a valid menu instance try to refresh the visibility state.
         mod->menuItem.visible = 0;
     }
@@ -418,6 +459,13 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
 static void initAllSupport(int force_reinit)
 {
+#ifdef __INGAME_DEBUG
+#ifndef _DTL_T10000
+    // Load network modules before initializing device support so we have IOP debugging info if enabled.
+    ethLoadInitModules();
+#endif
+#endif
+
     bdmEnumerateDevices();
     initSupport(ethGetObject(0), ETH_MODE, force_reinit || (gNetworkStartup >= ERROR_ETH_SMB_CONN));
     initSupport(hddGetObject(0), HDD_MODE, force_reinit);
@@ -426,12 +474,22 @@ static void initAllSupport(int force_reinit)
 
 static void deinitAllSupport(int exception, int modeSelected)
 {
-    for (int i = 0; i < MODE_COUNT; i++) {
-        if (list_support[i].support != NULL) {
+    for (int i = 0; i < MODE_COUNT; i++)
+    {
+        if (list_support[i].support != NULL)
+        {
             // If the selected mode is one of the mass devices then skip deinit for all mass device objects.
             if (modeSelected >= BDM_MODE && modeSelected <= BDM_MODE4 && i <= BDM_MODE4)
                 continue;
 
+            // If the selected device is a mass device and it's backed by the ATA drivers skip unloading them as well.
+            if (i == HDD_MODE && (modeSelected >= BDM_MODE && modeSelected <= BDM_MODE4))
+            {
+                bdm_device_data_t* pDeviceData = list_support[modeSelected].support->priv;
+                if (strncmp(pDeviceData->bdmDriver, "ata", 3) == 0)
+                    continue;
+            }
+            
             moduleCleanup(&list_support[i], exception, modeSelected);
         }
     }
@@ -454,6 +512,11 @@ int oplPath2Mode(const char *path)
             blkdevnameend = strchr(appsPath, ':');
             if (blkdevnameend != NULL) {
                 blkdevnamelen = (int)(blkdevnameend - appsPath);
+
+                // NOTE: Commenting this out because we now support multiple block devices at once, and the device number matters.
+                // Since I don't use apps I don't really know if this will introduce a new issue or not.
+                //while ((blkdevnamelen > 0) && isdigit((int)appsPath[blkdevnamelen - 1]))
+                //    blkdevnamelen--; // Ignore the unit number.
 
                 if (strncmp(path, appsPath, blkdevnamelen) == 0)
                     return listSupport->mode;
@@ -506,6 +569,7 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
 {
     struct dirent *pdirent;
     DIR *pdir;
+    struct stat st;
     int i, count, ret;
     item_list_t *listSupport;
     config_set_t *appConfig;
@@ -526,7 +590,9 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
                         continue;
 
                     snprintf(dir, sizeof(dir), "%s/%s", appsPath, pdirent->d_name);
-                    if (pdirent->d_type != DT_DIR)
+                    if (stat(dir, &st) < 0)
+                        continue;
+                    if (!S_ISDIR(st.st_mode))
                         continue;
 
                     snprintf(path, sizeof(path), "%s/%s", dir, APP_TITLE_CONFIG_FILE);
@@ -684,13 +750,13 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
 void menuDeferredUpdate(void *data)
 {
     short int *mode = data;
-
     opl_io_module_t *mod = &list_support[*mode];
     if (!mod->support)
         return;
 
     // see if we have to update
     if (mod->support->itemNeedsUpdate(mod->support)) {
+        LOG("menuDeferredUpdate: updating game list for %d...\n", mod->support->mode);
         updateMenuFromGameList(mod);
 
         // If other modes have been updated, then the apps list should be updated too.
@@ -910,6 +976,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_APP_MODE, &gAPPStartMode);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, &gEnableILK);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, &gEnableMX4SIO);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, &gEnableBdmHDD);
             configGetInt(configOPL, CONFIG_OPL_SFX, &gEnableSFX);
             configGetInt(configOPL, CONFIG_OPL_BOOT_SND, &gEnableBootSND);
             configGetInt(configOPL, CONFIG_OPL_BGM, &gEnableBGM);
@@ -1069,6 +1136,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_SMB_CACHE, smbCacheSize);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, gEnableILK);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, gEnableMX4SIO);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, gEnableBdmHDD);
         configSetInt(configOPL, CONFIG_OPL_SFX, gEnableSFX);
         configSetInt(configOPL, CONFIG_OPL_BOOT_SND, gEnableBootSND);
         configSetInt(configOPL, CONFIG_OPL_BGM, gEnableBGM);
@@ -1140,10 +1208,12 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
     guiUpdateScreenScale();
 
     // Check if we should refresh device support as well.
-    if (skipDeviceRefresh == 0) {
+    if (skipDeviceRefresh == 0)
+    {
         initAllSupport(0);
 
-        for (int i = 0; i < MODE_COUNT; i++) {
+        for (int i = 0; i < MODE_COUNT; i++)
+        {
             if (list_support[i].support == NULL)
                 continue;
 
@@ -1153,9 +1223,12 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
 
     bgmUnMute();
 
+/*
 #ifdef __DEBUG
     debugApplyConfig();
+    debugSetActive();
 #endif
+*/
 }
 
 int loadConfig(int types)
@@ -1447,17 +1520,9 @@ int oplUpdateGameCompatSingle(int id, item_list_t *support, config_set_t *config
 // ----------------------------------------------------------
 // -------------------- NBD SRV Support ---------------------
 // ----------------------------------------------------------
-
-
 static int loadLwnbdSvr(void)
 {
     int ret, padStatus;
-    struct lwnbd_config
-    {
-        char defaultexport[32];
-        uint8_t readonly;
-    };
-    struct lwnbd_config config;
 
     // deint audio lib while nbd server is running
     audioEnd();
@@ -1474,21 +1539,11 @@ static int loadLwnbdSvr(void)
     unloadPads();
     // sysReset(0); // usefull ? printf doesn't work with it.
 
-    /* compat stuff for user not providing name export (useless when there was only one export) */
-    ret = strlen(gExportName);
-    if (ret == 0)
-        strcpy(config.defaultexport, "hdd0");
-    else
-        strcpy(config.defaultexport, gExportName);
-
-    config.readonly = !gEnableWrite;
-
-    // see gETHStartMode, gNetworkStartup ? this is slow, so if we don't have to do it (like debug build).
     ret = ethLoadInitModules();
     if (ret == 0) {
-        ret = sysLoadModuleBuffer(&ps2atad_irx, size_ps2atad_irx, 0, NULL); /* gHDDStartMode ? */
+        ret = sysLoadModuleBuffer(&ps2atad_irx, size_ps2atad_irx, 0, NULL);
         if (ret >= 0) {
-            ret = sysLoadModuleBuffer(&lwnbdsvr_irx, size_lwnbdsvr_irx, sizeof(config), (char *)&config);
+            ret = sysLoadModuleBuffer(&lwnbdsvr_irx, size_lwnbdsvr_irx, 4, (char *)&gExportName);
             if (ret >= 0)
                 ret = 0;
         }
@@ -1541,7 +1596,8 @@ void handleLwnbdSrv()
     // prepare for lwnbd, display screen with info
     guiRenderTextScreen(_l(_STR_STARTINGNBD));
     if (loadLwnbdSvr() == 0) {
-        snprintf(temp, sizeof(temp), "%s", _l(_STR_RUNNINGNBD));
+        snprintf(temp, sizeof(temp), "%s IP: %d.%d.%d.%d %s", _l(_STR_RUNNINGNBD),
+                 ps2_ip[0], ps2_ip[1], ps2_ip[2], ps2_ip[3], ps2_ip_use_dhcp ? "DHCP" : "");
         guiMsgBox(temp, 0, NULL);
     } else
         guiMsgBox(_l(_STR_STARTFAILNBD), 0, NULL);
@@ -1700,6 +1756,7 @@ static void setDefaults(void)
 
     gEnableILK = 0;
     gEnableMX4SIO = 0;
+    gEnableBdmHDD = 0;
 
     frameCounter = 0;
 
@@ -1723,7 +1780,6 @@ static void init(void)
     setDefaults();
 
     padInit(0);
-    int padStatus = 0;
     configInit(NULL);
 
     rmInit();
@@ -1746,16 +1802,8 @@ static void init(void)
 
     gSelectButton = (InitConsoleRegionData() == CONSOLE_REGION_JAPAN) ? KEY_CIRCLE : KEY_CROSS;
 
-    while (!padStatus)
-        padStatus = startPads();
-    readPads();
-    if (!getKeyPressed(KEY_START)) {
-        _loadConfig(); // only try to restore config if emergency key is not being pressed
-    } else {
-        LOG("--- SKIPPING OPL CONFIG LOADING\n");
-        applyConfig(-1, -1, 0);
-    }
-
+    // try to restore config
+    _loadConfig();
 
     // queue deffered init of sound effects, which will take place after the preceding initialization steps within the queue are complete.
     ioPutRequest(IO_CUSTOM_SIMPLEACTION, &deferredAudioInit);
@@ -1805,6 +1853,7 @@ static void miniInit(int mode)
         // Force load iLink & mx4sio modules.. we aren't using the gui so this is fine.
         gEnableILK = 1; // iLink will break pcsx2 however.
         gEnableMX4SIO = 1;
+        gEnableBdmHDD = 1;
         bdmLoadModules();
         delay(3); // Wait for the device to be detected.
     } else if (mode == HDD_MODE)
@@ -1926,11 +1975,17 @@ int main(int argc, char *argv[])
     LOG_INIT();
     PREINIT_LOG("OPL GUI start!\n");
 
+#ifdef CATCH_EXCEPTIONS
+    //InitDebug();
+
+    // Setup the debug exception handlers.
+    installExceptionHandlers();
+#endif
+
     ChangeThreadPriority(GetThreadId(), 31);
 
     // reset, load modules
     reset();
-    ResetDeckardXParams();
 
     if (argc >= 5) {
         /* argv[0] boot path
@@ -1943,7 +1998,7 @@ int main(int argc, char *argv[])
         /* argv[0] boot path
            argv[1] file name (including extention)
            argv[2] game->startup
-           argv[3] game->media ("CD" / "DVD")
+           argv[3] game->media ("CD" / "DVD") 
            argv[4] "bdm" */
         if (!strcmp(argv[4], "bdm"))
             autoLaunchBDMGame(argv);
@@ -1959,6 +2014,11 @@ int main(int argc, char *argv[])
 
     guiIntroLoop();
     guiMainLoop();
+
+#ifdef CATCH_EXCEPTIONS
+    // Uninstall debug exception handlers.
+    restoreExceptionHandlers();
+#endif
 
     return 0;
 }

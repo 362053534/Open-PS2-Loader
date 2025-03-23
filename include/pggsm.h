@@ -18,7 +18,6 @@
 
 #define GSM_VERSION "0.40"
 #define GSM_ARGS    1
-#include "../ee_core/include/coreconfig.h"
 
 #define makeSMODE1(VHP, VCKSEL, SLCK2, NVCK, CLKSEL, PEVS, PEHS, PVS, PHS, GCONT, SPML, PCK2, XPCK, SINT, PRST, EX, CMOD, SLCK, T1248, LC, RC) \
     (u64)(((u64)(VHP) << 36) | ((u64)(VCKSEL) << 34) | ((u64)(SLCK2) << 33) |                                                                  \
@@ -51,6 +50,6 @@ typedef struct predef_vmode_struct
 
 void InitGSMConfig(config_set_t *configSet);
 int GetGSMEnabled(void);
-void PrepareGSM(char *cmdline, struct GsmConfig_t *config);
+void PrepareGSM(char *cmdline);
 
 #endif
