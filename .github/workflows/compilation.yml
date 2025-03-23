@@ -192,7 +192,6 @@ jobs:
         cp -f OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD.7z
         cp -f OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS.7z
         cp -f OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z OPNPS2LD-LANGS.7z
-        cp -f OPNPS2LD/OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD.ELF
 
     - name: Create prerelease
       if: github.ref == 'refs/heads/master'
@@ -209,7 +208,6 @@ jobs:
           OPNPS2LD.7z
           OPNPS2LD-VARIANTS.7z
           OPNPS2LD-LANGS.7z
-          OPNPS2LD.ELF
 
     - name: Create release
       if: startsWith(github.ref, 'refs/tags/v')
@@ -225,7 +223,6 @@ jobs:
           OPNPS2LD.7z
           OPNPS2LD-VARIANTS.7z
           OPNPS2LD-LANGS.7z
-          OPNPS2LD.ELF
 
     - name: Upload pre-release to Mega
       if: github.ref == 'refs/heads/master' && env.USERNAME != null
