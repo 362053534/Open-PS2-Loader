@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
@@ -50,7 +50,7 @@ jobs:
       matrix:
         extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
         pademu: [PADEMU=0, PADEMU=1]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
@@ -79,7 +79,7 @@ jobs:
         path: OPNPS2LD*.ELF
 
   merge-variants:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: build-variants
     steps:
       - name: Merge Artifacts
@@ -90,7 +90,7 @@ jobs:
           delete-merged: true
 
   build-lang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
@@ -121,7 +121,7 @@ jobs:
         debug: [iopcore_debug, ingame_debug, eesio_debug, iopcore_ppctty_debug, ingame_ppctty_debug, DTL_T10000=1]
         # container_commit: [":main", "@sha256:1f00689809455d43b520e4cd4eea00c6be56d71819ae38efc6b55b56464cbd1e"] Replace with desired docker image hash or tag
         container_commit: [":main"]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     container: ghcr.io/ps2homebrew/ps2homebrew${{ matrix.container_commit }}
     steps:
     - name: git checkout
@@ -151,7 +151,7 @@ jobs:
         path: opl-*.elf
 
   merge-debug:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: build-debug
     steps:
       - name: Merge Artifacts
@@ -163,7 +163,7 @@ jobs:
 
   release:
     needs: [build, build-variants, build-lang]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master'
     env:
       USERNAME: ${{ secrets.USERNAME }}
