@@ -716,7 +716,7 @@ void menuDeferredUpdate(void *data)
     }
 }
 
-#define MENU_GENERAL_UPDATE_DELAY 120
+#define MENU_GENERAL_UPDATE_DELAY 60
 
 static void menuUpdateHook()
 {
