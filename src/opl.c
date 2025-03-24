@@ -138,6 +138,7 @@ int hddCacheSize;
 int smbCacheSize;
 int gEnableILK;
 int gEnableMX4SIO;
+int gEnableBdmHDD;
 int gAutosort;
 int gAutoRefresh;
 int gEnableNotifications;
@@ -187,9 +188,13 @@ unsigned char gDefaultSelTextColor[3];
 unsigned char gDefaultUITextColor[3];
 hdl_game_info_t *gAutoLaunchGame;
 base_game_info_t *gAutoLaunchBDMGame;
+bdm_device_data_t *gAutoLaunchDeviceData;
 char gOPLPart[128];
 char *gHDDPrefix;
 char gExportName[32];
+
+int gXSensitivity;
+int gYSensitivity;
 
 int gOSDLanguageValue;
 int gOSDTVAspectRatio;
@@ -427,13 +432,8 @@ static void initAllSupport(int force_reinit)
 static void deinitAllSupport(int exception, int modeSelected)
 {
     for (int i = 0; i < MODE_COUNT; i++) {
-        if (list_support[i].support != NULL) {
-            // If the selected mode is one of the mass devices then skip deinit for all mass device objects.
-            if (modeSelected >= BDM_MODE && modeSelected <= BDM_MODE4 && i <= BDM_MODE4)
-                continue;
-
+        if (list_support[i].support != NULL)
             moduleCleanup(&list_support[i], exception, modeSelected);
-        }
     }
 }
 
@@ -502,16 +502,56 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
     return -1;
 }
 
-int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
+static int scanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg, char *appsPath, int exception)
 {
     struct dirent *pdirent;
     DIR *pdir;
-    int i, count, ret;
-    item_list_t *listSupport;
+    int count, ret;
     config_set_t *appConfig;
-    char appsPath[64];
     char dir[128];
     char path[128];
+
+    count = 0;
+    if ((pdir = opendir(appsPath)) != NULL) {
+        while ((pdirent = readdir(pdir)) != NULL) {
+            if (exception && strchr(pdirent->d_name, '_') == NULL)
+                continue;
+
+            if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0)
+                continue;
+
+            snprintf(dir, sizeof(dir), "%s/%s", appsPath, pdirent->d_name);
+            if (pdirent->d_type != DT_DIR)
+                continue;
+
+            snprintf(path, sizeof(path), "%s/%s", dir, APP_TITLE_CONFIG_FILE);
+            appConfig = configAlloc(0, NULL, path);
+            if (appConfig != NULL) {
+                configRead(appConfig);
+
+                ret = callback(dir, appConfig, arg);
+                configFree(appConfig);
+
+                if (ret == 0)
+                    count++;
+                else if (ret < 0) { // Stopped because of unrecoverable error.
+                    break;
+                }
+            }
+        }
+
+        closedir(pdir);
+    } else
+        LOG("APPS failed to open dir %s\n", appsPath);
+
+    return count;
+}
+
+int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
+{
+    int i, count;
+    item_list_t *listSupport;
+    char appsPath[64];
 
     count = 0;
     for (i = 0; i < MODE_COUNT; i++) {
@@ -519,36 +559,13 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
         if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
             snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
-
-            if ((pdir = opendir(appsPath)) != NULL) {
-                while ((pdirent = readdir(pdir)) != NULL) {
-                    if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0)
-                        continue;
-
-                    snprintf(dir, sizeof(dir), "%s/%s", appsPath, pdirent->d_name);
-                    if (pdirent->d_type != DT_DIR)
-                        continue;
-
-                    snprintf(path, sizeof(path), "%s/%s", dir, APP_TITLE_CONFIG_FILE);
-                    appConfig = configAlloc(0, NULL, path);
-                    if (appConfig != NULL) {
-                        configRead(appConfig);
-
-                        ret = callback(dir, appConfig, arg);
-                        configFree(appConfig);
-
-                        if (ret == 0)
-                            count++;
-                        else if (ret < 0) { // Stopped because of unrecoverable error.
-                            break;
-                        }
-                    }
-                }
-
-                closedir(pdir);
-            } else
-                LOG("APPS failed to open dir %s\n", appsPath);
+            count += scanApps(callback, arg, appsPath, 0);
         }
+    }
+
+    for (i = 0; i < 2; i++) {
+        snprintf(appsPath, sizeof(appsPath), "mc%d:", i);
+        count += scanApps(callback, arg, appsPath, 1);
     }
 
     return count;
@@ -699,7 +716,7 @@ void menuDeferredUpdate(void *data)
     }
 }
 
-#define MENU_GENERAL_UPDATE_DELAY 60
+#define MENU_GENERAL_UPDATE_DELAY 120
 
 static void menuUpdateHook()
 {
@@ -781,6 +798,7 @@ static int checkLoadConfigHDD(int types)
     char path[64];
 
     hddLoadModules();
+    hddLoadSupportModules();
 
     snprintf(path, sizeof(path), "%sconf_opl.cfg", gHDDPrefix);
     value = open(path, O_RDONLY);
@@ -873,7 +891,15 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_ENABLE_NOTIFICATIONS, &gEnableNotifications);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, &gEnableArt);
             configGetInt(configOPL, CONFIG_OPL_WIDESCREEN, &gWideScreen);
-            configGetInt(configOPL, CONFIG_OPL_VMODE, &gVMode);
+
+            if (!(getKeyPressed(KEY_TRIANGLE) && getKeyPressed(KEY_CROSS))) {
+                configGetInt(configOPL, CONFIG_OPL_VMODE, &gVMode);
+            } else {
+                LOG("--- Triangle + Cross held at boot - setting Video Mode to Auto ---\n");
+                gVMode = 0;
+                configSetInt(configOPL, CONFIG_OPL_VMODE, gVMode);
+            }
+
             configGetInt(configOPL, CONFIG_OPL_XOFF, &gXOff);
             configGetInt(configOPL, CONFIG_OPL_YOFF, &gYOff);
             configGetInt(configOPL, CONFIG_OPL_OVERSCAN, &gOverscan);
@@ -891,6 +917,8 @@ static void _loadConfig()
             if (configGetInt(configOPL, CONFIG_OPL_SWAP_SEL_BUTTON, &value))
                 gSelectButton = value == 0 ? KEY_CIRCLE : KEY_CROSS;
 
+            configGetInt(configOPL, CONFIG_OPL_XSENSITIVITY, &gXSensitivity);
+            configGetInt(configOPL, CONFIG_OPL_YSENSITIVITY, &gYSensitivity);
             configGetInt(configOPL, CONFIG_OPL_DISABLE_DEBUG, &gEnableDebug);
             configGetInt(configOPL, CONFIG_OPL_PS2LOGO, &gPS2Logo);
             configGetInt(configOPL, CONFIG_OPL_HDD_GAME_LIST_CACHE, &gHDDGameListCache);
@@ -910,6 +938,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_APP_MODE, &gAPPStartMode);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, &gEnableILK);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, &gEnableMX4SIO);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, &gEnableBdmHDD);
             configGetInt(configOPL, CONFIG_OPL_SFX, &gEnableSFX);
             configGetInt(configOPL, CONFIG_OPL_BOOT_SND, &gEnableBootSND);
             configGetInt(configOPL, CONFIG_OPL_BGM, &gEnableBGM);
@@ -1069,6 +1098,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_SMB_CACHE, smbCacheSize);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, gEnableILK);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, gEnableMX4SIO);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, gEnableBdmHDD);
         configSetInt(configOPL, CONFIG_OPL_SFX, gEnableSFX);
         configSetInt(configOPL, CONFIG_OPL_BOOT_SND, gEnableBootSND);
         configSetInt(configOPL, CONFIG_OPL_BGM, gEnableBGM);
@@ -1076,6 +1106,8 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_BOOT_SND_VOLUME, gBootSndVolume);
         configSetInt(configOPL, CONFIG_OPL_BGM_VOLUME, gBGMVolume);
         configSetStr(configOPL, CONFIG_OPL_DEFAULT_BGM_PATH, gDefaultBGMPath);
+        configSetInt(configOPL, CONFIG_OPL_XSENSITIVITY, gXSensitivity);
+        configSetInt(configOPL, CONFIG_OPL_YSENSITIVITY, gYSensitivity);
 
         configSetInt(configOPL, CONFIG_OPL_SWAP_SEL_BUTTON, gSelectButton == KEY_CIRCLE ? 0 : 1);
     }
@@ -1148,6 +1180,13 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
                 continue;
 
             moduleUpdateMenuInternal(&list_support[i], changed, langChanged);
+        }
+    } else {
+        if (changed) {
+            for (int i = 0; i < MODE_COUNT; i++) {
+                if (list_support[i].support && list_support[i].subMenu)
+                    submenuRebuildCache(list_support[i].subMenu);
+            }
         }
     }
 
@@ -1623,13 +1662,12 @@ void setDefaultColors(void)
 
 static void setDefaults(void)
 {
-    clearIOModuleT(&list_support[BDM_MODE]);
-    clearIOModuleT(&list_support[ETH_MODE]);
-    clearIOModuleT(&list_support[HDD_MODE]);
-    clearIOModuleT(&list_support[APP_MODE]);
+    for (int i = 0; i < MODE_COUNT; i++)
+        clearIOModuleT(&list_support[i]);
 
     gAutoLaunchGame = NULL;
     gAutoLaunchBDMGame = NULL;
+    gAutoLaunchDeviceData = NULL;
     gOPLPart[0] = '\0';
     gHDDPrefix = "pfs0:";
     gBaseMCDir = "mc?:OPL";
@@ -1692,6 +1730,8 @@ static void setDefaults(void)
     gBootSndVolume = 80;
     gBGMVolume = 70;
     gDefaultBGMPath[0] = '\0';
+    gXSensitivity = 1;
+    gYSensitivity = 1;
 
     gBDMStartMode = START_MODE_DISABLED;
     gHDDStartMode = START_MODE_DISABLED;
@@ -1700,6 +1740,7 @@ static void setDefaults(void)
 
     gEnableILK = 0;
     gEnableMX4SIO = 0;
+    gEnableBdmHDD = 0;
 
     frameCounter = 0;
 
@@ -1802,13 +1843,18 @@ static void miniInit(int mode)
     LOG_ENABLE();
 
     if (mode == BDM_MODE) {
+        bdmInitSemaphore();
+
         // Force load iLink & mx4sio modules.. we aren't using the gui so this is fine.
         gEnableILK = 1; // iLink will break pcsx2 however.
         gEnableMX4SIO = 1;
+        gEnableBdmHDD = 1;
         bdmLoadModules();
-        delay(3); // Wait for the device to be detected.
-    } else if (mode == HDD_MODE)
+
+    } else if (mode == HDD_MODE) {
         hddLoadModules();
+        hddLoadSupportModules();
+    }
 
     InitConsoleRegionData();
 
@@ -1826,13 +1872,12 @@ static void miniInit(int mode)
 
             configGetInt(configOPL, CONFIG_OPL_PS2LOGO, &gPS2Logo);
             configGetStrCopy(configOPL, CONFIG_OPL_EXIT_PATH, gExitPath, sizeof(gExitPath));
+            configGetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, &gHDDSpindown);
             if (mode == BDM_MODE) {
                 configGetStrCopy(configOPL, CONFIG_OPL_BDM_PREFIX, gBDMPrefix, sizeof(gBDMPrefix));
                 configGetInt(configOPL, CONFIG_OPL_BDM_CACHE, &bdmCacheSize);
-            } else if (mode == HDD_MODE) {
-                configGetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, &gHDDSpindown);
+            } else if (mode == HDD_MODE)
                 configGetInt(configOPL, CONFIG_OPL_HDD_CACHE, &hddCacheSize);
-            }
         }
     }
 }
@@ -1905,10 +1950,49 @@ static void autoLaunchBDMGame(char *argv[])
     gAutoLaunchBDMGame->format = format;
     gAutoLaunchBDMGame->parts = 1; // ul not supported.
 
-    if (gBDMPrefix[0] != '\0')
-        snprintf(path, sizeof(path), "mass0:%s/CFG/%s.cfg", gBDMPrefix, gAutoLaunchBDMGame->startup);
-    else
-        snprintf(path, sizeof(path), "mass0:CFG/%s.cfg", gAutoLaunchBDMGame->startup);
+    gAutoLaunchDeviceData = malloc(sizeof(bdm_device_data_t));
+    memset(gAutoLaunchDeviceData, 0, sizeof(bdm_device_data_t));
+
+    char apaDevicePrefix[8] = {0};
+    delay(8);
+    snprintf(apaDevicePrefix, sizeof(apaDevicePrefix), "mass0:");
+    // Loop through mass0: to mass4:
+    for (int i = 0; i <= 4; i++) {
+        snprintf(path, sizeof(path), "mass%d:", i);
+        int dir = fileXioDopen(path);
+
+        if (dir >= 0) {
+            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &gAutoLaunchDeviceData->bdmDriver, sizeof(gAutoLaunchDeviceData->bdmDriver) - 1);
+            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &gAutoLaunchDeviceData->massDeviceIndex, sizeof(gAutoLaunchDeviceData->massDeviceIndex));
+
+            if (!strcmp(gAutoLaunchDeviceData->bdmDriver, "ata") && strlen(gAutoLaunchDeviceData->bdmDriver) == 3) {
+                bdmResolveLBA_UDMA(gAutoLaunchDeviceData);
+                snprintf(apaDevicePrefix, sizeof(apaDevicePrefix), "mass%d:", i);
+                fileXioDclose(dir);
+                break; // Exit the loop if "ata" device is found
+            }
+
+            fileXioDclose(dir);
+        } else {
+            // Retry for mass0: only
+            if (i == 0) {
+                delay(6);
+                i--;
+            } else {
+                break;
+            }
+        }
+        delay(6);
+    }
+
+    if (gBDMPrefix[0] != '\0') {
+        snprintf(path, sizeof(path), "%s%s/CFG/%s.cfg", apaDevicePrefix, gBDMPrefix, gAutoLaunchBDMGame->startup);
+        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "%s%s/", apaDevicePrefix, gBDMPrefix);
+    } else {
+        snprintf(path, sizeof(path), "%sCFG/%s.cfg", apaDevicePrefix, gAutoLaunchBDMGame->startup);
+        snprintf(gAutoLaunchDeviceData->bdmPrefix, sizeof(gAutoLaunchDeviceData->bdmPrefix), "%s", apaDevicePrefix);
+    }
+
 
     configSet = configAlloc(0, NULL, path);
     configRead(configSet);

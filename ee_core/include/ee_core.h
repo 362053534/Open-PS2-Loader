@@ -20,6 +20,8 @@
 #include <sbv_patches.h>
 #include <smem.h>
 #include <smod.h>
+#include <stdbool.h>
+
 
 #ifdef __EESIO_DEBUG
 #define DPRINTF(args...) _print(args);
@@ -67,11 +69,17 @@ enum GAME_MODE {
     BDM_ILK_MODE,
     BDM_M4S_MODE,
     BDM_USB_MODE,
+    BDM_HDD_MODE,
     ETH_MODE,
     HDD_MODE,
 };
 
 extern int EnableDebug;
-#define GS_BGCOLOUR *((volatile unsigned long int *)0x120000E0)
+extern void BlinkColour(u8 x, u32 colour, u8 forever);
+#define GS_BGCOLOUR                                                 *((volatile unsigned long int *)0x120000E0)
+#define DBGCOL(color, type, description)                            GS_BGCOLOUR = color                      // this wrapper macro only serves the purpose of allowing us to grep from outside for documentation
+#define BGCOLND(color)                                              GS_BGCOLOUR = color                      // same as DBGCOL() but this one is not passed to debug color documentation. used for blinking or setting screen to black wich usually means nothing
+#define DBGCOL_BLNK(blinkCount, colour, forever, type, description) BlinkColour(blinkCount, colour, forever) //same as DBGCOL() but this one includes screen blinking effect
+
 
 #endif

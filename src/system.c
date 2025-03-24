@@ -473,6 +473,8 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
         modules |= CORE_IRX_ILINK;
     else if (!strcmp(mode_str, "BDM_M4S_MODE"))
         modules |= CORE_IRX_MX4SIO;
+    else if (!strcmp(mode_str, "BDM_ATA_MODE"))
+        modules |= CORE_IRX_HDD;
     else if (!strcmp(mode_str, "ETH_MODE"))
         modules |= CORE_IRX_ETH | CORE_IRX_SMB;
     else
@@ -488,6 +490,8 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
 
     modcount = 0;
     // Basic modules
+    irxptr_tab[modcount].info = size_udnl_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_UDNL);
+    irxptr_tab[modcount++].ptr = (void *)&udnl_irx;
     irxptr_tab[modcount].info = size_ioprp_image | SET_OPL_MOD_ID(OPL_MODULE_ID_IOPRP);
     irxptr_tab[modcount++].ptr = ioprp_image;
     irxptr_tab[modcount].info = size_imgdrv_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_IMGDRV);
@@ -554,10 +558,17 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
         irxptr_tab[modcount].info = size_tifinet_ingame_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_TIFINET);
         irxptr_tab[modcount++].ptr = (void *)&tifinet_ingame_irx;
     }
-#else
+#elif defined(TTY_UDP)
     if (modules & CORE_IRX_DEBUG) {
         irxptr_tab[modcount].info = size_udptty_ingame_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_UDPTTY);
         irxptr_tab[modcount++].ptr = (void *)&udptty_ingame_irx;
+        irxptr_tab[modcount].info = size_ioptrap_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_IOPTRAP);
+        irxptr_tab[modcount++].ptr = (void *)&ioptrap_irx;
+    }
+#elif defined(TTY_PPC_UART)
+    if (modules & CORE_IRX_DEBUG) {
+        irxptr_tab[modcount].info = size_ppctty_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_PPCTTY);
+        irxptr_tab[modcount++].ptr = (void *)&ppctty_irx;
         irxptr_tab[modcount].info = size_ioptrap_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_IOPTRAP);
         irxptr_tab[modcount++].ptr = (void *)&ioptrap_irx;
     }
@@ -568,6 +579,20 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
 
     irxtable->modules = irxptr_tab;
     irxtable->count = modcount;
+
+#ifdef __DECI2_DEBUG
+    // For DECI2 debugging mode, the UDNL module will have to be stored within kernel RAM because there isn't enough space below user RAM.
+    // total_size will hence not include the IOPRP image, but it's okay because the EE core is interested in protecting the module storage within user RAM.
+    irxptr = (void *)0x00033000;
+    LOG("SYSTEM DECI2 UDNL address start: %p end: %p\n", irxptr, (void *)((u8 *)irxptr + GET_OPL_MOD_SIZE(irxptr_tab[0].info)));
+    DI();
+    ee_kmode_enter();
+    memcpy((void *)(0x80000000 | (unsigned int)irxptr), irxptr_tab[0].ptr, GET_OPL_MOD_SIZE(irxptr_tab[0].info));
+    ee_kmode_exit();
+    EI();
+
+    irxptr_tab[0].ptr = irxptr; // UDNL is the first module.
+#endif
 
     total_size = (sizeof(irxtab_t) + sizeof(irxptr_t) * modcount + 0xF) & ~0xF;
     irxptr = (void *)((((unsigned int)irxptr_tab + sizeof(irxptr_t) * modcount) + 0xF) & ~0xF);
@@ -809,7 +834,10 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
 #ifdef __DECI2_DEBUG
     modules |= CORE_IRX_DECI2 | CORE_IRX_ETH;
 #elif defined(__INGAME_DEBUG)
-    modules |= CORE_IRX_DEBUG | CORE_IRX_ETH;
+    modules |= CORE_IRX_DEBUG;
+#ifdef TTY_UDP
+    modules |= CORE_IRX_ETH;
+#endif
 #endif
 
     modules |= CORE_IRX_VMC;
@@ -874,8 +902,13 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
 
     config->EnableDebug = gEnableDebug;
     config->HDDSpindown = gHDDSpindown;
-    config->gCheatList = GetCheatsEnabled() ? (unsigned int *)GetCheatsList() : NULL;
     config->g_ps2_ETHOpMode = gETHOpMode;
+
+    if (GetCheatsEnabled()) {
+        set_cheats_list();
+        config->gCheatList = GetCheatsList();
+    } else
+        config->gCheatList = NULL;
 
     sprintf(config->g_ps2_ip, "%u.%u.%u.%u", local_ip_address[0], local_ip_address[1], local_ip_address[2], local_ip_address[3]);
     sprintf(config->g_ps2_netmask, "%u.%u.%u.%u", local_netmask[0], local_netmask[1], local_netmask[2], local_netmask[3]);

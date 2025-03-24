@@ -165,9 +165,9 @@ gui_strings:
 - label: BDMMODE
   string: BDM Start Mode
 - label: HDDMODE
-  string: HDD Device Start Mode
+  string: HDD (APA) Start Mode
 - label: ETHMODE
-  string: ETH Device Start Mode
+  string: ETH Start Mode
 - label: APPMODE
   string: Applications Start Mode
 - label: AUTO
@@ -593,13 +593,13 @@ gui_strings:
 - label: INFO_DESCRIPTION
   string: Description
 - label: BLOCKDEVICE_SETTINGS
-  string: Block Devices
+  string: BDM Devices
 - label: CONTROLLER_SETTINGS
   string: Controller Settings
 - label: HINT_BDM_START
   string: Turn on/off Block Device Manager.
 - label: HINT_BLOCK_DEVICES
-  string: Turn on/off Block Devices (e.g. USB).
+  string: Turn on/off BDM Devices (USB/MX4SIO/ILINK/HDD).
 - label: USB_GAMES
   string: USB Games
 - label: ILINK_GAMES
@@ -609,29 +609,29 @@ gui_strings:
 - label: PADMACROCONFIG
   string: Configure PADMACRO
 - label: PADMACRO_SETTINGS
-  string: Pad macro Settings
+  string: Pad Macro Settings
 - label: PADMACRO_ENABLE
   string: Pad macros
 - label: PADMACRO_SLOWDOWN
-  string: 'Analog slow-down:'
+  string: 'Analog Slow-Down:'
 - label: HINT_PADMACRO_SLOWDOWN_AXIS
-  string: Reduce range of analog stick when button is pressed
+  string: Reduce the range of analog stick when button is pressed.
 - label: LEFT_ANALOG
-  string: Left stick
+  string: Left Stick
 - label: RIGHT_ANALOG
-  string: Right stick
+  string: Right Stick
 - label: PADMACRO_INVERT_AXIS
-  string: 'Analog axis invert:'
+  string: 'Analog Axis Invert:'
 - label: HINT_PADMACRO_INVERT_AXIS
-  string: Invert analog stick axis
+  string: Inverts the axis of selected analog stick.
 - label: TURBO_SPEED
-  string: Turbo button speed
+  string: Turbo Button Speed
 - label: HINT_TURBO_SPEED
-  string: How fast to press the button when turbo is active
+  string: How fast the button is pressed when turbo is active.
 - label: ACT_WHILE_PRESSED
-  string: While button pressed
+  string: While Button Pressed
 - label: ACT_TOGGLED
-  string: Toggled by button
+  string: Toggled By Button
 - label: LANGUAGE_JAPANESE
   string: JAPANESE
 - label: LANGUAGE_ENGLISH
@@ -680,3 +680,17 @@ gui_strings:
   string: Default Theme Music
 - label: DEF_BGM_PATH_HINT
   string: Set path to stream music for internal theme.
+- label: HIGH
+  string: High
+- label: LOW
+  string: Low
+- label: XSENSITIVITY
+  string: Analog X-Axis Sensitivity
+- label: YSENSITIVITY
+  string: Analog Y-Axis Sensitivity
+- label: FILE_COUNT
+  string: 'Files found: %i'
+- label: CHEAT_SELECTION
+  string: Cheat Selection
+- label: HDD_HINT
+  string: Only one HDD allowed, enabling locks APA or GPT.

@@ -358,17 +358,41 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
 static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int fd;
-    const char *filename;
+    char filename[256];
     const char *argv1;
 
     // Retrieve configuration set by appGetConfig()
-    configGetStr(configSet, CONFIG_ITEM_STARTUP, &filename);
+    configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
+
+    // If no device number is specified use mass? to auto find device number
+    const char *oldPrefix = "mass:";
+    const char *newPrefix = "mass?:";
+
+    if (strncmp(filename, oldPrefix, strlen(oldPrefix)) == 0) {
+        size_t oldPrefixLen = strlen(oldPrefix);
+        size_t newPrefixLen = strlen(newPrefix);
+        memmove(filename + newPrefixLen, filename + oldPrefixLen, strlen(filename) - oldPrefixLen + 1);
+
+        memcpy(filename, newPrefix, newPrefixLen);
+    }
+
+    // If legacy apps state mass? find the first connected mass device with the corresponding filename and set the unit number for launch.
+    if (!strncmp("mass?", filename, 5)) {
+        for (int i = 0; i < BDM_MODE4; i++) {
+            filename[4] = i + '0';
+            fd = open(filename, O_RDONLY);
+            if (fd >= 0) {
+                close(fd);
+                break;
+            }
+        }
+    }
 
     fd = open(filename, O_RDONLY);
     if (fd >= 0) {
-        int mode, argc = 1;
+        int mode, argc = 0;
         char partition[128];
-        char *argv[2];
+        char *argv[1];
         close(fd);
 
         strcpy(partition, "");
@@ -381,11 +405,9 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (mode == HDD_MODE)
             snprintf(partition, sizeof(partition), "%s:", gOPLPart);
 
-        argv[0] = (char *)filename;
-
         if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
-            argv[1] = (char *)argv1;
-            argc = 2;
+            argv[0] = (char *)argv1;
+            argc = 1;
         }
 
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed

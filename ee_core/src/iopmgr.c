@@ -63,15 +63,20 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     *(void **)(UNCACHED_SEG(&((unsigned char *)imgdrv_irx)[imgdrv_offset_ioprpimg])) = pIOP_buffer;
     *(u32 *)(UNCACHED_SEG(&((unsigned char *)imgdrv_irx)[imgdrv_offset_ioprpsiz])) = size_IOPRP_img;
 
-    LoadModule("rom0:SYSCLIB", 0, NULL, 0);
     LoadMemModule(0, imgdrv_irx, size_imgdrv_irx, 0, NULL);
-    LoadModule("rom0:UDNL", CommandLen, command, 1);
+
+    DIntr();
+    ee_kmode_enter();
+    Old_SifSetReg(SIF_REG_SMFLAG, SIF_STAT_BOOTEND);
+    ee_kmode_exit();
+    EIntr();
+
+    LoadOPLModule(OPL_MODULE_ID_UDNL, SIF_RPC_M_NOWAIT, CommandLen, command);
 
     DIntr();
     ee_kmode_enter();
     Old_SifSetReg(SIF_REG_SMFLAG, SIF_STAT_SIFINIT);
     Old_SifSetReg(SIF_REG_SMFLAG, SIF_STAT_CMDINIT);
-    Old_SifSetReg(SIF_REG_SMFLAG, SIF_STAT_BOOTEND);
     Old_SifSetReg(SIF_SYSREG_RPCINIT, 0);
     Old_SifSetReg(SIF_SYSREG_SUBADDR, (int)NULL);
     ee_kmode_exit();
@@ -93,13 +98,18 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     DPRINTF("Loading extra IOP modules...\n");
 
 #ifdef __LOAD_DEBUG_MODULES
+#if !defined(TTY_PPC)
     LoadOPLModule(OPL_MODULE_ID_SMSTCPIP, 0, 0, NULL);
     LoadOPLModule(OPL_MODULE_ID_SMAP, 0, g_ipconfig_len, g_ipconfig);
+#endif
 #ifdef __DECI2_DEBUG
     LoadOPLModule(OPL_MODULE_ID_DRVTIF, 0, 0, NULL);
     LoadOPLModule(OPL_MODULE_ID_TIFINET, 0, 0, NULL);
-#else
+#elif defined(TTY_UDP)
     LoadOPLModule(OPL_MODULE_ID_UDPTTY, 0, 0, NULL);
+    LoadOPLModule(OPL_MODULE_ID_IOPTRAP, 0, 0, NULL);
+#elif defined(TTY_PPC)
+    LoadOPLModule(OPL_MODULE_ID_PPCTTY, 0, 0, NULL);
     LoadOPLModule(OPL_MODULE_ID_IOPTRAP, 0, 0, NULL);
 #endif
 #endif
@@ -133,6 +143,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         case BDM_M4S_MODE:
             LoadOPLModule(OPL_MODULE_ID_MX4SIOBD, 0, 0, NULL);
             break;
+        case BDM_HDD_MODE:
+            break;
     };
 }
 
@@ -144,7 +156,7 @@ int New_Reset_Iop(const char *arg, int arglen)
     USE_LOCAL_EECORE_CONFIG;
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
-        GS_BGCOLOUR = 0xFF00FF; // Purple
+        DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
 
     SifInitRpc(0);
 
@@ -165,12 +177,12 @@ int New_Reset_Iop(const char *arg, int arglen)
 
     ResetIopSpecial(NULL, 0);
     if (EnableDebug)
-        GS_BGCOLOUR = 0x00A5FF; // Orange
+        DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
     if (arglen > 0) {
         ResetIopSpecial(&arg[10], arglen - 10);
         if (EnableDebug)
-            GS_BGCOLOUR = 0x00FFFF; // Yellow
+            DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }
 
     if (iop_reboot_count >= 2) {
@@ -201,7 +213,7 @@ int New_Reset_Iop(const char *arg, int arglen)
         set_reg_hook = 4;
 
     if (EnableDebug)
-        GS_BGCOLOUR = 0x000000; // Black
+        BGCOLND(0x000000);
 
     return 1;
 }
