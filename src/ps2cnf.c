@@ -19,14 +19,13 @@ static const char *CNFGetToken(const char *cnf, const char *end, const char *key
     }
 
     int key_length = strlen(key);
-    for (int i = 0; i < key_length; i++, cnf++)
-    {
+    for (int i = 0; i < key_length; i++, cnf++) {
         if (cnf >= end || *cnf == '\0')
             return (const char *)-1;
         else if (*cnf != key[i])
             return NULL; // Non-match
     }
-    
+
     return cnf;
 }
 

@@ -125,7 +125,6 @@ extern int smbCacheSize;
 
 extern int gEnableILK;
 extern int gEnableMX4SIO;
-extern int gEnableBdmHDD;
 
 extern int gAutosort;
 extern int gAutoRefresh;
@@ -152,6 +151,8 @@ extern int gGSMSource;
 extern int gPadEmuSource;
 
 extern int gOSDLanguageValue;
+extern int gOSDTVAspectRatio;
+extern int gOSDVideOutput;
 extern int gOSDLanguageEnable;
 extern int gOSDLanguageSource;
 
@@ -175,7 +176,7 @@ extern int gPadMacroSettings;
 // 0,1,2 scrolling speed
 extern int gScrollSpeed;
 // Exit path
-extern char gExitPath[32];
+extern char gExitPath[256];
 // Enable Debug Colors
 extern int gEnableDebug;
 

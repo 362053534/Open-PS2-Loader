@@ -737,22 +737,22 @@ static void drawMenuIcon(struct menu_list *menu, struct submenu_list *item, conf
         rmDrawPixmap(menuIconTex, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 }
 
-static int findMenuNext(struct menu_list* menu)
+static int findMenuNext(struct menu_list *menu)
 {
-    struct menu_list* pNext = menu->next;
-    while (pNext != NULL && pNext->item->visible == 0)
-        pNext = pNext->next;
+    struct menu_list *next = menu->next;
+    while (next != NULL && next->item->visible == 0)
+        next = next->next;
 
-    return pNext == NULL ? 0 : pNext->item->visible;
+    return next == NULL ? 0 : next->item->visible;
 }
 
-static int findMenuPrev(struct menu_list* menu)
+static int findMenuPrev(struct menu_list *menu)
 {
-    struct menu_list* pPrev = menu->prev;
-    while (pPrev != NULL && pPrev->item->visible == 0)
-        pPrev = pPrev->prev;
+    struct menu_list *prev = menu->prev;
+    while (prev != NULL && prev->item->visible == 0)
+        prev = prev->prev;
 
-    return pPrev == NULL ? 0 : pPrev->item->visible;
+    return prev == NULL ? 0 : prev->item->visible;
 }
 
 static void drawMenuText(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
@@ -1073,9 +1073,9 @@ static void thmFree(theme_t *theme)
     }
 }
 
-static int thmReadEntry(int index, const char *path, const char *separator, const char *name, unsigned int mode)
+static int thmReadEntry(int index, const char *path, const char *separator, const char *name, unsigned char d_type)
 {
-    if (S_ISDIR(mode) && strstr(name, "thm_")) {
+    if (d_type == DT_DIR && strstr(name, "thm_")) {
         theme_file_t *currTheme = &themes[nThemes + index];
 
         int length = strlen(name) - 4 + 1;

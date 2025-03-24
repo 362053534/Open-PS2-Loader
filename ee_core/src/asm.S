@@ -62,9 +62,6 @@
 .extern Reset_Padhook
 .extern Install_IGR
 
-/* main.c */
-.extern krnl_print
-
 .globl  g_argbuf
 .globl  Hook_SifSetDma
 .globl  Hook_SifSetReg
@@ -73,7 +70,6 @@
 .globl  Hook_Exit
 .globl  CleanExecPS2
 .globl  iResetEE
-.globl  print
 
 /*
  * _SifSetDma: function designed to use our own stack during IOP reboot trap
@@ -290,7 +286,7 @@ Hook_ExecPS2:
     daddu   $a2, $s2, $zero        # argc
 
     jal InitRegsExecPS2
-    daddu   $a3, $s3, $zero        # argv
+    daddu   $a3, $s3, $zero        #a rgv
 1:
     /* call ExecPS2 */
     lw      $v0, Old_ExecPS2
@@ -463,26 +459,5 @@ iResetEE:
     jr      $ra
     nop
 .end iResetEE
-
-.ent print
-print:
-    # Check if we're in kernel mode or not and handle accordingly.
-    mfc0    $v1, $12
-    andi    $v1, $v1, 0x10
-    bne     $v1, $zero, 1f
-    nop
-
-    # We're in kernel mode, call the printf function directly.
-    lw      $v1, krnl_print
-    jr      $v1
-    nop
-
-1:
-    # We're in user mode so call printf via syscall.
-    li      $v1, __NR__print
-    syscall
-    jr      $ra
-    nop
-.end print
 
 .set pop

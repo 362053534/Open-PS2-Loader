@@ -306,7 +306,7 @@ typedef struct
 
 static png_texture_t pngTexture;
 
-static int texPngEnd(png_structp pngPtr, png_infop infoPtr, void* pFileBuffer, int status)
+static int texPngEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int status)
 {
     if (pFileBuffer != NULL)
         free(pFileBuffer);
@@ -465,12 +465,11 @@ static int texPngLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
     png_infop infoPtr = NULL;
     png_voidp readData = NULL;
     png_rw_ptr readFunction = NULL;
-    int fd = -1;
     void *PngFileBufferPtr;
     void *pFileBuffer = NULL;
 
     if (filePath) {
-        fd = open(filePath, O_RDONLY, 0);
+        int fd = open(filePath, O_RDONLY, 0);
         if (fd == -1)
             return ERR_BAD_FILE;
 
@@ -478,18 +477,16 @@ static int texPngLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         lseek(fd, 0, SEEK_SET);
 
         pFileBuffer = malloc(fileSize);
-        if (pFileBuffer == NULL)
-        {
+        if (pFileBuffer == NULL) {
             close(fd);
-            return ERR_BAD_FILE;    // There's no out of memory error...
+            return ERR_BAD_FILE; // There's no out of memory error...
         }
 
-        int readSize = read(fd, pFileBuffer, fileSize);        
+        int readSize = read(fd, pFileBuffer, fileSize);
         close(fd);
         fd = -1;
 
-        if (readSize != fileSize)
-        {
+        if (readSize != fileSize) {
             LOG("texPngLoadAll: failed to read file %s\n", filePath);
             free(pFileBuffer);
             return ERR_BAD_FILE;
