@@ -716,7 +716,7 @@ void menuDeferredUpdate(void *data)
     }
 }
 
-#define MENU_GENERAL_UPDATE_DELAY 120
+#define MENU_GENERAL_UPDATE_DELAY 60
 
 static void menuUpdateHook()
 {
@@ -733,13 +733,13 @@ static void menuUpdateHook()
         }
     }
 
-    // Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
-    if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
-        for (i = 0; i < MODE_COUNT; i++) {
-            if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
-                ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
-        }
-    }
+    //// Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
+    //if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
+    //    for (i = 0; i < MODE_COUNT; i++) {
+    //        if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
+    //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+    //    }
+    //}
 }
 
 static void clearErrorMessage(void)
