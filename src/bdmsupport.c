@@ -153,8 +153,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     int result = 0;
     struct stat st;
 
-    // If we made it here then BDM device mode has been started.
-    bdmDeviceModeStarted = 1;
+
+
 
     // If bdm mode is disabled bail out as we don't want to update the visibility state of the device pages.
     if (gBDMStartMode == START_MODE_DISABLED)
@@ -210,8 +210,11 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     if (result == -1) {
         sfxPlay(SFX_BD_DISCONNECT);
         return result;
-    } else if (result == 1)
+    } else if (result == 1 && bdmDeviceModeStarted == 1)   // 第一次启动不要播音效，可能可以解决启动随机卡死问题
         sfxPlay(SFX_BD_CONNECT);
+
+    // If we made it here then BDM device mode has been started.
+    bdmDeviceModeStarted = 1;
 
     sprintf(path, "%sCD", pDeviceData->bdmPrefix);
     if (stat(path, &st) != 0)
