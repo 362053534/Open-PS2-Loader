@@ -720,25 +720,33 @@ void menuDeferredUpdate(void *data)
 
 static void menuUpdateHook()
 {
-    int i;
+    //int i;
 
-    // if timer exceeds some threshold, schedule updates of the available input sources
-    frameCounter++;
+    //// if timer exceeds some threshold, schedule updates of the available input sources
+    //frameCounter++;
 
-    // schedule updates of all the list handlers
-    if (gAutoRefresh) {
-        for (i = 0; i < MODE_COUNT; i++) {
-            if ((list_support[i].support && list_support[i].support->enabled) && ((list_support[i].support->updateDelay > 0) && (frameCounter % list_support[i].support->updateDelay == 0)))
+    //// schedule updates of all the list handlers
+    //if (gAutoRefresh) {
+    //    for (i = 0; i < MODE_COUNT; i++) {
+    //        if ((list_support[i].support && list_support[i].support->enabled) && ((list_support[i].support->updateDelay > 0) && (frameCounter % list_support[i].support->updateDelay == 0)))
+    //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+    //    }
+    //}
+
+    //// Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
+    //if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
+    //    for (i = 0; i < MODE_COUNT; i++) {
+    //        if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
+    //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+    //    }
+    //}
+    // 只在需要时更新一次，不要循环检测
+    if (frameCounter == 0) {
+        for (int i = 0; i < MODE_COUNT; i++) {
+            if (list_support[i].support)
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
-    }
-
-    // Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
-    if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
-        for (i = 0; i < MODE_COUNT; i++) {
-            if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
-                ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
-        }
+        frameCounter = 1;
     }
 }
 
@@ -1153,9 +1161,7 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
     if (gDefaultDevice < 0 || gDefaultDevice > APP_MODE)
         gDefaultDevice = APP_MODE;
 
-    guiUpdateScrollSpeed();
 
-    guiSetFrameHook(&menuUpdateHook);
 
     int changed = rmSetMode(0);
     if (changed) {
@@ -1190,6 +1196,10 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
         }
     }
 
+
+    guiUpdateScrollSpeed();
+    frameCounter = 0;
+    guiSetFrameHook(&menuUpdateHook);
     bgmUnMute();
 
 #ifdef __DEBUG
