@@ -1077,7 +1077,7 @@ void menuRenderGameMenu()
     int cp = 0; // current position
 
     // game title
-    fntRenderString(gTheme->fonts[0], 320, 20, ALIGN_CENTER, 0, 0, selected_item->item->current->item.text, gTheme->selTextColor);
+    //fntRenderString(gTheme->fonts[0], 320, 20, ALIGN_CENTER, 0, 0, selected_item->item->current->item.text, gTheme->selTextColor);
 
     // config source
     char *cfgSource = gameConfigSource();
