@@ -68,11 +68,10 @@ int isValidIsoName(char *name, int *pNameLen)
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
-        } else if (size >= 5) {
-            *pNameLen = size - 4;
+        } else if (size >= 1) {
+            *pNameLen = size;
             return GAME_FORMAT_ISO;
-        } else
-            return GAME_FORMAT_ISO;
+        }
     }
 
     return 0;
