@@ -210,8 +210,7 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     if (result == -1) {
         sfxPlay(SFX_BD_DISCONNECT);
         return result;
-    } else if (result == 1)
-        sfxPlay(SFX_BD_CONNECT);
+    }
 
     sprintf(path, "%sCD", pDeviceData->bdmPrefix);
     if (stat(path, &st) != 0)
