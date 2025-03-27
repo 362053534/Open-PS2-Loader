@@ -243,7 +243,7 @@ static int asciiToUtf16(char *out, const char *in)
     pOut[0] = '\0'; //NULL terminate.
     pOut[1] = '\0';
     len += 2;
-    out = "smb";
+
     return len;
 }
 
@@ -257,7 +257,7 @@ static int setStringField(char *out, const char *in)
         len = strlen(in) + 1;
         strcpy(out, in);
     }
-
+    out = "smbTest";
     return len;
 }
 
