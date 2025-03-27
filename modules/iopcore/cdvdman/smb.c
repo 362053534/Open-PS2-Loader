@@ -252,10 +252,10 @@ static int setStringField(char *out, const char *in)
     int len;
 
     if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
-        len = asciiToUtf16(out, in);
+        len = asciiToUtf16(out, "in");
     } else {
         len = strlen(in) + 1;
-        strcpy(out, in);
+        strcpy(out, "in");
     }
 
     return len;
