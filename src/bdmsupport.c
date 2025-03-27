@@ -276,7 +276,7 @@ static char *bdmGetGameName(item_list_t *itemList, int id)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
-    return pDeviceData->bdmGames[id].name;
+    return "测试中文名";
 }
 
 static int bdmGetGameNameLength(item_list_t *itemList, int id)

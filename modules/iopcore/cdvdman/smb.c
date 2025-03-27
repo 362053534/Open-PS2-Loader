@@ -257,7 +257,7 @@ static int setStringField(char *out, const char *in)
         len = strlen(in) + 1;
         strcpy(out, in);
     }
-    out = "smbTest";
+
     return len;
 }
 
