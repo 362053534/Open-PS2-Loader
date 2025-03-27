@@ -867,7 +867,7 @@ static void drawItemsList(struct menu_list *menu, struct submenu_list *item, con
                 }
                 fntRenderString(elem->font, elem->posX + DECORATOR_SIZE, posY, elem->aligned, elem->width, elem->height, submenuItemGetText(&ps->item), color);
             } else
-                fntRenderString(elem->font, elem->posX, posY, elem->aligned, elem->width, elem->height, "测试中文", color);
+                fntRenderString(elem->font, elem->posX, posY, elem->aligned, elem->width, elem->height, submenuItemGetText(&ps->item), color);
 
             posY += MENU_ITEM_HEIGHT;
             ps = ps->next;
