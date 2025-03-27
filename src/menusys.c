@@ -777,7 +777,7 @@ void menuRenderMenu()
     int cp = 0; // current position
     for (it = mainMenu; it; it = it->next, cp++) {
         // render, advance
-        fntRenderString(gTheme->fonts[0], 320, y, ALIGN_CENTER, 0, 0, submenuItemGetText(&it->item), (cp == sitem) ? gTheme->selTextColor : gTheme->textColor);
+        fntRenderString(gTheme->fonts[0], 320, y, ALIGN_CENTER, 0, 0, submenuItemGetText(&it->item),gTheme->selTextColor);
         y += spacing;
         if (cp == (MENU_ABOUT - 1))
             y += spacing / 2;
@@ -1077,7 +1077,7 @@ void menuRenderGameMenu()
     int cp = 0; // current position
 
     // game title
-    //fntRenderString(gTheme->fonts[0], 320, 20, ALIGN_CENTER, 0, 0, selected_item->item->current->item.text, gTheme->selTextColor);
+    fntRenderString(gTheme->fonts[1], 320, 20, ALIGN_CENTER, 0, 0, selected_item->item->current->item.text, 0x00);
 
     // config source
     char *cfgSource = gameConfigSource();
