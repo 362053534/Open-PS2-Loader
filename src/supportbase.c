@@ -61,7 +61,7 @@ int sbCreateSemaphore(void)
 int isValidIsoName(char *name, int *pNameLen)
 {
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
-    strcpy(name , "SLUS_217.76.FIFA 09 USA.iso");
+    strcpy(name , "中文没问题吗.iso");
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
