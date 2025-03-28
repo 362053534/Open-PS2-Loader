@@ -284,7 +284,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
-    strcpy(path, "smb0:ps2eth\\DVD\\SLUS_217.76.中文列表测试.iso");
+    strcpy(path, "smb0:ps2eth/DVD/SLUS_217.76.中文列表测试.iso");
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
