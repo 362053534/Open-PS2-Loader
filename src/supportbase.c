@@ -288,7 +288,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
-    char fullpath[256];
+    wchar_t fullpath[PATH_MAX];
     struct dirent *dirent;
     DIR *dir;
 
