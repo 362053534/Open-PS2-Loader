@@ -305,7 +305,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
-            strcpy(fullpath + base_path_len + 1, dirent->d_name);
+            strcpy(fullpath + base_path_len + 1, path);
 
             struct game_list_t *next = malloc(sizeof(struct game_list_t));
             if (!next)
