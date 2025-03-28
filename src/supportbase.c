@@ -304,21 +304,23 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char *mbname;
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-        //dirent->d_name = (char *)malloc(length * sizeof(char));
-        while ((dirent = readdir(dir)) != NULL) {
-            //dirent->d_name = (char *)malloc(length * sizeof(char));
-            mbname = dirent->d_name;           // 原始的字节字符串文件名
-            len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            if (len == (size_t)-1) {
-                perror("mbstowcs");
-                continue; // 转换失败，跳过当前条目
-            }
-        }
-        len = wcslen(wname) + 1;               // 加1是为了包含结尾的null字符
-        mbname = (char *)malloc(len * sizeof(char)); // MB_CUR_MAX 是最大多字节字符的长度
-        wcstombs(mbname, wname, len * sizeof(char));
-        strcpy(dirent->d_name, mbname);
-        //int length = strlen(dirent->d_name) + 1;
+        int length = strlen(dirent->d_name) + 1;
+        dirent->d_name = (char *)malloc(length * sizeof(char));
+        dirent->d_name[length - 1] = '\0';
+        //while ((dirent = readdir(dir)) != NULL) {
+        //    //dirent->d_name = (char *)malloc(length * sizeof(char));
+        //    mbname = dirent->d_name;           // 原始的字节字符串文件名
+        //    len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+        //    if (len == (size_t)-1) {
+        //        perror("mbstowcs");
+        //        continue; // 转换失败，跳过当前条目
+        //    }
+        //}
+        //len = wcslen(wname) + 1;               // 加1是为了包含结尾的null字符
+        //mbname = (char *)malloc(len * sizeof(char)); // MB_CUR_MAX 是最大多字节字符的长度
+        //wcstombs(mbname, wname, len * sizeof(char));
+        //strcpy(dirent->d_name, mbname);
+
         //char *name = (char *)malloc(length * sizeof(char));
         //name = dirent->d_name;
         //memcpy(dirent->d_name, name, length);
@@ -326,6 +328,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
         while ((dirent = readdir(dir)) != NULL) {
+            int length = strlen(dirent->d_name) + 1;
+            dirent->d_name = (char *)malloc(length * sizeof(char));
+            dirent->d_name[length - 1] = '\0';
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
