@@ -304,9 +304,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char *mbname;
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-        int length = strlen(dirent->d_name) + 1;
-        dirent->d_name = (char *)malloc(length * sizeof(char));
-        dirent->d_name[length - 1] = '\0';
+
         //while ((dirent = readdir(dir)) != NULL) {
         //    //dirent->d_name = (char *)malloc(length * sizeof(char));
         //    mbname = dirent->d_name;           // 原始的字节字符串文件名
@@ -326,9 +324,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //memcpy(dirent->d_name, name, length);
         //dirent->d_name[length - 1] = '\0';
 
-
+        int length;
         while ((dirent = readdir(dir)) != NULL) {
-            int length = strlen(dirent->d_name) + 1;
+            length = strlen(dirent->d_name) + 1;
             dirent->d_name = (char *)malloc(length * sizeof(char));
             dirent->d_name[length - 1] = '\0';
             int NameLen;
