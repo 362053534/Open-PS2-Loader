@@ -11,13 +11,13 @@
 #include "include/cheatman.h"
 #include "include/ps2cnf.h"
 #include "include/gui.h"
+#include <wchar.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
-#include <locale.h>
-#include <wchar.h>
+
 #include "../modules/isofs/zso.h"
 
 /// internal linked list used to populate the list from directory listing
@@ -69,7 +69,7 @@ int isValidIsoName(char *name, int *pNameLen)
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
-        } else {
+        } else if (size >= 5) {
             *pNameLen = size - 4;
             return GAME_FORMAT_ISO;
         }
@@ -288,7 +288,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
-    wchar_t fullpath[256];
+    char fullpath[256];
     struct dirent *dirent;
     DIR *dir;
 
@@ -298,17 +298,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t base_path_len = strlen(path);
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
+        wchar_t wname[PATH_MAX];
 
-        setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-        char *mbname;
-        size_t len;
-        while ((dirent = readdir(dir)) != NULL) {
-            mbname = dirent->d_name;                 // 原始的字节字符串文件名
-            len = mbstowcs(fullpath, mbname, 256); // 将多字节字符串转换为宽字符字符串
-            if (len == (size_t)-1) {
-                continue; // 转换失败，跳过当前条目
-            }
-        }
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
