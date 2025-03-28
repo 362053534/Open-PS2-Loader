@@ -26,7 +26,7 @@ struct dirent {
 	unsigned short int d_reclen;    /* Length of this record */
     unsigned char  d_type;          /* Type of file; not supported 
                                        by all filesystem types */
-	char d_name[MAXNAMLEN + 1];
+    char *d_name;
 };
 
 #define	DT_UNKNOWN	 0
