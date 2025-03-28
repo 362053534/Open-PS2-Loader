@@ -16,7 +16,7 @@
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
-
+#include <locale.h>
 #include "../modules/isofs/zso.h"
 
 /// internal linked list used to populate the list from directory listing
