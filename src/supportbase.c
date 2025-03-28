@@ -64,7 +64,7 @@ int sbCreateSemaphore(void)
 int isValidIsoName(char *name, int *pNameLen)
 {
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
-
+    name = "SLUS_217.42.模拟播片扫描.iso";
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
@@ -324,11 +324,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //memcpy(dirent->d_name, name, length);
         //dirent->d_name[length - 1] = '\0';
 
-        int length;
         while ((dirent = readdir(dir)) != NULL) {
-            length = strlen(dirent->d_name) + 1;
-            dirent->d_name = (char *)malloc(length * sizeof(char));
-            dirent->d_name[length - 1] = '\0';
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
