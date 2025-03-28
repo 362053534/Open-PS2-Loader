@@ -304,7 +304,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char *mbname;
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-        dirent->d_name = (char *)malloc(length * sizeof(char));
+        //dirent->d_name = (char *)malloc(length * sizeof(char));
         while ((dirent = readdir(dir)) != NULL) {
             //dirent->d_name = (char *)malloc(length * sizeof(char));
             mbname = dirent->d_name;           // 原始的字节字符串文件名
