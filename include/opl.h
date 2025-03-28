@@ -14,7 +14,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
-#include <dirent.h>
+#include "dirent.h"
 #include <errno.h>
 #include <limits.h>
 #include <sbv_patches.h>
