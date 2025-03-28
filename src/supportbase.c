@@ -12,6 +12,7 @@
 #include "include/ps2cnf.h"
 #include "include/gui.h"
 #include <wchar.h>
+#include <locale.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -288,7 +289,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
-    wchar_t fullpath[PATH_MAX];
+    char fullpath[256];
     struct dirent *dirent;
     DIR *dir;
 
@@ -299,6 +300,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
         wchar_t wname[PATH_MAX];
+        setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
