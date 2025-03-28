@@ -17,7 +17,7 @@
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
 #include <locale.h>
-#include <cwchar.h>
+#include <wchar.h>
 #include "../modules/isofs/zso.h"
 
 /// internal linked list used to populate the list from directory listing
