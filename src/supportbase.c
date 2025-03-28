@@ -61,7 +61,7 @@ int sbCreateSemaphore(void)
 int isValidIsoName(char *name, int *pNameLen)
 {
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
-    strcpy(name , "SLUS_217.76.中文名.iso");
+    strcpy(name, "SLUS_217.76." + name + ".iso");
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
@@ -300,12 +300,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
-            int format = isValidIsoName(dirent->d_name, &NameLen);
+            int format = isValidIsoName(path, &NameLen);
 
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
-            strcpy(fullpath + base_path_len + 1, path);
+            strcpy(fullpath + base_path_len + 1, dirent->d_name);
 
             struct game_list_t *next = malloc(sizeof(struct game_list_t));
             if (!next)
