@@ -287,7 +287,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
-    char fullpath[256];
+    wchar_t fullpath[256];
     struct dirent *dirent;
     DIR *dir;
 
@@ -298,7 +298,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
 
-        while ((dirent = wreaddir(dir)) != NULL) {
+        setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
+        char *mbname;
+        size_t len;
+        while ((dirent = readdir(dir)) != NULL) {
+            mbname = dirent->d_name;                 // 原始的字节字符串文件名
+            len = mbstowcs(fullpath, mbname, 256); // 将多字节字符串转换为宽字符字符串
+            if (len == (size_t)-1) {
+                continue; // 转换失败，跳过当前条目
+            }
+        }
+        while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
