@@ -76,7 +76,7 @@ int isValidIsoName(char *name, int *pNameLen)
             return GAME_FORMAT_OLD_ISO;
         }
     }
-    *pNameLen = size;
+
     return 0;
 }
 
