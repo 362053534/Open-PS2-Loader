@@ -323,6 +323,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
         // 执行转换
         wcstombs(str, wname, len);
+        strcpy(dirent->d_name, str)
         free(str);
         //char *name = (char *)malloc(length * sizeof(char));
         //name = dirent->d_name;
