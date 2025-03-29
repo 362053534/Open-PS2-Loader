@@ -63,15 +63,10 @@ int sbCreateSemaphore(void)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    //wchar_t *wname;
-    //char *mbname = name;                     // 原始的字节字符串文件名
-    //size_t len;
-    //setlocale(LC_ALL, "");                   // 设置当前区域为环境变量指定的区域                    
-    //len = mbstowcs(wname, name, PATH_MAX);   // 将多字节字符串转换为宽字符字符串
-    ////   计算转换后的多字节字符串长度
-    //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-    //// 执行转换
-    //wcstombs(name, wname, len);
+    wchar_t *wname;
+    char *mbname = name;                     // 原始的字节字符串文件名
+    size_t len;
+
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
@@ -80,6 +75,12 @@ int isValidIsoName(char *name, int *pNameLen)
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             *pNameLen = size - 16;
+            setlocale(LC_ALL, "");                 // 设置当前区域为环境变量指定的区域
+            len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+            //   计算转换后的多字节字符串长度
+            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+            // 执行转换
+            wcstombs(name, wname, len);
             return GAME_FORMAT_OLD_ISO;
         } else {
             *pNameLen = size;
