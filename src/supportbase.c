@@ -14,7 +14,6 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
-#include <stdlib.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -325,16 +324,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //memcpy(dirent->d_name, name, length);
         //dirent->d_name[length - 1] = '\0';
 
-        size_t origsize = wcslen(wname) + 1;
-        size_t convertedChars = 0;
-        const size_t newsize = origsize * 2;
-        char *nstring = new char[newsize];
-        wcstombs_s(&convertedChars, nstring, newsize, wname, _TRUNCATE);
+        //size_t origsize = wcslen(wname) + 1;
+        //size_t convertedChars = 0;
+        //const size_t newsize = origsize * 2;
+        //char *nstring = new char[newsize];
+        //wcstombs_s(&convertedChars, nstring, newsize, wname, _TRUNCATE);
 
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
-            int format = isValidIsoName(nstring, &NameLen);
+            int format = isValidIsoName(dirent->d_name, &NameLen);
 
             //if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
             //    continue; // Skip files that cannot be supported properly.
