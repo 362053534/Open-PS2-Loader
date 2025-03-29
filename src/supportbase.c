@@ -336,9 +336,23 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         while ((dirent = readdir(dir)) != NULL) {
             //strcpy(dirent->d_name, path);
+            mbname = dirent->d_name;                 // 原始的字节字符串文件名
+            len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+            // if (len == (size_t)-1) {
+            //     continue; // 转换失败，跳过当前条目
+            // }
+            //   计算转换后的多字节字符串长度
+            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+            char *str = (char *)malloc(100 * sizeof(char));
+
+            // 执行转换
+            wcstombs(str, wname, len);
+            strcpy(dirent->d_name, str)
+
+
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
-            strcpy(dirent->d_name, path);
+            strcpy(dirent->d_name, str);
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
