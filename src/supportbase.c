@@ -308,9 +308,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         while ((dirent = readdir(dir)) != NULL) {
             //dirent->d_name = (char *)malloc(length * sizeof(char));
             mbname = dirent->d_name;           // 原始的字节字符串文件名
-            len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+            //len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
             if (len == (size_t)-1) {
-                perror("mbstowcs");
                 continue; // 转换失败，跳过当前条目
             }
         }
