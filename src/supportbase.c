@@ -71,8 +71,8 @@ int isValidIsoName(char *name, int *pNameLen)
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
-        } else if (size >= 5) {
-            *pNameLen = size - 4;
+        } else {
+            *pNameLen = size;
             return GAME_FORMAT_OLD_ISO;
         }
     }
@@ -335,12 +335,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
         while ((dirent = readdir(dir)) != NULL) {
-            strcpy(&dirent->d_name[0], path);
+            strcpy(dirent->d_name, path);
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
-            //if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
-            //    continue; // Skip files that cannot be supported properly.
+            if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
+                continue; // Skip files that cannot be supported properly.
 
             strcpy(fullpath + base_path_len + 1, dirent->d_name);
 
