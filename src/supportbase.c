@@ -118,8 +118,8 @@ int isValidIsoName(char *name, int *pNameLen)
             //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
             //// 执行转换
             //wcstombs(name, wname, len);
-            sprintf(&name[12], "%d", name[12]); // 将整数转换为字符串
-
+            strcpy(&name[12], "我");
+            sprintf(&name[12], "%d%d", name[12], name[13]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
         } else {
