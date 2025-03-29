@@ -77,7 +77,7 @@ int isValidIsoName(char *name, int *pNameLen)
         }
     }
     *pNameLen = size;
-    return GAME_FORMAT_OLD_ISO;
+    return 0;
 }
 
 static int GetStartupExecName(const char *path, char *filename, int maxlength)
