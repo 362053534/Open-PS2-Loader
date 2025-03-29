@@ -314,7 +314,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 continue; // 转换失败，跳过当前条目
             }
         }
-
+        // 计算转换后的多字节字符串长度
+        len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+        char *str = (char *)malloc(len);
+        if (str == NULL) {
+            perror("malloc");
+            return EXIT_FAILURE;
+        }
+        // 执行转换
+        wcstombs(str, wname, len);
+        free(str);
         //char *name = (char *)malloc(length * sizeof(char));
         //name = dirent->d_name;
         //memcpy(dirent->d_name, name, length);
