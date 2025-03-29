@@ -114,7 +114,7 @@ int isValidIsoName(char *name, int *pNameLen)
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
-            //unicodeToUtf8(name[12], name);
+            //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
 
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
@@ -127,6 +127,7 @@ int isValidIsoName(char *name, int *pNameLen)
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
         } else {
+            strcpy(&name[12], "没有识别前缀");
             *pNameLen = size;
             return GAME_FORMAT_OLD_ISO;
         }
@@ -360,7 +361,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
 
-        while ((dirent = readdir_r(dir)) != NULL) {
+        while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
