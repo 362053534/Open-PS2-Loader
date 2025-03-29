@@ -60,6 +60,25 @@ int sbCreateSemaphore(void)
     return CreateSema(&sema);
 }
 
+
+void unicodeToUtf8(int unicode, char *utf8)
+{
+    if (unicode <= 0x7F) { // 1 byte, 0xxxxxxx
+        utf8[0] = unicode & 0x7F;
+        utf8[1] = '\0';
+    } else if (unicode <= 0x7FF) { // 2 bytes, 110xxxxx 10xxxxxx
+        utf8[0] = 0xC0 | ((unicode >> 6) & 0x1F);
+        utf8[1] = 0x80 | (unicode & 0x3F);
+        utf8[2] = '\0';
+    } else if (unicode <= 0xFFFF) { // 3 bytes, 1110xxxx 10xxxxxx 10xxxxxx
+        utf8[0] = 0xE0 | ((unicode >> 12) & 0x0F);
+        utf8[1] = 0x80 | ((unicode >> 6) & 0x3F);
+        utf8[2] = 0x80 | (unicode & 0x3F);
+        utf8[3] = '\0';
+    } else {            // 4 bytes, more complex but not needed for basic BMP characters
+        utf8[0] = '\0'; // Error handling or simply not supported in this example
+    }
+}
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
@@ -74,13 +93,15 @@ int isValidIsoName(char *name, int *pNameLen)
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
+            unicodeToUtf8(name[12], name);
+            ////setlocale(LC_ALL, "");                 // 设置当前区域为环境变量指定的区域
+            //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+            ////   计算转换后的多字节字符串长度
+            //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+            //// 执行转换
+            //wcstombs(name, wname, len);
+
             *pNameLen = size - 16;
-            setlocale(LC_ALL, "");                 // 设置当前区域为环境变量指定的区域
-            len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            //   计算转换后的多字节字符串长度
-            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-            // 执行转换
-            wcstombs(name, wname, len);
             return GAME_FORMAT_OLD_ISO;
         } else {
             *pNameLen = size;
