@@ -301,7 +301,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t base_path_len = strlen(path);
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
-        wchar_t wname[PATH_MAX];
+        wchar_t *wname = L"h";
         char *mbname;
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
@@ -324,11 +324,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //name = dirent->d_name;
         //memcpy(dirent->d_name, name, length);
         //dirent->d_name[length - 1] = '\0';
-        strcpy(dirent->d_name, wname);
+
+        size_t origsize = wcslen(wname) + 1;
+        size_t convertedChars = 0;
+        const size_t newsize = origsize * 2;
+        char *nstring = new char[newsize];
+        wcstombs_s(&convertedChars, nstring, newsize, wname, _TRUNCATE);
+
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
-            int format = isValidIsoName(dirent->d_name, &NameLen);
+            int format = isValidIsoName(nstring, &NameLen);
 
             //if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
             //    continue; // Skip files that cannot be supported properly.
@@ -383,6 +389,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
+        delete[] nstring;
         closedir(dir);
     }
 
