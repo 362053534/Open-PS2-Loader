@@ -124,14 +124,14 @@ int isValidIsoName(char *name, int *pNameLen)
             //wcstombs(name, wname, len);
             //strcpy(&name[12], "我");
             //sprintf(&name[12], "%-s", &name[12]); // 使用sprintf连接字符串
-            strcpy(&name[0], "没");
-            sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
+            //strcpy(&name[0], "没");
+            //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
-            *pNameLen = size - 16;
+            *pNameLen = 3;
             return GAME_FORMAT_OLD_ISO;
         }
     }
