@@ -111,13 +111,14 @@ int isValidIsoName(char *name, int *pNameLen)
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             //unicodeToUtf8(name[12], name);
-            asciiToUtf16(&name[12], &name[12]);
+            //asciiToUtf16(&name[12], &name[12]);
             ////setlocale(LC_ALL, "");                 // 设置当前区域为环境变量指定的区域
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
             ////   计算转换后的多字节字符串长度
             //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
             //// 执行转换
             //wcstombs(name, wname, len);
+            sprintf(&name[12], "%d", name[12]); // 将整数转换为字符串
 
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
