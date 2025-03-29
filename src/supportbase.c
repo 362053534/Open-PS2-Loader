@@ -104,7 +104,7 @@ int isValidIsoName(char *name, int *pNameLen)
     setlocale(LC_CTYPE, "zh_Hans.UTF-8"); // 设置当前区域为环境变量指定的区域
     setlocale(LC_ALL, "Chinese_China");   // 设置当前区域为环境变量指定的区域
     wchar_t *wname;
-    char *mbname = name;                     // 原始的字节字符串文件名
+    char *mbname;                     // 原始的字节字符串文件名
     size_t len;
 
 
@@ -131,8 +131,16 @@ int isValidIsoName(char *name, int *pNameLen)
         } else {
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
-            sprintf(&name[12], "%d%d", name[12], name[13]); // 使用sprintf连接字符串
-            *pNameLen = 4;
+
+            for (size_t i = 0 ,j = 0; i < 16; i++ ,j++) {
+                if (name[12 + i] <= 9 && name[12 + i] >= 0) {
+                    sprintf(&mbname[12 + j], "%d", name[12 + i]); // 使用sprintf连接字符串
+                } else {
+                    sprintf(&mbname[12 + j++], "%d", name[12 + i]); // 使用sprintf连接字符串
+                }   
+            }
+            strcpy(name, mbname);
+            *pNameLen = 16;
             return GAME_FORMAT_OLD_ISO;
         }
     }
