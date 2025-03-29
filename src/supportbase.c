@@ -60,7 +60,24 @@ int sbCreateSemaphore(void)
     return CreateSema(&sema);
 }
 
+// These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+static int asciiToUtf16(char *out, const char *in)
+{
+    int len;
+    const char *pIn;
+    char *pOut;
 
+    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
+        pOut[0] = *pIn;
+        pOut[1] = '\0';
+    }
+
+    pOut[0] = '\0'; // NULL terminate.
+    pOut[1] = '\0';
+    len += 2;
+
+    return len;
+}
 void unicodeToUtf8(int unicode, char *utf8)
 {
     if (unicode <= 0x7F) { // 1 byte, 0xxxxxxx
@@ -93,7 +110,8 @@ int isValidIsoName(char *name, int *pNameLen)
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
-            unicodeToUtf8(name[12], name);
+            //unicodeToUtf8(name[12], name);
+            asciiToUtf16(name, &name[12]);
             ////setlocale(LC_ALL, "");                 // 设置当前区域为环境变量指定的区域
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
             ////   计算转换后的多字节字符串长度
