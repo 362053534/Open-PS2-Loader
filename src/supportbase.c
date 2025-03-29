@@ -14,6 +14,7 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
+#include <stdlib.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -73,11 +74,11 @@ int isValidIsoName(char *name, int *pNameLen)
             return GAME_FORMAT_OLD_ISO;
         } else if (size >= 5) {
             *pNameLen = size - 4;
-            return GAME_FORMAT_ISO;
+            return GAME_FORMAT_OLD_ISO;
         }
     }
-
-    return 0;
+    *pNameLen = size;
+    return GAME_FORMAT_OLD_ISO;
 }
 
 static int GetStartupExecName(const char *path, char *filename, int maxlength)
@@ -305,15 +306,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
 
-        //while ((dirent = readdir(dir)) != NULL) {
-        //    //dirent->d_name = (char *)malloc(length * sizeof(char));
-        //    mbname = dirent->d_name;           // 原始的字节字符串文件名
-        //    len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-        //    if (len == (size_t)-1) {
-        //        perror("mbstowcs");
-        //        continue; // 转换失败，跳过当前条目
-        //    }
-        //}
+        while ((dirent = readdir(dir)) != NULL) {
+            //dirent->d_name = (char *)malloc(length * sizeof(char));
+            mbname = dirent->d_name;           // 原始的字节字符串文件名
+            len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+            if (len == (size_t)-1) {
+                perror("mbstowcs");
+                continue; // 转换失败，跳过当前条目
+            }
+        }
         //len = wcslen(wname) + 1;               // 加1是为了包含结尾的null字符
         //mbname = (char *)malloc(len * sizeof(char)); // MB_CUR_MAX 是最大多字节字符的长度
         //wcstombs(mbname, wname, len * sizeof(char));
@@ -323,13 +324,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //name = dirent->d_name;
         //memcpy(dirent->d_name, name, length);
         //dirent->d_name[length - 1] = '\0';
+        strcpy(dirent->d_name, wname);
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
-            int format = isValidIsoName(&dirent->d_name[0], &NameLen);
+            int format = isValidIsoName(dirent->d_name, &NameLen);
 
-            if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
-                continue; // Skip files that cannot be supported properly.
+            //if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
+            //    continue; // Skip files that cannot be supported properly.
 
             strcpy(fullpath + base_path_len + 1, dirent->d_name);
 
