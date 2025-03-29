@@ -335,7 +335,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
         while ((dirent = readdir(dir)) != NULL) {
-            strcpy(&dirent->d_name[0], "SLUS_217.76.FIFA 09 USA.iso");
+            strcpy(&dirent->d_name[0], path);
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
