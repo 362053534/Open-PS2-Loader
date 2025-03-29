@@ -388,7 +388,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        delete[] nstring;
         closedir(dir);
     }
 
