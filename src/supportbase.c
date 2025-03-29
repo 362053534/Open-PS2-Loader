@@ -360,7 +360,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
 
-        while ((dirent = readdir(dir)) != NULL) {
+        while ((dirent = readdir_r(dir)) != NULL) {
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
