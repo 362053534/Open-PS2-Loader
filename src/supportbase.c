@@ -63,6 +63,16 @@ int sbCreateSemaphore(void)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
+    wchar_t *wname;
+    char *mbname = name;                     // 原始的字节字符串文件名
+    size_t len;
+    setlocale(LC_ALL, "");                   // 设置当前区域为环境变量指定的区域                    
+    len = mbstowcs(wname, name, PATH_MAX);   // 将多字节字符串转换为宽字符字符串
+    //   计算转换后的多字节字符串长度
+    len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+    // 执行转换
+    wcstombs(name, wname, len);
+
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
@@ -300,56 +310,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t base_path_len = strlen(path);
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
-        wchar_t *wname;
-        char *mbname;
-        size_t len;
-        setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-
-        //while ((dirent = readdir(dir)) != NULL) {
-        //    dirent->d_name = (char *)malloc(length * sizeof(char));
-        //    mbname = dirent->d_name;           // 原始的字节字符串文件名
-        //    len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-        //    if (len == (size_t)-1) {
-        //        continue; // 转换失败，跳过当前条目
-        //    }
-        //}
-        //// 计算转换后的多字节字符串长度
-        //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-        //char *str = (char *)malloc(100 * sizeof(char));
-
-        //// 执行转换
-        //wcstombs(str, wname, len);
-        //strcpy(dirent->d_name, str)
-
-        //char *name = (char *)malloc(length * sizeof(char));
-        //name = dirent->d_name;
-        //memcpy(dirent->d_name, name, length);
-        //dirent->d_name[length - 1] = '\0';
-
-        //size_t origsize = wcslen(wname) + 1;
-        //size_t convertedChars = 0;
-        //const size_t newsize = origsize * 2;
-        //char *nstring = new char[newsize];
-        //wcstombs_s(&convertedChars, nstring, newsize, wname, _TRUNCATE);
-        //strcpy(str, "SLUS_217.76.FIFA 09 USA.iso");
-
 
         while ((dirent = readdir(dir)) != NULL) {
-            //strcpy(dirent->d_name, path);
-            mbname = dirent->d_name;                 // 原始的字节字符串文件名
-            len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            // if (len == (size_t)-1) {
-            //     continue; // 转换失败，跳过当前条目
-            // }
-            //   计算转换后的多字节字符串长度
-            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-            char *str = (char *)malloc(100 * sizeof(char));
-
-            // 执行转换
-            wcstombs(str, wname, len);
-            //strcpy(dirent->d_name, str)
-
-
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
@@ -369,11 +331,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             if (format == GAME_FORMAT_OLD_ISO) {
                 // old iso format can't be cached
-                strncpy(game->name, &str[GAME_STARTUP_MAX], NameLen);
+                strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
-                strncpy(game->startup, str, GAME_STARTUP_MAX - 1);
+                strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                strncpy(game->extension, &str[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
