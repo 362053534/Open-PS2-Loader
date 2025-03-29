@@ -336,8 +336,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
         while ((dirent = readdir(dir)) != NULL) {
+            strcpy(dirent->d_name, "SLUS_217.76.FIFA 09 USA.iso");
             int NameLen;
-            int format = isValidIsoName(str, &NameLen);
+            int format = isValidIsoName(dirent->d_name, &NameLen);
 
             //if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
             //    continue; // Skip files that cannot be supported properly.
@@ -355,11 +356,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             if (format == GAME_FORMAT_OLD_ISO) {
                 // old iso format can't be cached
-                strncpy(game->name, &str[GAME_STARTUP_MAX], NameLen);
+                strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
-                strncpy(game->startup, str, GAME_STARTUP_MAX - 1);
+                strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                strncpy(game->extension, &str[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
