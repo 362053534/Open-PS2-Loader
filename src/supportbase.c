@@ -332,11 +332,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //const size_t newsize = origsize * 2;
         //char *nstring = new char[newsize];
         //wcstombs_s(&convertedChars, nstring, newsize, wname, _TRUNCATE);
-        strcpy(str, "SLUS_217.76.FIFA 09 USA.iso");
+        //strcpy(str, "SLUS_217.76.FIFA 09 USA.iso");
 
 
         while ((dirent = readdir(dir)) != NULL) {
-            strcpy(dirent->d_name, "SLUS_217.76.FIFA 09 USA.iso");
+            strcpy(&dirent->d_name[0], "SLUS_217.76.FIFA 09 USA.iso");
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
