@@ -300,7 +300,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t base_path_len = strlen(path);
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
-        wchar_t *wname = L"h";
+        wchar_t wname[PATH_MAX];
         char *mbname;
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
