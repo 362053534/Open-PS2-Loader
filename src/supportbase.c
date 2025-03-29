@@ -316,11 +316,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
         // 计算转换后的多字节字符串长度
         len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-        char *str = (char *)malloc(len);
-        if (str == NULL) {
-            perror("malloc");
-            return EXIT_FAILURE;
-        }
+        char *str = (char *)malloc(256);
+
         // 执行转换
         wcstombs(str, wname, len);
         //strcpy(dirent->d_name, str)
@@ -335,6 +332,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //const size_t newsize = origsize * 2;
         //char *nstring = new char[newsize];
         //wcstombs_s(&convertedChars, nstring, newsize, wname, _TRUNCATE);
+        strcpy(str, "哈喽沃德");
 
 
         while ((dirent = readdir(dir)) != NULL) {
