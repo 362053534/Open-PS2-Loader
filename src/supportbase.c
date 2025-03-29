@@ -393,7 +393,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        free(str);
+        //free(str);
         closedir(dir);
     }
 
