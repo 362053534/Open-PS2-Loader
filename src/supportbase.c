@@ -99,8 +99,8 @@ void unicodeToUtf8(int unicode, char *utf8)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    setlocale(LC_CTYPE, "zh-CN"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, NULL);    // 设置当前区域为环境变量指定的区域
+    setlocale(LC_CTYPE, "zh-Hans"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
     wchar_t *wname;
     char *mbname = name;                     // 原始的字节字符串文件名
     size_t len;
@@ -340,8 +340,8 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
-    setlocale(LC_CTYPE, "zh-CN"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, NULL); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_CTYPE, "zh-Hans"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
