@@ -119,7 +119,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //// 执行转换
             //wcstombs(name, wname, len);
             strcpy(&name[12], "我");
-            sprintf(&name[12], "%s%s", name[12], name[13]); // 使用sprintf连接字符串
+            //sprintf(&name[12], "%s%s", name[12], name[13]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
         } else {
