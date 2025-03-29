@@ -316,7 +316,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
         // 计算转换后的多字节字符串长度
         len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-        char *str = (char *)malloc(256);
+        char *str = (char *)malloc(100 * sizeof(char));
 
         // 执行转换
         wcstombs(str, wname, len);
