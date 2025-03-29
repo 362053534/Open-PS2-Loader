@@ -131,7 +131,7 @@ int isValidIsoName(char *name, int *pNameLen)
         } else {
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
-
+            strcpy(mbname, name);
             for (size_t i = 0 ,j = 0; i < 16; i++ ,j++) {
                 if (name[12 + i] <= 9 && name[12 + i] >= 0) {
                     sprintf(&mbname[12 + j], "%d", name[12 + i]); // 使用sprintf连接字符串
