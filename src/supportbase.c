@@ -128,8 +128,8 @@ int isValidIsoName(char *name, int *pNameLen)
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[12], "没有识别前缀");
-            sprintf(&name[12], "%d", size); // 使用sprintf连接字符串
-            *pNameLen = size - 4;
+            sprintf(&name[12], "%s", &name[12]); // 使用sprintf连接字符串
+            *pNameLen = size;
             return GAME_FORMAT_OLD_ISO;
         }
     }
