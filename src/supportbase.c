@@ -102,7 +102,7 @@ int isValidIsoName(char *name, int *pNameLen)
     setlocale(LC_CTYPE, "zh-Hans.UTF-8"); // 设置当前区域为环境变量指定的区域
     setlocale(LC_ALL, "zh-Hans.UTF-8");   // 设置当前区域为环境变量指定的区域
     setlocale(LC_CTYPE, "zh_Hans.UTF-8"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_Hans.UTF-8");   // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "Chinese_China");   // 设置当前区域为环境变量指定的区域
     wchar_t *wname;
     char *mbname = name;                     // 原始的字节字符串文件名
     size_t len;
@@ -345,7 +345,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     setlocale(LC_CTYPE, "zh-Hans.UTF-8"); // 设置当前区域为环境变量指定的区域
     setlocale(LC_ALL, "zh-Hans.UTF-8");   // 设置当前区域为环境变量指定的区域
     setlocale(LC_CTYPE, "zh_Hans.UTF-8"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_Hans.UTF-8");   // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "Chinese_China");   // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
