@@ -305,14 +305,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t len;
         setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
 
-        while ((dirent = readdir(dir)) != NULL) {
-            //dirent->d_name = (char *)malloc(length * sizeof(char));
-            mbname = dirent->d_name;           // 原始的字节字符串文件名
-            //len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            if (len == (size_t)-1) {
-                continue; // 转换失败，跳过当前条目
-            }
-        }
+        //while ((dirent = readdir(dir)) != NULL) {
+        //    dirent->d_name = (char *)malloc(length * sizeof(char));
+        //    mbname = dirent->d_name;           // 原始的字节字符串文件名
+        //    len = mbstowcs(wname, mbname, PATH_MAX); // 将多字节字符串转换为宽字符字符串
+        //    if (len == (size_t)-1) {
+        //        continue; // 转换失败，跳过当前条目
+        //    }
+        //}
         //// 计算转换后的多字节字符串长度
         //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
         //char *str = (char *)malloc(100 * sizeof(char));
@@ -335,7 +335,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
         while ((dirent = readdir(dir)) != NULL) {
-            //strcpy(&dirent->d_name[0], "SLUS_217.76.FIFA 09 USA.iso");
+            strcpy(&dirent->d_name[0], "SLUS_217.76.FIFA 09 USA.iso");
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
