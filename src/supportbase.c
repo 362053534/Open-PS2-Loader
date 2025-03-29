@@ -335,10 +335,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
         while ((dirent = readdir(dir)) != NULL) {
-            strcpy(dirent->d_name, path);
+            //strcpy(dirent->d_name, path);
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
-
+            strcpy(dirent->d_name, path);
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
