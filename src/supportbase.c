@@ -231,7 +231,7 @@ int isValidIsoName(char *name, int *pNameLen)
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-
+            asciiToUtf16(name, name);
             //  修正size大小
             for (int i = 0; i < 256; i++) {
                 if (name[i] == '.') {
@@ -239,7 +239,7 @@ int isValidIsoName(char *name, int *pNameLen)
                     break;
                 }
             }
-            asciiToUtf16(&name, &name);
+
             //utf8_encode(name);
             *pNameLen = size * 2;
             //sprintf(&name[0], "%s", &name[0]);
