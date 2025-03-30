@@ -155,6 +155,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
+            sprintf(&name[12], "%d", pNameLen);
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[0], "没");
@@ -446,7 +447,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             if (format == GAME_FORMAT_OLD_ISO) {
                 // old iso format can't be cached
-                strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
