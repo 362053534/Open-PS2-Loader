@@ -237,6 +237,8 @@ int isValidIsoName(char *name, int *pNameLen)
                     break;
                 }
             }
+
+            convertToUtf8(name, 84, &name);
             *pNameLen = size;
             //sprintf(&name[0], "%d%d", name[0], name[1]);
 
