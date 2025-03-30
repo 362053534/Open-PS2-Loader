@@ -14,7 +14,6 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
-#include <Windows.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -103,7 +102,7 @@ int isValidIsoName(char *name, int *pNameLen)
     setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
     setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     char *mbname;                     // 原始的字节字符串文件名
-    int len = 0;
+    size_t len;
 
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
@@ -115,13 +114,13 @@ int isValidIsoName(char *name, int *pNameLen)
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
-            len = MultiByteToWideChar(CP_UTF8, 0, &name[12], -1, NULL, 0); // 获取转换后的长度
-            wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            MultiByteToWideChar(CP_UTF8, 0, &name[12], -1, wname, len); // 转换字符串
 
-            //len = mbstowcs(wname, &name[12], PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            // 计算转换后的多字节字符串长度
-            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+
+
+            len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
+            wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
+            mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
+
             // 执行转换
             len = wcstombs(&name[12], wname, len) + 1;
             free(wname);
@@ -161,13 +160,10 @@ int isValidIsoName(char *name, int *pNameLen)
             //}
             //strcpy(name, mbname);
 
-            len = MultiByteToWideChar(CP_UTF8, 0, &name[12], -1, NULL, 0); // 获取转换后的长度
+            len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
             wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            MultiByteToWideChar(CP_UTF8, 0, &name[12], -1, wname, len); // 转换字符串
+            mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
 
-            //len = mbstowcs(wname, &name[12], PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            // 计算转换后的多字节字符串长度
-            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
             // 执行转换
             len = wcstombs(&name[12], wname, len) + 1;
             free(wname);
