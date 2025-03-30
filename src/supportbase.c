@@ -14,7 +14,6 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
-#include <iconv.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -98,27 +97,27 @@ void unicodeToUtf8(int unicode, char *utf8)
     }
 }
 
-void convertToUtf8(const char *input, size_t input_len, char **output)
+void utf8_encode(char *str)
 {
-    iconv_t cd = iconv_open("UTF-8", "ASCII"); // 或者其他编码如"UTF-16"等
-    if (cd == (iconv_t)-1) {
-        perror("iconv_open failed");
-        exit(EXIT_FAILURE);
+    int len = strlen(str);
+    char *new_str = malloc(len * 3 + 1); // UTF-8 最多使用 3 个字节编码一个字符
+    int i, j;
+    for (i = 0, j = 0; i < len; ++i) {
+        if ((str[i] & 0x80) == 0) { // ASCII 码值范围：0 ~ 127
+            new_str[j++] = str[i];
+        } else if ((str[i] & 0xE0) == 0xC0 && i + 1 < len && (str[i + 1] & 0xC0) == 0x80) { // 双字节编码，U+0080 ~ U+07FF
+            new_str[j++] = ((str[i] & 0x1F) << 6) | (str[i + 1] & 0x3F);
+            ++i;
+        } else if ((str[i] & 0xF0) == 0xE0 && i + 2 < len && (str[i + 1] & 0xC0) == 0x80 && (str[i + 2] & 0xC0) == 0x80) { // 三字节编码，U+08000 ~ U+FFFFF
+            new_str[j++] = ((str[i] & 15) << 12) | ((str[++i] & 63) << 6) | (str[++i] & 63);
+        } else {
+            printf("Unsupported character: %c\n", str[i]);
+            return;
+        }
     }
-    size_t inbytes = input_len;
-    size_t outbytes = input_len * 4; // 假设最坏情况下每个字符需要4个字节（例如在UTF-8中）
-    char *outbuf = malloc(outbytes);
-    char *inbuf = (char *)input;
-    char *outptr = outbuf;
-    memset(outbuf, 0, outbytes); // 初始化输出缓冲区为0
-    if (iconv(cd, &inbuf, &inbytes, &outptr, &outbytes) == (size_t)-1) {
-        perror("iconv failed");
-        free(outbuf);
-        iconv_close(cd);
-        exit(EXIT_FAILURE);
-    }
-    *output = outbuf; // 返回转换后的字符串指针，注意需要手动释放这块内存
-    iconv_close(cd);
+    new_str[j] = '\0';
+    strcpy(str, new_str);
+    free(new_str);
 }
 
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
@@ -177,7 +176,7 @@ int isValidIsoName(char *name, int *pNameLen)
                     break;
                 }
             }
-
+            utf8_encode(name);
             *pNameLen = size - 16;
             sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
@@ -194,7 +193,7 @@ int isValidIsoName(char *name, int *pNameLen)
                 }
             }
 
-
+            utf8_encode(name);
             *pNameLen = size;
             sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
@@ -237,11 +236,7 @@ int isValidIsoName(char *name, int *pNameLen)
                     break;
                 }
             }
-            const char *input = "Hello, World!"; // 这里可以是任何ASCII或非ASCII字符串
-            char *output;
-            convertToUtf8(input, strlen(input), &output);
-            free(output); // 释放分配的内存
-            //convertToUtf8(name, size, &name);
+            utf8_encode(name);
             *pNameLen = size;
             //sprintf(&name[0], "%d%d", name[0], name[1]);
 
