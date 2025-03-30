@@ -131,18 +131,18 @@ int isValidIsoName(char *name, int *pNameLen)
             char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
             wcstombs(&mbname[12], wname, len);
             mbname[len] = '\0';
-
-            name = (char *)malloc((len) * sizeof(char))
-            memcpy(name, mbname, len);
+            name = mbname;
+            //memcpy(name, mbname, len);
+            //free(mbname);
             free(wname);
-            free(mbname);
+
 
             size = 0;
             for (size_t i = 0; i < 100; i++) {
-                if (name[i] == 'o') {
+                if (name[i] == '\0') {
                     size++;
                     break;
-                } else if (name[i] == '\0') {
+                } else if (name[i] == 'o') {
                     break;
                 } else {
                     size++;
@@ -180,11 +180,10 @@ int isValidIsoName(char *name, int *pNameLen)
             char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
             wcstombs(&mbname[12], wname, len);
             mbname[len] = '\0';
-
-            name = (char *)malloc((len) * sizeof(char))
-                memcpy(name, mbname, len);
+            name = mbname;
+            // memcpy(name, mbname, len);
+            // free(mbname);
             free(wname);
-            free(mbname);
 
             size = 0;
             for (size_t i = 0; i < 100; i++) {
