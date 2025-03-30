@@ -101,7 +101,7 @@ int isValidIsoName(char *name, int *pNameLen)
 {
     setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
     setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    wchar_t *wname;
+    wchar_t wname[] = {0};
     char *mbname;                     // 原始的字节字符串文件名
     size_t len;
 
@@ -119,11 +119,14 @@ int isValidIsoName(char *name, int *pNameLen)
             // 计算转换后的多字节字符串长度
             len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
             // 执行转换
-            wcstombs(&name[12], wname, len);
+            len = wcstombs(&name[12], wname, len) + 1;
+            name[len] = '\0';
             size = 0;
             for (size_t i = 0; i < 100; i++) {
                 if (name[i] == 'o') {
                     size++;
+                    break;
+                } else if (name[i] == '\0') {
                     break;
                 } else {
                     size++;
@@ -154,9 +157,10 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(name, mbname);
             len = mbstowcs(wname, &name[12], PATH_MAX); // 将多字节字符串转换为宽字符字符串
             // 计算转换后的多字节字符串长度
-            len = wcstombs(NULL, wname, 0) + 1;         // 包括终止符'\0'
+            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
             // 执行转换
-            wcstombs(&name[12], wname, len);
+            len = wcstombs(&name[12], wname, len) + 1;
+            name[len] = '\0';
             size = 0;
             for (size_t i = 0; i < 100; i++) {
                 if (name[i] == 'o') {
