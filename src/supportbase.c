@@ -188,10 +188,18 @@ int isValidIsoName(char *name, int *pNameLen)
             ////}
             //utf8_encode(name);
             
+             len = mbstowcs(NULL, name, 0) + 1; // 将多字节字符串转换为宽字符字符串
+             wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
+             mbstowcs(wname, name, len); // 将多字节字符串转换为宽字符字符串
 
-            //for (int i = 0; i < 12; i++) {
-            //    name[i] = (char)name[i];
-            //}
+            //len = wcstombs(NULL, wname, 0) + 1;
+            //char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            //wcstombs(&mbname[12], wname, len);
+            //mbname[len] = '\0';
+            //name = mbname;
+             memcpy(name, wname, len);
+            //free(mbname);
+             free(wname);
 
             //  修正size大小(中文)
             for (size_t i = 0; i < 256; i++) {
