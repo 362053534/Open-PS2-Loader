@@ -100,7 +100,7 @@ void unicodeToUtf8(int unicode, char *utf8)
 int isValidIsoName(char *name, int *pNameLen)
 {
     setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_Hans");   // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     wchar_t *wname;
     char *mbname;                     // 原始的字节字符串文件名
     size_t len;
@@ -367,7 +367,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
     setlocale(LC_ALL, "zh-Hans"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_Hans"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
@@ -402,12 +402,19 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             if (format == GAME_FORMAT_OLD_ISO) {
                 // old iso format can't be cached
-                strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
-                strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+                memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
+
+                //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                //game->name[NameLen] = '\0';
+                //strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+                //game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                //strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                //game->extension[sizeof(game->extension) - 1] = '\0';
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
