@@ -106,7 +106,7 @@ int isValidIsoName(char *name, int *pNameLen)
 
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
 
-    asciiToUtf16(&name[12], &name[12]);
+
     size_t len;
     int size = strlen(name);
     // 修正size大小
@@ -122,26 +122,26 @@ int isValidIsoName(char *name, int *pNameLen)
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
 
-            len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
-            wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
+            //len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
+            //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
+            //mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
 
-            //len = wcstombs(NULL, wname, 0) + 1;
-            //char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            //wcstombs(&mbname[12], wname, len);
-            //mbname[len] = '\0';
-            //name = mbname;
-            memcpy(&name[12], wname, len);
-            //free(mbname);
-            free(wname);
+            ////len = wcstombs(NULL, wname, 0) + 1;
+            ////char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            ////wcstombs(&mbname[12], wname, len);
+            ////mbname[len] = '\0';
+            ////name = mbname;
+            //memcpy(&name[12], wname, len);
+            ////free(mbname);
+            //free(wname);
 
-            // 修正size大小
-            for (int i = 0; i < 256; i++) {
-                if (&name[i] == "o" || &name[i] == "O") {
-                    size = i + 1;
-                    break;
-                }
-            }
+            //// 修正size大小
+            //for (int i = 0; i < 256; i++) {
+            //    if (&name[i] == "o" || &name[i] == "O") {
+            //        size = i + 1;
+            //        break;
+            //    }
+            //}
 
 
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
@@ -154,7 +154,8 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
-            //sprintf(&name[12], "%d", *pNameLen);
+            asciiToUtf16(&name[12], &name[12]);
+            sprintf(&name[12], "%s", &name[12]);
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[0], "没");
