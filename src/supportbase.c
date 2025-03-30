@@ -137,17 +137,17 @@ int isValidIsoName(char *name, int *pNameLen)
             //free(wname);
 
 
-            size = 0;
-            for (size_t i = 0; i < 100; i++) {
-                if (name[i] == '\0') {
-                    size++;
-                    break;
-                } else if (name[i] == 'o') {
-                    break;
-                } else {
-                    size++;
-                }
-            }
+            //size = 0;
+            //for (size_t i = 0; i < 100; i++) {
+            //    if (name[i] == '\0') {
+            //        size++;
+            //        break;
+            //    } else if (name[i] == 'o') {
+            //        break;
+            //    } else {
+            //        size++;
+            //    }
+            //}
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
             ////   计算转换后的多字节字符串长度
             //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
