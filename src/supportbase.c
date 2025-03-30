@@ -132,7 +132,7 @@ int isValidIsoName(char *name, int *pNameLen)
             wcstombs(&mbname[12], wname, len);
             //mbname[len] = '\0';
             //name = mbname;
-            strcpy(name, mbname, len);
+            mempy(name, mbname, len);
             free(mbname);
             free(wname);
 
