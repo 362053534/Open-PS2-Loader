@@ -154,8 +154,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
-            asciiToUtf16(&name[12], &name[12]);
-            sprintf(&name[12], "%s", &name[13]);
+            //sprintf(&name[12], "%s", &name[12]);
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[0], "没");
@@ -184,11 +183,12 @@ int isValidIsoName(char *name, int *pNameLen)
             //free(wname);
 
 
-            //sprintf(&name[12], "%d", size - 16);
+            sprintf(&name[12], "%s", name);
+            //strcpy(&name[12], name);
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-            *pNameLen = size - 4;
+            *pNameLen = size + 12;
             return GAME_FORMAT_OLD_ISO;
         }
     }
