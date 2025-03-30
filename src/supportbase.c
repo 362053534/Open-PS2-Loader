@@ -446,7 +446,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             if (format == GAME_FORMAT_OLD_ISO) {
                 // old iso format can't be cached
-                memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
