@@ -14,6 +14,7 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
+#include <iconv.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -96,6 +97,30 @@ void unicodeToUtf8(int unicode, char *utf8)
         utf8[0] = '\0'; // Error handling or simply not supported in this example
     }
 }
+
+void convertToUtf8(const char *input, size_t input_len, char **output)
+{
+    iconv_t cd = iconv_open("UTF-8", "ASCII"); // 或者其他编码如"UTF-16"等
+    if (cd == (iconv_t)-1) {
+        perror("iconv_open failed");
+        exit(EXIT_FAILURE);
+    }
+    size_t inbytes = input_len;
+    size_t outbytes = input_len * 4; // 假设最坏情况下每个字符需要4个字节（例如在UTF-8中）
+    char *outbuf = malloc(outbytes);
+    char *inbuf = (char *)input;
+    char *outptr = outbuf;
+    memset(outbuf, 0, outbytes); // 初始化输出缓冲区为0
+    if (iconv(cd, &inbuf, &inbytes, &outptr, &outbytes) == (size_t)-1) {
+        perror("iconv failed");
+        free(outbuf);
+        iconv_close(cd);
+        exit(EXIT_FAILURE);
+    }
+    *output = outbuf; // 返回转换后的字符串指针，注意需要手动释放这块内存
+    iconv_close(cd);
+}
+
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
