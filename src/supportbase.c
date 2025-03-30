@@ -130,14 +130,14 @@ int isValidIsoName(char *name, int *pNameLen)
             len = wcstombs(NULL, wname, 0) + 1;
             char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
             wcstombs(&mbname[12], wname, len);
-            mbname[len] = '\0';
+            //mbname[len] = '\0';
             //name = mbname;
-            memcpy(name, mbname, len);
+            strcpy(name, mbname, len);
             free(mbname);
             free(wname);
 
             // 修正size大小
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 256; i++) {
                 if (&name[i] == "o" || &name[i] == "O") {
                     size = i + 1;
                     break;
@@ -153,7 +153,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
-            sprintf(&name[12], "%d", *pNameLen);
+            //sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[0], "没");
