@@ -237,8 +237,11 @@ int isValidIsoName(char *name, int *pNameLen)
                     break;
                 }
             }
-
-            convertToUtf8(name, size, &name);
+            const char *input = "Hello, World!"; // 这里可以是任何ASCII或非ASCII字符串
+            char *output;
+            convertToUtf8(input, strlen(input), &output);
+            free(output); // 释放分配的内存
+            //convertToUtf8(name, size, &name);
             *pNameLen = size;
             //sprintf(&name[0], "%d%d", name[0], name[1]);
 
