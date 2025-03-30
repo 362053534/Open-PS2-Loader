@@ -169,7 +169,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //sprintf(&name[12], "%-s", &name[12]); // 使用sprintf连接字符串
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
-            utf8_encode(name);
+            //utf8_encode(name);
             //  修正size大小
             for (int i = 0; i < 256; i++) {
                 if (&name[i] == "") {
@@ -179,25 +179,31 @@ int isValidIsoName(char *name, int *pNameLen)
             }
 
             *pNameLen = size - 16;
-            //sprintf(&name[12], "%d", *pNameLen);
+            sprintf(&name[12], "%d", size);
             return GAME_FORMAT_OLD_ISO;
+
         } else if (size == 12) {
             //strncpy(&name[12], name, 16);
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-            utf8_encode(name);
-            //  修正size大小
+            //utf8_encode(name);
+            
+
+            for (int i = 0; i < 12; i++) {
+                name[i] = (char)name[i];
+            }
+
+            //  修正size大小(中文)
             for (int i = 0; i < 256; i++) {
-                if (name[12 + i] == '\0') {
+                if (name[i] == '\0') {
                     size = i;
                     break;
                 }
             }
 
-
-            *pNameLen = size;
-            //sprintf(&name[12], "%d", *pNameLen);
+            *pNameLen = size - 12;
+            sprintf(&name[12], "%d", size);
             return GAME_FORMAT_OLD_ISO;
         }
         else {
@@ -239,8 +245,8 @@ int isValidIsoName(char *name, int *pNameLen)
                 }
             }
             //utf8_encode(name);
-            *pNameLen = size * 2;
-            //sprintf(&name[0], "%s", &name[0]);
+            *pNameLen = size;
+            sprintf(&name[0], "%d", *pNameLen);
 
             return GAME_FORMAT_OLD_ISO;
         }
