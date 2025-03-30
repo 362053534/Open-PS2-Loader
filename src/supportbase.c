@@ -136,7 +136,14 @@ int isValidIsoName(char *name, int *pNameLen)
             //free(mbname);
             //free(wname);
 
-
+            size = 0;
+            for (size_t i = 0; i < 100; i++) {
+                if (name[i] == "o" && name[i] == "O") {
+                    break;
+                } else {
+                    size++;
+                }
+            }
             //size = 0;
             //for (size_t i = 0; i < 100; i++) {
             //    if (&name[i] == "") {
