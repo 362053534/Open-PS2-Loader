@@ -184,14 +184,14 @@ int isValidIsoName(char *name, int *pNameLen)
 
             size = 0;
             for (size_t i = 0; i < 100; i++) {
-                if (name[i] == 'o') {
+                if (strcasecmp(&name[i], "o") == 0) {
                     size++;
                     break;
                 } else {
                     size++;
                 }
             }
-            //sprintf(&name[12], "%d", size - 16);
+            sprintf(&name[12], "%d", size - 16);
             //for (size_t i = 0; i < 8; i++) {
             //    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             //}
