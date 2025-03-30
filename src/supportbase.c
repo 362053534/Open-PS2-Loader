@@ -189,13 +189,13 @@ int isValidIsoName(char *name, int *pNameLen)
             //utf8_encode(name);
             
 
-            for (int i = 0; i < 12; i++) {
-                name[i] = (char)name[i];
-            }
+            //for (int i = 0; i < 12; i++) {
+            //    name[i] = (char)name[i];
+            //}
 
             //  修正size大小(中文)
             for (int i = 0; i < 256; i++) {
-                if (name[i] == '\0') {
+                if (name[i] == '\0' && name[i+1] == '\0') {
                     size = i;
                     break;
                 }
@@ -519,15 +519,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
                 memcpy(game->name, dirent->d_name, NameLen);
                 sprintf(&game->name[NameLen], "%s%d", fullpath, MountFD); // 使用sprintf连接字符串
-                if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                    fileXioUmount("iso:");
-                    free(next);
-                    *glist = next->next;
-                    continue;
-                }
+                //if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                //    fileXioUmount("iso:");
+                //    free(next);
+                //    *glist = next->next;
+                //    continue;
+                //}
 
-                memcpy(game->name, dirent->d_name, NameLen);
-                game->name[NameLen] = '\0';
+                //memcpy(game->name, dirent->d_name, NameLen);
+                //game->name[NameLen] = '\0';
                 memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
