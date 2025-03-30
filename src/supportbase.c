@@ -467,7 +467,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // old iso format can't be cached
                 memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
-                if (NameLen < 12) {
+                if (NameLen <= 2) {
                     memcpy(game->name, dirent->d_name, NameLen);
                     game->name[NameLen + 2] = '\0';
                 }
@@ -475,7 +475,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                if (NameLen < 12) {
+                if (NameLen <= 2) {
                     memcpy(game->extension, ".iso", sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                 }
