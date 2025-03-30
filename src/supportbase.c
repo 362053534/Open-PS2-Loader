@@ -136,12 +136,11 @@ int isValidIsoName(char *name, int *pNameLen)
             //free(mbname);
             //free(wname);
 
-            size = 0;
+            //修正size大小
             for (size_t i = 0; i < 100; i++) {
-                if (strcasecmp(&name[i], "") == 0) {
+                if (strcasecmp(&name[i], ".iso") == 0) {
+                    size = i;
                     break;
-                } else {
-                    size++;
                 }
             }
             //size = 0;
