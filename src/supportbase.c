@@ -138,7 +138,7 @@ int isValidIsoName(char *name, int *pNameLen)
 
             //修正size大小
             for (int i = 0; i < 100; i++) {
-                if (strcasecmp(&name[i], ".iso") == 0) {
+                if (&name[i] == ".iso"){
                     size = i;
                     break;
                 }
@@ -189,20 +189,20 @@ int isValidIsoName(char *name, int *pNameLen)
             // free(mbname);
             //free(wname);
 
-            size = 0;
-            for (int i = 0; i < 100; i++) {
-                if (strcasecmp(&name[i], "o") == 0) {
-                    size++;
-                    break;
-                } else {
-                    size++;
-                }
-            }
-            sprintf(&name[12], "%d", size - 16);
-            //for (size_t i = 0; i < 8; i++) {
-            //    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
+            //size = 0;
+            //for (int i = 0; i < 100; i++) {
+            //    if (strcasecmp(&name[i], "o") == 0) {
+            //        size++;
+            //        break;
+            //    } else {
+            //        size++;
+            //    }
             //}
-            *pNameLen = size - 16;
+            //sprintf(&name[12], "%d", size - 16);
+            ////for (size_t i = 0; i < 8; i++) {
+            ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
+            ////}
+            //*pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
         }
     }
