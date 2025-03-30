@@ -123,7 +123,7 @@ void utf8_encode(char *str)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
@@ -456,7 +456,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
-    setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
@@ -496,7 +496,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->name[NameLen] = '\0';
                 if (strlen(dirent->d_name) <= 11) {
                     memcpy(game->name, dirent->d_name, NameLen);
-                    game->name[3] = '\0';
+                    game->name[5] = '\0';
                 }
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
