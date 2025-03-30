@@ -107,17 +107,17 @@ int isValidIsoName(char *name, int *pNameLen)
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
     //asciiToUtf16(&name[12], &name[12]);
 
-    //for (size_t i = 0; i < 100; i++) {
-    //    if (name[i] == 'o') {
-    //        size++;
-    //        break;
-    //    } else {
-    //        size++;
-    //    }
-    //}
     size_t len;
 
     int size = strlen(name);
+    // 修正size大小
+    for (int i = 0; i < 100; i++) {
+        if (&name[i] == "o" || &name[i] == "O") {
+            size = i + 1;
+            break;
+        }
+    }
+
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             //unicodeToUtf8(name[12], &name[12]);
@@ -136,19 +136,11 @@ int isValidIsoName(char *name, int *pNameLen)
             //free(mbname);
             //free(wname);
 
-            //修正size大小
-            for (int i = 0; i < 100; i++) {
-                if (&name[i] == "o"){
-                    size = i + 1;
-                    break;
-                }
-            }
-            //size = 0;
-            //for (size_t i = 0; i < 100; i++) {
-            //    if (&name[i] == "") {
+            //// 修正size大小
+            //for (int i = 0; i < 100; i++) {
+            //    if (&name[i] == "o" || &name[i] == "O") {
+            //        size = i + 1;
             //        break;
-            //    } else {
-            //        size++;
             //    }
             //}
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
@@ -189,20 +181,12 @@ int isValidIsoName(char *name, int *pNameLen)
             // free(mbname);
             //free(wname);
 
-            //size = 0;
-            //for (int i = 0; i < 100; i++) {
-            //    if (strcasecmp(&name[i], "o") == 0) {
-            //        size++;
-            //        break;
-            //    } else {
-            //        size++;
-            //    }
-            //}
+
             //sprintf(&name[12], "%d", size - 16);
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-            //*pNameLen = size - 16;
+            *pNameLen = size - 4;
             return GAME_FORMAT_OLD_ISO;
         }
     }
