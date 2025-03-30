@@ -179,11 +179,10 @@ int isValidIsoName(char *name, int *pNameLen)
             }
 
             *pNameLen = size - 16;
-            sprintf(&name[12], "%d", *pNameLen);
+            //sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
 
         } else if (size == 12) {
-            //strncpy(&name[12], name, 16);
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
@@ -202,8 +201,8 @@ int isValidIsoName(char *name, int *pNameLen)
                 }
             }
 
-            *pNameLen = size - 12;
-            sprintf(&name[12], "%d", size);
+            *pNameLen = size;
+            sprintf(&name[0], "%d", size);
             return GAME_FORMAT_OLD_ISO;
         }
         else {
@@ -474,7 +473,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
 
     if ((dir = opendir(path)) != NULL) {
-        size_t base_path_len = strlen(path);
+        int base_path_len = strlen(path);
         strcpy(fullpath, path);
         fullpath[base_path_len] = '/';
 
@@ -518,7 +517,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // need to mount and read SYSTEM.CNF
                 char startup[GAME_STARTUP_MAX];
                 int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-
+                memcpy(game->name, dirent->d_name, NameLen);
+                sprintf(&game->name[NameLen], "%s%d", fullpath, MountFD); // 使用sprintf连接字符串
                 if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                     fileXioUmount("iso:");
                     free(next);
