@@ -101,30 +101,42 @@ int isValidIsoName(char *name, int *pNameLen)
 {
     setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
     setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    char *mbname;                     // 原始的字节字符串文件名
-    size_t len;
-
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
     //asciiToUtf16(&name[12], &name[12]);
+
+    //for (size_t i = 0; i < 100; i++) {
+    //    if (name[i] == 'o') {
+    //        size++;
+    //        break;
+    //    } else {
+    //        size++;
+    //    }
+    //}
+    size_t len;
+
     int size = strlen(name);
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
 
-
-
             len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
             wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
             mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
 
-            // 执行转换
-            len = wcstombs(&name[12], wname, len) + 1;
+            len = wcstombs(NULL, wname, 0) + 1;
+            char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            wcstombs(&mbname[12], wname, len);
+            mbname[len] = '\0';
+
+            name = (char *)malloc((len) * sizeof(char))
+            memcpy(name, mbname, len);
             free(wname);
-            name[len] = '\0';
+            free(mbname);
+
             size = 0;
             for (size_t i = 0; i < 100; i++) {
                 if (name[i] == 'o') {
@@ -164,10 +176,16 @@ int isValidIsoName(char *name, int *pNameLen)
             wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
             mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
 
-            // 执行转换
-            len = wcstombs(&name[12], wname, len) + 1;
+            len = wcstombs(NULL, wname, 0) + 1;
+            char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            wcstombs(&mbname[12], wname, len);
+            mbname[len] = '\0';
+
+            name = (char *)malloc((len) * sizeof(char))
+                memcpy(name, mbname, len);
             free(wname);
-            name[len] = '\0';
+            free(mbname);
+
             size = 0;
             for (size_t i = 0; i < 100; i++) {
                 if (name[i] == 'o') {
