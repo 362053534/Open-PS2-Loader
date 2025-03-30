@@ -179,7 +179,7 @@ int isValidIsoName(char *name, int *pNameLen)
             }
 
             *pNameLen = size - 16;
-            sprintf(&name[12], "%d", size);
+            sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
 
         } else if (size == 12) {
@@ -246,9 +246,9 @@ int isValidIsoName(char *name, int *pNameLen)
             }
             //utf8_encode(name);
             *pNameLen = size;
-            sprintf(&name[0], "%d", *pNameLen);
+            //sprintf(&name[0], "%d", *pNameLen);
 
-            return GAME_FORMAT_OLD_ISO;
+            return GAME_FORMAT_ISO;
         }
     }
 
@@ -500,18 +500,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // old iso format can't be cached
                 memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
-                if (strlen(dirent->d_name) <= 11) {
-                    memcpy(game->name, dirent->d_name, NameLen);
-                    game->name[6] = '\0';
-                }
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                if (strlen(dirent->d_name) <= 11) {
-                    memcpy(game->extension, ".iso", sizeof(game->extension) - 1);
-                    game->extension[sizeof(game->extension) - 1] = '\0';
-                }
 
                 //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 //game->name[NameLen] = '\0';
@@ -534,11 +526,19 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     continue;
                 }
 
-                strcpy(game->startup, startup);
-                strncpy(game->name, dirent->d_name, NameLen);
+                memcpy(game->name, dirent->d_name, NameLen);
                 game->name[NameLen] = '\0';
-                strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
+                memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
+
+
+                //strcpy(game->startup, startup);
+                //strncpy(game->name, dirent->d_name, NameLen);
+                //game->name[NameLen] = '\0';
+                //strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
+                //game->extension[sizeof(game->extension) - 1] = '\0';
 
                 fileXioUmount("iso:");
             }
