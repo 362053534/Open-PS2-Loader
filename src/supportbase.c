@@ -135,14 +135,6 @@ int isValidIsoName(char *name, int *pNameLen)
             ////free(mbname);
             //free(wname);
 
-            //// 修正size大小
-            //for (int i = 0; i < 256; i++) {
-            //    if (&name[i] == "o" || &name[i] == "O") {
-            //        size = i + 1;
-            //        break;
-            //    }
-            //}
-
 
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
             ////   计算转换后的多字节字符串长度
@@ -153,15 +145,33 @@ int isValidIsoName(char *name, int *pNameLen)
             //sprintf(&name[12], "%-s", &name[12]); // 使用sprintf连接字符串
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
+            //  修正size大小
+            for (int i = 0; i < 256; i++) {
+                if (&name[i] == "") {
+                    size = i;
+                    break;
+                }
+            }
+
             *pNameLen = size - 16;
-            //sprintf(&name[12], "%s", &name[12]);
+            sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
         } else if (size == 12) {
             strncpy(&name[12], name, 16);
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-            *pNameLen = size + 4;
+            //  修正size大小
+            for (int i = 0; i < 256; i++) {
+                if (name[12+i] == '.') {
+                    size = i;
+                    break;
+                }
+            }
+
+
+            *pNameLen = size;
+            sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
         }
         else {
@@ -195,8 +205,17 @@ int isValidIsoName(char *name, int *pNameLen)
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-            *pNameLen = size + 4;
-            return GAME_FORMAT_ISO;
+            //  修正size大小
+            for (int i = 0; i < 256; i++) {
+                if (name[i] == '.') {
+                    size = i;
+                    break;
+                }
+            }
+            *pNameLen = size;
+            sprintf(&name[12], "%d", *pNameLen);
+
+            return GAME_FORMAT_OLD_ISO;
         }
     }
 
