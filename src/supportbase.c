@@ -123,18 +123,18 @@ int isValidIsoName(char *name, int *pNameLen)
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
 
-            len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
-            wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
+            //len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
+            //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
+            //mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
 
-            len = wcstombs(NULL, wname, 0) + 1;
-            char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            wcstombs(&mbname[12], wname, len);
-            mbname[len] = '\0';
-            //name = mbname;
-            memcpy(name, mbname, len);
-            free(mbname);
-            free(wname);
+            //len = wcstombs(NULL, wname, 0) + 1;
+            //char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            //wcstombs(&mbname[12], wname, len);
+            //mbname[len] = '\0';
+            ////name = mbname;
+            //memcpy(name, mbname, len);
+            //free(mbname);
+            //free(wname);
 
 
             size = 0;
