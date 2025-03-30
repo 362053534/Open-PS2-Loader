@@ -213,7 +213,7 @@ int isValidIsoName(char *name, int *pNameLen)
                 }
             }
             *pNameLen = size;
-            sprintf(&name[12], "%d%d", &name[0], &name[1]);
+            sprintf(&name[0], "%d%d", name[0], name[1]);
 
             return GAME_FORMAT_OLD_ISO;
         }
@@ -467,6 +467,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // old iso format can't be cached
                 memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
+                if (NameLen < 12) {
+                    memcpy(game->name, dirent->d_name, NameLen);
+                    game->name[NameLen + 2] = '\0';
+                }
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
