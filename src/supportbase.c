@@ -240,7 +240,7 @@ int isValidIsoName(char *name, int *pNameLen)
             }
             //utf8_encode(name);
             *pNameLen = size * 2;
-            sprintf(&name[0], "%s", &name[0]);
+            //sprintf(&name[0], "%s", &name[0]);
 
             return GAME_FORMAT_OLD_ISO;
         }
@@ -496,7 +496,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->name[NameLen] = '\0';
                 if (strlen(dirent->d_name) <= 11) {
                     memcpy(game->name, dirent->d_name, NameLen);
-                    //game->name[NameLen + 2] = '\0';
+                    game->name[3] = '\0';
                 }
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
