@@ -127,13 +127,13 @@ int isValidIsoName(char *name, int *pNameLen)
             wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
             mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
 
-            len = wcstombs(NULL, wname, 0) + 1;
-            char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            wcstombs(&mbname[12], wname, len);
+            //len = wcstombs(NULL, wname, 0) + 1;
+            //char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            //wcstombs(&mbname[12], wname, len);
             //mbname[len] = '\0';
             //name = mbname;
-            mempy(name, mbname, len);
-            free(mbname);
+            memcpy(&name[12], wname, len);
+            //free(mbname);
             free(wname);
 
             // 修正size大小
