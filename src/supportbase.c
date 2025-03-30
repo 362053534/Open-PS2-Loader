@@ -115,7 +115,20 @@ int isValidIsoName(char *name, int *pNameLen)
         if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
-
+            len = mbstowcs(wname, &name[12], PATH_MAX); // 将多字节字符串转换为宽字符字符串
+            // 计算转换后的多字节字符串长度
+            len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
+            // 执行转换
+            wcstombs(&name[12], wname, len);
+            size = 0;
+            for (size_t i = 0; i < 100; i++) {
+                if (name[i] == 'o') {
+                    size++;
+                    break;
+                } else {
+                    size++;
+                }
+            }
             //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
             ////   计算转换后的多字节字符串长度
             //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
