@@ -163,7 +163,7 @@ int isValidIsoName(char *name, int *pNameLen)
             ////}
             //  修正size大小
             for (int i = 0; i < 256; i++) {
-                if (name[12+i] == '.') {
+                if (name[12 + i] == '\0') {
                     size = i;
                     break;
                 }
@@ -213,7 +213,7 @@ int isValidIsoName(char *name, int *pNameLen)
                 }
             }
             *pNameLen = size;
-            sprintf(&name[12], "%d", *pNameLen);
+            sprintf(&name[12], "%d%d", &name[0], &name[1]);
 
             return GAME_FORMAT_OLD_ISO;
         }
