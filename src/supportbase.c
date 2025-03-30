@@ -123,8 +123,8 @@ void utf8_encode(char *str)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    setlocale(LC_ALL, "zh-Hans");   // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
@@ -239,8 +239,8 @@ int isValidIsoName(char *name, int *pNameLen)
                 }
             }
             //utf8_encode(name);
-            *pNameLen = size;
-            sprintf(&name[0], "%d%d", name[0], name[1]);
+            *pNameLen = size * 2;
+            sprintf(&name[0], "%s", &name[0]);
 
             return GAME_FORMAT_OLD_ISO;
         }
@@ -456,8 +456,8 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
-    setlocale(LC_ALL, "zh-Hans"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
@@ -494,15 +494,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // old iso format can't be cached
                 memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
-                if (NameLen <= 2) {
+                if (strlen(dirent->d_name) <= 11) {
                     memcpy(game->name, dirent->d_name, NameLen);
-                    game->name[NameLen + 2] = '\0';
+                    //game->name[NameLen + 2] = '\0';
                 }
                 memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                if (NameLen <= 2) {
+                if (strlen(dirent->d_name) <= 11) {
                     memcpy(game->extension, ".iso", sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                 }
