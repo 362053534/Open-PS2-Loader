@@ -183,8 +183,8 @@ int isValidIsoName(char *name, int *pNameLen)
             //free(wname);
 
 
-            sprintf(&name[12], "%s", name);
-            //strcpy(&name[12], name);
+            //sprintf(&name[12], "%s", name);
+            strcpy(&name[12], name);
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
