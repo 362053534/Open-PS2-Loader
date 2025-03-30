@@ -138,7 +138,7 @@ int isValidIsoName(char *name, int *pNameLen)
 
             size = 0;
             for (size_t i = 0; i < 100; i++) {
-                if (name[i] == "o" && name[i] == "O") {
+                if (strcasecmp(&name[i], "") == 0) {
                     break;
                 } else {
                     size++;
