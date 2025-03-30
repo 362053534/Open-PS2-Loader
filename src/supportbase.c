@@ -178,7 +178,7 @@ int isValidIsoName(char *name, int *pNameLen)
             }
             utf8_encode(name);
             *pNameLen = size - 16;
-            sprintf(&name[12], "%d", *pNameLen);
+            //sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
         } else if (size == 12) {
             strncpy(&name[12], name, 16);
@@ -195,7 +195,7 @@ int isValidIsoName(char *name, int *pNameLen)
 
             utf8_encode(name);
             *pNameLen = size;
-            sprintf(&name[12], "%d", *pNameLen);
+            //sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
         }
         else {
