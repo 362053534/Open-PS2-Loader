@@ -155,7 +155,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             *pNameLen = size - 16;
-            sprintf(&name[12], "%d", 1);
+            sprintf(&name[12], "%d", *pNameLen);
             return GAME_FORMAT_OLD_ISO;
         } else {
             //strcpy(&name[0], "没");
