@@ -138,8 +138,8 @@ int isValidIsoName(char *name, int *pNameLen)
 
             //修正size大小
             for (int i = 0; i < 100; i++) {
-                if (&name[i] == ".iso"){
-                    size = i;
+                if (&name[i] == "o"){
+                    size = i + 1;
                     break;
                 }
             }
