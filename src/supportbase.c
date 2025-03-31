@@ -157,6 +157,9 @@ int isValidIsoName(char *name, int *pNameLen)
 
             } else if ((name[size - 11] == '_') && (name[size - 7] == '.')) {
                 isCnName = 1;
+            } else {
+                *pNameLen = size - 4;
+                return GAME_FORMAT_ISO;
             }
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
@@ -557,9 +560,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     char oldpath[256], newpath[256];
                     strcpy(oldpath, fullpath);
                     snprintf(newpath, strlen(fullpath), "%s%s", fullpath - strlen(dirent->d_name), "1.iso");
-                    rename(fullpath, newpath);
+                    //rename(fullpath, newpath);
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
+                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
                     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         fileXioUmount("iso:");
                         //rename(newpath, oldpath);
