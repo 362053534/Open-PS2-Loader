@@ -554,10 +554,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 char startup[GAME_STARTUP_MAX];
                 if (true) {
                     char oldpath[256], newpath[256],curpath[256];
-                    memcpy(curpath, fullpath, strlen(fullpath));
-                    memcpy(oldpath, fullpath, strlen(fullpath));
+                    strcpy(curpath, fullpath);
+                    strcpy(oldpath, fullpath);
                     oldpath[base_path_len + 1] = '\0';
-                    snprintf(newpath, 256, "%s%s", oldpath, "1.iso");
+                    sprintf(newpath, "%s%s", oldpath, "1.iso");
                     newpath[base_path_len + 6] = '\0';
                     rename(fullpath, newpath);
                     
