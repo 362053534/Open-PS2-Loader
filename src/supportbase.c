@@ -565,16 +565,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
                     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                        fullpath[base_path_len] = '\\';
+                        //fullpath[base_path_len] = '\\';
                         if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                             fileXioUmount("iso:");
                             // rename(newpath, oldpath);
                             free(next);
                             *glist = next->next;
-                            fullpath[base_path_len] = '/';
+                            //fullpath[base_path_len] = '/';
                             //continue;
                         }
-                        fullpath[base_path_len] = '/';
+                        //fullpath[base_path_len] = '/';
                     }
                     memcpy(game->startup, newpath, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
