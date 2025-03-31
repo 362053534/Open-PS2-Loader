@@ -60,7 +60,8 @@ int sbCreateSemaphore(void)
     return CreateSema(&sema);
 }
 
-// These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+static int isCnName = 0;
+    // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
 static int asciiToUtf16(char *out, const char *in)
 {
     int len;
@@ -142,7 +143,21 @@ int isValidIsoName(char *name, int *pNameLen)
     }
 
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
-        if ((size >= 17) && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
+        if (size >= 17) {
+            if ((name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
+                isCnName = 0;
+                //  修正size大小
+                for (int i = 0; i < 256; i++) {
+                    if (&name[i] == "") {
+                        size = i;
+                        break;
+                    }
+                }
+
+
+            } else if ((name[size - 11] == '_') && (name[size - 7] == '.')) {
+                isCnName = 1;
+            }
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
 
@@ -170,16 +185,9 @@ int isValidIsoName(char *name, int *pNameLen)
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
             //utf8_encode(name);
-            //  修正size大小
-            for (int i = 0; i < 256; i++) {
-                if (&name[i] == "") {
-                    size = i;
-                    break;
-                }
-            }
 
-            *pNameLen = size - 16;
             //sprintf(&name[12], "%d", *pNameLen);
+            *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
 
         } else if (size == 12) {
@@ -187,30 +195,32 @@ int isValidIsoName(char *name, int *pNameLen)
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
             //utf8_encode(name);
-            
-             len = mbstowcs(NULL, name, 0) + 1; // 将多字节字符串转换为宽字符字符串
-             wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-             mbstowcs(wname, name, len); // 将多字节字符串转换为宽字符字符串
 
-            //len = wcstombs(NULL, wname, 0) + 1;
-            //char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            //wcstombs(&mbname[12], wname, len);
-            //mbname[len] = '\0';
-            //name = mbname;
-             memcpy(name, wname, len);
-            //free(mbname);
-             free(wname);
+            //len = mbstowcs(NULL, name, 0) + 1; // 将多字节字符串转换为宽字符字符串
+            //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
+            //mbstowcs(wname, name, len); // 将多字节字符串转换为宽字符字符串
 
+            ////len = wcstombs(NULL, wname, 0) + 1;
+            ////char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+            ////wcstombs(&mbname[12], wname, len);
+            ////mbname[len] = '\0';
+            ////name = mbname;
+            // memcpy(name, wname, len);
+            ////free(mbname);
+            // free(wname);
+            isCnName = 1;
             //  修正size大小(中文)
-            for (size_t i = 0; i < 256; i++) {
-                if (name[i] == 'o' || name[i+1] == 'O') {
-                    size = i + 1;
+            size = 0;
+            for (size_t i = 0; i < 255; i++) {
+                if (name[i] != '\0') {
+                    size++;
                     break;
                 }
             }
-
+            
             *pNameLen = size;
             sprintf(&name[0], "%d", size);
+            //sprintf(&name[0], "%s", "前缀改成后缀方可识别");
             return GAME_FORMAT_OLD_ISO;
         }
         else {
@@ -246,14 +256,14 @@ int isValidIsoName(char *name, int *pNameLen)
             ////}
             //  修正size大小
             for (int i = 0; i < 256; i++) {
-                if (name[i] == '.') {
+                if (&name[i] == "") {
                     size = i;
                     break;
                 }
             }
             //utf8_encode(name);
-            *pNameLen = size;
-            sprintf(&name[0], "%d", name[2]);
+            *pNameLen = size - 4;
+            //sprintf(&name[0], "%d", name[2]);
 
             return GAME_FORMAT_ISO;
         }
@@ -503,15 +513,23 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             base_game_info_t *game = &next->gameinfo;
             memset(game, 0, sizeof(base_game_info_t));
 
+            // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
-                // old iso format can't be cached
-                memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
-                game->name[NameLen] = '\0';
-                memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
-                game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
-                game->extension[sizeof(game->extension) - 1] = '\0';
-
+                if (isCnName) {
+                    memcpy(game->name, dirent->d_name, NameLen);
+                    game->name[NameLen] = '\0';
+                    memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
+                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                    memcpy(game->extension, &dirent->d_name[NameLen + 12], sizeof(game->extension) - 1);
+                    game->extension[sizeof(game->extension) - 1] = '\0';
+                } else {
+                    memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                    game->name[NameLen] = '\0';
+                    memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                    memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                    game->extension[sizeof(game->extension) - 1] = '\0';
+                }
                 //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 //game->name[NameLen] = '\0';
                 //strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
@@ -522,34 +540,51 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
             } else {
-                // need to mount and read SYSTEM.CNF
-                char startup[GAME_STARTUP_MAX];
-                int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                //memcpy(game->name, dirent->d_name, NameLen);
-                //sprintf(&game->name[NameLen], "%s%d", fullpath, MountFD); // 使用sprintf连接字符串
-                GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);         
-                //if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                //    fileXioUmount("iso:");
-                //    free(next);
-                //    *glist = next->next;
-                //    continue;
-                //}
-
                 memcpy(game->name, dirent->d_name, NameLen);
                 game->name[NameLen] = '\0';
-                memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
-                game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
 
-
+                char startup[GAME_STARTUP_MAX];
+                if (isCnName) {
+                    char oldpath[256], newpath[256];
+                    strcpy(oldpath, fullpath);
+                    snprintf(newpath, 256, "%s%s", fullpath - strlen(dirent->d_name), "1.iso");
+                    rename(fullpath, newpath);
+                    // need to mount and read SYSTEM.CNF
+                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
+                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                        fileXioUmount("iso:");
+                        rename(newpath, fullpath);
+                        free(next);
+                        *glist = next->next;
+                        continue;
+                    }
+                    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                    fileXioUmount("iso:");
+                    rename(newpath, fullpath);
+                } else {
+                    // need to mount and read SYSTEM.CNF
+                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                    // memcpy(game->name, dirent->d_name, NameLen);
+                    // sprintf(&game->name[NameLen], "%s%d", fullpath, MountFD); // 使用sprintf连接字符串
+                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                        fileXioUmount("iso:");
+                        free(next);
+                        *glist = next->next;
+                        continue;
+                    }
+                    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                    fileXioUmount("iso:");
+                }
                 //strcpy(game->startup, startup);
                 //strncpy(game->name, dirent->d_name, NameLen);
                 //game->name[NameLen] = '\0';
                 //strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 //game->extension[sizeof(game->extension) - 1] = '\0';
 
-                fileXioUmount("iso:");
             }
 
             game->parts = 1;
@@ -621,7 +656,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    g->name[UL_GAME_NAME_MAX] = '\0';
+                    sprintf(g->name, "%d", usba_crc32(g->name));
+                    //g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
                     g->extension[0] = '\0';
