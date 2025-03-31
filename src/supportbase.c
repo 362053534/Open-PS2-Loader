@@ -553,16 +553,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->extension[sizeof(game->extension) - 1] = '\0';
 
                 char startup[GAME_STARTUP_MAX];
-                if (isCnName) {
+                if (isCnName == 1) {
                     char oldpath[256], newpath[256];
                     strcpy(oldpath, fullpath);
-                    snprintf(newpath, 256, "%s%s", fullpath - strlen(dirent->d_name), "1.iso");
+                    snprintf(newpath, strlen(fullpath), "%s%s", fullpath - strlen(dirent->d_name), "1.iso");
                     rename(fullpath, newpath);
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
                     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         fileXioUmount("iso:");
-                        rename(newpath, fullpath);
+                        //rename(newpath, oldpath);
                         free(next);
                         *glist = next->next;
                         continue;
@@ -570,7 +570,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     fileXioUmount("iso:");
-                    rename(newpath, fullpath);
+                    //rename(newpath, oldpath);
                 } else {
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
@@ -661,7 +661,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    sprintf(g->name, "%d", USBA_crc32(g->name));
+                    //sprintf(g->name, "%d", USBA_crc32(g->name));
                     g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
@@ -946,7 +946,8 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
 {
     switch (game->format) {
         case GAME_FORMAT_USBLD:
-            snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);
+            //snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);
+            snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, 0, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
             snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
