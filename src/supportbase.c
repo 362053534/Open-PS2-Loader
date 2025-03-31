@@ -563,24 +563,25 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     snprintf(newpath, 256, "%s%s", oldpath, "1.iso");
                     rename(fullpath, newpath);
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
-                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                        newpath[base_path_len] = '\\';
-                        if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                            newpath[base_path_len] = '/';
+                    //int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
+                    if (fileXioMount("iso:", newpath, FIO_MT_RDONLY) < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                        //newpath[base_path_len] = '\\';
+                        if (fileXioMount("iso:", newpath, FIO_MT_RDONLY) < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+       
                             fileXioUmount("iso:");
                             rename(newpath, fullpath);
+                            //newpath[base_path_len] = '/';
                             free(next);
                             *glist = next->next;
                             continue;
                         }
-                        newpath[base_path_len] = '/';
                     }
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     //memcpy(game->name, newpath, 20);
                     fileXioUmount("iso:");
                     rename(newpath, fullpath);
+                    //newpath[base_path_len] = '/';
                 }
                 //else {
                 //    // need to mount and read SYSTEM.CNF
