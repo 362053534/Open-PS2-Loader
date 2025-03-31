@@ -557,7 +557,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(curpath, fullpath, strlen(fullpath) + 1);
                     memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                     oldpath[base_path_len + 1] = '\0';
-                    sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                     //newpath[base_path_len + 8] = '\0';
                     rename(fullpath, newpath);
                     
@@ -567,8 +567,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         //fileXioUmount("iso:");
                         fileXioUmount("iso:");
                         sprintf(curpath, "%s%s", oldpath, dirent->d_name);
-                        oldpath[base_path_len] = '\\';
-                        sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                        oldpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
+                        sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                         rename(newpath, curpath);
                         free(next);
                         *glist = next->next;                                              
@@ -577,8 +577,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     //fileXioUmount("iso:")
                     fileXioUmount("iso:");
                     sprintf(curpath, "%s%s", oldpath, dirent->d_name);
-                    oldpath[base_path_len] = '\\';
-                    sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                    oldpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
+                    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                     rename(newpath, curpath);
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
