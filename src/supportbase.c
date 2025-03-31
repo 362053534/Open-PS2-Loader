@@ -504,7 +504,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
         memcpy(fullpath, path, base_path_len + 1);
-        fullpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
+        fullpath[base_path_len] = '/';
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
