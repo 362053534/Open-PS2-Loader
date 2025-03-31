@@ -569,7 +569,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         sprintf(curpath, "%s%s", oldpath, dirent->d_name);
                         oldpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
                         sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
-                        rename(newpath, curpath);
+                        rename(newpath, fullpath);
                         free(next);
                         *glist = next->next;                                              
                         continue;
@@ -579,7 +579,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     sprintf(curpath, "%s%s", oldpath, dirent->d_name);
                     oldpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
-                    rename(newpath, curpath);
+                    rename(newpath, fullpath);
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     memcpy(game->name, dirent->d_name, NameLen);
