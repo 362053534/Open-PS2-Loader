@@ -558,8 +558,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 char startup[GAME_STARTUP_MAX];
                 if (true) {
                     char oldpath[256], newpath[256];
-                    strcpy(oldpath, fullpath - strlen(dirent->d_name));
-                    oldpath[strlen(fullpath - strlen(dirent->d_name))] = '\0';
+                    strcpy(oldpath, fullpath);
+                    oldpath[base_path_len + 1] = '\0';
                     snprintf(newpath, 256, "%s%s", oldpath, "1.iso");
                     //rename(fullpath, newpath);
                     // need to mount and read SYSTEM.CNF
