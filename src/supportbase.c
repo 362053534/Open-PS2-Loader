@@ -565,7 +565,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         fileXioUmount("iso:");
                         //sprintf(curpath, "%s%s", oldpath, dirent->d_name);
                         newpath[base_path_len] = '\\';
-                        //sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                        sprintf(newpath, "%s%s", newpath, "1.iso");
                         rename(newpath, fullpath);
                         free(next);
                         *glist = next->next;                                              
@@ -573,8 +573,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     fileXioUmount("iso:");
                     // sprintf(curpath, "%s%s", oldpath, dirent->d_name);
-                    newpath[base_path_len] =  '\\';
-                    // sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                    newpath[base_path_len] = '\\';
+                    sprintf(newpath, "%s%s", newpath, "1.iso");
                     rename(newpath, fullpath);
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
