@@ -561,26 +561,26 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     strcpy(oldpath, fullpath);
                     oldpath[base_path_len + 1] = '\0';
                     snprintf(newpath, 256, "%s%s", oldpath, "1.iso");
-                    //rename(fullpath, newpath);
+                    rename(fullpath, newpath);
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
                     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                        //fullpath[base_path_len] = '\\';
+                        newpath[base_path_len] = '\\';
                         if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                            // fullpath[base_path_len] = '/';
+                            newpath[base_path_len] = '/';
                             fileXioUmount("iso:");
-                            // rename(newpath, oldpath);
+                            rename(newpath, fullpath);
                             free(next);
                             *glist = next->next;
                             continue;
                         }
-                        //fullpath[base_path_len] = '/';
+                        newpath[base_path_len] = '/';
                     }
-                    memcpy(game->startup, newpath, GAME_STARTUP_MAX - 1);
+                    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    memcpy(game->name, newpath, 20);
+                    //memcpy(game->name, newpath, 20);
                     fileXioUmount("iso:");
-                    //rename(newpath, oldpath);
+                    rename(newpath, fullpath);
                 }
                 //else {
                 //    // need to mount and read SYSTEM.CNF
