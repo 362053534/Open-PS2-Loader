@@ -1927,7 +1927,6 @@ static void autoLaunchHDDGame(char *argv[])
 
 static void autoLaunchBDMGame(char *argv[])
 {
-    return;
     char path[256];
     config_set_t *configSet;
 
