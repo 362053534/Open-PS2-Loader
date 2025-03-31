@@ -555,7 +555,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     char oldpath[256], newpath[256];
                     memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                     oldpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
-                    sprintf(newpath, "%s%s%s", oldpath, "-1", &dirent->d_name[NameLen]);
+                    sprintf(newpath, "%s%s%s", oldpath, "1", &dirent->d_name[NameLen]);
                     rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
