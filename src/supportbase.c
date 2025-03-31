@@ -553,8 +553,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             } else {
                 char startup[GAME_STARTUP_MAX];
                 if (true) {
-                    char oldpath[256], newpath[256];
-                    strcpy(oldpath, fullpath);
+                    char oldpath[256], newpath[256],curpath[256];
+                    memcpy(curpath, fullpath, strleng(fullpath) + 1);
+                    memcpy(oldpath, fullpath, strleng(fullpath) + 1);
                     oldpath[base_path_len + 1] = '\0';
                     snprintf(newpath, 256, "%s%s", oldpath, "1.iso");
                     newpath[base_path_len + 6] = '\0';
@@ -563,20 +564,19 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                        _wrename(newpath, fullpath);
-                        _wrename(fullpath, fullpath);                      
-                        //rename(newpath, fullpath);
-                        //rename(fullpath, fullpath);
+                        fileXioUmount("iso:");
+                        rename(newpath, curpath);
+                        fileXioMount("iso:", curpath, FIO_MT_RDONLY);
                         free(next);
-                        *glist = next->next;
+                        *glist = next->next;                        
                         fileXioUmount("iso:");
                         free(newpath);
                         free(oldpath);
                         continue;
                     }
-                    _wrename(newpath, fullpath);
-                    _wrename(fullpath, fullpath);
-
+                    fileXioUmount("iso:")
+                    rename(newpath, curpath);
+                    fileXioMount("iso:", curpath, FIO_MT_RDONLY);
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     memcpy(game->name, dirent->d_name, NameLen);
