@@ -209,11 +209,10 @@ int isValidIsoName(char *name, int *pNameLen)
             ////free(mbname);
             // free(wname);
             isCnName = 1;
-            //  修正size大小(中文)
-            size = 0;
-            for (size_t i = 0; i < 255; i++) {
-                if (name[i] != '\0') {
-                    size++;
+            // 修正size大小
+            for (int i = 0; i < 100; i++) {
+                if (&name[i] == "o" || &name[i] == "O") {
+                    size = i + 1;
                     break;
                 }
             }
