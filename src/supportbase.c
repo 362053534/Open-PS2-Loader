@@ -500,6 +500,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
 
+
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
         memcpy(fullpath, path, base_path_len + 1);
@@ -552,10 +553,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             } else {
                 char startup[GAME_STARTUP_MAX];
                 if (true) {
-                    char oldpath[256], newpath[256];
+                    char oldpath[256], newpath[256],curpath[256];
+                    memcpy(curpath, fullpath, strlen(fullpath) + 1);
                     memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                     oldpath[base_path_len + 1] = '\0';
-                    sprintf(newpath, "%s%s%s", oldpath, "1", &dirent->d_name[NameLen]);
+                    sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                    //newpath[base_path_len + 8] = '\0';
                     rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
@@ -563,19 +566,20 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         //fileXioUmount("iso:");
                         fileXioUmount("iso:");
-                        //sprintf(curpath, "%s%s", oldpath, dirent->d_name);
-                        newpath[base_path_len] = '\\';
-                        sprintf(newpath, "%s%s", newpath, "1.iso");
-                        rename(newpath, fullpath);
+                        sprintf(curpath, "%s%s", oldpath, dirent->d_name);
+                        oldpath[base_path_len] = '\\';
+                        sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                        rename(newpath, curpath);
                         free(next);
                         *glist = next->next;                                              
                         continue;
                     }
+                    //fileXioUmount("iso:")
                     fileXioUmount("iso:");
-                    // sprintf(curpath, "%s%s", oldpath, dirent->d_name);
-                    newpath[base_path_len] = '\\';
-                    sprintf(newpath, "%s%s", newpath, "1.iso");
-                    rename(newpath, fullpath);
+                    sprintf(curpath, "%s%s", oldpath, dirent->d_name);
+                    oldpath[base_path_len] = '\\';
+                    sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                    rename(newpath, curpath);
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     memcpy(game->name, dirent->d_name, NameLen);
