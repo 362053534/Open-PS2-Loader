@@ -60,7 +60,7 @@ int sbCreateSemaphore(void)
     return CreateSema(&sema);
 }
 
-static int isCnName = 0;
+static int isCnName;
     // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
 static int asciiToUtf16(char *out, const char *in)
 {
@@ -567,8 +567,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 } else {
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    // memcpy(game->name, dirent->d_name, NameLen);
-                    // sprintf(&game->name[NameLen], "%s%d", fullpath, MountFD); // 使用sprintf连接字符串
                     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         fileXioUmount("iso:");
                         free(next);
