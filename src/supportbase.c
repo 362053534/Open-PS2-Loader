@@ -571,11 +571,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             free(next);
                             *glist = next->next;
                             fullpath[base_path_len] = '/';
-                            continue;
+                            //continue;
                         }
                         fullpath[base_path_len] = '/';
                     }
-                    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                    memcpy(game->startup, newpath, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     fileXioUmount("iso:");
                     //rename(newpath, oldpath);
