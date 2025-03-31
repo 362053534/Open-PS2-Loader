@@ -570,8 +570,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         free(next);
                         *glist = next->next;                        
                         fileXioUmount("iso:");
-                        free(newpath);
-                        free(oldpath);
                         continue;
                     }
                     fileXioUmount("iso:")
@@ -585,8 +583,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     fileXioUmount("iso:");
-                    free(newpath);
-                    free(oldpath);
         
                     //newpath[base_path_len] = '/';
                 }
