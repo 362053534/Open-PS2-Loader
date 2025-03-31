@@ -210,12 +210,20 @@ int isValidIsoName(char *name, int *pNameLen)
             // free(wname);
             isCnName = 1;
             // 修正size大小
-            for (int i = 0; i < 100; i++) {
-                if (&name[i] == "o" || &name[i] == "O") {
-                    size = i + 1;
+            size = 0;
+            for (int i = 0; i < 255; i++) {
+                if (name[i] != "" ) {
+                    size++;
                     break;
                 }
             }
+            //// 修正size大小
+            //for (int i = 0; i < 100; i++) {
+            //    if (&name[i] == "o" || &name[i] == "O") {
+            //        size = i + 1;
+            //        break;
+            //    }
+            //}
             
             *pNameLen = size;
             sprintf(&name[0], "%d", size);
@@ -653,7 +661,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    sprintf(g->name, "%d", usba_crc32(g->name));
+                    sprintf(g->name, "%d", USBA_crc32(g->name));
                     g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
