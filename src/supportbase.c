@@ -567,7 +567,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     if (fileXioMount("iso:", newpath, FIO_MT_RDONLY) < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         //newpath[base_path_len] = '\\';
                         while (true) {
-                            if (rename(newpath, fullpath)) {
+                            rename(newpath, fullpath);
+                            if (dirent->d_name == &fullpath[base_path_len + 1]) {
                                 fileXioUmount("iso:");
                                 free(next);
                                 *glist = next->next;
@@ -582,11 +583,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     //memcpy(game->name, newpath, 20);
                     while (true) {
-                        if (rename(newpath, fullpath)) {
+                        rename(newpath, fullpath);
+                        if (dirent->d_name == &fullpath[base_path_len + 1]) {
                             fileXioUmount("iso:");
                             break;
                         }
                     }
+
                     //newpath[base_path_len] = '/';
                 }
                 //else {
