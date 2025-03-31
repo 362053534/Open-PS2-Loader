@@ -564,7 +564,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         //fileXioUmount("iso:");
                         fileXioUmount("iso:");
                         //sprintf(curpath, "%s%s", oldpath, dirent->d_name);
-                        newpath[base_path_len] = strcasecmp(fullpath, "smb") == 0 ? '\\' : '/';
+                        newpath[base_path_len] = '\\';
                         //sprintf(newpath, "%s%s", oldpath, "ggg.iso");
                         rename(newpath, fullpath);
                         free(next);
