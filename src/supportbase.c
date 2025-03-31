@@ -557,24 +557,25 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(curpath, fullpath, strlen(fullpath) + 1);
                     memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                     oldpath[base_path_len + 1] = '\0';
-                    sprintf(newpath, "%s%s", oldpath, "1.iso");
-                    newpath[base_path_len + 6] = '\0';
+                    sprintf(newpath, "%s%s", oldpath, "ggg.iso");
+                    //newpath[base_path_len + 8] = '\0';
                     rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         //fileXioUmount("iso:");
-                        rename(newpath, curpath);
-                        fileXioMount("iso:", curpath, FIO_MT_RDONLY);
-                        free(next);
-                        *glist = next->next;                        
                         fileXioUmount("iso:");
+                        sprintf(curpath, "%s%s", oldpath, dirent->d_name);
+                        rename(newpath, curpath);
+                        free(next);
+                        *glist = next->next;                                              
                         continue;
                     }
                     //fileXioUmount("iso:")
+                    fileXioUmount("iso:");
+                    sprintf(curpath, "%s%s", oldpath, dirent->d_name);
                     rename(newpath, curpath);
-                    fileXioMount("iso:", curpath, FIO_MT_RDONLY);
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     memcpy(game->name, dirent->d_name, NameLen);
@@ -582,7 +583,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
-                    fileXioUmount("iso:");
         
                     //newpath[base_path_len] = '/';
                 }
