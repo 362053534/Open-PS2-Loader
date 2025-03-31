@@ -553,7 +553,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->extension[sizeof(game->extension) - 1] = '\0';
 
                 char startup[GAME_STARTUP_MAX];
-                if (isCnName == 1) {
+                if (true) {
                     char oldpath[256], newpath[256];
                     strcpy(oldpath, fullpath);
                     snprintf(newpath, strlen(fullpath), "%s%s", fullpath - strlen(dirent->d_name), "1.iso");
@@ -571,19 +571,19 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     fileXioUmount("iso:");
                     //rename(newpath, oldpath);
-                } else {
-                    // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                        fileXioUmount("iso:");
-                        free(next);
-                        *glist = next->next;
-                        continue;
-                    }
-                    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
-                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    fileXioUmount("iso:");
-                }
+                //} else {
+                //    // need to mount and read SYSTEM.CNF
+                //    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                //    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                //        fileXioUmount("iso:");
+                //        free(next);
+                //        *glist = next->next;
+                //        continue;
+                //    }
+                //    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                //    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                //    fileXioUmount("iso:");
+                //}
                 //strcpy(game->startup, startup);
                 //strncpy(game->name, dirent->d_name, NameLen);
                 //game->name[NameLen] = '\0';
