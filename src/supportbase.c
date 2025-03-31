@@ -583,7 +583,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
-                    //updateISOGameList(fullpath, NULL, *glist, count);
+                    updateISOGameList(fullpath, NULL, *glist, count - 1);
                     //newpath[base_path_len] = '/';
                 }
                 //else {
