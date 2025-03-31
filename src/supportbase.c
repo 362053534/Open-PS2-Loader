@@ -558,6 +558,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     oldpath[base_path_len + 1] = '\0';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                     //snprintf(newpath, 256, "%s", prefix, 0, game->startup, part);
+                    if (cacheLoaded) {
+                        continue;
+                    }
                     rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
