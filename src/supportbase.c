@@ -598,10 +598,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    memcpy(game->name, dirent->d_name, 24);
+                    memcpy(game->name, dirent->d_name, NameLen);
                     //memcpy(game->name, fullpath, 24);
-                    //sprintf(game->name, "%d", NameLen);
-                    game->name[24] = '\0';
+                    sprintf(game->name, "%d", NameLen);
+                    game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
