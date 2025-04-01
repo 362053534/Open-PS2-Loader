@@ -584,10 +584,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                         //_wrename(w_newpath,w_fullpath);
                         //rename(newpath, fullpath);
-                        free(next);
+          /*              free(next);
                         *glist = next->next;
                         fileXioUmount("iso:");
-                        continue;
+                        continue;*/
                     }
 
                     //// 名字改回来   
