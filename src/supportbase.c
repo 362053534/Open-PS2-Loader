@@ -125,8 +125,8 @@ void utf8_encode(char *str)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    //setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
@@ -135,13 +135,13 @@ int isValidIsoName(char *name, int *pNameLen)
 
     size_t len;
     int size = strlen(name);
-    // 修正size大小
-    for (int i = 0; i < 100; i++) {
-        if (&name[i] == "o" || &name[i] == "O") {
-            size = i + 1;
-            break;
-        }
-    }
+    //// 修正size大小
+    //for (int i = 0; i < 100; i++) {
+    //    if (&name[i] == "o" || &name[i] == "O") {
+    //        size = i + 1;
+    //        break;
+    //    }
+    //}
 
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if (size >= 17) {
@@ -273,9 +273,9 @@ int isValidIsoName(char *name, int *pNameLen)
             }
             //utf8_encode(name);
             *pNameLen = size - 4;
-            //sprintf(&name[0], "%d", name[2]);
+            sprintf(&name[0], "%d", *pNameLen);
 
-            return GAME_FORMAT_ISO;
+            return GAME_FORMAT_OLD_ISO;
         }
     }
 
@@ -489,8 +489,8 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
-    //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
@@ -499,7 +499,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     DIR *dir;
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
-    //cacheLoaded = 0;
+    cacheLoaded = 0;
 
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
@@ -526,7 +526,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
-                if (isCnName) {
+                if (false) {
                     memcpy(game->name, dirent->d_name, NameLen);
                     game->name[NameLen] = '\0';
                     memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
