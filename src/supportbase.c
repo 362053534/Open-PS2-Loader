@@ -705,20 +705,20 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                     g->sizeMB = 0;
 
 
-                    DIR *d;
-                    struct dirent *dir;
-                    snprintf(path, sizeof(path), "%s", prefix);
-                    d = opendir(path); // 打开当前目录
-                    if (d) {
-                        while ((dir = readdir(d)) != NULL) {
-                            if (strncmp(&dir->d_name[12]), g->startup,11) {
-                                char crcname[8] = &dir->d_name[3];
-                                strcpy(g->crc32name, crcname);
-                                break;
-                            }
-                        }
-                        closedir(d); // 关闭目录流
-                    }
+                    //DIR *d;
+                    //struct dirent *dir;
+                    //snprintf(path, sizeof(path), "%s", prefix);
+                    //d = opendir(path); // 打开当前目录
+                    //if (d) {
+                    //    while ((dir = readdir(d)) != NULL) {
+                    //        if (strncmp(&dir->d_name[12]), g->startup,11) {
+                    //            char crcname[8] = &dir->d_name[3];
+                    //            strcpy(g->crc32name, crcname);
+                    //            break;
+                    //        }
+                    //    }
+                    //    closedir(d); // 关闭目录流
+                    //}
 
                     /* TODO: size calculation is very slow
                     implmented some caching, or do not touch at all */
