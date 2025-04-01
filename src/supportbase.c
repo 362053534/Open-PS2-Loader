@@ -567,7 +567,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     //rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
+                    int MountFD = fileXioMount("iso:", w_fullpath, FIO_MT_RDONLY);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         fileXioUmount("iso:");
                         oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
