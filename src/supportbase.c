@@ -127,7 +127,8 @@ int isValidIsoName(char *name, int *pNameLen)
 {
     //setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, ".UTF8")
+    setlocale(LC_ALL, ".UTF8");
+    //setlocale(LC_ALL, "en_US.utf8");
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
@@ -492,7 +493,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, ".UTF8")
+    setlocale(LC_ALL, ".UTF8");
+    //setlocale(LC_ALL, "en_US.utf8");
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
