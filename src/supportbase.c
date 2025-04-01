@@ -569,12 +569,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     //len = wcstombs(NULL, w_fullpath, 0) + 1;
                     //wcstombs(fullpath, w_fullpath, len);
                     //_wrename(w_fullpath, w_newpath);
-                    rename(fullpath, newpath);
+                    //rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
-                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
-                    delay(5);
+                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                    //GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+                    //delay(5);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
                     {
                         fileXioUmount("iso:");
@@ -582,7 +582,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
                         //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                         //_wrename(w_newpath,w_fullpath);
-                        rename(newpath, fullpath);
+                        //rename(newpath, fullpath);
                         free(next);
                         *glist = next->next;                                              
                         continue;
@@ -593,7 +593,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);                                  
                     //mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                     //_wrename(w_newpath, w_fullpath);
-                    rename(newpath, fullpath);
+                    //rename(newpath, fullpath);
 
 
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
