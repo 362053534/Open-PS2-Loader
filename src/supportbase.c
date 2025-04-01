@@ -14,6 +14,7 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -558,9 +559,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     oldpath[base_path_len + 1] = '\0';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                     //snprintf(newpath, 256, "%s", prefix, 0, game->startup, part);
-                    if (cacheLoaded) {
-                        continue;
-                    }
                     rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
@@ -577,7 +575,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     fileXioUmount("iso:");
                     oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
+
+                    //名字改回来
                     rename(newpath, fullpath);
+                    //support->itemRename(support, selected_item->item->current->item.id, fullpath);
+                    //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
+
+
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     memcpy(game->name, dirent->d_name, NameLen);
@@ -958,8 +962,7 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
 {
     switch (game->format) {
         case GAME_FORMAT_USBLD:
-            //snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);
-            snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, 0, game->startup, part);
+            snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);
             break;
         case GAME_FORMAT_ISO:
             snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);

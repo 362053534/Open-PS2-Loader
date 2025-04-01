@@ -321,7 +321,8 @@ unsigned int USBA_crc32(const char *string)
         crc = crctab[byte ^ ((crc >> 24) & 0xFF)] ^ ((crc << 8) & 0xFFFFFF00);
     } while ((string[count - 1] != 0) && (count <= 32));
 
-    return crc;
+    //return crc;
+    return 0;
 }
 
 int sysGetDiscID(char *hexDiscID)
