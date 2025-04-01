@@ -62,65 +62,65 @@ int sbCreateSemaphore(void)
 }
 
 static int isCnName = 0;
-    // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
-static int asciiToUtf16(char *out, const char *in)
-{
-    int len;
-    const char *pIn;
-    char *pOut;
-
-    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
-        pOut[0] = *pIn;
-        pOut[1] = '\0';
-    }
-
-    pOut[0] = '\0'; // NULL terminate.
-    pOut[1] = '\0';
-    len += 2;
-
-    return len;
-}
-void unicodeToUtf8(int unicode, char *utf8)
-{
-    if (unicode <= 0x7F) { // 1 byte, 0xxxxxxx
-        utf8[0] = unicode & 0x7F;
-        utf8[1] = '\0';
-    } else if (unicode <= 0x7FF) { // 2 bytes, 110xxxxx 10xxxxxx
-        utf8[0] = 0xC0 | ((unicode >> 6) & 0x1F);
-        utf8[1] = 0x80 | (unicode & 0x3F);
-        utf8[2] = '\0';
-    } else if (unicode <= 0xFFFF) { // 3 bytes, 1110xxxx 10xxxxxx 10xxxxxx
-        utf8[0] = 0xE0 | ((unicode >> 12) & 0x0F);
-        utf8[1] = 0x80 | ((unicode >> 6) & 0x3F);
-        utf8[2] = 0x80 | (unicode & 0x3F);
-        utf8[3] = '\0';
-    } else {            // 4 bytes, more complex but not needed for basic BMP characters
-        utf8[0] = '\0'; // Error handling or simply not supported in this example
-    }
-}
-
-void utf8_encode(char *str)
-{
-    int len = strlen(str);
-    char *new_str = malloc(len * 3 + 1); // UTF-8 最多使用 3 个字节编码一个字符
-    int i, j;
-    for (i = 0, j = 0; i < len; ++i) {
-        if ((str[i] & 0x80) == 0) { // ASCII 码值范围：0 ~ 127
-            new_str[j++] = str[i];
-        } else if ((str[i] & 0xE0) == 0xC0 && i + 1 < len && (str[i + 1] & 0xC0) == 0x80) { // 双字节编码，U+0080 ~ U+07FF
-            new_str[j++] = ((str[i] & 0x1F) << 6) | (str[i + 1] & 0x3F);
-            ++i;
-        } else if ((str[i] & 0xF0) == 0xE0 && i + 2 < len && (str[i + 1] & 0xC0) == 0x80 && (str[i + 2] & 0xC0) == 0x80) { // 三字节编码，U+08000 ~ U+FFFFF
-            new_str[j++] = ((str[i] & 15) << 12) | ((str[++i] & 63) << 6) | (str[++i] & 63);
-        } else {
-            printf("Unsupported character: %c\n", str[i]);
-            return;
-        }
-    }
-    new_str[j] = '\0';
-    strcpy(str, new_str);
-    free(new_str);
-}
+//    // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+//static int asciiToUtf16(char *out, const char *in)
+//{
+//    int len;
+//    const char *pIn;
+//    char *pOut;
+//
+//    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
+//        pOut[0] = *pIn;
+//        pOut[1] = '\0';
+//    }
+//
+//    pOut[0] = '\0'; // NULL terminate.
+//    pOut[1] = '\0';
+//    len += 2;
+//
+//    return len;
+//}
+//void unicodeToUtf8(int unicode, char *utf8)
+//{
+//    if (unicode <= 0x7F) { // 1 byte, 0xxxxxxx
+//        utf8[0] = unicode & 0x7F;
+//        utf8[1] = '\0';
+//    } else if (unicode <= 0x7FF) { // 2 bytes, 110xxxxx 10xxxxxx
+//        utf8[0] = 0xC0 | ((unicode >> 6) & 0x1F);
+//        utf8[1] = 0x80 | (unicode & 0x3F);
+//        utf8[2] = '\0';
+//    } else if (unicode <= 0xFFFF) { // 3 bytes, 1110xxxx 10xxxxxx 10xxxxxx
+//        utf8[0] = 0xE0 | ((unicode >> 12) & 0x0F);
+//        utf8[1] = 0x80 | ((unicode >> 6) & 0x3F);
+//        utf8[2] = 0x80 | (unicode & 0x3F);
+//        utf8[3] = '\0';
+//    } else {            // 4 bytes, more complex but not needed for basic BMP characters
+//        utf8[0] = '\0'; // Error handling or simply not supported in this example
+//    }
+//}
+//
+//void utf8_encode(char *str)
+//{
+//    int len = strlen(str);
+//    char *new_str = malloc(len * 3 + 1); // UTF-8 最多使用 3 个字节编码一个字符
+//    int i, j;
+//    for (i = 0, j = 0; i < len; ++i) {
+//        if ((str[i] & 0x80) == 0) { // ASCII 码值范围：0 ~ 127
+//            new_str[j++] = str[i];
+//        } else if ((str[i] & 0xE0) == 0xC0 && i + 1 < len && (str[i + 1] & 0xC0) == 0x80) { // 双字节编码，U+0080 ~ U+07FF
+//            new_str[j++] = ((str[i] & 0x1F) << 6) | (str[i + 1] & 0x3F);
+//            ++i;
+//        } else if ((str[i] & 0xF0) == 0xE0 && i + 2 < len && (str[i + 1] & 0xC0) == 0x80 && (str[i + 2] & 0xC0) == 0x80) { // 三字节编码，U+08000 ~ U+FFFFF
+//            new_str[j++] = ((str[i] & 15) << 12) | ((str[++i] & 63) << 6) | (str[++i] & 63);
+//        } else {
+//            printf("Unsupported character: %c\n", str[i]);
+//            return;
+//        }
+//    }
+//    new_str[j] = '\0';
+//    strcpy(str, new_str);
+//    free(new_str);
+//}
 
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
@@ -558,11 +558,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
             } else {
                 char startup[GAME_STARTUP_MAX];
-                if (true) {
-                    char oldpath[256], newpath[256];
-                    memcpy(oldpath, fullpath, strlen(fullpath) + 1);
-                    oldpath[base_path_len + 1] = '\0';
-                    sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                //if (true)
+                {
+                    //char oldpath[256], newpath[256];
+                    //memcpy(oldpath, fullpath, strlen(fullpath) + 1);
+                    //oldpath[base_path_len + 1] = '\0';
+                    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
                     //size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
                     //wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
                     //mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
@@ -577,21 +578,22 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     //delay(5);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
                     {
-                        fileXioUmount("iso:");
-                        oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                        sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+
+                        //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                        //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
                         //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                         //_wrename(w_newpath,w_fullpath);
                         //rename(newpath, fullpath);
                         free(next);
-                        *glist = next->next;                                              
+                        *glist = next->next;
+                        fileXioUmount("iso:");
                         continue;
                     }
-                    fileXioUmount("iso:");
-                    // 名字改回来   
-                    oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                    sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);                                  
-                    //mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
+
+                    //// 名字改回来   
+                    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);                                  
+                    ////mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                     //_wrename(w_newpath, w_fullpath);
                     //rename(newpath, fullpath);
 
@@ -605,6 +607,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
+                    fileXioUmount("iso:");
                 }
                 //else {
                 //    // need to mount and read SYSTEM.CNF
