@@ -125,8 +125,9 @@ void utf8_encode(char *str)
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, ".UTF8")
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
@@ -147,13 +148,13 @@ int isValidIsoName(char *name, int *pNameLen)
         if (size >= 17) {
             if ((name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
                 isCnName = 0;
-                //  修正size大小
-                for (int i = 0; i < 256; i++) {
-                    if (&name[i] == "") {
-                        size = i;
-                        break;
-                    }
-                }
+                ////  修正size大小
+                //for (int i = 0; i < 256; i++) {
+                //    if (&name[i] == "") {
+                //        size = i;
+                //        break;
+                //    }
+                //}
 
 
             } else if ((name[size - 11] == '_') && (name[size - 7] == '.')) {
@@ -229,8 +230,8 @@ int isValidIsoName(char *name, int *pNameLen)
             //}
             
             *pNameLen = size;
-            sprintf(&name[0], "%d", size);
-            //sprintf(&name[0], "%s", "前缀改成后缀方可识别");
+            //sprintf(&name[0], "%d", size);
+            sprintf(&name[0], "%s", "前缀改成后缀方可识别");
             return GAME_FORMAT_OLD_ISO;
         }
         else {
@@ -273,9 +274,9 @@ int isValidIsoName(char *name, int *pNameLen)
             }
             //utf8_encode(name);
             *pNameLen = size - 4;
-            sprintf(&name[0], "%d", *pNameLen);
+            //sprintf(&name[0], "%d", *pNameLen);
 
-            return GAME_FORMAT_OLD_ISO;
+            return GAME_FORMAT_ISO;
         }
     }
 
@@ -489,8 +490,9 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
-    setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
+    //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, ".UTF8")
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
@@ -526,7 +528,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
-                if (false) {
+                if (isCnName) {
                     memcpy(game->name, dirent->d_name, NameLen);
                     game->name[NameLen] = '\0';
                     memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
@@ -570,17 +572,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                        fileXioUmount("iso:");
-                        oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                        sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
-                        //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                        //_wrename(w_newpath,w_fullpath);
-                        //rename(newpath, fullpath);
-                        free(next);
-                        *glist = next->next;                                              
-                        continue;
-                    }
+                    //if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                    //    fileXioUmount("iso:");
+                    //    oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                    //    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
+                    //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
+                    //    //_wrename(w_newpath,w_fullpath);
+                    //    //rename(newpath, fullpath);
+                    //    free(next);
+                    //    *glist = next->next;                                              
+                    //    continue;
+                    //}
                     fileXioUmount("iso:");
                     // 名字改回来   
                     oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
