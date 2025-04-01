@@ -714,7 +714,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                         strncpy(str1, &dir->d_name[12], 11);
                         str1[11] = '\0';
                         while ((dir = readdir(d)) != NULL) {
-                            if (strncmp(str1, g->startup, 12) {
+                            //if (strncmp(str1, g->startup, 12)
+                            {
                                 memcpy(g->crc32name, &dir->d_name[3], 8);
                                 g->crc32name[8] = '\0';
                                 break;
