@@ -569,30 +569,30 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     //len = wcstombs(NULL, w_fullpath, 0) + 1;
                     //wcstombs(fullpath, w_fullpath, len);
                     //_wrename(w_fullpath, w_newpath);
-                    rename(fullpath, newpath);
+                    //rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
-                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
-                    //if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
-                    //{
-                    //    fileXioUmount("iso:");
-                    //    oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                    //    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
-                    //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                    //    //_wrename(w_newpath,w_fullpath);
-                    //    rename(newpath, fullpath);
-                    //    free(next);
-                    //    *glist = next->next;                                              
-                    //    continue;
-                    //}
+                    //GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+                    if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
+                    {
+                        fileXioUmount("iso:");
+                        oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                        sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
+                        //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
+                        //_wrename(w_newpath,w_fullpath);
+                        //rename(newpath, fullpath);
+                        free(next);
+                        *glist = next->next;                                              
+                        continue;
+                    }
                     fileXioUmount("iso:");
                     // 名字改回来   
                     oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);                                  
                     //mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                     //_wrename(w_newpath, w_fullpath);
-                    rename(newpath, fullpath);
+                    //rename(newpath, fullpath);
                     //support->itemRename(support, selected_item->item->current->item.id, fullpath);
                     //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 
@@ -601,8 +601,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     //strcpy(game->name, dirent->d_name);
                     memcpy(game->name, dirent->d_name, NameLen);
-                    sprintf(game->name, "%s", newpath);
-                    //game->name[NameLen] = '\0';
+                    //sprintf(game->name, "%s", newpath);
+                    game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
@@ -693,7 +693,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    //g->name[UL_GAME_NAME_MAX] = '\0';
+                    g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
                     g->extension[0] = '\0';
