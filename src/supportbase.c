@@ -717,7 +717,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                                     crcname[i] = dir->d_name[3 + i];
                                 }
                                 crcname[8] = '\0';
-                                strcpy(g->crc32name, crcname);
+                                memcpy(g->crc32name, crcname,9);
                                 break;
                             }
                         }
