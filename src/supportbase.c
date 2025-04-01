@@ -720,6 +720,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                         }
                         closedir(d); // 关闭目录流
                     }
+                    //sprintf(g->name, "%08X", USBA_crc32(g->name));
+                    sprintf(g->name, "%s", g->crc32name);
 
                     /* TODO: size calculation is very slow
                     implmented some caching, or do not touch at all */
