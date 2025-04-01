@@ -23,6 +23,7 @@ typedef struct
     u8 media;
     u8 format;
     u32 sizeMB;
+    char crc32name[8];
 } base_game_info_t;
 
 typedef struct

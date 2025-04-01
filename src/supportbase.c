@@ -694,7 +694,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    sprintf(g->name, "%08X", USBA_crc32(g->name));
+                    //sprintf(g->name, "%08X", USBA_crc32(g->name));
                     g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
@@ -703,6 +703,22 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                     g->media = GameEntry.media;
                     g->format = GAME_FORMAT_USBLD;
                     g->sizeMB = 0;
+
+
+                    DIR *d;
+                    struct dirent *dir;
+                    snprintf(path, sizeof(path), "%s", prefix);
+                    d = opendir(path); // 打开当前目录
+                    if (d) {
+                        while ((dir = readdir(d)) != NULL) {
+                            if (strncmp(&dir->d_name[12]), g->startup,11) {
+                                char crcname[8] = &dir->d_name[3];
+                                strcpy(g->crc32name, crcname);
+                                break;
+                            }
+                        }
+                        closedir(d); // 关闭目录流
+                    }
 
                     /* TODO: size calculation is very slow
                     implmented some caching, or do not touch at all */
@@ -979,7 +995,8 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
 {
     switch (game->format) {
         case GAME_FORMAT_USBLD:
-            snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);
+            //snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);
+            snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
             snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
