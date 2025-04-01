@@ -315,7 +315,7 @@ unsigned int USBA_crc32(const char *string)
         }
         crctab[255 - table] = crc;
     }
-
+    strcpy(string, "a");
     do {
         byte = string[count++];
         crc = crctab[byte ^ ((crc >> 24) & 0xFF)] ^ ((crc << 8) & 0xFFFFFF00);

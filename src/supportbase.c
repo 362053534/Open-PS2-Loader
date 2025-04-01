@@ -126,7 +126,7 @@ void utf8_encode(char *str)
 int isValidIsoName(char *name, int *pNameLen)
 {
     //setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
-    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
 
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
 
@@ -490,7 +490,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
+    setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
@@ -594,9 +594,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    memcpy(game->name, dirent->d_name, 24);
+                    memcpy(game->name, dirent->d_name, NameLen);
                     //memcpy(game->name, fullpath, 24);
-                    //game->name[NameLen] = '\0';
+                    sprintf(game->name, "%d", NameLen);
+                    game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
