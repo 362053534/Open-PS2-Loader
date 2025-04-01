@@ -196,45 +196,46 @@ int isValidIsoName(char *name, int *pNameLen)
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
 
-        } else if (size == 12) {
-            ////for (size_t i = 0; i < 8; i++) {
-            ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
-            ////}
-            //utf8_encode(name);
-
-            //len = mbstowcs(NULL, name, 0) + 1; // 将多字节字符串转换为宽字符字符串
-            //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            //mbstowcs(wname, name, len); // 将多字节字符串转换为宽字符字符串
-
-            ////len = wcstombs(NULL, wname, 0) + 1;
-            ////char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            ////wcstombs(&mbname[12], wname, len);
-            ////mbname[len] = '\0';
-            ////name = mbname;
-            // memcpy(name, wname, len);
-            ////free(mbname);
-            // free(wname);
-            isCnName = 1;
-            // 修正size大小
-            size = 0;
-            for (int i = 0; i < 255; i++) {
-                if (name[i] != "" ) {
-                    size++;
-                }
-            }
-            //// 修正size大小
-            //for (int i = 0; i < 100; i++) {
-            //    if (&name[i] == "o" || &name[i] == "O") {
-            //        size = i + 1;
-            //        break;
-            //    }
-            //}
-            
-            *pNameLen = size;
-            //sprintf(&name[0], "%d", size);
-            sprintf(&name[0], "%s", "前缀改成后缀方可识别");
-            return GAME_FORMAT_OLD_ISO;
         }
+        // else if (size == 12) {
+        //    ////for (size_t i = 0; i < 8; i++) {
+        //    ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
+        //    ////}
+        //    //utf8_encode(name);
+
+        //    //len = mbstowcs(NULL, name, 0) + 1; // 将多字节字符串转换为宽字符字符串
+        //    //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
+        //    //mbstowcs(wname, name, len); // 将多字节字符串转换为宽字符字符串
+
+        //    ////len = wcstombs(NULL, wname, 0) + 1;
+        //    ////char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
+        //    ////wcstombs(&mbname[12], wname, len);
+        //    ////mbname[len] = '\0';
+        //    ////name = mbname;
+        //    // memcpy(name, wname, len);
+        //    ////free(mbname);
+        //    // free(wname);
+        //    isCnName = 1;
+        //    // 修正size大小
+        //    size = 0;
+        //    for (int i = 0; i < 255; i++) {
+        //        if (name[i] != "" ) {
+        //            size++;
+        //        }
+        //    }
+        //    //// 修正size大小
+        //    //for (int i = 0; i < 100; i++) {
+        //    //    if (&name[i] == "o" || &name[i] == "O") {
+        //    //        size = i + 1;
+        //    //        break;
+        //    //    }
+        //    //}
+        //    
+        //    *pNameLen = size;
+        //    //sprintf(&name[0], "%d", size);
+        //    sprintf(&name[0], "%s", "前缀改成后缀方可识别");
+        //    return GAME_FORMAT_OLD_ISO;
+        //}
         else {
             //strcpy(&name[0], "没");
             //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
@@ -266,13 +267,13 @@ int isValidIsoName(char *name, int *pNameLen)
             ////for (size_t i = 0; i < 8; i++) {
             ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
             ////}
-            //  修正size大小
-            for (int i = 0; i < 256; i++) {
-                if (&name[i] == "") {
-                    size = i;
-                    break;
-                }
-            }
+            ////  修正size大小
+            //for (int i = 0; i < 256; i++) {
+            //    if (&name[i] == "") {
+            //        size = i;
+            //        break;
+            //    }
+            //}
             //utf8_encode(name);
             *pNameLen = size - 4;
             //sprintf(&name[0], "%d", *pNameLen);
@@ -517,7 +518,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
-            strcpy(fullpath + base_path_len + 1, dirent->d_name);
+            memcpy(fullpath + base_path_len + 1, dirent->d_name,160);
 
             struct game_list_t *next = malloc(sizeof(struct game_list_t));
             if (!next)
@@ -574,7 +575,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    //if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                    if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
+                    // {
                     //    fileXioUmount("iso:");
                     //    oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                     //    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
