@@ -558,22 +558,22 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     oldpath[base_path_len + 1] = '\0';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                     //snprintf(newpath, 256, "%s", prefix, 0, game->startup, part);
-                    size_t len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
+                    size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
                     wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
                     wchar_t *w_newpath = (wchar_t *)malloc(len * sizeof(wchar_t));
                     mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
                     mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                    //_wrename(w_fullpath, w_newpath);
+                    _wrename(w_fullpath, w_newpath);
                     //rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                         fileXioUmount("iso:");
                         oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                         sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                         mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                        //_wrename(w_newpath,w_fullpath);
+                        _wrename(w_newpath,w_fullpath);
                         //rename(newpath, fullpath);
                         free(next);
                         *glist = next->next;                                              
@@ -584,7 +584,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);                                  
                     mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
-                    //_wrename(w_newpath, w_fullpath);
+                    _wrename(w_newpath, w_fullpath);
                     //rename(newpath, fullpath);
                     //support->itemRename(support, selected_item->item->current->item.id, fullpath);
                     //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
