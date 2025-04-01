@@ -531,14 +531,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
-                if (isCnName) {
-                    memcpy(game->name, dirent->d_name, NameLen);
-                    game->name[NameLen] = '\0';
-                    memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
-                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    memcpy(game->extension, &dirent->d_name[NameLen + 12], sizeof(game->extension) - 1);
-                    game->extension[sizeof(game->extension) - 1] = '\0';
-                } else {
+                //if (isCnName) {
+                //    memcpy(game->name, dirent->d_name, NameLen);
+                //    game->name[NameLen] = '\0';
+                //    memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
+                //    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                //    memcpy(game->extension, &dirent->d_name[NameLen + 12], sizeof(game->extension) - 1);
+                //    game->extension[sizeof(game->extension) - 1] = '\0';
+                //} else
+                {
                     memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                     game->name[NameLen] = '\0';
                     memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
@@ -562,27 +563,24 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                     oldpath[base_path_len + 1] = '\0';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
-                    //snprintf(newpath, 256, "%s", prefix, 0, game->startup, part);
-                    size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
-                    wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
-                    //wchar_t *w_newpath = (wchar_t *)malloc(len * sizeof(wchar_t));
-                    mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
-                    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                    len = wcstombs(NULL, w_fullpath, 0) + 1;
-                    wcstombs(fullpath, w_fullpath, len);
+                    //size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
+                    //wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
+                    //mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
+                    //len = wcstombs(NULL, w_fullpath, 0) + 1;
+                    //wcstombs(fullpath, w_fullpath, len);
                     //_wrename(w_fullpath, w_newpath);
-                    //rename(fullpath, newpath);
+                    rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                    int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
-                    // {
+                    //{
                     //    fileXioUmount("iso:");
                     //    oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                     //    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
                     //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                     //    //_wrename(w_newpath,w_fullpath);
-                    //    //rename(newpath, fullpath);
+                    //    rename(newpath, fullpath);
                     //    free(next);
                     //    *glist = next->next;                                              
                     //    continue;
@@ -593,17 +591,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);                                  
                     //mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                     //_wrename(w_newpath, w_fullpath);
-                    //rename(newpath, fullpath);
+                    rename(newpath, fullpath);
                     //support->itemRename(support, selected_item->item->current->item.id, fullpath);
                     //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 
 
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    strcpy(game->name, dirent->d_name);
-                    //memcpy(game->name, fullpath, 24);
+                    //strcpy(game->name, dirent->d_name);
+                    memcpy(game->name, dirent->d_name, NameLen);
                     //sprintf(game->name, "%d", NameLen);
-                    //game->name[23] = '\0';
+                    game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
@@ -694,7 +692,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    //sprintf(g->name, "%08X", USBA_crc32(g->name));
                     g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
@@ -704,7 +701,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                     g->format = GAME_FORMAT_USBLD;
                     g->sizeMB = 0;
 
-
+                    // 直接从文件名中找到crc32的数值，绕过crc32检测
                     DIR *d;
                     struct dirent *dir;
                     snprintf(path, sizeof(path), "%s", prefix);
