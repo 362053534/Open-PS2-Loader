@@ -712,13 +712,13 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                     if (d) {
                         while ((dir = readdir(d)) != NULL) {
                             if (strncmp(&dir->d_name[12]), g->startup,11) {
-                                char crcname[8] = {0};
-                                for (int i = 0; i < 8; i++) {
-                                    crcname[i] = dir->d_name[3 + i];
-                                }
-                                crcname[8] = '\0';
-                                memcpy(g->crc32name, crcname,9);
-                                break;
+                                //char crcname[8] = {0};
+                                //for (int i = 0; i < 8; i++) {
+                                //    crcname[i] = dir->d_name[3 + i];
+                                //}
+                                //crcname[8] = '\0';
+                                //memcpy(g->crc32name, crcname,9);
+                                //break;
                             }
                         }
                         closedir(d); // 关闭目录流
