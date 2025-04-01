@@ -574,7 +574,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         fileXioUmount("iso:");
                         oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                         sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
-                        mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
+                        //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                         //_wrename(w_newpath,w_fullpath);
                         //rename(newpath, fullpath);
                         free(next);
@@ -585,7 +585,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // 名字改回来   
                     oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
                     sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);                                  
-                    mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
+                    //mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                     //_wrename(w_newpath, w_fullpath);
                     //rename(newpath, fullpath);
                     //support->itemRename(support, selected_item->item->current->item.id, fullpath);
