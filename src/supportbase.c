@@ -601,7 +601,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     //strcpy(game->name, dirent->d_name);
                     memcpy(game->name, dirent->d_name, NameLen);
-                    //sprintf(game->name, "%s", newpath);
+                    sprintf(game->name, "%s", newpath);
                     game->name[NameLen] = '\0';
                     memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
@@ -720,9 +720,9 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                         }
                         closedir(d); // 关闭目录流
                     }
-                    //sprintf(g->name, "%08X", USBA_crc32(g->name));
-                    snprintf(path, 256, "%sul.%s.%s.%s", prefix, g->crc32name, g->startup, "00");
-                    sprintf(g->name, "%s", path);
+                    //// debug crc32name
+                    //snprintf(path, 256, "%sul.%s.%s.%s", prefix, g->crc32name, g->startup, "00");
+                    //sprintf(g->name, "%s", path);
 
                     /* TODO: size calculation is very slow
                     implmented some caching, or do not touch at all */
