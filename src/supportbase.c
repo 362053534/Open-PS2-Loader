@@ -562,26 +562,27 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     char oldpath[256], newpath[256];
                     memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                     oldpath[base_path_len + 1] = '\0';
-                    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
+                    sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
                     //size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
                     //wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
                     //mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
                     //len = wcstombs(NULL, w_fullpath, 0) + 1;
                     //wcstombs(fullpath, w_fullpath, len);
                     //_wrename(w_fullpath, w_newpath);
-                    //rename(fullpath, newpath);
+                    rename(fullpath, newpath);
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", newpath, FIO_MT_RDONLY);
-                    //GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+                    delay(5);
                     if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
                     {
                         fileXioUmount("iso:");
                         oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                        sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);
+                        sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
                         //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                         //_wrename(w_newpath,w_fullpath);
-                        //rename(newpath, fullpath);
+                        rename(newpath, fullpath);
                         free(next);
                         *glist = next->next;                                              
                         continue;
@@ -589,12 +590,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     fileXioUmount("iso:");
                     // 名字改回来   
                     oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                    sprintf(newpath, "%s%s%s", oldpath, "ggg", &dirent->d_name[NameLen]);                                  
+                    sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);                                  
                     //mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                     //_wrename(w_newpath, w_fullpath);
-                    //rename(newpath, fullpath);
-                    //support->itemRename(support, selected_item->item->current->item.id, fullpath);
-                    //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
+                    rename(newpath, fullpath);
 
 
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
