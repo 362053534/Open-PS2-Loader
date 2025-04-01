@@ -693,7 +693,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
                     // to ensure no leaks happen, we copy manually and pad the strings
                     memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
-                    g->name[UL_GAME_NAME_MAX] = '\0';
+                    //g->name[UL_GAME_NAME_MAX] = '\0';
                     memcpy(g->startup, GameEntry.startup, GAME_STARTUP_MAX);
                     g->startup[GAME_STARTUP_MAX] = '\0';
                     g->extension[0] = '\0';
@@ -721,7 +721,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                         closedir(d); // 关闭目录流
                     }
                     //sprintf(g->name, "%08X", USBA_crc32(g->name));
-                    sprintf(g->name, "%s", g->crc32name);
+                    snprintf(path, 256, "%sul.%s.%s.%s", prefix, g->crc32name, g->startup, "00");
+                    sprintf(g->name, "%s", path);
 
                     /* TODO: size calculation is very slow
                     implmented some caching, or do not touch at all */
