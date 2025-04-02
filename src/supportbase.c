@@ -630,7 +630,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             // count and process games in iso.txt
             snprintf(path, sizeof(path), "%s/iso.txt", path);
-            char index[] = dirent->d_name;
+            char index[100];
+            memcpy(index,dirent->d_name,sizeof(index));
             index[strlen(dirent->d_name) - 4] = '\0';
             FILE *file;
             char cnName[256];
