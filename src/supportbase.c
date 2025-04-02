@@ -629,7 +629,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
-            snprintf(path, sizeof(path), "%s/iso.txt", path);
+            snprintf(path, sizeof(path), "%s%siso.txt", path[0] == 's' ? '\\' : '/', path);
             char index[100];
             memcpy(index,dirent->d_name,sizeof(index));
             index[strlen(dirent->d_name) - 4] = '\0';
@@ -639,14 +639,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (file != NULL) {
                 while (fgets(cnName, sizeof(cnName), file) != NULL) {
                     if (strncmp(index, cnName, strlen(index) == 0)) {
-                        strcpy(game->name, "成功了吗");
+                        memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                         game->name[UL_GAME_NAME_MAX] = '\0';
                         break;
                     }
                 }
             }
             fclose(file);
-                                    strcpy(game->name, "成功了吗");
+
 
             game->parts = 1;
             game->media = type;
