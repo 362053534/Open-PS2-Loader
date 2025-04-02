@@ -638,8 +638,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
-            //if (game->name[0] >= '0' && game->name[0] <= '9')
-            {
+            if ((game->name[0] >= '0') && (game->name[0] <= '9')) {
                 memcpy(index, dirent->d_name, sizeof(index));
                 index[NameLen] = '\0';
 
