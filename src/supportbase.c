@@ -514,12 +514,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         memcpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = '/';
 
-        char cnNameAll[10000][256];
+        char cnNameAll[][256];
         // count and process games in iso.txt
         snprintf(path, 256, "%s%siso.txt", path, path[0] == 's' ? "\\" : "/");
 
         if (file = fopen(path, "r")) {
-            for (int i = 0; i < 1000; i++) {
+            for (int i = 0; i < 10000; i++) {
                 if (fgets(cnNameAll[i], sizeof(cnNameAll[i]), file) == NULL) {
                     break;
                 }
