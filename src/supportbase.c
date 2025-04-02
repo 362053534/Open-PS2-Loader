@@ -649,6 +649,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         break;
                     }
                 }
+            } else {
+                strncpy(game->name, "找不到file了", 30);
             }
 
             //strncpy(game->name, path,30);
