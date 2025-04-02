@@ -514,20 +514,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         memcpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = '/';
 
-        char *cnNameAll[256];
-        // count and process games in iso.txt
-        snprintf(path, 256, "%s%siso.txt", path, path[0] == 's' ? "\\" : "/");
-
-        if (file = fopen(path, "r")) {
-            for (int i = 0; i < 10000; i++) {
-                if (fgets(cnNameAll[i], sizeof(cnNameAll[i]), file) == NULL) {
-                    break;
-                }
-            }
-        }
-
-
-
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
@@ -646,16 +632,24 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
+            snprintf(path, 256, "%s%siso.txt", path, path[0] == 's' ? "\\" : "/");
             char index[100];
             memcpy(index,dirent->d_name,sizeof(index));
             index[strlen(dirent->d_name) - 4] = '\0';
-                for (int i = 0; i < 10000; i++) {
-                    if (strncmp(cnNameAll[i], index, strlen(index)) == 0) {
-                        memcpy(game->name, &cnNameAll[i][strlen(index) + 1], UL_GAME_NAME_MAX);
+            char cnName[256];
+            if (file = fopen(path, "r")) {
+                strncpy(game->name, "打开文件了", 30);
+                while (fgets(cnName, sizeof(cnName), file) != NULL) {
+                    strncpy(game->name, cnName, 30);
+                    if (strncmp(cnName, index, strlen(index)) == 0) {
+                        memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                        strncpy(game->name, "找到了名字", 30);
                         game->name[UL_GAME_NAME_MAX] = '\0';
+                        rewind(file);
                         break;
                     }
                 }
+            }
 
             //strncpy(game->name, path,30);
 
