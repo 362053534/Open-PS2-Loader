@@ -502,6 +502,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char fullpath[256];
     struct dirent *dirent;
     DIR *dir;
+    FILE *file;
+    file = fopen(path, "r");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     cacheLoaded = 0;
@@ -633,9 +635,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             char index[100];
             memcpy(index,dirent->d_name,sizeof(index));
             index[strlen(dirent->d_name) - 4] = '\0';
-            FILE *file;
             char cnName[256];
-            file = fopen(path, "r");
             if (file != NULL) {
                 strncpy(game->name, "打开文件了", 30);
                 while (fgets(cnName, sizeof(cnName), file) != NULL) {
