@@ -652,7 +652,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         break;
                     }
                 }
-                rewind(file);
+                //rewind(file);
             }
 
             //strncpy(game->name, path,30);
