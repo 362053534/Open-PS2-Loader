@@ -638,9 +638,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
-            if (game->name[0] >= '0' && game->name[0] <= '9') {
+            //if (game->name[0] >= '0' && game->name[0] <= '9')
+            {
                 memcpy(index, dirent->d_name, sizeof(index));
-                index[strlen(dirent->d_name) - 4] = '\0';
+                index[NameLen] = '\0';
 
                 if (file != NULL) {
                     // strncpy(game->name, "打开文件了", 30);
@@ -664,9 +665,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 strncpy(game->name, path, 40);
             }
 
-
-
-            //strncpy(game->name, path,30);
             game->parts = 1;
             game->media = type;
             game->format = format;
