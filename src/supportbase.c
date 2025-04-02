@@ -696,7 +696,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     rewind(file);
                 }
-                snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
+                //snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 //strncpy(game->name, path, 40);
             }
 
