@@ -660,13 +660,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 rewind(file);
             }
 
-            //strncpy(game->name, path,30);
 
+            //strncpy(game->name, path,30);
             game->parts = 1;
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
 
+            snprintf(path, 256, "%s%s%s%s%s", path, (game->media == SCECdPS2CD) ? "CD" : "DVD", "/", game->nameIndex, game->extension);
+            strncpy(game->name, path, 40);
             count++;
         }
         fclose(file);
