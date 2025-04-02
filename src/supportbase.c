@@ -647,7 +647,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 while (fgets(cnName, sizeof(cnName), file) != NULL) {
                     if (strncmp(cnName, index, strlen(index)) == 0) {
                         memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
-                        strcpy(game->nameIndex, index);                      
+                        strncpy(game->nameIndex, index, strlen(index));                   
                         for (int i = 0; i < strlen(cnName); i++) {
                             if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
                                 game->name[i - strlen(index) - 1] = '\0';
@@ -668,7 +668,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->sizeMB = 0;
 
             //snprintf(path, 256, "%s%s%s%s%s", path, (game->media == SCECdPS2CD) ? "CD" : "DVD", "/", game->nameIndex, game->extension);
-            strncpy(game->name, index, 40);
+            strncpy(game->name, game->nameIndex, 40);
             count++;
         }
         fclose(file);
