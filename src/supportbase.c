@@ -671,10 +671,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
-
+            game->nameIndex[0] = '\0';
 
             // count and process games in iso.txt
-            if ((game->nameIndex[0] >= '0') && (game->nameIndex[0] <= '9')){
+            if ((dirent->d_name[0] >= '0') && (dirent->d_name[0] <= '9')) {
                 memcpy(index, dirent->d_name, sizeof(index));
                 index[strlen(dirent->d_name) - 4] = '\0';
 
@@ -698,8 +698,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 }
                 snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 //strncpy(game->name, path, 40);
-            } else {
-                game->nameIndex[0] = '\0';
             }
 
             count++;
