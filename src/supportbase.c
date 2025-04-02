@@ -632,7 +632,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
-            snprintf(path, 256, "%s%siso.cfg", path, path[0] == 's' ? "\\" : "/");
+            snprintf(path, 256, "%s%siso.txt", path, path[0] == 's' ? "\\" : "/");
             file = fopen(path, "r");
             char index[100];
             memcpy(index,dirent->d_name,sizeof(index));
