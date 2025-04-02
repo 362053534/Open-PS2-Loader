@@ -646,7 +646,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 }
             }
             fclose(file);
-
+            strcpy(game->name, path);
 
             game->parts = 1;
             game->media = type;
