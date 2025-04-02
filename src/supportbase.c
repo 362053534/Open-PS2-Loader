@@ -513,7 +513,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char originName[256];
         while ((dirent = readdir(dir)) != NULL) {
             
-            strcpy(originName, dirent->d_name);
+            memcpy(originName, dirent->d_name,24);
+            // sprintf(originName, "%s", dirent->d_name);
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
@@ -605,7 +606,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     //strcpy(game->name, dirent->d_name);
                     memcpy(game->name, originName, 24);
                     //sprintf(game->name, "%s", newpath);
-                    //game->name[NameLen] = '\0';
+                    game->name[24] = '\0';
                     memcpy(game->extension, ".iso", sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
