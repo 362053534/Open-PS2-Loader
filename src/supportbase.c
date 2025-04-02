@@ -1044,7 +1044,7 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
 {
     if (game_name[0] >= '0' && game_name[0] <= '9') {
         strcpy(game_name, game->nameIndex);
-        game_name[strlen(game->nameIndex)] = '0';
+        game_name[strlen(game->nameIndex)] = '\0';
     }
 
     switch (game->format) {
