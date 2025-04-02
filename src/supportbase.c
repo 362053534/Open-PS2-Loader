@@ -277,6 +277,7 @@ int isValidIsoName(char *name, int *pNameLen)
             //utf8_encode(name);
             *pNameLen = size - 4;
             //sprintf(&name[0], "%d", *pNameLen);
+
             return GAME_FORMAT_ISO;
         }
     }
@@ -638,36 +639,64 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
-            if (((game->name)[0] >= '0') && ((game->name)[0] <= '9')) {
-                memcpy(index, dirent->d_name, sizeof(index));
-                index[NameLen] = '\0';
+            memcpy(index, dirent->d_name, sizeof(index));
+            index[strlen(dirent->d_name) - 4] = '\0';
 
-                if (file != NULL) {
-                    // strncpy(game->name, "打开文件了", 30);
-                    while (fgets(cnName, sizeof(cnName), file) != NULL) {
-                        if (strncmp(cnName, index, strlen(index)) == 0) {
-                            memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
-                            memcpy(game->nameIndex, index, strlen(index));
-                            game->nameIndex[strlen(index)] = '\0';
-                            for (int i = 0; i < strlen(cnName); i++) {
-                                if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
-                                    game->name[i - strlen(index) - 1] = '\0';
-                                    break;
-                                }
+            if (file != NULL) {
+                //strncpy(game->name, "打开文件了", 30);
+                while (fgets(cnName, sizeof(cnName), file) != NULL) {
+                    if (strncmp(cnName, index, strlen(index)) == 0) {
+                        memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                        memcpy(game->nameIndex, index, strlen(index));
+                        game->nameIndex[strlen(index)] = '\0';
+                        for (int i = 0; i < strlen(cnName); i++) {
+                            if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
+                                game->name[i - strlen(index) - 1] = '\0';
+                                break;
                             }
-                            break;
                         }
+                        break;
                     }
-                    rewind(file);
                 }
-                snprintf(path, 256, "%s%s%s%s%s", path, (game->media == SCECdPS2CD) ? "CD" : "DVD", "/", game->nameIndex, game->extension);
-                strncpy(game->name, path, 40);
+                rewind(file);
             }
+            //// count and process games in iso.txt
+            //if (((game->name)[0] >= '0') && ((game->name)[0] <= '9')) {
+            //    memcpy(index, dirent->d_name, sizeof(index));
+            //    index[NameLen] = '\0';
 
+            //    if (file != NULL) {
+            //        // strncpy(game->name, "打开文件了", 30);
+            //        while (fgets(cnName, sizeof(cnName), file) != NULL) {
+            //            if (strncmp(cnName, index, strlen(index)) == 0) {
+            //                memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+            //                memcpy(game->nameIndex, index, strlen(index));
+            //                (game->nameIndex)[strlen(index)] = '\0';
+            //                for (int i = 0; i < strlen(cnName); i++) {
+            //                    if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
+            //                        game->name[i - strlen(index) - 1] = '\0';
+            //                        break;
+            //                    }
+            //                }
+            //                break;
+            //            }
+            //        }
+            //        rewind(file);
+            //    }
+            //    snprintf(path, 256, "%s%s%s%s%s", path, (game->media == SCECdPS2CD) ? "CD" : "DVD", "/", game->nameIndex, game->extension);
+            //    strncpy(game->name, path, 40);
+            //}
+
+
+
+            //strncpy(game->name, path,30);
             game->parts = 1;
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
+
+            snprintf(path, 256, "%s%s%s%s%s", path, (game->media == SCECdPS2CD) ? "CD" : "DVD", "/", game->nameIndex, game->extension);
+            strncpy(game->name, path, 40);
             count++;
         }
         fclose(file);
@@ -1039,8 +1068,8 @@ void sbRebuildULCfg(base_game_info_t **list, const char *prefix, int gamecount, 
 
 static void sbCreatePath_name(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part, const char *game_name)
 {
-    if ((game_name[0] >= '0') && (game_name[0] <= '9')) {
-        strcpy(game_name, game->nameIndex);
+    if (game_name[0] >= '0' && game_name[0] <= '9') {
+        memcpy(game_name, game->nameIndex, strlen(game->nameIndex));
         game_name[strlen(game->nameIndex)] = '\0';
     }
 
