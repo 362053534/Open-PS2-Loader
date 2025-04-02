@@ -502,8 +502,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char fullpath[256];
     struct dirent *dirent;
     DIR *dir;
+
     FILE *file;
-    file = fopen(path, "r");
+
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     cacheLoaded = 0;
@@ -632,6 +633,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             // count and process games in iso.txt
             snprintf(path, 256, "%s%siso.cfg", path, path[0] == 's' ? "\\" : "/");
+            file = fopen(path, "r");
             char index[100];
             memcpy(index,dirent->d_name,sizeof(index));
             index[strlen(dirent->d_name) - 4] = '\0';
