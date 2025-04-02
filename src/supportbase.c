@@ -639,7 +639,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
 
             // count and process games in iso.txt
-
             memcpy(index, dirent->d_name, sizeof(index));
             index[strlen(dirent->d_name) - 4] = '\0';
 
@@ -648,9 +647,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 while (fgets(cnName, sizeof(cnName), file) != NULL) {
                     if (strncmp(cnName, index, strlen(index)) == 0) {
                         memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                        strcpy(game->nameIndex, index);                      
                         for (int i = 0; i < strlen(cnName); i++) {
                             if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
-                                game->name[i - strlen(index)] = '\0';
+                                game->name[i - strlen(index) - 1] = '\0';
                                 break;
                             }
                         }
@@ -1038,6 +1038,10 @@ void sbRebuildULCfg(base_game_info_t **list, const char *prefix, int gamecount, 
 
 static void sbCreatePath_name(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part, const char *game_name)
 {
+    if (game_name[0] >= '0' && game_name[0] <= '9') {
+        strcpy(game_name, game->nameIndex);
+    }
+
     switch (game->format) {
         case GAME_FORMAT_USBLD:
             //snprintf(path, 256, "%sul.%08X.%s.%02x", prefix, USBA_crc32(game_name), game->startup, part);

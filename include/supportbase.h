@@ -24,6 +24,7 @@ typedef struct
     u8 format;
     u32 sizeMB;
     char crc32name[9];
+    char nameIndex[5];
 } base_game_info_t;
 
 typedef struct
