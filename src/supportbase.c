@@ -513,8 +513,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char originName[256];
         while ((dirent = readdir(dir)) != NULL) {
             
-            memcpy(originName, dirent->d_name,24);
-            // sprintf(originName, "%s", dirent->d_name);
+            //memcpy(originName, dirent->d_name,24);
+             sprintf(originName, "%s", dirent->d_name);
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
