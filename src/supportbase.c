@@ -650,7 +650,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                         for (int i = 0; i < strlen(cnName); i++) {
                             if (cnName[i] == '\n' || cnName[i] == '\0') {
-                                game->name[i - strlen(index) - 1] = '\0';
+                                game->name[i - strlen(index) - 1] = 'e';
                                 break;
                             }
                         }
