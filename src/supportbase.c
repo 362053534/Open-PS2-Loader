@@ -277,14 +277,9 @@ int isValidIsoName(char *name, int *pNameLen)
             //utf8_encode(name);
             *pNameLen = size - 4;
             //sprintf(&name[0], "%d", *pNameLen);
-            if ((name[0] >= '0') && (name[0] <= '9'))
-                return GAME_FORMAT_TXT_ISO
-
             return GAME_FORMAT_ISO;
         }
     }
-
-    
 
     return 0;
 }
