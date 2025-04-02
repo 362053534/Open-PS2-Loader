@@ -673,6 +673,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->sizeMB = 0;
             game->nameIndex[0] = '\0';
 
+
             // count and process games in iso.txt
             if ((dirent->d_name[0] >= '0') && (dirent->d_name[0] <= '9')) {
                 memcpy(index, dirent->d_name, sizeof(index));
@@ -698,6 +699,30 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 }
                 //snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 //strncpy(game->name, path, 40);
+            } else if ((dirent->d_name[GAME_STARTUP_MAX] >= '0') && (dirent->d_name[GAME_STARTUP_MAX] <= '9') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
+                memcpy(index, &dirent->d_name[GAME_STARTUP_MAX], sizeof(index));
+                index[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';
+
+                if (file != NULL) {
+                    // strncpy(game->name, "打开文件了", 30);
+                    while (fgets(cnName, sizeof(cnName), file) != NULL) {
+                        if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {
+                            strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                            memcpy(game->nameIndex, index, strlen(index));
+                            game->nameIndex[strlen(index)] = '\0';
+                            for (int i = 0; i < strlen(cnName); i++) {
+                                if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
+                                    game->name[i - strlen(index) - 1] = '\0';
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    rewind(file);
+                }
+                // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
+                // strncpy(game->name, path, 40);
             }
 
             count++;
