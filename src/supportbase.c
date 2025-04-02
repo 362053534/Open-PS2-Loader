@@ -1068,7 +1068,8 @@ void sbRebuildULCfg(base_game_info_t **list, const char *prefix, int gamecount, 
 
 static void sbCreatePath_name(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part, const char *game_name)
 {
-    if (game_name[0] >= '0' && game_name[0] <= '9') {
+    //if (game_name[0] >= '0' && game_name[0] <= '9')
+    {
         strncpy(game_name, game->nameIndex, strlen(game->nameIndex));
         game_name[strlen(game->nameIndex)] = '\0';
     }
