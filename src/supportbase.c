@@ -604,10 +604,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     //strcpy(game->name, dirent->d_name);
-                    memcpy(game->name, originName, 24);
-                    //sprintf(game->name, "%s", newpath);
+                    //memcpy(game->name, originName, 24);
+                    sprintf(game->name, "%d", strlen(originName));
                     game->name[24] = '\0';
-                    memcpy(game->extension, ".iso", sizeof(game->extension) - 1);
+                    strcpy(game->extension, ".iso");
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
                     fileXioUmount("iso:");
