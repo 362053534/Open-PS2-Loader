@@ -510,11 +510,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t base_path_len = strlen(path);
         memcpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = '/';
-        char originName[256];
+
         while ((dirent = readdir(dir)) != NULL) {
-            
-            memcpy(originName, dirent->d_name,24);
-             //sprintf(originName, "%s", dirent->d_name);
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
@@ -531,6 +528,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             *glist = next;
             base_game_info_t *game = &next->gameinfo;
             memset(game, 0, sizeof(base_game_info_t));
+
+
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
@@ -604,10 +603,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                     //strcpy(game->name, dirent->d_name);
-                    //memcpy(game->name, originName, 24);
-                    sprintf(game->name, "%d", strlen(originName));
-                    game->name[24] = '\0';
-                    strcpy(game->extension, ".iso");
+                    memcpy(game->name, dirent->d_name, NameLen);
+                    //sprintf(game->name, "%s", newpath);
+                    game->name[NameLen] = '\0';
+                    memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                     //newpath[base_path_len] = '/';
                     fileXioUmount("iso:");
@@ -628,6 +627,25 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
             }
+
+            // count and process games in iso.txt
+            snprintf(path, sizeof(path), "%s/iso.txt", path);
+            char index[] = dirent->d_name;
+            index[strlen(dirent->d_name) - 4] = '\0';
+            FILE *file;
+            char cnName[256];
+            file = fopen(path, "r");
+            if (file != NULL) {
+                while (fgets(buffer, sizeof(buffer), file) != NULL) {
+                    if (strncmp(index, cnName, strlen(index) == 0)) {
+                        memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                        game->name[UL_GAME_NAME_MAX] = '\0';
+                        break;
+                    }
+                }
+            }
+            fclose(file);
+
 
             game->parts = 1;
             game->media = type;
@@ -752,6 +770,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     } else if (count > 0) {
         *list = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count);
     }
+
+
 
     if (*list != NULL) {
         // copy the dlist into the list
