@@ -90,8 +90,8 @@ jobs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         git fetch --prune --unshallow
 
-    - name: Compile -> make languages languages
-      run: make --trace languages languages
+    - name: Compile -> make languages
+      run: make --trace languages
 
     - name: Create artifact
       run: sh ./lng_pack.sh
