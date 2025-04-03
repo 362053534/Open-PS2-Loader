@@ -25,6 +25,7 @@ typedef struct
     u32 sizeMB;
     char crc32name[9];
     char nameIndex[64];
+    char transName[64];
 } base_game_info_t;
 
 typedef struct
