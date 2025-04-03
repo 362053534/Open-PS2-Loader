@@ -677,12 +677,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 _indexName[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';
                 //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 存在，就赋值给索引数组
                 if (file != NULL) {
+                    // strncpy(game->name, "打开文件了", 30);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, _indexName, strlen(_indexName)) == 0 && fullName[strlen(_indexName)] == '.') {    // 寻找iso名字  是否存在于txt内作为索引名
                             strcpy(game->transName, &fullName[strlen(_indexName) + 1]); // 存在，就赋值给翻译文本数组
                             memcpy(game->nameIndex, _indexName, strlen(_indexName));  // 存在，就赋值给索引数组
                             game->nameIndex[strlen(_indexName)] = '\0';
-                            if (game->transName[0] == '\n' || game->transName[0] == '\0' || game->transName[0] == '\r') { // 判断索引的译名是否为空
+                            if (fullName[strlen(_indexName) + 1] == '\n' || fullName[strlen(_indexName) + 1] == '\0' || fullName[strlen(_indexName) + 1] == '\r') { // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             } 
@@ -700,7 +701,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         fprintf(file, "%s.\n" ,_indexName);
-                        //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                     rewind(file);
                 }
@@ -711,12 +711,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 _indexName[strlen(dirent->d_name) - 4] = '\0';
 
                 if (file != NULL) {
+                    // strncpy(game->name, "打开文件了", 30);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, _indexName, strlen(_indexName)) == 0 && fullName[strlen(_indexName)] == '.') {    // 寻找索引条目是否存在
                             strcpy(game->transName, &fullName[strlen(_indexName) + 1]);     // 存在，就赋值给翻译文本数组
                             memcpy(game->nameIndex, _indexName, strlen(_indexName));      // 存在，就赋值给索引数组
                             game->nameIndex[strlen(_indexName)] = '\0';
-                            if (game->transName[0] == '\n' || game->transName[0] == '\0' || game->transName[0] == '\r') { // 判断索引的译名是否为空
+                            if (fullName[strlen(_indexName) + 1] == '\n' || fullName[strlen(_indexName) + 1] == '\0' || fullName[strlen(_indexName) + 1] == '\r') {   // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             } 
@@ -734,7 +735,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         fprintf(file, "%s.\n", _indexName);
-                        //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                     rewind(file);
                 }
