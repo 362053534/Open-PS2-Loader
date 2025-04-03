@@ -691,7 +691,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             sprintf(game->name, "%s", game->name[0]);
                             for (int i = 0; i < strlen(cnName); i++) {
                                 if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
-                                    game->name[i - strlen(index) - 1] = '\0';
+                                    //game->name[i - strlen(index) - 1] = '\0';
                                     break;
                                 }
                             }
@@ -718,7 +718,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             sprintf(game->name, "%s", game->name[0]);
                             for (int i = 0; i < strlen(cnName); i++) {
                                 if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
-                                    game->name[i - strlen(index) - 1] = '\0';
+                                    //game->name[i - strlen(index) - 1] = '\0';
                                     break;
                                 }
                             }
