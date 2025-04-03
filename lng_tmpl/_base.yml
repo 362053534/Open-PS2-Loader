@@ -1,696 +1,344 @@
-comment_for_template_header: |-
-  This file is a template for translators. This file's encoding must be UTF8.
-
-  Entry that has been translated looks like this:
-    LABEL: Some string goes here
-
-  Entry that is intentionally left untranslated looks like this:
-    LABEL:
-    - same
-    - original: Version of this string in English
-
-  Entry that is not yet translated looks like this:
-    LABEL:
-    - untranslated
-    - original: Version of this string in English
-
-  To translate an untranslated entry, simply delete the two lines below the label
-  and replace them with text in target language. To mark the entry as intentionally
-  untranslated, replace "untranslated" with "same".
-  It might be necessary to put your text in quotes if it contains a colon (`:`) or it's a text
-  like "Yes" or "No". See YAML documentation for details. If in doubt, just quote the text.
-
-  Important: if your language require some custom glyphs, you should provide a corresponding
-  TTF/OTF font file too. By default, OPL only comes with the "basic Latin" font built-in.
-
-  Once the translation is complete, you can submit it to the development team.
-
-  To use your custom language with OPL, simply copy the .lng file into your mc?:/OPL or LNG folder
-  (File must start with the "lang_" prefix and have the ".lng" extension)
-
-  Finally, don't put too many comments in your file, it will waste space and increases loading
-  time. One single comment line on top (e.g. "name <yourmail@address.com>") should be enough.
-
-  Thanks for your work.
-comments_for_template_labels:
-  LOCALE: Put here the English name of your language (will be displayed in the OPL Settings menu), in standard latin characters.
-enum_name: _STR_IDS
-enum_label_prefix: _STR_
-string_array_name: internalEnglish
-string_count_label: LANG_STR_COUNT
-string_array_specifiers: ''
-gui_strings:
-- comment: Localized language name
-  label: LOCALE
-  string: English (internal)
-- label: SAVE_CHANGES
-  string: Save Changes
-- label: BACK
-  string: Back
-- label: NETCONFIG
-  string: Network Settings
-- label: SHOW_ADVANCED_OPTS
-  string: Advanced Options
-- label: NO_ITEMS
-  string: <no values>
-- label: SETTINGS_SAVED
-  string: Settings saved to %s
-- label: ERROR_SAVING_SETTINGS
-  string: Error writing settings!
-- label: EXIT
-  string: Exit
-- label: SETTINGS
-  string: Settings
-- label: MENU
-  string: Menu
-- label: BDM_GAMES
-  string: BDM Games
-- label: HDD_GAMES
-  string: HDD Games
-- label: NET_GAMES
-  string: ETH Games
-- label: APPS
-  string: Apps
-- label: THEME
-  string: Theme
-- label: LANGUAGE
-  string: Language
-- label: CONFIRMATION_POFF
-  string: The system will be powered off.
-- label: CONFIRMATION_EXIT
-  string: Exit to Browser?
-- label: CONFIRMATION_CANCEL_UPDATE
-  string: Cancel updating?
-- label: HDD_NOT_CONNECTED_ERROR
-  string: '%d: HardDisk Drive not detected.'
-- label: HDD_NOT_FORMATTED_ERROR
-  string: '%d: HardDisk Drive not formatted.'
-- comment: Generic network error message.
-  label: NETWORK_STARTUP_ERROR
-  string: '%d: Network startup error.'
-- label: NETWORK_STARTUP_ERROR_NETIF
-  string: '%d: No network adaptor detected.'
-- label: NETWORK_STARTUP_ERROR_CONN
-  string: '%d: Cannot connect to SMB server.'
-- label: NETWORK_STARTUP_ERROR_LOGON
-  string: '%d: Cannot log into SMB server.'
-- label: NETWORK_STARTUP_ERROR_SHARE
-  string: '%d: Cannot open SMB share.'
-- label: NETWORK_SHARE_LIST_ERROR
-  string: '%d: Cannot list SMB shares.'
-- label: NETWORK_GAMES_LIST_ERROR
-  string: '%d: Cannot list games.'
-- label: NETWORK_ERROR_DHCP_FAIL
-  string: '%d: DHCP server unavailable.'
-- label: NETWORK_ERROR_LINK_FAIL
-  string: '%d: No network connection.'
-- label: 'ON'
-  string: 'On'
-- label: 'OFF'
-  string: 'Off'
-- label: OK
-  string: OK
-- label: SELECT
-  string: Select
-- label: CANCEL
-  string: Cancel
-- label: CIRCLE
-  string: Circle
-- label: CROSS
-  string: Cross
-- label: GAMES_LIST
-  string: Games List
-- label: COMPAT_SETTINGS
-  string: Game Settings
-- label: REMOVE_ALL_SETTINGS
-  string: Remove Settings
-- label: SCROLLING
-  string: Scrolling Speed
-- label: SLOW
-  string: Slow
-- label: MEDIUM
-  string: Medium
-- label: FAST
-  string: Fast
-- label: DEFDEVICE
-  string: Default Menu
-- label: LOAD_FROM_DISC
-  string: Load From Disc
-- label: PLEASE_WAIT
-  string: Please wait.
-- label: ERROR_LOADING_ID
-  string: Error while loading the Game ID.
-- label: AUTOSORT
-  string: Automatic Sorting
-- label: ERR_LOADING_LANGFILE
-  string: Error loading the language file.
-- label: DEBUG
-  string: Debug Colors
-- label: NO_CONTROLLER
-  string: No controller detected, waiting...
-- label: COVERART
-  string: Cover Art
-- label: WIDE_SCREEN
-  string: Widescreen
-- label: POWEROFF
-  string: Power Off
-- label: LOADING_SETTINGS
-  string: Loading config...
-- label: SAVING_SETTINGS
-  string: Saving config...
-- label: START_DEVICE
-  string: Start Device
-- label: REFRESH
-  string: Refresh
-- label: BDMMODE
-  string: BDM Start Mode
-- label: HDDMODE
-  string: HDD (APA) Start Mode
-- label: ETHMODE
-  string: ETH Start Mode
-- label: APPMODE
-  string: Applications Start Mode
-- label: AUTO
-  string: Auto
-- label: MANUAL
-  string: Manual
-- label: STARTNBD
-  string: Start NBD Server
-- label: STARTINGNBD
-  string: NBD Server starting...
-- label: RUNNINGNBD
-  string: NBD Server running...
-- label: STARTFAILNBD
-  string: Failed to start NBD Server.
-- label: UNLOADNBD
-  string: NBD Server unloading...
-- label: EXITTO
-  string: IGR Path
-- label: BGCOLOR
-  string: Background Color
-- label: TXTCOLOR
-  string: Text Color
-- label: CAT_SMB_SERVER
-  string: '- SMB Server -'
-- label: IP_ADDRESS_TYPE
-  string: IP Address Type
-- label: IP_ADDRESS_TYPE_STATIC
-  string: Static
-- label: IP_ADDRESS_TYPE_DHCP
-  string: DHCP
-- label: IP_ADDRESS
-  string: IP Address
-- label: ADDRESS
-  string: Address
-- label: MASK
-  string: Mask
-- label: GATEWAY
-  string: Gateway
-- label: DNS_SERVER
-  string: DNS Server
-- label: PORT
-  string: Port
-- label: SHARE
-  string: Share
-- label: USER
-  string: User
-- label: PASSWORD
-  string: Password
-- label: NOT_SET
-  string: <not set>
-- label: ADDRESS_TYPE
-  string: Address Type
-- label: ADDR_TYPE_IP
-  string: IP
-- label: ADDR_TYPE_NETBIOS
-  string: NetBIOS
-- label: ACCEPT
-  string: Accept
-- label: DELETE_WARNING
-  string: Item will be permanently deleted, continue?
-- label: RENAME
-  string: Rename
-- label: DELETE
-  string: Delete
-- label: RUN
-  string: Run
-- label: GFX_SETTINGS
-  string: Display Settings
-- label: ENABLE_WRITE
-  string: Write Operations
-- label: LASTPLAYED
-  string: Remember Last Played Game
-- label: SELECTBUTTON
-  string: Select Button
-- label: ERR_FRAGMENTED
-  string: Error, the game is fragmented.
-- label: ERR_FILE_INVALID
-  string: Error, could not run the item.
-- label: TEST
-  string: Test Changes
-- label: HINT_GUEST
-  string: Leave empty for GUEST auth.
-- label: HINT_MODE1
-  string: Accurate Reads
-- label: HINT_MODE2
-  string: Synchronous Mode
-- label: HINT_MODE3
-  string: Unhook Syscalls
-- label: HINT_MODE4
-  string: Skip Videos
-- label: HINT_MODE5
-  string: Emulate DVD-DL
-- label: HINT_MODE6
-  string: Disable IGR
-- label: HINT_VMC_SIZE
-  string: Changing the size will reformat the VMC.
-- label: CREATE
-  string: Create
-- label: START
-  string: Start
-- label: MODIFY
-  string: Modify
-- label: ABORT
-  string: Abort
-- label: RESET
-  string: Reset
-- label: USE_GENERIC
-  string: Use Generic
-- label: VMC_SCREEN
-  string: Configure VMC
-- label: VMC_NAME
-  string: Name
-- label: SIZE
-  string: Size
-- label: VMC_STATUS
-  string: Status
-- label: VMC_PROGRESS
-  string: Progress
-- label: VMC_FILE_EXISTS
-  string: VMC file exists.
-- label: VMC_FILE_ERROR
-  string: Invalid VMC file, size is incorrect.
-- label: VMC_FILE_NEW
-  string: VMC file needs to be created.
-- label: ERR_VMC_CONTINUE
-  string: Error accessing VMC %s. Continue with the Memory Card in slot %d?
-- label: AUTOREFRESH
-  string: Automatic Refresh
-- label: ABOUT
-  string: About
-- label: DEVS
-  string: Coders
-- label: QANDA
-  string: Quality Assurance
-- label: BDM_PREFIX
-  string: BDM Prefix Path
-- label: HINT_EXITPATH
-  string: Boots custom ELF after an IGR.
-- label: HINT_SPINDOWN
-  string: Value in minute(s), 0 to disable spin down.
-- label: HDD_SPINDOWN
-  string: Automatic HDD Spin Down
-- label: VMODE
-  string: Video Mode
-- label: UICOLOR
-  string: Dialog Color
-- label: SELCOLOR
-  string: Selected Color
-- label: RESETCOLOR
-  string: Reset Colors
-- label: INFO
-  string: Info
-- label: ALTSTARTUP
-  string: Custom ELF
-- label: COLOR_SELECTION
-  string: Color Selection
-- label: RECONNECT
-  string: Reconnect
-- label: HINT_SHARENAME
-  string: Leave empty to list shares.
-- label: ETH_PREFIX
-  string: ETH Prefix Path
-- label: BACKSPACE
-  string: Backspace
-- label: SPACE
-  string: Space
-- label: ENTER
-  string: Enter
-- label: MODE
-  string: Mode
-- label: VMC_SLOT1
-  string: VMC Slot 1
-- label: VMC_SLOT2
-  string: VMC Slot 2
-- label: GAME_ID
-  string: Game ID
-- label: DMA_MODE
-  string: DMA Mode
-- label: VSYNC
-  string: V-Sync
-- label: MODE1
-  string: Mode 1
-- label: MODE2
-  string: Mode 2
-- label: MODE3
-  string: Mode 3
-- label: MODE4
-  string: Mode 4
-- label: MODE5
-  string: Mode 5
-- label: MODE6
-  string: Mode 6
-- label: GSCONFIG
-  string: Configure GSM
-- label: ETH_OPMODE
-  string: Ethernet Link Mode
-- label: ETH_100MFDX
-  string: 100Mbit Full-duplex
-- label: ETH_100MHDX
-  string: 100Mbit Half-duplex
-- label: ETH_10MFDX
-  string: 10Mbit Full-duplex
-- label: ETH_10MHDX
-  string: 10Mbit Half-duplex
-- label: GSM_SETTINGS
-  string: GSM Settings
-- label: ENABLEGSM
-  string: GSM Selector
-- label: HINT_ENABLEGSM
-  string: Toggles GSM on/off.
-- label: HINT_GSMVMODE
-  string: Forced custom display mode.
-- label: XOFFSET
-  string: H-POS
-- label: HINT_XOFFSET
-  string: Horizontal adjustment.
-- label: YOFFSET
-  string: V-POS
-- label: HINT_YOFFSET
-  string: Vertical adjustment.
-- label: OVERSCAN
-  string: Overscan
-- label: HINT_OVERSCAN
-  string: Overscan adjustment.
-- label: GSMSKIPVIDEOS
-  string: FMV Skip
-- label: HINT_GSMSKIPVIDEOS
-  string: Skips full motion videos.
-- label: CHEAT_SETTINGS
-  string: Cheat Settings
-- label: ENABLECHEAT
-  string: PS2RD Cheat Engine
-- label: HINT_ENABLECHEAT
-  string: Lets PS2RD Cheat Engine patch your game.
-- label: CHEATMODE
-  string: PS2RD Cheat Engine Mode
-- label: HINT_CHEATMODE
-  string: Auto select or select game cheats.
-- label: CHEATMODEAUTO
-  string: Auto Select Cheats
-- label: CHEATMODESELECT
-  string: Select Game Cheats
-- label: ERR_CHEATS_LOAD_FAILED
-  string: 'Error: failed to load cheat file.'
-- label: NO_CHEATS_FOUND
-  string: No cheats found.
-- label: DL_DEFAULTS
-  string: Download Defaults
-- label: NET_UPDATE
-  string: Network Update
-- label: NET_UPDATE_ALL
-  string: Overwrite Existing Records
-- label: NET_UPDATE_FAILED
-  string: Update failed.
-- label: NET_UPDATE_CONN_FAILED
-  string: Failed to connect to update server.
-- label: NET_UPDATE_DONE
-  string: Update completed.
-- label: NET_UPDATE_CANCELLED
-  string: Update cancelled.
-- label: CONFIRMATION_SETTINGS_UPDATE
-  string: Download settings from the network?
-- label: CUSTOMIZED_SETTINGS
-  string: Customized Settings
-- label: DOWNLOADED_DEFAULTS
-  string: Downloaded Defaults
-- label: AUTO_START_IN_N_SECS
-  string: Auto start in %i s...
-- label: AUTOSTARTLAST
-  string: Auto Start
-- label: HINT_AUTOSTARTLAST
-  string: Value in second(s), 0 to disable auto start.
-- label: PS2LOGO
-  string: PS2 Logo
-- label: HINT_PS2LOGO
-  string: Displayed for a valid disc logo matching the console's region.
-- label: PADEMUCONFIG
-  string: Configure PADEMU
-- label: PADEMU_SETTINGS
-  string: Pad Emulator Settings
-- label: PADEMU_ENABLE
-  string: Pad Emulator
-- label: HINT_PADEMU_ENABLE
-  string: Turns on/off Pad Emulator for selected game.
-- label: PADEMU_MODE
-  string: Pad Emulator Mode
-- label: HINT_PADEMU_MODE
-  string: Select Pad Emulator mode.
-- label: DS34USB_MODE
-  string: DualShock3/4 USB
-- label: DS34BT_MODE
-  string: DualShock3/4 BT
-- label: PADPORT
-  string: 'Settings For Port:'
-- label: HINT_PAD_PORT
-  string: Select Pad Emulator port for settings.
-- label: PADEMU_PORT
-  string: Emulation
-- label: HINT_PADEMU_PORT
-  string: Turns on/off Pad Emulator for selected port.
-- label: PADEMU_VIB
-  string: Vibration
-- label: HINT_PADEMU_VIB
-  string: Turns on/off vibration for Pad Emulator selected port.
-- label: USBDG_MAC
-  string: 'USB Bluetooth Adapter MAC Address:'
-- label: PAD_MAC
-  string: 'DS Controller Paired To MAC Address:'
-- label: PAIR
-  string: Pair
-- label: PAIR_PAD
-  string: Pair DS Controller
-- label: HINT_PAIRPAD
-  string: Pair DS controller with Bluetooth adapter MAC address.
-- label: NOT_CONNECTED
-  string: Not Connected
-- label: BTINFO
-  string: Bluetooth Adapter Information
-- label: HINT_BTINFO
-  string: Shows more information and supported features.
-- label: HCIVER
-  string: 'HCI Version:'
-- label: LMPVER
-  string: 'LMP Version:'
-- label: MANUFACTURER
-  string: 'Manufacturer ID:'
-- label: SUPFEATURES
-  string: 'Supported Features:'
-- label: 'YES'
-  string: 'Yes'
-- label: 'NO'
-  string: 'No'
-- label: BT_SUPPORTED
-  string: Bluetooth adapter should be fully compatible with DS3/DS4 controllers.
-- label: BT_NOTSUPPORTED
-  string: Bluetooth adapter may not work correctly with DS3/DS4 controllers.
-- label: MTAP_ENABLE
-  string: Multitap Emulation
-- label: HINT_MTAP_ENABLE
-  string: Turns on/off Multitap emulation for selected game.
-- label: MTAP_PORT
-  string: 'Multitap Emulator On Port:'
-- label: HINT_MTAP_PORT
-  string: Select port for Multitap emulation.
-- label: PADEMU_WORKAROUND
-  string: Fake DS3 Workaround
-- label: HINT_PADEMU_WORKAROUND
-  string: Some fake DS3s need a workaround, this option will enable it.
-- label: GSM_FIELD_FIX
-  string: Emulate FIELD Flipping
-- label: HINT_GSM_FIELD_FIX
-  string: Fix for games that glitch under progressive video modes.
-- label: PARENLOCKCONFIG
-  string: Parental Lock Settings
-- label: PARENLOCK_PASSWORD
-  string: Parental Lock Password
-- label: PARENLOCK_PASSWORD_HINT
-  string: Leave blank to disable the parental lock.
-- label: PARENLOCK_ENTER_PASSWORD_TITLE
-  string: Enter Parental Lock Password
-- label: PARENLOCK_PASSWORD_INCORRECT
-  string: Parental lock password incorrect.
-- label: PARENLOCK_DISABLE_WARNING
-  string: Parental lock disabled.
-- label: BUILD_DETAILS
-  string: 'Build Options:'
-- label: PARENLOCK_INVALID_PASSWORD
-  string: Error - this password cannot be used.
-- label: ERR_VMC_FRAGMENTED_CONTINUE
-  string: VMC %s file is fragmented. Continue with Memory Card in slot %d?
-- label: AUDIO_SETTINGS
-  string: Audio Settings
-- label: SFX
-  string: Sound Effects
-- label: BOOT_SND
-  string: Boot Sound
-- label: SFX_VOLUME
-  string: Sound Effects Volume
-- label: BOOT_SND_VOLUME
-  string: Boot Sound Volume
-- label: CFM_VMODE_CHG
-  string: Confirm video mode change?
-- label: CACHE_HDD_GAME_LIST
-  string: Cache Game List (HDD)
-- label: ENABLE_NOTIFICATIONS
-  string: Notifications
-- label: CFG_NOTIFICATION
-  string: Config loaded from %s
-- label: THM_NOTIFICATION
-  string: Theme loaded from %s
-- label: LNG_NOTIFICATION
-  string: Language loaded from %s
-- label: PARTITION_NOTIFICATION
-  string: '%s partition mounted.'
-- label: OPTIONS
-  string: Options
-- label: GAME_SETTINGS_SAVED
-  string: Game settings saved.
-- label: GAME_SETTINGS_REMOVED
-  string: '%s settings removed.'
-- label: NET_UPDATE_HINT
-  string: Overwrites existing game compatibility settings when enabled.
-- label: SETTINGS_SOURCE
-  string: Settings Mode
-- label: GLOBAL_SETTINGS
-  string: Global
-- label: PERGAME_SETTINGS
-  string: Per Game
-- label: ALL_SETTINGS
-  string: All
-- label: GAME_SETTINGS_PROMPT
-  string: Select settings to remove.
-- label: FORUM_DETAILS
-  string: 'Support Forums:'
-- label: INFO_TITLE
-  string: Title
-- label: INFO_GENRE
-  string: Genre
-- label: INFO_RELEASE
-  string: Release
-- label: INFO_DEVELOPER
-  string: Developer
-- label: INFO_DESCRIPTION
-  string: Description
-- label: BLOCKDEVICE_SETTINGS
-  string: BDM Devices
-- label: CONTROLLER_SETTINGS
-  string: Controller Settings
-- label: HINT_BDM_START
-  string: Turn on/off Block Device Manager.
-- label: HINT_BLOCK_DEVICES
-  string: Turn on/off BDM Devices (USB/MX4SIO/ILINK/HDD).
-- label: USB_GAMES
-  string: USB Games
-- label: ILINK_GAMES
-  string: iLink Games
-- label: MX4SIO_GAMES
-  string: MX4SIO Games
-- label: PADMACROCONFIG
-  string: Configure PADMACRO
-- label: PADMACRO_SETTINGS
-  string: Pad Macro Settings
-- label: PADMACRO_ENABLE
-  string: Pad macros
-- label: PADMACRO_SLOWDOWN
-  string: 'Analog Slow-Down:'
-- label: HINT_PADMACRO_SLOWDOWN_AXIS
-  string: Reduce the range of analog stick when button is pressed.
-- label: LEFT_ANALOG
-  string: Left Stick
-- label: RIGHT_ANALOG
-  string: Right Stick
-- label: PADMACRO_INVERT_AXIS
-  string: 'Analog Axis Invert:'
-- label: HINT_PADMACRO_INVERT_AXIS
-  string: Inverts the axis of selected analog stick.
-- label: TURBO_SPEED
-  string: Turbo Button Speed
-- label: HINT_TURBO_SPEED
-  string: How fast the button is pressed when turbo is active.
-- label: ACT_WHILE_PRESSED
-  string: While Button Pressed
-- label: ACT_TOGGLED
-  string: Toggled By Button
-- label: LANGUAGE_JAPANESE
-  string: JAPANESE
-- label: LANGUAGE_ENGLISH
-  string: ENGLISH
-- label: LANGUAGE_FRENCH
-  string: FRENCH
-- label: LANGUAGE_SPANISH
-  string: SPANISH
-- label: LANGUAGE_GERMAN
-  string: GERMAN
-- label: LANGUAGE_ITALIAN
-  string: ITALIAN
-- label: LANGUAGE_DUTCH
-  string: DUTCH
-- label: LANGUAGE_PORTUGUESE
-  string: PORTUGUESE
-- label: LANGUAGE_RUSSIAN
-  string: RUSSIAN
-- label: LANGUAGE_KOREAN
-  string: KOREAN
-- label: LANGUAGE_TRAD_CHINESE
-  string: TRADITIONAL CHINESE
-- label: LANGUAGE_SIMPL_CHINESE
-  string: SIMPLIFIED CHINESE
-- label: OSD_SETTINGS
-  string: OSD Settings
-- label: OSD_SETTINGS_LNG
-  string: OSD Language
-- label: HINT_OSD_SETTINGS_LNG
-  string: Force a custom language configuration
-- label: ENABLE_LNG
-  string: Enable
-- label: OSD_SETTINGS_TVASPECT
-  string: Screen Size
-- label: FULL_SCREEN
-  string: Full Screen
-- label: OSD_SETTINGS_VMODE
-  string: Video Mode
-- label: SYSTEM_DEFAULT
-  string: System Default
-- label: BGM
-  string: Background Music
-- label: BGM_VOLUME
-  string: Background Music Volume
-- label: DEF_BGM_PATH
-  string: Default Theme Music
-- label: DEF_BGM_PATH_HINT
-  string: Set path to stream music for internal theme.
-- label: HIGH
-  string: High
-- label: LOW
-  string: Low
-- label: XSENSITIVITY
-  string: Analog X-Axis Sensitivity
-- label: YSENSITIVITY
-  string: Analog Y-Axis Sensitivity
-- label: FILE_COUNT
-  string: 'Files found: %i'
-- label: CHEAT_SELECTION
-  string: Cheat Selection
-- label: HDD_HINT
-  string: Only one HDD allowed, enabling locks APA or GPT.
+comments: |-
+  Simplified Chinese translation by eyu2007
+  For Open PS2 Loader v1.0.0 + betas - Official OPL Beta thread @https://www.psx-place.com/threads/open-ps2-loader-language-pack.20547/
+translations:
+  LOCALE: Simplified Chinese
+  SAVE_CHANGES: 保存设置
+  BACK: 返回
+  NETCONFIG: 网络设置
+  SHOW_ADVANCED_OPTS: 进阶设置
+  NO_ITEMS: <无数值>
+  SETTINGS_SAVED: 设置已保存到%s
+  ERROR_SAVING_SETTINGS: 设置保存错误！
+  EXIT: 离开
+  SETTINGS: 设置
+  MENU: 菜单
+  BDM_GAMES: BDM游戏
+  HDD_GAMES: HDD游戏
+  NET_GAMES: ETH游戏
+  APPS: 应用程序
+  THEME: 主题
+  LANGUAGE: 语言
+  CONFIRMATION_POFF: 即将关闭主机电源。
+  CONFIRMATION_EXIT: 要返回浏览器界面吗？
+  CONFIRMATION_CANCEL_UPDATE: 取消更新？
+  HDD_NOT_CONNECTED_ERROR: '%d：检测不到硬盘'
+  HDD_NOT_FORMATTED_ERROR: '%d：硬盘没有格式化'
+  NETWORK_STARTUP_ERROR: '%d：启动网络错误'
+  NETWORK_STARTUP_ERROR_NETIF: '%d：检测不到网卡'
+  NETWORK_STARTUP_ERROR_CONN: '%d：无法连接SMB服务器'
+  NETWORK_STARTUP_ERROR_LOGON: '%d：无法登入SMB服务器'
+  NETWORK_STARTUP_ERROR_SHARE: '%d：无法开启SMB共享目录'
+  NETWORK_SHARE_LIST_ERROR: '%d：无法列出SMB共享目录列表'
+  NETWORK_GAMES_LIST_ERROR: '%d：无法列出游戏清单'
+  NETWORK_ERROR_DHCP_FAIL: '%d：DHCP服务器不存在'
+  NETWORK_ERROR_LINK_FAIL: '%d：无网络连接'
+  'ON': 开启
+  'OFF': 关闭
+  OK: 确定
+  SELECT: 选择
+  CANCEL: 取消
+  CIRCLE: O
+  CROSS: X
+  GAMES_LIST: 游戏列表
+  COMPAT_SETTINGS: 游戏设置
+  REMOVE_ALL_SETTINGS: 删除设置
+  SCROLLING: 滚动速度
+  SLOW: 较慢
+  MEDIUM: 中等
+  FAST: 较快
+  DEFDEVICE: 默认选单
+  LOAD_FROM_DISC: 从光盘中读取
+  PLEASE_WAIT: 请稍后
+  ERROR_LOADING_ID: 读取游戏ID时出错
+  AUTOSORT: 自动滚动
+  ERR_LOADING_LANGFILE: 读取语言文件时出错
+  DEBUG: Debug颜色
+  NO_CONTROLLER: 未检测到摇杆, 等待中…
+  COVERART: 游戏封面
+  WIDE_SCREEN: 宽屏显示
+  POWEROFF: 关机
+  LOADING_SETTINGS: 正在读取配置
+  SAVING_SETTINGS: 正在储存配置
+  START_DEVICE: 启动设备
+  REFRESH: 刷新
+  BDMMODE: BDM设备启动模式
+  HDDMODE: HDD设备启动模式
+  ETHMODE: ETH设备启动模式
+  APPMODE: 应用程序启动模式
+  AUTO: 自动
+  MANUAL: 手动
+  STARTNBD: 启动NBD服务
+  STARTINGNBD: 正在启动NBD服务…
+  RUNNINGNBD: NBD服务正在运行…
+  STARTFAILNBD: 启动NBD服务发生错误。
+  UNLOADNBD: 未能读取NBD服务…
+  EXITTO: IGR路径
+  BGCOLOR: 背景颜色
+  TXTCOLOR: 文字颜色
+  CAT_SMB_SERVER: '- SMB服务器 -'
+  IP_ADDRESS_TYPE: IP地址模式
+  IP_ADDRESS_TYPE_STATIC: 静态
+  IP_ADDRESS_TYPE_DHCP: DHCP
+  IP_ADDRESS: IP地址
+  ADDRESS: 地址
+  MASK: 子网掩码
+  GATEWAY: 网关
+  DNS_SERVER: DNS服务器
+  PORT: 端口
+  SHARE: 共享目录名
+  USER: 用户名
+  PASSWORD: 密码
+  NOT_SET: <未配置>
+  ADDRESS_TYPE: 地址格式
+  ADDR_TYPE_IP: IP
+  ADDR_TYPE_NETBIOS: NetBIOS
+  ACCEPT: 允许
+  DELETE_WARNING: 将会永久删除该项目，是否继续？
+  RENAME: 重命名
+  DELETE: 删除
+  RUN: 运行
+  GFX_SETTINGS: 图像设置
+  ENABLE_WRITE: 启用写入功能
+  LASTPLAYED: 记住上次玩的游戏
+  SELECTBUTTON: 确定键
+  ERR_FRAGMENTED: 错误，游戏有碎片
+  ERR_FILE_INVALID: 错误，无法运行该项目
+  TEST: 测试修改
+  HINT_GUEST: GUEST验证留空.
+  HINT_MODE1: 精确读取
+  HINT_MODE2: 同步模式
+  HINT_MODE3: 脱开系统调用
+  HINT_MODE4: 跳过视频
+  HINT_MODE5: 模拟DVD-DL
+  HINT_MODE6: 禁用IGR
+  HINT_VMC_SIZE: 改变大小将会重新格式化虚拟记忆卡
+  CREATE: 生成
+  START: 开始
+  MODIFY: 变更
+  ABORT: 放弃
+  RESET: 重置
+  USE_GENERIC: 使用通用
+  VMC_SCREEN: 设置虚拟记忆卡
+  VMC_NAME: 名称
+  SIZE: 容量
+  VMC_STATUS: 状态
+  VMC_PROGRESS: 进度
+  VMC_FILE_EXISTS: 虚拟记忆卡文件已存在
+  VMC_FILE_ERROR: 无效的虚拟记忆卡文件，大小有误
+  VMC_FILE_NEW: 需要建立虚拟记忆卡文件
+  ERR_VMC_CONTINUE: 虚拟记忆卡%s出错，是否改为使用接口%d的物理记忆卡？
+  AUTOREFRESH: 自动刷新
+  ABOUT: 关于
+  DEVS: 程序
+  QANDA: 测试
+  BDM_PREFIX: BDM前缀路径
+  HINT_EXITPATH: 自定义IGR启动文件
+  HINT_SPINDOWN: 数值以分钟计，设为0则禁用降速
+  HDD_SPINDOWN: 自动HDD降速
+  VMODE: 影片模式
+  UICOLOR: 对话框颜色
+  SELCOLOR: 被选定颜色
+  RESETCOLOR: 重置颜色
+  INFO: 信息
+  ALTSTARTUP: 自定义ELF
+  COLOR_SELECTION: 颜色选项
+  RECONNECT: 重新连接
+  HINT_SHARENAME: 若此选项留空，则会列出共享目录列表
+  ETH_PREFIX: ETH前缀路径
+  BACKSPACE: 退格
+  SPACE: 空格
+  ENTER: 回车
+  MODE: 模式
+  VMC_SLOT1: 虚拟记忆卡插槽1
+  VMC_SLOT2: 虚拟记忆卡插槽2
+  GAME_ID: 游戏ID
+  DMA_MODE: DMA模式
+  VSYNC: 垂直同步
+  MODE1: 模式 1
+  MODE2: 模式 2
+  MODE3: 模式 3
+  MODE4: 模式 4
+  MODE5: 模式 5
+  MODE6: 模式 6
+  GSCONFIG: 配置GSM
+  ETH_OPMODE: 以太网链接模式
+  ETH_100MFDX: 100Mbit 全双工
+  ETH_100MHDX: 100Mbit 半双工
+  ETH_10MFDX: 10Mbit 全双工
+  ETH_10MHDX: 10Mbit 半双工
+  GSM_SETTINGS: GSM设置
+  ENABLEGSM:
+  - untranslated
+  - original: GSM Selector
+  HINT_ENABLEGSM: 切换 GSM 开或关
+  HINT_GSMVMODE: 强制自定义显示模式
+  XOFFSET: 水平位置
+  HINT_XOFFSET: 水平调整
+  YOFFSET: 垂直位置
+  HINT_YOFFSET: 垂直调整
+  OVERSCAN: 过扫
+  HINT_OVERSCAN: 过扫调节
+  GSMSKIPVIDEOS: 跳过 FMV
+  HINT_GSMSKIPVIDEOS: 跳过全动态视频
+  CHEAT_SETTINGS: 金手指设置
+  ENABLECHEAT: PS2RD金手指引擎
+  HINT_ENABLECHEAT: 允许PS2RD金手指引擎对你的游戏进行补丁
+  CHEATMODE: PS2RD金手指引擎模式
+  HINT_CHEATMODE: 自动或手动选择游戏金手指
+  CHEATMODEAUTO: 自动选择金手指
+  CHEATMODESELECT: 手动选择金手指
+  ERR_CHEATS_LOAD_FAILED: '错误：读取金手指文件出错'
+  NO_CHEATS_FOUND: 未发现金手指文件
+  DL_DEFAULTS: 下载默认值
+  NET_UPDATE: 网络更新
+  NET_UPDATE_ALL: 覆盖现有记录
+  NET_UPDATE_FAILED: 更新失败。
+  NET_UPDATE_CONN_FAILED: 连接更新服务器失败。
+  NET_UPDATE_DONE: 更新已完成。
+  NET_UPDATE_CANCELLED: 更新已取消。
+  CONFIRMATION_SETTINGS_UPDATE: 从网络上下载设置？
+  CUSTOMIZED_SETTINGS: 自定义设置
+  DOWNLOADED_DEFAULTS: 已下载默认值
+  AUTO_START_IN_N_SECS: 将自动于 %i 秒后启动…
+  AUTOSTARTLAST: 自动启动
+  HINT_AUTOSTARTLAST: 以秒为单位，设为 0 来禁用自动启动
+  PS2LOGO: PS2标志
+  HINT_PS2LOGO: 只显示与控制台区域匹配的有效碟片标识
+  PADEMUCONFIG: 配置PADEMU
+  PADEMU_SETTINGS: 手柄模拟器设置
+  PADEMU_ENABLE: 手柄模拟器
+  HINT_PADEMU_ENABLE: 为选定的游戏开启/关闭手柄模拟调节。
+  PADEMU_MODE: 手柄模拟器模式
+  HINT_PADEMU_MODE: 选择手柄模拟器模式。
+  DS34USB_MODE: 有线连接
+  DS34BT_MODE: 蓝牙连接
+  PADPORT: '设置端口：'
+  HINT_PAD_PORT: 选择Pad模拟器端口
+  PADEMU_PORT:
+  - untranslated
+  - original: Emulation
+  HINT_PADEMU_PORT: 打开/关闭选定端口的模拟器
+  PADEMU_VIB: 震动
+  HINT_PADEMU_VIB: 打开/关闭选定端口的振动。
+  USBDG_MAC: 'USB蓝牙适配器MAC地址:'
+  PAD_MAC: 'D  S 手 柄   MAC地址:'
+  PAIR: 配对
+  PAIR_PAD: 配对DS手柄
+  HINT_PAIRPAD: 蓝牙适配器和DS手柄进行MAC地址配对。
+  NOT_CONNECTED: 没有连接
+  BTINFO: 蓝牙适配器信息
+  HINT_BTINFO: 显示更多的信息和支持的特性
+  HCIVER: 'HCI版本:'
+  LMPVER: 'LMP版本:'
+  MANUFACTURER: '制造商ID：'
+  SUPFEATURES: '支持的功能：'
+  'YES': 是
+  'NO': 否
+  BT_SUPPORTED: 蓝牙适配器应该完全兼容DS3/DS4手柄
+  BT_NOTSUPPORTED: 蓝牙适配器可能无法与DS3/DS4手柄匹配
+  MTAP_ENABLE:
+  - untranslated
+  - original: Multitap Emulation
+  HINT_MTAP_ENABLE: 打开/关闭这个游戏的多重模拟.
+  MTAP_PORT: 多重模拟端口
+  HINT_MTAP_PORT: 选择进行多重模拟的端口
+  PADEMU_WORKAROUND:
+  - untranslated
+  - original: Fake DS3 Workaround
+  HINT_PADEMU_WORKAROUND:
+  - untranslated
+  - original: Some fake DS3s need a workaround, this option will enable it.
+  GSM_FIELD_FIX: 模拟播片扫描方式切换
+  HINT_GSM_FIELD_FIX: 修正逐行模式下视频播放有问题的游戏.
+  PARENLOCKCONFIG: 儿童锁设置
+  PARENLOCK_PASSWORD: 儿童锁密码
+  PARENLOCK_PASSWORD_HINT: 留空将禁用用儿童锁。
+  PARENLOCK_ENTER_PASSWORD_TITLE: 请输入儿童锁密码
+  PARENLOCK_PASSWORD_INCORRECT: 儿童锁密码不正确。
+  PARENLOCK_DISABLE_WARNING: 已禁用儿童锁。
+  BUILD_DETAILS: '创建选项：'
+  PARENLOCK_INVALID_PASSWORD: 错误-无法使用此密码。
+  ERR_VMC_FRAGMENTED_CONTINUE: 虚拟记忆卡%s文件有碎片，是否改为使用接口%d的物理记忆卡？
+  AUDIO_SETTINGS: 音频设置
+  SFX: 音效
+  BOOT_SND: 启动音
+  SFX_VOLUME: 音效音量
+  BOOT_SND_VOLUME: 启动音量
+  CFM_VMODE_CHG: 确认更改视频模式？
+  CACHE_HDD_GAME_LIST: 缓存游戏列表 (硬盘)
+  ENABLE_NOTIFICATIONS: 通知
+  CFG_NOTIFICATION: 已从%s加载设置
+  THM_NOTIFICATION: 已从%s加载主题
+  LNG_NOTIFICATION: 已从%s加载语言
+  PARTITION_NOTIFICATION: 已挂载%s分区。
+  OPTIONS: 设置
+  GAME_SETTINGS_SAVED: 已保存游戏设置。
+  GAME_SETTINGS_REMOVED: '%s设置已删除。'
+  NET_UPDATE_HINT: 启用时覆盖现有的游戏兼容性设置。
+  SETTINGS_SOURCE: 设置模式
+  GLOBAL_SETTINGS: 全局
+  PERGAME_SETTINGS: 当前游戏
+  ALL_SETTINGS: 全部
+  GAME_SETTINGS_PROMPT: 选择要删除的设置。
+  FORUM_DETAILS: 支持论坛：
+  INFO_TITLE: 标题
+  INFO_GENRE: 类型
+  INFO_RELEASE: 发行商
+  INFO_DEVELOPER: 开发商
+  INFO_DESCRIPTION: 描述
+  BLOCKDEVICE_SETTINGS: 块设备
+  CONTROLLER_SETTINGS: 控制器设置
+  HINT_BDM_START: 打开/关闭块设备管理器。
+  HINT_BLOCK_DEVICES: 打开/关闭块设备(例如USB)。
+  USB_GAMES: USB游戏
+  ILINK_GAMES: iLink游戏
+  MX4SIO_GAMES: MX4SIO游戏
+  PADMACROCONFIG:
+  - untranslated
+  - original: Configure PADMACRO
+  PADMACRO_SETTINGS:
+  - untranslated
+  - original: Pad macro Settings
+  PADMACRO_ENABLE:
+  - untranslated
+  - original: Pad macros
+  PADMACRO_SLOWDOWN:
+  - untranslated
+  - original: 'Analog slow-down:'
+  HINT_PADMACRO_SLOWDOWN_AXIS:
+  - untranslated
+  - original: Reduce range of analog stick when button is pressed
+  LEFT_ANALOG: 左摇杆
+  RIGHT_ANALOG: 右摇杆
+  PADMACRO_INVERT_AXIS: 摇杆反转：
+  HINT_PADMACRO_INVERT_AXIS: 反转摇杆的轴
+  TURBO_SPEED: 连发键速度
+  HINT_TURBO_SPEED:
+  - untranslated
+  - original: How fast to press the button when turbo is active
+  ACT_WHILE_PRESSED:
+  - untranslated
+  - original: While button pressed
+  ACT_TOGGLED:
+  - untranslated
+  - original: Toggled by button
+  LANGUAGE_JAPANESE: 日文
+  LANGUAGE_ENGLISH: 英文
+  LANGUAGE_FRENCH: 法文
+  LANGUAGE_SPANISH: 西班牙文
+  LANGUAGE_GERMAN: 德文
+  LANGUAGE_ITALIAN: 意大利文
+  LANGUAGE_DUTCH: 荷兰文
+  LANGUAGE_PORTUGUESE: 葡萄牙文
+  LANGUAGE_RUSSIAN: 俄文
+  LANGUAGE_KOREAN: 韩文
+  LANGUAGE_TRAD_CHINESE: 繁体中文
+  LANGUAGE_SIMPL_CHINESE: 简体中文
+  OSD_SETTINGS: 屏幕菜单设置
+  OSD_SETTINGS_LNG: 屏幕菜单语言
+  ENABLE_LNG: 修改语言
+  BGM: 背景音乐
+  BGM_VOLUME: 背景音乐音量
+  DEF_BGM_PATH: 默认主题音乐
+  DEF_BGM_PATH_HINT: 为内置主题设置音乐路径。
