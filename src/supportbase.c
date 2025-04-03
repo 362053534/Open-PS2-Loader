@@ -1102,13 +1102,13 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
-            if ((game->nameIndex[0] >= '0') && (game->nameIndex[0] <= '9'))
+            if (game->nameIndex[0] != '\0')
                 snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->nameIndex, game->extension);
             else
                 snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
             break;
         case GAME_FORMAT_OLD_ISO:
-            if ((game->nameIndex[0] >= '0') && (game->nameIndex[0] <= '9'))
+            if (game->nameIndex[0] != '\0')
                 snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
             else
                 snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game_name, game->extension);
