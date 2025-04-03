@@ -722,32 +722,23 @@ static void menuUpdateHook()
 {
     int i;
 
-    //// if timer exceeds some threshold, schedule updates of the available input sources
-    //frameCounter++;
+    // if timer exceeds some threshold, schedule updates of the available input sources
+    frameCounter++;
 
-    //// schedule updates of all the list handlers
-    //if (gAutoRefresh) {
-    //    for (i = 0; i < MODE_COUNT; i++) {
-    //        if ((list_support[i].support && list_support[i].support->enabled) && ((list_support[i].support->updateDelay > 0) && (frameCounter % list_support[i].support->updateDelay == 0)))
-    //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
-    //    }
-    //}
-
-    //// Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
-    //if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
-    //    for (i = 0; i < MODE_COUNT; i++) {
-    //        if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
-    //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
-    //    }
-    //}
+    // schedule updates of all the list handlers
+    if (gAutoRefresh) {
+        for (i = 0; i < MODE_COUNT; i++) {
+            if ((list_support[i].support && list_support[i].support->enabled) && ((list_support[i].support->updateDelay > 0) && (frameCounter % list_support[i].support->updateDelay == 0)))
+                ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+        }
+    }
 
     // Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
-    if (frameCounter == 0) {
+    if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
         for (i = 0; i < MODE_COUNT; i++) {
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
-        frameCounter = 1;
     }
 }
 
@@ -1163,7 +1154,7 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
         gDefaultDevice = APP_MODE;
 
     guiUpdateScrollSpeed();
-    frameCounter = 0;
+
     guiSetFrameHook(&menuUpdateHook);
 
     int changed = rmSetMode(0);
@@ -1927,7 +1918,6 @@ static void autoLaunchHDDGame(char *argv[])
 
 static void autoLaunchBDMGame(char *argv[])
 {
-    //return;
     char path[256];
     config_set_t *configSet;
 
