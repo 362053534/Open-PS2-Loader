@@ -517,7 +517,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         char index[100];
         char cnName[64];
-        snprintf(path, 256, "%s%s..\\iso.txt", path, path[0] == 's' ? "\\" : "/");
+        snprintf(path, 256, "%s%s../iso.txt", path, path[0] == 's' ? "\\" : "/");
         file = fopen(path, "r");
 
 
