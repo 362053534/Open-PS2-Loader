@@ -683,7 +683,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // strncpy(game->name, "打开文件了", 30);
                     while (fgets(cnName, sizeof(cnName), file) != NULL) {
                         if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {
-                            if (&strncmp(cnName[strlen(index) + 1], "", 1) == 0)
+                            if (&strncmp(&cnName[strlen(index) + 1], "", 1) == 0)
                                 break;
                             strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                             memcpy(game->nameIndex, index, strlen(index));
