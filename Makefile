@@ -788,8 +788,7 @@ LANG_COMPILER = lang_compiler.py
 
 languages: $(ENGLISH_TEMPLATE_YML) $(TRANSLATIONS_YML) $(ENGLISH_LNG) $(TRANSLATIONS_LNG) $(INTERNAL_LANGUAGE_C) $(INTERNAL_LANGUAGE_H)
 
-download_lng:
-	./download_lng.sh
+
 
 download_lwNBD:
 	./download_lwNBD.sh
