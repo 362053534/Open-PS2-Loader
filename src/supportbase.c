@@ -517,7 +517,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         char index[100];
         char cnName[64];
-        snprintf(path, 256, "%s%s../iso.txt", path, path[0] == 's' ? "\\" : "/");
+        snprintf(path, 256, "%s%s../Title Translator.txt", path, path[0] == 's' ? "\\" : "/");
         file = fopen(path, "r");
 
 
@@ -674,7 +674,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->nameIndex[0] = '\0';
 
 
-            // count and process games in iso.txt
+            // count and process games in Title Translator.txt
             if ((dirent->d_name[0] >= '0') && (dirent->d_name[0] <= '9')) {
                 memcpy(index, dirent->d_name, sizeof(index));
                 index[strlen(dirent->d_name) - 4] = '\0';
