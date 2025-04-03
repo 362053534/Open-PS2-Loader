@@ -698,6 +698,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             break;
                         }
                     }
+                    if (game->nameIndex[0] == '\0') {
+                        fprintf(file, "%s.\n" ,index);
+                    }
                     rewind(file);
                 }
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
@@ -724,6 +727,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             }
                             break;
                         }
+                    }
+                    if (game->nameIndex[0] == '\0') {
+                        fprintf(file, "%s.\n", index);
                     }
                     rewind(file);
                 }
