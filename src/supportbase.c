@@ -682,6 +682,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 存在，就赋值给索引数组
                 if (file != NULL) {
                     rewind(file);
+                    if (fgets(fullName, sizeof(fullName), file) != NULL) {
+                        if (fullname[0] == '\0')
+                            fprintf(file, "// “.”符号左侧为iso英文名，右侧写上对应的翻译文本，即可实现游戏列表中文化！\n// 每一行对应一个游戏，最后一个游戏名一定要加上回车换行！\n\n");
+                        }
+                    }
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, _indexName, strlen(_indexName)) == 0 && (fullName[strlen(_indexName)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             memcpy(game->nameIndex, _indexName, strlen(_indexName));  // 存在，就赋值给索引数组
