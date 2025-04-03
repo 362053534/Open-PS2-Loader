@@ -700,7 +700,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         fprintf(file, "%s.\n" ,_indexName);
-                        memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
+                        //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                     rewind(file);
                 }
@@ -734,7 +734,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         fprintf(file, "%s.\n", _indexName);
-                        memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
+                        //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                     rewind(file);
                 }
