@@ -683,12 +683,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // strncpy(game->name, "打开文件了", 30);
                     while (fgets(cnName, sizeof(cnName), file) != NULL) {
                         if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {
-                            if (strncmp(&cnName[strlen(index) + 1], "",1) == 0)
+                            if (cnName[strlen(index) + 1] == '\n' || cnName[strlen(index) + 1] == '\0' || cnName[strlen(index) + 1] == '\r' || cnName[strlen(index) + 1] == "")
                                 break;
                             strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                             memcpy(game->nameIndex, index, strlen(index));
                             //game->nameIndex[strlen(index)] = '\0';
-                            sprintf(game->name, "%d", game->name);
+                            sprintf(game->name, "%s", game->name[0]);
                             for (int i = 0; i < strlen(cnName); i++) {
                                 if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
                                     game->name[i - strlen(index) - 1] = '\0';
@@ -710,12 +710,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // strncpy(game->name, "打开文件了", 30);
                     while (fgets(cnName, sizeof(cnName), file) != NULL) {
                         if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {
-                            if (strncmp(&cnName[strlen(index) + 1], "",1) == 0)
+                            if (cnName[strlen(index) + 1] == '\n' || cnName[strlen(index) + 1] == '\0' || cnName[strlen(index) + 1] == '\r' || cnName[strlen(index) + 1] == "")
                                 break;
                             strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                             memcpy(game->nameIndex, index, strlen(index));
                             //game->nameIndex[strlen(index)] = '\0';
-                            sprintf(game->name, "%d", game->name);
+                            sprintf(game->name, "%s", game->name[0]);
                             for (int i = 0; i < strlen(cnName); i++) {
                                 if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
                                     game->name[i - strlen(index) - 1] = '\0';
