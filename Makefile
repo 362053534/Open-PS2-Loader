@@ -784,7 +784,7 @@ ENGLISH_LNG = $(LNG_SRC_DIR)lang_English.lng
 BASE_LANGUAGE = $(LNG_TMPL_DIR)_base.yml
 INTERNAL_LANGUAGE_C = src/lang_internal.c
 INTERNAL_LANGUAGE_H = include/lang_autogen.h
-LANG_COMPILER = lang_decompiler.py
+LANG_COMPILER = lang_compiler.py
 
 languages: $(ENGLISH_TEMPLATE_YML) $(TRANSLATIONS_YML) $(ENGLISH_LNG) $(TRANSLATIONS_LNG) $(INTERNAL_LANGUAGE_C) $(INTERNAL_LANGUAGE_H)
 
