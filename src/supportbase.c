@@ -505,7 +505,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     FILE *file;
     char index[64];
-    char fullName[64];
+    char cnName[64];
     snprintf(path, 256, "%s%s../Title Translator.txt", path, path[0] == 's' ? "\\" : "/");
     file = fopen(path, "at+");
 
@@ -678,20 +678,20 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 if (file != NULL) {
                     // strncpy(game->name, "打开文件了", 30);
-                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, index, strlen(index)) == 0 && fullName[strlen(index)] == '.') {    // 寻找索引条目是否存在
-                            strcpy(game->transName, &fullName[strlen(index) + 1]); // 存在，就赋值给翻译文本数组
+                    while (fgets(cnName, sizeof(cnName), file) != NULL) {
+                        if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {    // 寻找索引条目是否存在
+                            strcpy(game->transName, &cnName[strlen(index) + 1]); // 存在，就赋值给翻译文本数组
                             memcpy(game->nameIndex, index, strlen(index));  // 存在，就赋值给索引数组
                             game->nameIndex[strlen(index)] = '\0';
-                            if (fullName[strlen(index) + 1] == '\n' || fullName[strlen(index) + 1] == '\0' || fullName[strlen(index) + 1] == '\r') { // 判断索引的译名是否为空
+                            if (cnName[strlen(index) + 1] == '\n' || cnName[strlen(index) + 1] == '\0' || cnName[strlen(index) + 1] == '\r') { // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             } 
-                            strncpy(game->name, &fullName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                            strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                          
                             //sprintf(game->name, "%d", game->name[0]);
-                            for (int i = 0; i < strlen(fullName); i++) {
-                                if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
+                            for (int i = 0; i < strlen(cnName); i++) {
+                                if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
                                     game->name[i - strlen(index) - 1] = '\0';
                                     break;
                                 }
@@ -712,20 +712,20 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 if (file != NULL) {
                     // strncpy(game->name, "打开文件了", 30);
-                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, index, strlen(index)) == 0 && fullName[strlen(index)] == '.') {    // 寻找索引条目是否存在
-                            strcpy(game->transName, &fullName[strlen(index) + 1]);     // 存在，就赋值给翻译文本数组
+                    while (fgets(cnName, sizeof(cnName), file) != NULL) {
+                        if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {    // 寻找索引条目是否存在
+                            strcpy(game->transName, &cnName[strlen(index) + 1]);     // 存在，就赋值给翻译文本数组
                             memcpy(game->nameIndex, index, strlen(index));      // 存在，就赋值给索引数组
                             game->nameIndex[strlen(index)] = '\0';
-                            if (fullName[strlen(index) + 1] == '\n' || fullName[strlen(index) + 1] == '\0' || fullName[strlen(index) + 1] == '\r') {   // 判断索引的译名是否为空
+                            if (cnName[strlen(index) + 1] == '\n' || cnName[strlen(index) + 1] == '\0' || cnName[strlen(index) + 1] == '\r') {   // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             } 
-                            strncpy(game->name, &fullName[strlen(index) + 1], UL_GAME_NAME_MAX);
+                            strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
                  
                             //sprintf(game->name, "%d", game->name[0]);
-                            for (int i = 0; i < strlen(fullName); i++) {
-                                if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
+                            for (int i = 0; i < strlen(cnName); i++) {
+                                if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
                                     game->name[i - strlen(index) - 1] = '\0';
                                     break;
                                 }
