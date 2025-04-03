@@ -515,7 +515,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fullpath[base_path_len] = '/';
 
 
-        char index[100];
+        char index[64];
         char cnName[64];
         snprintf(path, 256, "%s%s../Title Translator.txt", path, path[0] == 's' ? "\\" : "/");
         file = fopen(path, "r");
@@ -596,10 +596,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                         //_wrename(w_newpath,w_fullpath);
                         //rename(newpath, fullpath);
-          /*              free(next);
+                        free(next);
                         *glist = next->next;
                         fileXioUmount("iso:");
-                        continue;*/
+                        continue;
                     }
 
                     //// 名字改回来   
@@ -675,9 +675,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
             // count and process games in Title Translator.txt
-            if ((dirent->d_name[0] >= '0') && (dirent->d_name[0] <= '9')) {
-                memcpy(index, dirent->d_name, sizeof(index));
-                index[strlen(dirent->d_name) - 4] = '\0';
+            if ((dirent->d_name[GAME_STARTUP_MAX - 8] == '_') && (dirent->d_name[GAME_STARTUP_MAX - 4] == '.') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
+                memcpy(index, &dirent->d_name[GAME_STARTUP_MAX], sizeof(index));
+                index[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';
 
                 if (file != NULL) {
                     // strncpy(game->name, "打开文件了", 30);
@@ -697,11 +697,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     rewind(file);
                 }
-                //snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
-                //strncpy(game->name, path, 40);
-            } else if ((dirent->d_name[GAME_STARTUP_MAX] >= '0') && (dirent->d_name[GAME_STARTUP_MAX] <= '9') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
-                memcpy(index, &dirent->d_name[GAME_STARTUP_MAX], sizeof(index));
-                index[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';
+                // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
+                // strncpy(game->name, path, 40);
+            } else {
+                memcpy(index, dirent->d_name, sizeof(index));
+                index[strlen(dirent->d_name) - 4] = '\0';
 
                 if (file != NULL) {
                     // strncpy(game->name, "打开文件了", 30);
