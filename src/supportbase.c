@@ -518,7 +518,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char index[64];
         char cnName[64];
         snprintf(path, 256, "%s%s../Title Translator.txt", path, path[0] == 's' ? "\\" : "/");
-        file = fopen(path, "r");
+        file = fopen(path, "at");
 
 
         while ((dirent = readdir(dir)) != NULL) {
@@ -709,7 +709,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 if (file != NULL) {
                     // strncpy(game->name, "打开文件了", 30);
                     while (fgets(cnName, sizeof(cnName), file) != NULL) {
-                        if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {
+                        if (strncmp(cnName, index, strlen(index)) == 0 && cnName[strlen(index)] == '.') {    // 寻找索引条目是否存在
                             if (cnName[strlen(index) + 1] == '\n' || cnName[strlen(index) + 1] == '\0' || cnName[strlen(index) + 1] == '\r')
                                 break;
                             strncpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
