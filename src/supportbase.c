@@ -517,7 +517,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char _indexName[64];
         char fullName[64];
         snprintf(path, 256, "%s%s../Title Translator.txt", path, path[0] == 's' ? "\\" : "/");
-        file = fopen(path, "a");
+        file = fopen(path, "at+");
 
 
 
@@ -703,6 +703,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         }
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
+                        rewind(file);
                         fprintf(file, "%s.\n" ,_indexName);
                         memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
                     }
@@ -737,6 +738,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         }
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
+                        rewind(file);
                         fprintf(file, "%s.\n", _indexName);
                         memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
                     }
