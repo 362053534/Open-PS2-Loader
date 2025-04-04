@@ -516,11 +516,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         FILE *file;
         char _indexName[64];
         char fullName[64];
-        snprintf(path, 256, "%s%s../Title Translator.txt", path, path[0] == 's' ? "\\" : "/");
-        file = fopen(path, "a+");
+        snprintf(path, 256, "%s%s../GameListTranslator.txt", path, path[0] == 's' ? "\\" : "/");
+        file = fopen(path, "at+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0)
-            fprintf(file, "// “.”符号左侧为iso英文名，右侧写上对应的翻译文本，即可实现游戏列表中文化！\n// 每一行对应一个游戏，最后一个游戏名一定要加上回车换行！\n// 中间不能存在空的行！！！！！！\n-----------------------------------------\n");
+            fprintf(file, "// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\n// 每一行对应一个游戏，最后一个游戏名一定要加上回车换行！\n// 中间不能存在空的行！！！！！！\n-----------------------------------------\n");
 
 
         while ((dirent = readdir(dir)) != NULL) {
@@ -677,7 +677,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->transName[0] = '\0';
 
 
-            // count and process games in Title Translator.txt
+            // count and process games in txt
             if ((dirent->d_name[GAME_STARTUP_MAX - 8] == '_') && (dirent->d_name[GAME_STARTUP_MAX - 4] == '.') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
                 memcpy(_indexName, &dirent->d_name[GAME_STARTUP_MAX], sizeof(_indexName));
                 _indexName[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
