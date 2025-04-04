@@ -1146,7 +1146,7 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
     // 把路径写到文本文件里，作为debug使用
     char fileDir[64];
     snprintf(fileDir, 256, "%sdebug.txt", prefix);
-    FILE *file = fopen(fileDir, "r");
+    FILE *file = fopen(fileDir, "w");
     fprintf(file, "%s\n", path);
     fclose(file);
 }
