@@ -673,7 +673,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
-            game->nameIndex[0] = '\0';
+            //game->nameIndex[0] = '\0';
             game->transName[0] = '\0';
 
             strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
