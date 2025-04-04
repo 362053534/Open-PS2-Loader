@@ -1188,7 +1188,7 @@ void sbRename(base_game_info_t **list, const char *prefix, const char *sep, int 
     base_game_info_t *game = &(*list)[id];
 
     for (part = 0; part < game->parts; part++) {
-        sbCreatePath_name(game, oldpath, prefix, sep, part, game->name);
+        sbCreatePath_name(game, oldpath, prefix, sep, part, game->nameIndex);
         sbCreatePath_name(game, newpath, prefix, sep, part, newname);
         rename(oldpath, newpath);
     }
@@ -1213,7 +1213,7 @@ config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const
     if ((game->sizeMB == 0) && (game->format != GAME_FORMAT_OLD_ISO)) {
         char gamepath[256];
 
-        snprintf(gamepath, sizeof(gamepath), "%s%s%s%s%s%s", prefix, sep, game->media == SCECdPS2CD ? "CD" : "DVD", sep, game->name, game->extension);
+        snprintf(gamepath, sizeof(gamepath), "%s%s%s%s%s%s", prefix, sep, game->media == SCECdPS2CD ? "CD" : "DVD", sep, game->nameIndex, game->extension);
 
         if (stat(gamepath, &st) == 0)
             game->sizeMB = st.st_size >> 20;
