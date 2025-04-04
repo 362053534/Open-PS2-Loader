@@ -707,6 +707,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             break;
                         }
                     }
+                    fprintf(file, "%d.\n", fullName);
                     if (fullName == NULL && game->transName[0] == '\0') {
                         //rewind(file);
                         fprintf(file, "%s.\n" ,game->nameIndex);
@@ -742,6 +743,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             break;
                         }
                     }
+                    fprintf(file, "%d.\n", fullName);
                     if (fullName == NULL && game->transName[0] == '\0') {
                         // rewind(file);
                         fprintf(file, "%s.\n", game->nameIndex);
