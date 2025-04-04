@@ -1143,6 +1143,13 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
             break;
     }
+    // 把路径写到文本文件里，作为debug使用
+    char fileDir[64];
+    strcpy(fileDir, path);
+    fileDir[12] = '\0';
+    sprintf(fileDir, "%s%s", fileDir, "debug.txt");
+    FILE *file = fopen(fileDir, "r");
+    fprintf(file, "%s\n", path);
 }
 
 void sbCreatePath(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part)
