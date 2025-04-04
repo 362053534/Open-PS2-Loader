@@ -703,13 +703,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             //给游戏名加结束符，防止换行符被显示出来
                             for (int i = 0; i < strlen(fullName); i++) {
                                 if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
-                                    game->name[i - strlen(game->nameIndex)] = '\0';
+                                    game->name[i - strlen(game->nameIndex) - 1] = '\0';
                                     break;
                                 }
                             }
                             break;
                         }
                     }
+                    // 如果txt里没有此游戏的英文名索引，则添加到txt里
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
                         fprintf(file, "%s.\n", game->nameIndex);
