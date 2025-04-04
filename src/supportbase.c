@@ -516,7 +516,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         FILE *file;
         char _indexName[64];
         char fullName[64];
-        snprintf(path, 256, "%s%s../GameListTranslator.txt", path, path[0] == 's' ? "\\" : "/");
+        snprintf(path, 256, "%s%s..GameListTranslator.txt", path, path[0] == 's' ? "\\" : "/");
         file = fopen(path, "at+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0)
@@ -752,6 +752,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 // strncpy(game->name, path, 40);
             }
+            if (game->transName[0] != '\0')
+                snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->nameIndex, game->extension);
+            else
+                snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
+
+            strncpy(game->name, path, 40);
 
             count++;
         }
