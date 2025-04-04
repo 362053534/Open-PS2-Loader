@@ -1137,7 +1137,7 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
-            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
+            snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->nameIndex, game->extension);
             break;
         case GAME_FORMAT_OLD_ISO:
             snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
@@ -1145,11 +1145,10 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
     }
     // 把路径写到文本文件里，作为debug使用
     char fileDir[64];
-    strcpy(fileDir, path);
-    fileDir[12] = '\0';
-    sprintf(fileDir, "%s%s", fileDir, "debug.txt");
+    snprintf(fileDir, 256, "%sdebug.txt", prefix);
     FILE *file = fopen(fileDir, "r");
     fprintf(file, "%s\n", path);
+    fclose(file);
 }
 
 void sbCreatePath(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part)
