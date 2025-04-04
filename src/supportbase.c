@@ -688,9 +688,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 if (file != NULL) {
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, game->nameIndex, strlen(game->nameIndex)) == 0 && (fullName[strlen(game->nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
-                            //memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
-                            //game->nameIndex[strlen(nameIndex)] = '\0';
+                        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                            //memcpy(game->name, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
+                            //game->name[strlen(nameIndex)] = '\0';
                             strncpy(game->nameIndex, game->name, strlen(game->name) + 1);                                                                                          // 将真正的游戏名变成index索引名
                             if (fullName[strlen(game->nameIndex) + 1] == '\n' || fullName[strlen(game->nameIndex) + 1] == '\0' || fullName[strlen(game->nameIndex) + 1] == '\r') { // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
@@ -718,13 +718,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 // strncpy(game->name, path, 40);
             } else {
-                //strncpy(game->nameIndex, dirent->d_name, strlen(game->nameIndex));
-                //game->nameIndex[strlen(dirent->d_name) - 4] = '\0';
+                //strncpy(game->name, dirent->d_name, strlen(game->name));
+                //game->name[strlen(dirent->d_name) - 4] = '\0';
 
                     if (file != NULL) {
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, game->nameIndex, strlen(game->nameIndex)) == 0 && (fullName[strlen(game->nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             // memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
                             // game->nameIndex[strlen(nameIndex)] = '\0';
                             strncpy(game->nameIndex, game->name, strlen(game->name) + 1);                                                     // 将真正的游戏名变成index索引名
