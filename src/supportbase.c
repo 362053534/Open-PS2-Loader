@@ -756,7 +756,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->nameIndex, game->extension);
             //else
             //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
-
             //strncpy(game->name, path, 40);
 
             count++;
