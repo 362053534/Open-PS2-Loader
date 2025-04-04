@@ -521,7 +521,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0)
             fprintf(file, "// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\n// 每一行对应一个游戏，最后一个游戏名一定要加上回车换行！\n// 中间不能存在空的行！！！！！！\n-----------------------------------------\n");
-        rewind(file);
+
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
@@ -686,6 +686,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //memcpy(game->game->nameIndex, game->nameIndex, strlen(game->nameIndex)); // 存在，就赋值给索引数组
 
                 if (file != NULL) {
+                    rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->nameIndex, strlen(game->nameIndex)) == 0 && (fullName[strlen(game->nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
@@ -721,6 +722,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //game->nameIndex[strlen(dirent->d_name) - 4] = '\0';
 
                     if (file != NULL) {
+                    rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->nameIndex, strlen(game->nameIndex)) == 0 && (fullName[strlen(game->nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             // memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
