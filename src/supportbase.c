@@ -521,7 +521,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0)
             fprintf(file, "// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\n// 每一行对应一个游戏，最后一个游戏名一定要加上回车换行！\n// 中间不能存在空的行！！！！！！\n-----------------------------------------\n");
-
+        rewind(file);
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
@@ -588,21 +588,21 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    //GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1)
                     //delay(5);
-                    if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
-                    {
+                    //if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
+                    //{
 
-                        //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                        //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
-                        //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                        //_wrename(w_newpath,w_fullpath);
-                        //rename(newpath, fullpath);
-                        free(next);
-                        *glist = next->next;
-                        fileXioUmount("iso:");
-                        continue;
-                    }
+                    //    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                    //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                    //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
+                    //    //_wrename(w_newpath,w_fullpath);
+                    //    //rename(newpath, fullpath);
+                    //    free(next);
+                    //    *glist = next->next;
+                    //    fileXioUmount("iso:");
+                    //    continue;
+                    //}
 
                     //// 名字改回来   
                     //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
@@ -676,7 +676,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //game->nameIndex[0] = '\0';
             game->transName[0] = '\0';
 
-            strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
+            strncpy(game->nameIndex, game->name, strlen(game->name) + 1); // 将真正的游戏名变成index索引名
+
 
             // count and process games in txt
             if ((dirent->d_name[GAME_STARTUP_MAX - 8] == '_') && (dirent->d_name[GAME_STARTUP_MAX - 4] == '.') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
@@ -685,7 +686,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //memcpy(game->game->nameIndex, game->nameIndex, strlen(game->nameIndex)); // 存在，就赋值给索引数组
 
                 if (file != NULL) {
-                    rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->nameIndex, strlen(game->nameIndex)) == 0 && (fullName[strlen(game->nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
@@ -720,8 +720,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //strncpy(game->nameIndex, dirent->d_name, strlen(game->nameIndex));
                 //game->nameIndex[strlen(dirent->d_name) - 4] = '\0';
 
-                if (file != NULL) {
-                    rewind(file);
+                    if (file != NULL) {
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->nameIndex, strlen(game->nameIndex)) == 0 && (fullName[strlen(game->nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             // memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
