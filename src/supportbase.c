@@ -708,11 +708,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         }
                     }
                     fprintf(file, "%s.\n", fullName);
-                    if (fullName == NULL && game->transName[0] == '\0') {
-                        //rewind(file);
-                        fprintf(file, "%s.\n" ,game->nameIndex);
-                        //strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
-                    }
+                    //if (fullName == NULL && game->transName[0] == '\0') {
+                    //    //rewind(file);
+                    //    fprintf(file, "%s.\n" ,game->nameIndex);
+                    //    //strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
+                    //}
                     //rewind(file);
                 }
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
@@ -744,11 +744,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         }
                     }
                     fprintf(file, "%s.\n", fullName);
-                    if (fullName == NULL && game->transName[0] == '\0') {
-                        // rewind(file);
-                        fprintf(file, "%s.\n", game->nameIndex);
-                        // strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
-                    }
+                    //if (fullName == NULL && game->transName[0] == '\0') {
+                    //    // rewind(file);
+                    //    fprintf(file, "%s.\n", game->nameIndex);
+                    //    // strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
+                    //}
                     //rewind(file);
                 }
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
