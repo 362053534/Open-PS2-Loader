@@ -516,7 +516,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         FILE *file;
         char _indexName[64];
         char fullName[64];
-        snprintf(path, 256, "%s%s../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
+        snprintf(path, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
         file = fopen(path, "at+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0)
