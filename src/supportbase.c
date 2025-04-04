@@ -514,7 +514,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
         FILE *file;
-        char _indexName[64];
+        //char _indexName[64];
         char fullName[64];
         snprintf(path, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
         file = fopen(path, "at+, ccs=UTF-8");
@@ -676,30 +676,31 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->nameIndex[0] = '\0';
             game->transName[0] = '\0';
 
+            strcpy(nameIndex, game->name);  // 将真正的游戏名变成index索引名
 
             // count and process games in txt
             if ((dirent->d_name[GAME_STARTUP_MAX - 8] == '_') && (dirent->d_name[GAME_STARTUP_MAX - 4] == '.') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
-                memcpy(_indexName, &dirent->d_name[GAME_STARTUP_MAX], sizeof(_indexName));
-                _indexName[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
-                //memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 存在，就赋值给索引数组
+                strncpy(nameIndex, &dirent->d_name[GAME_STARTUP_MAX], strlen(nameIndex));
+                nameIndex[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
+                //memcpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 存在，就赋值给索引数组
 
                 if (file != NULL) {
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, _indexName, strlen(_indexName)) == 0 && (fullName[strlen(_indexName)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
-                            memcpy(game->nameIndex, _indexName, strlen(_indexName));  // 存在，就赋值给索引数组
-                            game->nameIndex[strlen(_indexName)] = '\0';
-                            if (fullName[strlen(_indexName) + 1] == '\n' || fullName[strlen(_indexName) + 1] == '\0' || fullName[strlen(_indexName) + 1] == '\r') { // 判断索引的译名是否为空
+                        if (strncmp(fullName, nameIndex, strlen(nameIndex)) == 0 && (fullName[strlen(nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                            memcpy(game->nameIndex, nameIndex, strlen(nameIndex));  // 存在，就赋值给索引数组
+                            game->nameIndex[strlen(nameIndex)] = '\0';
+                            if (fullName[strlen(nameIndex) + 1] == '\n' || fullName[strlen(nameIndex) + 1] == '\0' || fullName[strlen(nameIndex) + 1] == '\r') { // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             }
-                            strcpy(game->transName, &fullName[strlen(_indexName) + 1]);   // 赋值给翻译文本数组
+                            strcpy(game->transName, &fullName[strlen(nameIndex) + 1]);   // 赋值给翻译文本数组
                             strncpy(game->name, game->transName, UL_GAME_NAME_MAX);
                          
                             //sprintf(game->name, "%d", game->name[0]);
                             for (int i = 0; i < strlen(fullName); i++) {
                                 if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
-                                    game->name[i - strlen(_indexName) - 1] = '\0';
+                                    game->name[i - strlen(nameIndex) - 1] = '\0';
                                     break;
                                 }
                             }
@@ -708,34 +709,34 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         //rewind(file);
-                        fprintf(file, "%s.\n" ,_indexName);
-                        memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
+                        fprintf(file, "%s.\n" ,nameIndex);
+                        strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                     //rewind(file);
                 }
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 // strncpy(game->name, path, 40);
             } else {
-                memcpy(_indexName, dirent->d_name, sizeof(_indexName));
-                _indexName[strlen(dirent->d_name) - 4] = '\0';
+                strncpy(nameIndex, dirent->d_name, strlen(nameIndex));
+                nameIndex[strlen(dirent->d_name) - 4] = '\0';
 
                 if (file != NULL) {
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, _indexName, strlen(_indexName)) == 0 && (fullName[strlen(_indexName)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
-                            memcpy(game->nameIndex, _indexName, strlen(_indexName));                                           // 存在，就赋值给索引数组
-                            game->nameIndex[strlen(_indexName)] = '\0';
-                            if (fullName[strlen(_indexName) + 1] == '\n' || fullName[strlen(_indexName) + 1] == '\0' || fullName[strlen(_indexName) + 1] == '\r') { // 判断索引的译名是否为空
+                        if (strncmp(fullName, nameIndex, strlen(nameIndex)) == 0 && (fullName[strlen(nameIndex)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                            strncpy(game->nameIndex, nameIndex, strlen(nameIndex));                                           // 存在，就赋值给索引数组
+                            game->nameIndex[strlen(nameIndex)] = '\0';
+                            if (fullName[strlen(nameIndex) + 1] == '\n' || fullName[strlen(nameIndex) + 1] == '\0' || fullName[strlen(nameIndex) + 1] == '\r') { // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             }
-                            strcpy(game->transName, &fullName[strlen(_indexName) + 1]); // 赋值给翻译文本数组
+                            strcpy(game->transName, &fullName[strlen(nameIndex) + 1]); // 赋值给翻译文本数组
                             strncpy(game->name, game->transName, UL_GAME_NAME_MAX);
                  
                             //sprintf(game->name, "%d", game->name[0]);
                             for (int i = 0; i < strlen(fullName); i++) {
                                 if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
-                                    game->name[i - strlen(_indexName) - 1] = '\0';
+                                    game->name[i - strlen(nameIndex) - 1] = '\0';
                                     break;
                                 }
                             }
@@ -744,8 +745,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     }
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         //rewind(file);
-                        fprintf(file, "%s.\n", _indexName);
-                        memcpy(game->nameIndex, _indexName, strlen(_indexName)); // 不存在就添加一笔，然后赋值给索引数组
+                        fprintf(file, "%s.\n", nameIndex);
+                        strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                     //rewind(file);
                 }
@@ -1135,16 +1136,10 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
-            if (game->transName[0] != '\0')
-                snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->nameIndex, game->extension);
-            else
-                snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
+            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
             break;
         case GAME_FORMAT_OLD_ISO:
-            if (game->transName[0] != '\0')
-                snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
-            else
-                snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game_name, game->extension);
+            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->nameIndex, game->extension);
             break;
     }
 }
