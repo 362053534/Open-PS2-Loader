@@ -588,7 +588,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     
                     // need to mount and read SYSTEM.CNF
                     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1)
+                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
                     //delay(5);
                     //if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
                     //{
