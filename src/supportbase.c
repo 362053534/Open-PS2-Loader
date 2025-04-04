@@ -1153,12 +1153,12 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
     //fprintf(file, "%s\n", path);
     //fclose(file);
 
-    // 把翻译后的名字写到文本文件里，作为debug使用
-     char fileDir[64];
-     snprintf(fileDir, 256, "%sdebug.txt", prefix);
-     FILE *file = fopen(fileDir, "at");
-     fprintf(file, "%s\n", game->transName);
-     fclose(file);
+    //// 把翻译后的名字写到文本文件里，作为debug使用
+    // char fileDir[64];
+    // snprintf(fileDir, 256, "%sdebug.txt", prefix);
+    // FILE *file = fopen(fileDir, "at");
+    // fprintf(file, "%s\n", game->transName);
+    // fclose(file);
 }
 
 void sbCreatePath(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part)
