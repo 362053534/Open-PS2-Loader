@@ -518,19 +518,18 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         // Get DMA settings for ATA mode.
-        int dmaType = 0, dmaMode = 7;
+        int dmaType = 0x40, dmaMode = 7;
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 
         // Set DMA mode and spindown time.
         if (dmaMode < 3)
             dmaType = 0x20;
-        else {
-            dmaType = 0x40;
-            if (pDeviceData->ataHighestUDMAMode < dmaMode - 3)
-                dmaMode = pDeviceData->ataHighestUDMAMode;
-            else
-                dmaMode -= 3;
+        else if (dmaMode >= 7) {
+            dmaMode = pDeviceData->ataHighestUDMAMode;
+        } else {
+            dmaMode = pDeviceData->ataHighestUDMAMode < dmaMode - 3 ? pDeviceData->ataHighestUDMAMode : dmaMode - 3;
         }
+
 
         hddSetTransferMode(dmaType, dmaMode);
         // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
@@ -765,18 +764,15 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 
     // Query the drive for the highest UDMA mode.
     pDeviceData->ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
-    if (pDeviceData->ataHighestUDMAMode < 0) {
+    if (pDeviceData->ataHighestUDMAMode < 0 || pDeviceData->ataHighestUDMAMode > 7) {
         // Failed to query highest UDMA mode supported.
         LOG("Mass device %d is backed by ATA but failed to get highest UDMA mode %d\n", pDeviceData->massDeviceIndex, pDeviceData->ataHighestUDMAMode);
         pDeviceData->ataHighestUDMAMode = 4;
-    } else if (pDeviceData->ataHighestUDMAMode > 4) {
-        // Limit max UDMA mode to 4 to avoid compatibility issues
-        LOG("Mass device %d supports up to UDMA mode %d, limiting to UDMA 4\n", pDeviceData->massDeviceIndex, pDeviceData->ataHighestUDMAMode);
-        pDeviceData->ataHighestUDMAMode = 4;
     }
-
-    // Set the UDMA mode to highest available.
-    hddSetTransferMode(0x40, pDeviceData->ataHighestUDMAMode);
+    // else if (pDeviceData->ataHighestUDMAMode > 4) {
+    //     // Set the UDMA mode to highest available.
+    //     hddSetTransferMode(0x40, pDeviceData->ataHighestUDMAMode);
+    // }
 }
 
 int bdmUpdateDeviceData(item_list_t *itemList)
