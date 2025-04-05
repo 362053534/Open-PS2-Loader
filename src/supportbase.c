@@ -520,7 +520,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         file = fopen(path, "at+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0)
-            fprintf(file, "注意事项：\r\n// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------------------------------\r\n");
+            fprintf(file, "注意事项：\r\n// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
 
 
         while ((dirent = readdir(dir)) != NULL) {
