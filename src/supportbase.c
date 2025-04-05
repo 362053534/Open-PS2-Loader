@@ -713,7 +713,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // 如果txt里没有此游戏的英文名索引，则添加到txt里
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
-                        fprintf(file, "%s.\0\r\n", game->nameIndex);
+                        fprintf(file, "%s.\r\n", game->nameIndex);
                         // strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                 }
