@@ -160,7 +160,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo)
         //    gHDDPrefix = "pfs0:+OPL/";
 
         //  把获取的名字作为索引名，替换成txt中对应的中文名
-        ginfo->nameIndex[0] = '\0';
+        ginfo->indexName[0] = '\0';
         ginfo->transName[0] = '\0';
         char path[64];
         FILE *file;
