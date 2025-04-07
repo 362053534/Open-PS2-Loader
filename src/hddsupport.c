@@ -522,14 +522,25 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     char gid[5];
     configGetDiscIDBinary(configSet, gid);
 
-    int dmaType = 0, dmaMode = 7, compatMode = 0;
+    int dmaType = 0x40, dmaMode = 7, compatMode = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
     configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
+
+    // Query the drive for the highest UDMA mode.
+    int ataHighestUDMAMode = 4;
+    ataHighestUDMAMode = fileXioDevctl("hdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    if (ataHighestUDMAMode < 0 || ataHighestUDMAMode > 7) {
+        // Failed to query highest UDMA mode supported.
+        ataHighestUDMAMode = 4;
+    }
+
+    // Set DMA mode and spindown time.
     if (dmaMode < 3)
         dmaType = 0x20;
-    else {
-        dmaType = 0x40;
-        dmaMode -= 3;
+    else if (dmaMode >= 7) {
+        dmaMode = ataHighestUDMAMode;
+    } else {
+        dmaMode = ataHighestUDMAMode < dmaMode - 3 ? ataHighestUDMAMode : dmaMode - 3;
     }
     hddSetTransferMode(dmaType, dmaMode);
     // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]

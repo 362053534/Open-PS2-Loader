@@ -42,7 +42,7 @@ string_array_specifiers: ''
 gui_strings:
 - comment: Localized language name
   label: LOCALE
-  string: 外挂中文列表
+  string: txt中文列表
 - label: SAVE_CHANGES
   string: 保存设置
 - label: BACK

@@ -280,7 +280,7 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
                 file = fopen(path, "at+, ccs=UTF-8");
                 fseek(file, 0, SEEK_END);
                 if (ftell(file) == 0)
-                    fprintf(file, "注意事项：\r\n// “.”符号左侧为iso原名，右侧写上对应的中文名，即可实现游戏列表中文化！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
+                    fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
 
                 for (i = 0, current = head; i < count; i++, current = current->next) {
                     if ((ret = hddGetHDLGameInfo(current, &game_list->games[i] ,file)) != 0)
