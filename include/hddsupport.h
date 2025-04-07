@@ -6,7 +6,7 @@
 
 #define HDD_MODE_UPDATE_DELAY MENU_UPD_DELAY_NOUPDATE
 
-#define HDL_GAME_NAME_MAX 64
+#define HDL_GAME_NAME_MAX 128
 
 // APA Partition
 #define APA_IOCTL2_GETHEADER 0x6836
@@ -24,6 +24,8 @@ typedef struct
     u32 layer_break;
     u32 start_sector;
     u32 total_size_in_kb;
+    char indexName[64];
+    char transName[128];
 } hdl_game_info_t;
 
 typedef struct

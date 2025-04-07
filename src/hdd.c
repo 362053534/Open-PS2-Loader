@@ -153,6 +153,53 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo)
         ginfo->partition_name[APA_IDMAX] = '\0';
         strncpy(ginfo->name, hdl_header->gamename, HDL_GAME_NAME_MAX);
         ginfo->name[HDL_GAME_NAME_MAX] = '\0';
+
+        //if (gHDDPrefix[5] != '+')
+        //    gHDDPrefix = "pfs0:OPL/";
+        //else
+        //    gHDDPrefix = "pfs0:+OPL/";
+
+        //  把获取的名字作为索引名，替换成txt中对应的中文名
+        ginfo->nameIndex[0] = '\0';
+        ginfo->transName[0] = '\0';
+        char path[64];
+        FILE *file;
+        char fullName[256];
+        snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
+        file = fopen(path, "at+, ccs=UTF-8");
+        fseek(file, 0, SEEK_END);
+        if (ftell(file) == 0)
+            fprintf(file, "注意事项：\r\n// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
+
+        if (file != NULL) {
+            rewind(file);
+            while (fgets(fullName, sizeof(fullName), file) != NULL) {
+                if (strncmp(fullName, ginfo->name, strlen(ginfo->name)) == 0 && (fullName[strlen(ginfo->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                    strcpy(ginfo->indexName, ginfo->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+                    if (fullName[strlen(ginfo->indexName) + 1] == '\n' || fullName[strlen(ginfo->indexName) + 1] == '\0' || fullName[strlen(ginfo->indexName) + 1] == '\r') { // 判断索引的译名是否为空
+                        ginfo->transName[0] = '\0';
+                        break;
+                    }
+                    strcpy(ginfo->transName, &fullName[strlen(ginfo->indexName) + 1]); // 赋值给翻译文本数组
+                    strcpy(ginfo->name, ginfo->transName);
+
+                    // 给游戏名加结束符，防止换行符被显示出来
+                    for (int i = 0; i < strlen(fullName); i++) {
+                        if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
+                            ginfo->name[i - strlen(ginfo->indexName) - 1] = '\0';
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            // 如果txt里没有此游戏的英文名索引，则添加到txt里
+            if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
+                strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名
+                fprintf(file, "%s.\r\n", ginfo->indexName);
+            }
+        }
+ 
         strncpy(ginfo->startup, hdl_header->startup, sizeof(ginfo->startup) - 1);
         ginfo->startup[sizeof(ginfo->startup) - 1] = '\0';
         ginfo->hdl_compat_flags = hdl_header->hdl_compat_flags;
