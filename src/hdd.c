@@ -140,7 +140,7 @@ struct GameDataEntry
     char id[APA_IDMAX + 1];
 };
 
-static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo ,File *file)
+static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo, FILE *file)
 {
     int ret;
 
