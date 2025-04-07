@@ -528,7 +528,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // Query the drive for the highest UDMA mode.
     int ataHighestUDMAMode = 4;
-    ataHighestUDMAMode = fileXioDevctl("hdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
     if (ataHighestUDMAMode < 0 || ataHighestUDMAMode > 7) {
         // Failed to query highest UDMA mode supported.
         ataHighestUDMAMode = 4;
