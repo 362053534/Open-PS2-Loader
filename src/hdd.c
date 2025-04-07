@@ -140,7 +140,7 @@ struct GameDataEntry
     char id[APA_IDMAX + 1];
 };
 
-static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo)
+static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo ,File *file)
 {
     int ret;
 
@@ -162,15 +162,8 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo)
         //  把获取的名字作为索引名，替换成txt中对应的中文名
         ginfo->indexName[0] = '\0';
         ginfo->transName[0] = '\0';
-        char path[64];
-        FILE *file;
-        char fullName[256];
-        snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
-        file = fopen(path, "at+, ccs=UTF-8");
-        fseek(file, 0, SEEK_END);
-        if (ftell(file) == 0)
-            fprintf(file, "注意事项：\r\n// “.”符号左侧为iso英文名，右侧写上对应的中文名，即可实现游戏列表中文化！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
 
+        char fullName[256];
         if (file != NULL) {
             rewind(file);
             while (fgets(fullName, sizeof(fullName), file) != NULL) {
@@ -279,10 +272,20 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
             if ((game_list->games = malloc(sizeof(hdl_game_info_t) * count)) != NULL) {
                 memset(game_list->games, 0, sizeof(hdl_game_info_t) * count);
 
+                char path[64];
+                FILE *file;
+                snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
+                file = fopen(path, "at+, ccs=UTF-8");
+                fseek(file, 0, SEEK_END);
+                if (ftell(file) == 0)
+                    fprintf(file, "注意事项：\r\n// “.”符号左侧为iso原名，右侧写上对应的中文名，即可实现游戏列表中文化！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
+
                 for (i = 0, current = head; i < count; i++, current = current->next) {
-                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i])) != 0)
+                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i])) != 0, file)
                         break;
                 }
+
+                fclose(file);
 
                 if (ret) {
                     free(game_list->games);
