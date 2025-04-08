@@ -692,7 +692,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             //memcpy(game->name, nameIndex, strlen(nameIndex));  
                             //game->name[strlen(nameIndex)] = '\0';
                             strcpy(game->nameIndex, game->name);     // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
-                            if (fullName[strlen(game->nameIndex) + 1] == '\n' || fullName[strlen(game->nameIndex) + 1] == '\0' || fullName[strlen(game->nameIndex) + 1] == '\r') { // 判断索引的译名是否为空
+                            if (fullName[strlen(game->nameIndex) + 1] == '\r' || fullName[strlen(game->nameIndex) + 1] == '\n' || fullName[strlen(game->nameIndex) + 1] == '\0') { // 判断索引的译名是否为空
                                 game->transName[0] = '\0';
                                 break;
                             }
@@ -702,7 +702,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             //sprintf(game->name, "%d", game->name[0]);
                             //给游戏名加结束符，防止换行符被显示出来
                             for (int i = 0; i < strlen(fullName); i++) {
-                                if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
+                                if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0' || &fullName[i] == "") {
                                     game->name[i - strlen(game->nameIndex) - 1] = '\0';
                                     break;
                                 }
@@ -713,7 +713,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // 如果txt里没有此游戏的英文名索引，则添加到txt里
                     if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
                         strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
-                        fprintf(file, "%s.\r\n", game->nameIndex);
+                        fprintf(file, "%s.\r\n", game->nameIndex);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
                         // strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
                     }
                 }

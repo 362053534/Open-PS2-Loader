@@ -169,7 +169,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
             while (fgets(fullName, sizeof(fullName), file) != NULL) {
                 if (strncmp(fullName, ginfo->name, strlen(ginfo->name)) == 0 && (fullName[strlen(ginfo->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                     strcpy(ginfo->indexName, ginfo->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
-                    if (fullName[strlen(ginfo->indexName) + 1] == '\n' || fullName[strlen(ginfo->indexName) + 1] == '\0' || fullName[strlen(ginfo->indexName) + 1] == '\r') { // 判断索引的译名是否为空
+                    if (fullName[strlen(ginfo->indexName) + 1] == '\r' || fullName[strlen(ginfo->indexName) + 1] == '\n' || fullName[strlen(ginfo->indexName) + 1] == '\0') { // 判断索引的译名是否为空
                         ginfo->transName[0] = '\0';
                         break;
                     }
@@ -178,7 +178,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
 
                     // 给游戏名加结束符，防止换行符被显示出来
                     for (int i = 0; i < strlen(fullName); i++) {
-                        if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
+                        if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0' || &fullName[i] == "") {
                             ginfo->name[i - strlen(ginfo->indexName) - 1] = '\0';
                             break;
                         }
@@ -189,7 +189,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
             // 如果txt里没有此游戏的英文名索引，则添加到txt里
             if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
                 strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名
-                fprintf(file, "%s.\r\n", ginfo->indexName);
+                fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
             }
         }
  
