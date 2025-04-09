@@ -24,8 +24,8 @@ typedef struct
     u32 layer_break;
     u32 start_sector;
     u32 total_size_in_kb;
-    char indexName[64];
-    char transName[128];
+    char indexName[160];
+    char transName[160];
 } hdl_game_info_t;
 
 typedef struct

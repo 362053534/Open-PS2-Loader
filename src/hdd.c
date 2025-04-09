@@ -152,7 +152,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
         strncpy(ginfo->partition_name, game->id, APA_IDMAX);
         ginfo->partition_name[APA_IDMAX] = '\0';
         strncpy(ginfo->name, hdl_header->gamename, HDL_GAME_NAME_MAX);
-        ginfo->name[HDL_GAME_NAME_MAX] = '\0';
+
 
         //if (gHDDPrefix[5] != '+')
         //    gHDDPrefix = "pfs0:OPL/";
@@ -171,6 +171,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                     strcpy(ginfo->indexName, ginfo->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
                     if (fullName[strlen(ginfo->indexName) + 1] == '\r' || fullName[strlen(ginfo->indexName) + 1] == '\n' || fullName[strlen(ginfo->indexName) + 1] == '\0') { // 判断索引的译名是否为空
                         ginfo->transName[0] = '\0';
+                        ginfo->name[HDL_GAME_NAME_MAX] = '\0';
                         break;
                     }
                     strcpy(ginfo->transName, &fullName[strlen(ginfo->indexName) + 1]); // 赋值给翻译文本数组
@@ -190,6 +191,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
             if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
                 strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名
                 fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                ginfo->name[HDL_GAME_NAME_MAX] = '\0';
             }
         }
  
