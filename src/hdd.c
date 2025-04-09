@@ -179,7 +179,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
 
                     // 给游戏名加结束符，防止换行符被显示出来
                     for (int i = 0; i < strlen(fullName); i++) {
-                        if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0' || &fullName[i] == "") {
+                        if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0') {
                             ginfo->name[i - strlen(ginfo->indexName) - 1] = '\0';
                             break;
                         }
