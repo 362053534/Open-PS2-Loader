@@ -703,7 +703,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             //给游戏名加结束符，防止换行符被显示出来
                             for (int i = 0; i < strlen(game->transName); i++) {
                                 if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
-                                    game->name[i - 1] = '\0';
+                                    game->name[i] = '\0';
                                     break;
                                 }
                             }

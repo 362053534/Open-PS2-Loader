@@ -178,9 +178,9 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                     strcpy(ginfo->name, ginfo->transName);
 
                     // 给游戏名加结束符，防止换行符被显示出来
-                    for (int i = 0; i < strlen(fullName); i++) {
-                        if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0') {
-                            ginfo->name[i - strlen(ginfo->indexName) - 1] = '\0';
+                    for (int i = 0; i < strlen(ginfo->transName); i++) {
+                        if (ginfo->transName[i] == '\r' || ginfo->transName[i] == '\n' || ginfo->transName[i] == '\0') {
+                            ginfo->name[i] = '\0';
                             break;
                         }
                     }
@@ -190,7 +190,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
             // 如果txt里没有此游戏的英文名索引，则添加到txt里
             if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
                 ginfo->name[HDL_GAME_NAME_MAX] = '\0';
-                strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名
+                strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名   index是否需要追加\0？
                 fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？                
             }
         }
