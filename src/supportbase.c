@@ -700,7 +700,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             strcpy(game->name, game->transName);
                          
                             //sprintf(game->name, "%d", game->name[0]);
-                            ////给游戏名加结束符，防止换行符被显示出来
+                            //给游戏名加结束符，防止换行符被显示出来
+                            game->name[160] = '\0';
                             //for (int i = 0; i < strlen(fullName); i++) {
                             //    if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0' || &fullName[i] == "") {
                             //        game->name[i - strlen(game->nameIndex) - 1] = '\0';
