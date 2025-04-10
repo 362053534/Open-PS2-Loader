@@ -279,7 +279,7 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
                 char path[64];
                 FILE *file;
                 snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
-                file = fopen(path, "at+, ccs=UTF-8");
+                file = fopen(path, "ab+, ccs=UTF-8");
                 fseek(file, 0, SEEK_END);
                 if (ftell(file) == 0)
                     fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
