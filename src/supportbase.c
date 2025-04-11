@@ -508,6 +508,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
+    int skipTxtScan = 0;
     //cacheLoaded = 0;
 
     if ((dir = opendir(path)) != NULL) {
@@ -530,6 +531,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         if (stat(txtPath, &fileStat) == 0) {
             curTxtModiTime = fileStat.st_mtime;
         }
+        // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
+        if (cache.txtModiTime == curTxtModiTime) {
+            skipTxtScan = 1;
+        }    
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
@@ -548,8 +553,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             *glist = next;
             base_game_info_t *game = &next->gameinfo;
             memset(game, 0, sizeof(base_game_info_t));
-
-            int skipTxtScan = 0;
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
@@ -577,12 +580,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //game->extension[sizeof(game->extension) - 1] = '\0';
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
-                memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
-
-                // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
-                if (cache.txtModiTime == curTxtModiTime) {
-                        skipTxtScan = 1;
-                }         
+                memcpy(game, &cachedGInfo, sizeof(base_game_info_t));     
             } else {
                 // if (true)
 
@@ -801,9 +799,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         // debug 确认txt跳过扫描是否生效
         char debugFileDir[64];
-        snprintf(debugFileDir, 256, "%sdebug.txt", path);
+        snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
         FILE *debugFile = fopen(debugFileDir, "ab");
-        fprintf(debugFile, "%s\r\n", skipTxtScan ? "跳过了扫描" : "进行了扫描");
+        fprintf(debugFile, "%s\r\n", skipTxtScan ? "跳过了txt扫描" : "进行了txt扫描");
+
         fclose(debugFile);
     }
 
