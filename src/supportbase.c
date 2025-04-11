@@ -600,8 +600,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                     fileXioUmount("iso:");
-                    free(next);
                     *glist = next->next;
+                    free(next);
                     continue;
                 }
                 // char startup[GAME_STARTUP_MAX];
@@ -801,7 +801,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         if (stat(txtPath, &fileStat) == 0) {
             if (cache.count > 0) {
                 cache.games[0].preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在缓存里。
-                *glist[0]->gameinfo.preModiTime;
+                glist[0]->gameinfo.preModiTime;
             }
         }
 
