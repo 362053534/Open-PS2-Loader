@@ -15,6 +15,7 @@
 #include <locale.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -34,7 +35,7 @@ struct game_cache_list
 {
     unsigned int count;
     base_game_info_t *games;
-    FILE *cacheTxtFile;
+    time_t txtModiTime;
 };
 
 int sbIsSameSize(const char *prefix, int prevSize)
@@ -520,9 +521,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
         file = fopen(txtPath, "ab+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
-        if (ftell(file) == 0)
+        if (ftell(file) == 0) {
             fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
-
+        }
+        // 使用stat函数获取文件修改时间
+        struct stat fileStat;
+        if (stat(txtPath, &fileStat) == 0) {
+            time_t curTxtModiTime = fileStat.st_mtime;
+        }
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
@@ -572,10 +578,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
-                // 文本未改动，则跳过txt扫描，提升效率
-                if (memcmp(&cache->cacheTxtFile, file, sizeof(&cache->cacheTxtFile)) == 0) {
-                    skipTxtScan = 1;
-                }                
+                // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
+                if (curTxtModiTime == &cache->txtModiTime) {
+                        skipTxtScan = 1;
+                }         
             } else {
                 // if (true)
 
@@ -785,7 +791,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        memcpy(&cache->cacheTxtFile, file, sizeof(file));   // txt操作完毕后，将它保存在缓存里。
+        &cache->txtModiTime = curTxtModiTime; // txt操作完毕后，将它保存在缓存里。
         fclose(file);
         closedir(dir);
     }
