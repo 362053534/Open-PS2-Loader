@@ -571,8 +571,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
-                // 如果缓存中已有中文名，则跳过Txt扫描。
-                if (game->transName[0] != '\0') {
+                // 如果缓存中已有索引条目，则跳过Txt扫描。
+                if (game->nameIndex[0] != '\0') {
                     skipTxtScan = 1;
                     //strcpy(game->name, game->transName);
                 }
