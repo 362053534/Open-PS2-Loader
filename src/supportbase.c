@@ -541,7 +541,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             base_game_info_t *game = &next->gameinfo;
             memset(game, 0, sizeof(base_game_info_t));
 
-
+            int skipTxtScan = 0;
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
@@ -570,6 +570,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
+
+                // 如果缓存中已有中文名，则跳过Txt扫描。
+                if (game->transName[0] != '\0') {
+                    skipTxtScan = 1;
+                    //strcpy(game->name, game->transName);
+                }
             } else {
                 // if (true)
 
@@ -694,7 +700,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //    //game->nameIndex[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
             //    //memcpy(game->game->nameIndex, game->nameIndex, strlen(game->nameIndex)); // 存在，就赋值给索引数组
 
-                if (file != NULL) {
+                if (file != NULL && !skipTxtScan) {
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
@@ -706,13 +712,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                                 break;
                             }
                             strcpy(game->transName, &fullName[strlen(game->nameIndex) + 1]);   // 赋值给翻译文本数组
-                            strcpy(game->name, game->transName);
-                         
+                        
                             //sprintf(game->name, "%d", game->name[0]);
                             //给游戏名加结束符，防止换行符被显示出来
                             for (int i = 0; i < strlen(game->transName); i++) {
                                 if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
-                                    game->name[i] = '\0';
+                                    game->transName[i] = '\0';
+                                    strcpy(game->name, game->transName);
                                     break;
                                 }
                             }

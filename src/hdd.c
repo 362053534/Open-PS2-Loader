@@ -175,12 +175,12 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                         break;
                     }
                     strcpy(ginfo->transName, &fullName[strlen(ginfo->indexName) + 1]); // 赋值给翻译文本数组
-                    strcpy(ginfo->name, ginfo->transName);
 
                     // 给游戏名加结束符，防止换行符被显示出来
                     for (int i = 0; i < strlen(ginfo->transName); i++) {
                         if (ginfo->transName[i] == '\r' || ginfo->transName[i] == '\n' || ginfo->transName[i] == '\0') {
-                            ginfo->name[i] = '\0';
+                            ginfo->transName[i] = '\0';
+                            strcpy(ginfo->name, ginfo->transName);
                             break;
                         }
                     }
