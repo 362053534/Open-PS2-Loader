@@ -34,6 +34,7 @@ struct game_cache_list
 {
     unsigned int count;
     base_game_info_t *games;
+    FILE *cacheTxtFile;
 };
 
 int sbIsSameSize(const char *prefix, int prevSize)
@@ -571,11 +572,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
-                // 如果缓存中已有索引条目，则跳过Txt扫描。
-                if (game->nameIndex[0] != '\0') {
+                // 文本未改动，则跳过txt扫描，提升效率
+                if (memcmp(&cache->cacheTxtFile, file, sizeof(&cache->cacheTxtFile)) == 0) {
                     skipTxtScan = 1;
-                    //strcpy(game->name, game->transName);
-                }
+                }                
             } else {
                 // if (true)
 
@@ -785,6 +785,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
+        memcpy(&cache->cacheTxtFile, file, sizeof(file));   // txt操作完毕后，将它保存在缓存里。
         fclose(file);
         closedir(dir);
     }
