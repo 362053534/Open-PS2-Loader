@@ -502,7 +502,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char fullpath[256];
     struct dirent *dirent;
     DIR *dir;
-
+    FILE *file;
 
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
@@ -513,7 +513,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
-        FILE *file;
+
         //char fullName[256];
         snprintf(path, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
         file = fopen(path, "ab+, ccs=UTF-8");
