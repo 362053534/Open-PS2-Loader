@@ -798,6 +798,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             cache.txtModiTime = fileStat.st_mtime;// txt操作完毕后，将它保存在缓存里。
         }
         closedir(dir);
+
+        // debug 确认txt跳过扫描是否生效
+        char debugFileDir[64];
+        snprintf(debugFileDir, 256, "%sdebug.txt", path);
+        FILE *debugFile = fopen(debugFileDir, "ab");
+        fprintf(debugFile, "%s\r\n", skipTxtScan ? "跳过了扫描" : "进行了扫描");
+        fclose(debugFile);
     }
 
     if (cacheLoaded) {
