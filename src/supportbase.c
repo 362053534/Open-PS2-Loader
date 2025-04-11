@@ -529,9 +529,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         if (stat(txtPath, &fileStat) == 0) {
             // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
             if (cacheLoaded) {
-                //if (cache.games[0]->preModiTime == fileStat.st_mtime) {
-                //    skipTxtScan = 1;
-                //}
+                if (cache.games[0].preModiTime == fileStat.st_mtime) {
+                    skipTxtScan = 1;
+                }
             }
         }
 
@@ -802,7 +802,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //// 使用stat函数获取保存后的txt修改时间
         //if (stat(txtPath, &fileStat) == 0) {
         //    if (cache.games[0] != NULL) {
-        //        cache.games[0]->preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在缓存里。
+        //        cache.games[0].preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在缓存里。
         //    }
         //}
 
