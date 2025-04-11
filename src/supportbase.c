@@ -450,7 +450,7 @@ static int updateISOGameList(const char *path, const struct game_cache_list *cac
                 memcpy(&list[i], &game->gameinfo, sizeof(base_game_info_t));
             }
 
-            file = fopen(filename, "wb");
+            file = fopen(filename, "wb, ccs=UTF-8");
             if (file != NULL) {
                 result = fwrite(list, sizeof(base_game_info_t), count, file) == count ? 0 : EIO;
 
