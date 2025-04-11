@@ -508,7 +508,18 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
-    //cacheLoaded = 0;
+    // 使用stat函数获取文件修改时间，与缓存进行比对
+    char txtPath[256];
+    snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
+    struct stat fileStat;
+    if (stat(txtPath, &fileStat) == 0) {
+        // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
+        if (cacheLoaded) {
+            if (cache.games[0].preModiTime == fileStat.st_mtime) {
+                skipTxtScan = 1;
+            }
+        }
+    }
 
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
@@ -517,24 +528,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         FILE *file;
         char fullName[256];
-        char txtPath[256];
-        snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
         file = fopen(txtPath, "ab+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0) {
             fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
         }
-        // 使用stat函数获取文件修改时间
-        struct stat fileStat;
-        if (stat(txtPath, &fileStat) == 0) {
-            // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
-            if (cacheLoaded) {
-                if (cache.games[0].preModiTime == fileStat.st_mtime) {
-                    skipTxtScan = 1;
-                }
-            }
-        }
-
 
         while ((dirent = readdir(dir)) != NULL) {
             int NameLen;
@@ -799,12 +797,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fprintf(debugFile, "%s.缓存时间戳%d.文件时间戳%d\r\n", skipTxtScan ? "跳过了txt扫描" : "进行了txt扫描", cache.games[0].preModiTime, fileStat.st_mtime);
         fclose(debugFile);
 
-        //// 使用stat函数获取保存后的txt修改时间
-        //if (stat(txtPath, &fileStat) == 0) {
-        //    if (cache.games[0] != NULL) {
-        //        cache.games[0].preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在缓存里。
-        //    }
-        //}
+        // 使用stat函数获取保存后的txt修改时间
+        if (stat(txtPath, &fileStat) == 0) {
+            if (cache.count > 0) {
+                cache.games[0].preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在缓存里。
+                glist->gameinfo->preModiTime;
+            }
+        }
 
         closedir(dir);
     }
