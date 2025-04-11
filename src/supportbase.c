@@ -526,7 +526,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
         // 使用stat函数获取文件修改时间
         struct stat fileStat;
-        if (stat(txtPath, &fileStat) == 0) {
+        if (fstat(file, &fileStat) == 0) {
             time_t curTxtModiTime = fileStat.st_mtime;
         }
 
