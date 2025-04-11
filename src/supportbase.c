@@ -578,9 +578,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
-                time_t a = 0, b = 0;
-                if (a==b) {
-                    a = b;
+                time_t a = curTxtModiTime, b = cache.txtModiTime;
+                if (a == b) {
+                    skipTxtScan = 1;
                 }
                 //// 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
                 //if (strncpy(curTxtModiTime, cache.txtModiTime, sizeof(time_t)) == 0) {
