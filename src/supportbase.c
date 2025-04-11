@@ -579,7 +579,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
                 // 通过文件修改时间判断文本是否改动，未改动则跳过txt扫描，提升效率
-                if (curTxtModiTime == cache.txtModiTime) {
+                if (curTxtModiTime == &cache.txtModiTime) {
                         skipTxtScan = 1;
                 }         
             } else {
@@ -791,7 +791,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        //cache.txtModiTime = curTxtModiTime; // txt操作完毕后，将它保存在缓存里。
+        &cache.txtModiTime = curTxtModiTime; // txt操作完毕后，将它保存在缓存里。
         fclose(file);
         closedir(dir);
     }
