@@ -510,8 +510,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
-        memcpy(fullpath, path, base_path_len + 1);
-        fullpath[base_path_len] =  '/';
+        strncpy(fullpath, path, base_path_len + 1);
+        fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
         FILE *file;
         //char _indexName[64];
@@ -530,7 +530,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
-            memcpy(fullpath + base_path_len + 1, dirent->d_name,160);
+            strcpy(fullpath + base_path_len + 1, dirent->d_name);
 
             struct game_list_t *next = malloc(sizeof(struct game_list_t));
             if (!next)
@@ -554,11 +554,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //    game->extension[sizeof(game->extension) - 1] = '\0';
                 //} else
                 {
-                    memcpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                    strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                     game->name[NameLen] = '\0';
-                    memcpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+                    strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    memcpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                    strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
                 }
                 //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
@@ -571,71 +571,80 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
             } else {
+                // if (true)
+
+                // char oldpath[256], newpath[256];
+                // memcpy(oldpath, fullpath, strlen(fullpath) + 1);
+                // oldpath[base_path_len + 1] = '\0';
+                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                // size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
+                // wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
+                // mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
+                // len = wcstombs(NULL, w_fullpath, 0) + 1;
+                // wcstombs(fullpath, w_fullpath, len);
+                //_wrename(w_fullpath, w_newpath);
+                // rename(fullpath, newpath);
+
+                // need to mount and read SYSTEM.CNF
                 char startup[GAME_STARTUP_MAX];
-                //if (true)
-                {
-                    //char oldpath[256], newpath[256];
-                    //memcpy(oldpath, fullpath, strlen(fullpath) + 1);
-                    //oldpath[base_path_len + 1] = '\0';
-                    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
-                    //size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
-                    //wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
-                    //mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
-                    //len = wcstombs(NULL, w_fullpath, 0) + 1;
-                    //wcstombs(fullpath, w_fullpath, len);
-                    //_wrename(w_fullpath, w_newpath);
-                    //rename(fullpath, newpath);
-                    
-                    // need to mount and read SYSTEM.CNF
-                    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                    GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
-                    //delay(5);
-                    //if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
-                    //{
+                int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
 
-                    //    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                    //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
-                    //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                    //    //_wrename(w_newpath,w_fullpath);
-                    //    //rename(newpath, fullpath);
-                    //    free(next);
-                    //    *glist = next->next;
-                    //    fileXioUmount("iso:");
-                    //    continue;
-                    //}
-
-                    //// 名字改回来   
-                    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);                                  
-                    ////mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
-                    //_wrename(w_newpath, w_fullpath);
-                    //rename(newpath, fullpath);
-
-
-                    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
-                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    //strcpy(game->name, dirent->d_name);
-                    memcpy(game->name, dirent->d_name, NameLen);
-                    //sprintf(game->name, "%s", newpath);
-                    game->name[NameLen] = '\0';
-                    memcpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
-                    game->extension[sizeof(game->extension) - 1] = '\0';
-                    //newpath[base_path_len] = '/';
+                if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                     fileXioUmount("iso:");
+                    free(next);
+                    *glist = next->next;
+                    continue;
                 }
-                //else {
-                //    // need to mount and read SYSTEM.CNF
-                //    int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                //    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                //        fileXioUmount("iso:");
-                //        free(next);
-                //        *glist = next->next;
-                //        continue;
-                //    }
-                //    memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
-                //    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                // char startup[GAME_STARTUP_MAX];
+                // int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                // GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+                // delay(5);
+                // if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
+                //{
+
+                //    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
+                //    //_wrename(w_newpath,w_fullpath);
+                //    //rename(newpath, fullpath);
+                //    free(next);
+                //    *glist = next->next;
                 //    fileXioUmount("iso:");
+                //    continue;
                 //}
+
+                //// 名字改回来
+                // oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                ////mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
+                //_wrename(w_newpath, w_fullpath);
+                // rename(newpath, fullpath);
+
+
+                strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                // strcpy(game->name, dirent->d_name);
+                strncpy(game->name, dirent->d_name, NameLen);
+                // sprintf(game->name, "%s", newpath);
+                game->name[NameLen] = '\0';
+                strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
+                game->extension[sizeof(game->extension) - 1] = '\0';
+                // newpath[base_path_len] = '/';
+                fileXioUmount("iso:");
+
+                // else {
+                //     // need to mount and read SYSTEM.CNF
+                //     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                //     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                //         fileXioUmount("iso:");
+                //         free(next);
+                //         *glist = next->next;
+                //         continue;
+                //     }
+                //     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+                //     game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                //     fileXioUmount("iso:");
+                // }
 
 
             }
