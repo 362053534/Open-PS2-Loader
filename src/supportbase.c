@@ -796,7 +796,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         char debugFileDir[64];
         snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
         FILE *debugFile = fopen(debugFileDir, "ab");
-        //fprintf(debugFile, "%s.缓存时间戳%d.文件时间戳%d\r\n", skipTxtScan ? "跳过了txt扫描" : "进行了txt扫描", cache.games[0]->preModiTime, fileStat.st_mtime);
+        fprintf(debugFile, "%s.缓存时间戳%d.文件时间戳%d\r\n", skipTxtScan ? "跳过了txt扫描" : "进行了txt扫描", cache.games[0].preModiTime, fileStat.st_mtime);
         fclose(debugFile);
 
         //// 使用stat函数获取保存后的txt修改时间
