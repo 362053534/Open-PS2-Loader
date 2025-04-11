@@ -791,8 +791,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        time_t t = cache.txtModiTime;
-        //cache->txtModiTime = curTxtModiTime; // txt操作完毕后，将它保存在缓存里。
+        cache.txtModiTime = curTxtModiTime; // txt操作完毕后，将它保存在缓存里。
         fclose(file);
         closedir(dir);
     }
