@@ -1,6 +1,8 @@
 #ifndef __SUPPORT_BASE_H
 #define __SUPPORT_BASE_H
 
+#include <sys/stat.h>
+
 #define UL_GAME_NAME_MAX       32
 #define ISO_GAME_NAME_MAX      160
 #define ISO_GAME_EXTENSION_MAX 4
@@ -26,7 +28,7 @@ typedef struct
     char crc32name[9];
     char nameIndex[64];
     char transName[128];
-    long preModiTime;
+    time_t preModiTime;
 } base_game_info_t;
 
 typedef struct
