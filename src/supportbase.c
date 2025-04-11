@@ -681,8 +681,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
-            //game->nameIndex[0] = '\0';
-            //game->transName[0] = '\0';
+            game->nameIndex[0] = '\0';
+            game->transName[0] = '\0';
 
 
 
