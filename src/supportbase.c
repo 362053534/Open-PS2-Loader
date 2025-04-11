@@ -685,44 +685,44 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //    //game->nameIndex[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
             //    //memcpy(game->game->nameIndex, game->nameIndex, strlen(game->nameIndex)); // 存在，就赋值给索引数组
 
-                if (file != NULL) {
-                    rewind(file);
-                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
-                            //memcpy(game->name, nameIndex, strlen(nameIndex));  
-                            //game->name[strlen(nameIndex)] = '\0';
-                            strcpy(game->nameIndex, game->name);     // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
-                            if (fullName[strlen(game->nameIndex) + 1] == '\r' || fullName[strlen(game->nameIndex) + 1] == '\n' || fullName[strlen(game->nameIndex) + 1] == '\0') { // 判断索引的译名是否为空
-                                game->transName[0] = '\0';
-                                break;
-                            }
-                            strcpy(game->transName, &fullName[strlen(game->nameIndex) + 1]);   // 赋值给翻译文本数组
-                            strcpy(game->name, game->transName);
-                         
-                            //sprintf(game->name, "%d", game->name[0]);
-                            //给游戏名加结束符，防止换行符被显示出来
-                            for (int i = 0; i < strlen(game->transName); i++) {
-                                if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
-                                    game->name[i] = '\0';
-                                    break;
-                                }
-                            }
-                            //for (int i = 0; i < strlen(fullName); i++) {
-                            //    if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0') {
-                            //        game->name[i - strlen(game->nameIndex) - 1] = '\0';
-                            //        break;
-                            //    }
-                            //}
-                            break;
-                        }
-                    }
-                    // 如果txt里没有此游戏的英文名索引，则添加到txt里
-                    if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
-                        strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
-                        fprintf(file, "%s.\r\n", game->nameIndex);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
-                        // strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
-                    }
-                }
+                //if (file != NULL) {
+                //    rewind(file);
+                //    while (fgets(fullName, sizeof(fullName), file) != NULL) {
+                //        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                //            //memcpy(game->name, nameIndex, strlen(nameIndex));  
+                //            //game->name[strlen(nameIndex)] = '\0';
+                //            strcpy(game->nameIndex, game->name);     // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+                //            if (fullName[strlen(game->nameIndex) + 1] == '\r' || fullName[strlen(game->nameIndex) + 1] == '\n' || fullName[strlen(game->nameIndex) + 1] == '\0') { // 判断索引的译名是否为空
+                //                game->transName[0] = '\0';
+                //                break;
+                //            }
+                //            strcpy(game->transName, &fullName[strlen(game->nameIndex) + 1]);   // 赋值给翻译文本数组
+                //            strcpy(game->name, game->transName);
+                //         
+                //            //sprintf(game->name, "%d", game->name[0]);
+                //            //给游戏名加结束符，防止换行符被显示出来
+                //            for (int i = 0; i < strlen(game->transName); i++) {
+                //                if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
+                //                    game->name[i] = '\0';
+                //                    break;
+                //                }
+                //            }
+                //            //for (int i = 0; i < strlen(fullName); i++) {
+                //            //    if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0') {
+                //            //        game->name[i - strlen(game->nameIndex) - 1] = '\0';
+                //            //        break;
+                //            //    }
+                //            //}
+                //            break;
+                //        }
+                //    }
+                //    // 如果txt里没有此游戏的英文名索引，则添加到txt里
+                //    if (game->nameIndex[0] == '\0' && game->transName[0] == '\0') {
+                //        strcpy(game->nameIndex, game->name); // 将真正的游戏名变成index索引名
+                //        fprintf(file, "%s.\r\n", game->nameIndex);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                //        // strncpy(game->nameIndex, nameIndex, strlen(nameIndex)); // 不存在就添加一笔，然后赋值给索引数组
+                //    }
+                //}
                 // snprintf(game->name, 256, "%s%s%s", "/", game->nameIndex, game->extension);
                 // strncpy(game->name, path, 40);
             //} else {
