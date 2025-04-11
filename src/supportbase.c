@@ -779,7 +779,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        fclose(file);
+
         closedir(dir);
     }
 
@@ -789,7 +789,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     } else {
         updateISOGameList(path, NULL, *glist, count);
     }
-
+    fclose(file);
     return count;
 }
 
