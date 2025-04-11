@@ -498,7 +498,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //setlocale(LC_ALL, ".UTF8");
     //setlocale(LC_ALL, "en_US.utf8");
     int count = 0;
-    struct game_cache_list cache = {0, NULL, 0};
+    struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
     char fullpath[256];
     struct dirent *dirent;
