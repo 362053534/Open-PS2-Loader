@@ -26,6 +26,7 @@ typedef struct
     char crc32name[9];
     char nameIndex[64];
     char transName[128];
+    unsigned int preModiTime;
 } base_game_info_t;
 
 typedef struct
