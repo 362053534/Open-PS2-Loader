@@ -494,7 +494,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    setlocale(LC_ALL, ".UTF8");
+    //setlocale(LC_ALL, ".UTF8");
     //setlocale(LC_ALL, "en_US.utf8");
     int count = 0;
     struct game_cache_list cache = {0, NULL};
@@ -513,14 +513,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
-        FILE *file;
-        //char _indexName[64];
-        char fullName[256];
-        snprintf(path, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
-        file = fopen(path, "ab+, ccs=UTF-8");
-        fseek(file, 0, SEEK_END);
-        if (ftell(file) == 0)
-            fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
+        //FILE *file;
+        ////char _indexName[64];
+        //char fullName[256];
+        //snprintf(path, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
+        //file = fopen(path, "ab+, ccs=UTF-8");
+        //fseek(file, 0, SEEK_END);
+        //if (ftell(file) == 0)
+        //    fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
 
 
         while ((dirent = readdir(dir)) != NULL) {
@@ -682,8 +682,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
-            game->nameIndex[0] = '\0';
-            game->transName[0] = '\0';
+            //game->nameIndex[0] = '\0';
+            //game->transName[0] = '\0';
 
 
 
@@ -780,7 +780,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             count++;
         }
-        fclose(file);
+        //fclose(file);
         closedir(dir);
     }
 
