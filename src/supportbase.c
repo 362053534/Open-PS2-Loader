@@ -508,7 +508,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     struct dirent *dirent;
     DIR *dir;
 
-
+    // debug 文件
+    char debugFileDir[64];
+    snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
+    FILE *debugFile = fopen(debugFileDir, "ab");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
@@ -540,7 +543,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
 
         while ((dirent = readdir(dir)) != NULL) {
-            //skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
+            skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
@@ -808,15 +811,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //else
             //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
             //strncpy(game->name, path, 40);
-
-            count++;
+                fprintf(debugFile, "有没有跳过txt扫描：%d\r\n", skipTxtScan);
+                count++;
         }
         fclose(file);
 
         // debug 确认txt跳过扫描是否生效
-        char debugFileDir[64];
-        snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
-        FILE *debugFile = fopen(debugFileDir, "ab");
         fprintf(debugFile, "%s.缓存时间戳%d.文件时间戳%d.缓存的第一个游戏名%s.glist第一个游戏名%s\r\n", skipTxtScan ? "跳过了txt扫描" : "进行了txt扫描", cache.games[0].preModiTime, fileStat.st_mtime, cache.games[0].name, glist[0]->gameinfo.name);
         fclose(debugFile);
 
