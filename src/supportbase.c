@@ -580,7 +580,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // 查询缓存里的旧格式的游戏名
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                    if (&cachedGInfo->nameIndex[0] != '\0' && !txtFileChanged) {
+                    if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
                     } else {
                         skipTxtScan = 0;
@@ -597,7 +597,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                if (&cachedGInfo->nameIndex[0] != '\0' && !txtFileChanged) {
+                if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                     skipTxtScan = 1;
                 } else {
                     skipTxtScan = 0;
