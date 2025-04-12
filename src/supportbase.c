@@ -394,7 +394,7 @@ static void freeISOGameListCache(struct game_cache_list *cache)
     }
 }
 
-static int updateISOGameList(const char *path, const struct game_cache_list *cache, const struct game_list_t *head, int count)
+static int updateISOGameList(const char *path, const struct game_cache_list *cache, const struct game_list_t *head, int count, int _txtFileChanged)
 {
     char filename[256];
     FILE *file;
@@ -431,6 +431,11 @@ static int updateISOGameList(const char *path, const struct game_cache_list *cac
         }
     } else {
         modified = ((head != NULL) && (count > 0)) ? 1 : 0;
+    }
+
+    // txt文件有修改，缓存也得更新
+    if (_txtFileChanged) {
+        modified = 1;
     }
 
     if (!modified)
@@ -512,9 +517,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char txtPath[256];
     snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
     struct stat fileStat;
+    time_t curModiTime;
     if (stat(txtPath, &fileStat) == 0) {
         // 通过文件修改时间判断txt是否改动
-        if (cache.games[0].preModiTime == fileStat.st_mtime) {
+        curModiTime = fileStat.st_mtime;
+        if (curModiTime == cache.games[0].preModiTime) {
             txtFileChanged = 0;
         }
     }
@@ -805,9 +812,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         // 使用stat函数获取保存后的txt修改时间
         if (stat(txtPath, &fileStat) == 0) {
+            if (curModiTime != fileStat.st_mtime) {
+                txtFileChanged = 1;
+            }
             if (cache.count > 0) {
-                //glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
-                cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
+                glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
+                //cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
                 //*glist.gameinfo.preModiTime;
             }
         }
@@ -816,10 +826,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     }
 
     if (cacheLoaded) {
-        updateISOGameList(path, &cache, *glist, count);
+        updateISOGameList(path, &cache, *glist, count, txtFileChanged);
         freeISOGameListCache(&cache);
     } else {
-        updateISOGameList(path, NULL, *glist, count);
+        updateISOGameList(path, NULL, *glist, count, txtFileChanged);
     }
 
     return count;
