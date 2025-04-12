@@ -567,7 +567,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // 查询缓存里的旧格式的游戏名
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, game->name) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                    fprintf(debugFile, "old查到缓存：%s；显示名：%s；索引名：%s\r\n", game->name, &cachedGInfo.nameIndex[0]);
+                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", game->name, &cachedGInfo.nameIndex[0]);
                     if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
                     } else {
@@ -583,7 +583,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
-                fprintf(debugFile, "new查到缓存：%s；显示名：%s；索引名：%s\r\n", game->name, &cachedGInfo.nameIndex[0]);
+                fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", game->name, &cachedGInfo.nameIndex[0]);
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                 if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                     skipTxtScan = 1;
