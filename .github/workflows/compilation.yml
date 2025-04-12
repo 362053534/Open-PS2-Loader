@@ -9,8 +9,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:5f0bc885ac40989cbdb1431b994ed89938f8a0c9a9e8bff1de004c0022df9f1a
+    runs-on: ubuntu-latest
+    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:48bf4bc55943c1344a06090c32c361935963e19417da3f7802f3516de7d737c2
     steps:
     - name: git checkout
       uses: actions/checkout@v4
@@ -50,8 +50,8 @@ jobs:
       matrix:
         extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
         pademu: [PADEMU=0, PADEMU=1]
-    runs-on: ubuntu-20.04
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:5f0bc885ac40989cbdb1431b994ed89938f8a0c9a9e8bff1de004c0022df9f1a
+    runs-on: ubuntu-latest
+    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:48bf4bc55943c1344a06090c32c361935963e19417da3f7802f3516de7d737c2
     steps:
     - name: git checkout
       uses: actions/checkout@v4
@@ -80,8 +80,8 @@ jobs:
 
 
   build-lang:
-    runs-on: ubuntu-20.04
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:5f0bc885ac40989cbdb1431b994ed89938f8a0c9a9e8bff1de004c0022df9f1a
+    runs-on: ubuntu-latest
+    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:48bf4bc55943c1344a06090c32c361935963e19417da3f7802f3516de7d737c2
     steps:
     - name: git checkout
       uses: actions/checkout@v4
@@ -107,7 +107,7 @@ jobs:
 
   release:
     needs: [build, build-variants, build-lang]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master'
     env:
       USERNAME: ${{ secrets.USERNAME }}
