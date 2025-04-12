@@ -146,24 +146,8 @@ int isValidIsoName(char *name, int *pNameLen)
     //}
 
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
-        if (size >= 17) {
-            if ((name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
-                //isCnName = 0;
-                ////  修正size大小
-                //for (int i = 0; i < 256; i++) {
-                //    if (&name[i] == "") {
-                //        size = i;
-                //        break;
-                //    }
-                //}
+        if (size >= 17 && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
 
-
-            } else if ((name[size - 11] == '_') && (name[size - 7] == '.')) {
-                //isCnName = 1;
-            } else {
-                *pNameLen = size - 4;
-                return GAME_FORMAT_ISO;
-            }
             //unicodeToUtf8(name[12], &name[12]);
             //asciiToUtf16(&name[12], &name[12]);
 
@@ -581,7 +565,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 }
 
                 // 查询缓存里的旧格式的游戏名
-                if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
+                if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, game->name) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
