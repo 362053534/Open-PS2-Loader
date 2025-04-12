@@ -806,7 +806,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         // 使用stat函数获取保存后的txt修改时间
         if (stat(txtPath, &fileStat) == 0) {
             if (cache.count > 0) {
-                glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在缓存里。
+                //glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
+                cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
                 //*glist.gameinfo.preModiTime;
             }
         }
