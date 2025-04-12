@@ -540,7 +540,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
 
         while ((dirent = readdir(dir)) != NULL) {
-            skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
+            //skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
 
