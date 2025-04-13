@@ -508,9 +508,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
     }
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    unsigned char curModiTime[8];
+    char curModiTime[8];
     iox_stat_t *fileStat;
-    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+    if (fileXioGetStat(txtPath, fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         strncpy(curModiTime, &fileStat->mtime, 8);      
         if (strncmp(curModiTime, cache.games[0].preModiTime, 8) == 0) {
@@ -835,7 +835,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fclose(debugFile);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+        if (fileXioGetStat(txtPath, fileStat) >= 0) {
             // 通过文件修改时间判断txt是否改动
             if (strncmp(curModiTime, &fileStat->mtime, 8) != 0) {
                 txtFileChanged = 1;
