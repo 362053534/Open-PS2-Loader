@@ -465,7 +465,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
     int i;
 
     for (i = 0; i < cache->count; i++) {
-        snprintf(isoname, sizeof(isoname), "%s%s", cache->games[i].name, cache->games[i].extension);
+        snprintf(isoname, sizeof(isoname), "%s%s", cache->games[i].nameIndex, cache->games[i].extension);
 
         if (strcmp(filename, isoname) == 0) {
             memcpy(ginfo, &cache->games[i], sizeof(base_game_info_t));
