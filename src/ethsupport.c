@@ -542,7 +542,7 @@ static void *ethGetGame(item_list_t *itemList, int id)
 
 static char *ethGetGameName(item_list_t *itemList, int id)
 {
-    return ethGames[id].indexName;
+    return ethGames[id].name;
 }
 
 static int ethGetGameNameLength(item_list_t *itemList, int id)
