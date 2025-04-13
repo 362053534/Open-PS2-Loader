@@ -502,9 +502,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     size_t txtPathLen = strlen(path);
     txtPathLen = strcasecmp(&path[txtPathLen - 3], "DVD") == 0 ? txtPathLen - 3 : txtPathLen - 2;
     strncpy(txtPath, path, txtPathLen);
-    txtPath[txtPathLen-1] = '\0';
-    snprintf(txtPath, 256, "%s/GameListTranslator.txt", txtPath);
-
+    txtPath[txtPathLen] = '\0';
+    snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
 
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
     unsigned char curModiTime[8];
@@ -515,6 +514,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         memcpy(curModiTime, fileStat.mtime, sizeof(fileStat.mtime));      
         if (strcmp(curModiTime, cache.games[0].preModiTime) == 0) {
             txtFileChanged = 0;
+
+            // debug
+            fprintf(debugFile, "文件时间%s和缓存时间%s相等,所以文件没改动\r\n", curModiTime, cache.games[0].preModiTime);
         }
     }
 
@@ -837,7 +839,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fclose(file);
 
         // debug 确认txt跳过扫描是否生效
-        fprintf(debugFile, "%d缓存时间戳%u，文件时间戳%u，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n",temp, cache.games[0].preModiTime, fileStat.mtime, cache.games[0].name, glist[0]->gameinfo.name);
+        fprintf(debugFile, "%d缓存时间戳%s，文件时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n",temp, cache.games[0].preModiTime, fileStat.mtime, cache.games[0].name, glist[0]->gameinfo.name);
         fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
         fclose(debugFile);
 
