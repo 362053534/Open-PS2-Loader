@@ -500,15 +500,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     // 使用stat函数获取文件修改时间，与缓存进行比对
     char txtPath[256];
     snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
-    struct stat fileStat;
-    time_t curModiTime;
-    if (stat(txtPath, &fileStat) == 0) {
-        // 通过文件修改时间判断txt是否改动
-        curModiTime = fileStat.st_mtime;
-        if (curModiTime == cache.games[0].preModiTime) {
-            txtFileChanged = 0;
-        }
-    }
+
+    //struct stat fileStat;
+    //time_t curModiTime;
+    //if (stat(txtPath, &fileStat) == 0) {
+    //    // 通过文件修改时间判断txt是否改动
+    //    curModiTime = fileStat.st_mtime;
+    //    if (curModiTime == cache.games[0].preModiTime) {
+    //        txtFileChanged = 0;
+    //    }
+    //}
 
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
@@ -814,14 +815,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //fprintf(debugFile, "%s.缓存时间戳%d.文件时间戳%d.缓存的第一个游戏名%s.glist第一个游戏名%s\r\n", skipTxtScan ? "跳过了txt扫描" : "进行了txt扫描", cache.games[0].preModiTime, fileStat.st_mtime, cache.games[0].name, glist[0]->gameinfo.name);
         //fclose(debugFile);
 
-        // 使用stat函数获取保存后的txt修改时间
-        if (stat(txtPath, &fileStat) == 0) {
-            if (curModiTime != fileStat.st_mtime) {
-                txtFileChanged = 1;
-            }
-            glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。                                                               // cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
-            //*glist.gameinfo.preModiTime;
-        }
+        //// 使用stat函数获取保存后的txt修改时间
+        //if (stat(txtPath, &fileStat) == 0) {
+        //    if (curModiTime != fileStat.st_mtime) {
+        //        txtFileChanged = 1;
+        //    }
+        //    glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。                                                               // cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
+        //    //*glist.gameinfo.preModiTime;
+        //}
 
         closedir(dir);
     }
