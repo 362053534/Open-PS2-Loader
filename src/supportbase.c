@@ -503,12 +503,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    unsigned char curModiTime[9];
+    unsigned char curModiTime[8];
     iox_stat_t fileStat;
     int temp;
     if ((temp = fileXioGetStat(txtPath, &fileStat)) >= 0) {
         // 通过文件修改时间判断txt是否改动
-        strcpy(curModiTime, fileStat.ctime);      
+        memcpy(curModiTime, fileStat.mtime, sizeof(fileStat.mtime));      
         if (strcmp(curModiTime, cache.games[0].preModiTime) == 0) {
             txtFileChanged = 0;
         }
@@ -833,16 +833,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fclose(file);
 
         // debug 确认txt跳过扫描是否生效
-        fprintf(debugFile, "%d缓存时间戳%u，文件时间戳%u，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n\r\n",temp, cache.games[0].preModiTime, fileStat.ctime, cache.games[0].name, glist[0]->gameinfo.name);
+        fprintf(debugFile, "%d缓存时间戳%u，文件时间戳%u，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n",temp, cache.games[0].preModiTime, fileStat.mtime, cache.games[0].name, glist[0]->gameinfo.name);
+        fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
         fclose(debugFile);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
         if (fileXioGetStat(txtPath, &fileStat) >= 0) {
             // 通过文件修改时间判断txt是否改动
-            if (strcmp(curModiTime, fileStat.ctime) != 0) {
+            if (strcmp(curModiTime, fileStat.mtime) != 0) {
                 txtFileChanged = 1;
             }
-            strcpy(glist[0]->gameinfo.preModiTime, fileStat.ctime); // txt操作完毕后，将它保存在glist里。
+            memcpy(glist[0]->gameinfo.preModiTime, fileStat.mtime, sizeof(fileStat.mtime)); // txt操作完毕后，将它保存在glist里。
         }
 
         //// 使用stat函数获取保存后的txt修改时间
