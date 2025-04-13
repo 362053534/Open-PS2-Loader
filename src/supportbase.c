@@ -133,8 +133,6 @@ int isValidIsoName(char *name, int *pNameLen)
 
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
 
-
-    size_t len;
     int size = strlen(name);
     //// 修正size大小
     //for (int i = 0; i < 100; i++) {
@@ -565,7 +563,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 ;
                 // 查询缓存里的旧格式的游戏名
                 char fileName[160];
-                sprintf(fileName, "%s%s", game->name, game->extension)
+                sprintf(fileName, "%s%s", game->name, game->extension);
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.nameIndex[0]);
