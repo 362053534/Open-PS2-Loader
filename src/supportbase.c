@@ -507,14 +507,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //if (fstat(fd, fileStat) == 0) {
     //}
     //close(fd);
-    struct stat fileStat = {0};
-    if (stat(txtPath, NULL) == 0) {
+    //struct stat fileStat = {0};
+    iox_stat_t *fileStat;
+    fileXioGetStat(txtPath, fileStat);
+    //if (stat(txtPath, NULL) == 0) {
         //// 通过文件修改时间判断txt是否改动
         //curModiTime = fileStat->st_mtime;
         //if (curModiTime == cache.games[0].preModiTime) {
         //    txtFileChanged = 0;
         //}
-    }
+    //}
 
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
