@@ -499,7 +499,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int skipTxtScan = 0;
     int txtFileChanged = 1;
     char txtPath[256];
-    size_t txtPathLen = strncmp(path[strlen(path) - 2], 'v',1) == 0 ? strlen(path) - 3 : strlen(path) - 2;
+    size_t txtPathLen = strcasecmp(&path[strlen(path) - 2], "V") == 0 ? strlen(path) - 3 : strlen(path) - 2;
     strncpy(txtPath, path, txtPathLen);
     snprintf(txtPath, 256, "%sGameListTranslator.txt", path);
 
