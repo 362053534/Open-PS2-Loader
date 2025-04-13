@@ -568,7 +568,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 sprintf(fileName, "%s%s", game->name, game->extension)
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, &cachedGInfo.nameIndex[0]);
+                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.nameIndex[0]);
                     if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
                     } else {
