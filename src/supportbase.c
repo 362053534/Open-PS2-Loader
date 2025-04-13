@@ -505,7 +505,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     // 使用stat函数获取文件修改时间，与缓存进行比对
     //struct stat fileStat;
     time_t curModiTime = 0;
-    fd = open(txtPath, O_RDONLY);
+    int fd = open(txtPath, O_RDONLY);
     if (fstat(fd, fileStat) == 0) {
     }
     close(fd);
