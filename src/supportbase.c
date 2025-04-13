@@ -566,7 +566,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 sprintf(fileName, "%s%s", game->name, game->extension);
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.nameIndex[0]);
+                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.nameIndex);
                     if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
                     } else {
@@ -582,7 +582,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
-                fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->nameIndex[0]);
+                fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->nameIndex);
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                 if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                     skipTxtScan = 1;
@@ -809,11 +809,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (curModiTime != fileStat.st_mtime) {
                 txtFileChanged = 1;
             }
-            if (cache.count > 0) {
-                glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
-                //cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
-                //*glist.gameinfo.preModiTime;
-            }
+            glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。                                                               // cache.games[0].preModiTime = fileStat.st_mtime;     // txt操作完毕后，将它保存在缓存里。
+            //*glist.gameinfo.preModiTime;
         }
 
         closedir(dir);
