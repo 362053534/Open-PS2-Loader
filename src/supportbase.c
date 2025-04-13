@@ -19,7 +19,6 @@
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
-#include <iomanX.h>
 
 #include "../modules/isofs/zso.h"
 
@@ -510,10 +509,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     }
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
     unsigned char curModiTime[8];
-    iox_stat_t *fileStat;
-    if (fileXioGetStat(txtPath, fileStat) >= 0) {
+    iox_stat_t fileStat;
+    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
-        strncpy(curModiTime, fileStat->mtime, 8);      
+        strncpy(curModiTime, fileStat.mtime, 8);      
         if (strncmp(curModiTime, cache.games[0].preModiTime, 8) == 0) {
             txtFileChanged = 0;
         }
@@ -836,12 +835,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fclose(debugFile);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-        if (fileXioGetStat(txtPath, fileStat) >= 0) {
+        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
             // 通过文件修改时间判断txt是否改动
-            if (strncmp(curModiTime, fileStat->mtime, 8) != 0) {
+            if (strncmp(curModiTime, fileStat.mtime, 8) != 0) {
                 txtFileChanged = 1;
             }
-            strncpy(glist[0]->gameinfo.preModiTime, fileStat->mtime, 8);// txt操作完毕后，将它保存在glist里。
+            strncpy(glist[0]->gameinfo.preModiTime, fileStat.mtime, 8);// txt操作完毕后，将它保存在glist里。
         }
 
         //// 使用stat函数获取保存后的txt修改时间
