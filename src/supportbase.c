@@ -499,11 +499,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int skipTxtScan = 0;
     int txtFileChanged = 1;
     char txtPath[256];
-    int txtPathLen = strlen(path);
+    size_t txtPathLen = strlen(path);
     txtPathLen = strcasecmp(&path[txtPathLen - 3], "DVD") == 0 ? txtPathLen - 3 : txtPathLen - 2;
     strncpy(txtPath, path, txtPathLen);
-    txtPath[txtPathLen] = '\0';
-    snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
+    txtPath[txtPathLen-1] = '\0';
+    snprintf(txtPath, 256, "%s/GameListTranslator.txt", txtPath);
 
 
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
