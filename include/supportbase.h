@@ -26,7 +26,7 @@ typedef struct
     u8 format;
     u32 sizeMB;
     char crc32name[9];
-    char nameIndex[64];
+    char indexName[64];
     char transName[128];
     time_t preModiTime;
 } base_game_info_t;

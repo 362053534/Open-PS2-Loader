@@ -542,7 +542,7 @@ static void *ethGetGame(item_list_t *itemList, int id)
 
 static char *ethGetGameName(item_list_t *itemList, int id)
 {
-    return ethGames[id].name;
+    return ethGames[id].indexName;
 }
 
 static int ethGetGameNameLength(item_list_t *itemList, int id)
@@ -582,7 +582,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     unsigned short int layer1_part;
 
     if (!gPCShareName[0]) {
-        memcpy(gPCShareName, game->nameIndex, sizeof(gPCShareName));
+        memcpy(gPCShareName, game->indexName, sizeof(gPCShareName));
         ethULSizePrev = -2;
         ethGameCount = 0;
         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &ethGameList.mode); // clear the share list
@@ -651,10 +651,10 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
 
     switch (game->format) {
         case GAME_FORMAT_OLD_ISO:
-            snprintf(settings->filename, sizeof(settings->filename), "%s.%s%s", game->startup, game->nameIndex, game->extension);
+            snprintf(settings->filename, sizeof(settings->filename), "%s.%s%s", game->startup, game->indexName, game->extension);
             break;
         case GAME_FORMAT_ISO:
-            snprintf(settings->filename, sizeof(settings->filename), "%s%s", game->nameIndex, game->extension);
+            snprintf(settings->filename, sizeof(settings->filename), "%s%s", game->indexName, game->extension);
             break;
         default: // USBExtreme format.
             snprintf(settings->filename, sizeof(settings->filename), "ul.%08X.%s", game->crc32name, game->startup);
