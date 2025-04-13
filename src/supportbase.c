@@ -567,8 +567,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.nameIndex);
-                    if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
+                    if (cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
+                        strcpy(game->nameIndex, cachedGInfo.nameIndex);
+                        strcpy(game->transName, cachedGInfo.transName);
+                        if (game->transName[0] != '\0') {
+                            strcpy(game->name, game->transName);
+                        }
                     } else {
                         skipTxtScan = 0;
                     }
@@ -584,8 +589,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
                 fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->nameIndex);
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                if (&cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
+                if (cachedGInfo.nameIndex[0] != '\0' && !txtFileChanged) {
                     skipTxtScan = 1;
+                    strcpy(game->nameIndex, cachedGInfo.nameIndex);
+                    strcpy(game->transName, cachedGInfo.transName);
+                    if (game->transName[0] != '\0') {
+                        strcpy(game->name, game->transName);
+                    }
                 } else {
                     skipTxtScan = 0;
                 }
