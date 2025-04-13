@@ -701,8 +701,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             game->media = type;
             game->format = format;
             game->sizeMB = 0;
-            game->nameIndex[0] = '\0';
-            game->transName[0] = '\0';
 
 
 
@@ -714,6 +712,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //    //memcpy(game->game->nameIndex, game->nameIndex, strlen(game->nameIndex)); // 存在，就赋值给索引数组
 
                 if (file != NULL && !skipTxtScan) {
+                game->nameIndex[0] = '\0';
+                game->transName[0] = '\0';
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
