@@ -502,7 +502,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
 
     //struct stat fileStat;
-    //time_t curModiTime;
+    time_t curModiTime = 0;
     //if (stat(txtPath, &fileStat) == 0) {
     //    // 通过文件修改时间判断txt是否改动
     //    curModiTime = fileStat.st_mtime;
