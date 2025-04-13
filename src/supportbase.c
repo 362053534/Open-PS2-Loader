@@ -516,7 +516,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             txtFileChanged = 0;
 
             // debug
-            fprintf(debugFile, "文件时间%s和缓存时间%s相等,所以文件没改动\r\n", curModiTime, cache.games[0].preModiTime);
+            fprintf(debugFile, "文件时间%s和缓存时间%s相等,所以文件没改动\r\n", fileStat.mtime, cache.games[0].preModiTime);
+            fprintf(debugFile, "文件时间为：%02u%02u%02u\r\n", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+            fprintf(debugFile, "缓存时间为：%02u%02u%02u\r\n", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
         }
     }
 
