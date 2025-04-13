@@ -505,14 +505,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     // 使用stat函数获取文件修改时间，与缓存进行比对
     //struct stat fileStat;
     time_t curModiTime = 0;
-    //if (fstat())
-    if (stat(txtPath, fileStat) == 0) {
-        // 通过文件修改时间判断txt是否改动
-        curModiTime = fileStat->st_mtime;
-        if (curModiTime == cache.games[0].preModiTime) {
-            txtFileChanged = 0;
-        }
+    fd = open(txtPath, O_RDONLY);
+    if (fstat(fd, fileStat) == 0) {
     }
+    close(fd);
+    //if (stat(txtPath, fileStat) == 0) {
+    //    // 通过文件修改时间判断txt是否改动
+    //    curModiTime = fileStat->st_mtime;
+    //    if (curModiTime == cache.games[0].preModiTime) {
+    //        txtFileChanged = 0;
+    //    }
+    //}
 
     if ((dir = opendir(path)) != NULL) {
         size_t base_path_len = strlen(path);
