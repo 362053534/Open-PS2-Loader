@@ -4,7 +4,7 @@
 #include "include/iosupport.h"
 #include "include/system.h"
 #include "include/supportbase.h"
-#include "include/iomanX.h"
+#include "include/ioman.h"
 #include "modules/iopcore/common/cdvd_config.h"
 #include "include/cheatman.h"
 #include "include/pggsm.h"
@@ -19,6 +19,7 @@
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
+#include <iomanX.h>
 
 #include "../modules/isofs/zso.h"
 
