@@ -14,12 +14,12 @@
 #include <locale.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iox_stat.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
-#include <iox_stat.h>
 
 #include "../modules/isofs/zso.h"
 
