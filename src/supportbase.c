@@ -501,20 +501,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char txtPath[256];
     snprintf(txtPath, 256, "%s%c../GameListTranslator.txt", path, path[0] == 's' ? '\\' : '/');
 
-            FILE *file;
-    char fullName[256];
-    file = fopen(txtPath, "ab+, ccs=UTF-8");
-    fseek(file, 0, SEEK_END);
-    if (ftell(file) == 0) {
-        fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
-    }
+
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    unsigned char curModiTime[8];
+    unsigned char curModiTime[9];
     iox_stat_t fileStat;
     int temp;
-    if (temp = fileXioGetStat("txtPath", &fileStat) >= 0) {
+    if (temp = fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
-        strncpy(curModiTime, fileStat.atime, 8);      
+        strncpy(curModiTime, fileStat.ctime, 8);      
         if (strncmp(curModiTime, cache.games[0].preModiTime, 8) == 0) {
             txtFileChanged = 0;
         }
@@ -536,7 +530,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
-
+            FILE *file;
+        char fullName[256];
+        file = fopen(txtPath, "ab+, ccs=UTF-8");
+        fseek(file, 0, SEEK_END);
+        if (ftell(file) == 0) {
+            fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
+        }
 
         while ((dirent = readdir(dir)) != NULL) {
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
@@ -833,16 +833,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fclose(file);
 
         // debug 确认txt跳过扫描是否生效
-        fprintf(debugFile, "%d缓存时间戳%u.文件时间戳%u.缓存的第一个游戏名%s.glist第一个游戏名%s\r\n",temp, cache.games[0].preModiTime, fileStat.atime, cache.games[0].name, glist[0]->gameinfo.name);
+        fprintf(debugFile, "%d缓存时间戳%u.文件时间戳%u.缓存的第一个游戏名%s.glist第一个游戏名%s\r\n",temp, cache.games[0].preModiTime, fileStat.ctime, cache.games[0].name, glist[0]->gameinfo.name);
         fclose(debugFile);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-        if (fileXioGetStat("txtPath", &fileStat) >= 0) {
+        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
             // 通过文件修改时间判断txt是否改动
-            if (strncmp(curModiTime, fileStat.atime, 8) != 0) {
+            if (strncmp(curModiTime, fileStat.ctime, 8) != 0) {
                 txtFileChanged = 1;
             }
-            strncpy(glist[0]->gameinfo.preModiTime, fileStat.atime, 8); // txt操作完毕后，将它保存在glist里。
+            strncpy(glist[0]->gameinfo.preModiTime, fileStat.ctime, 8); // txt操作完毕后，将它保存在glist里。
         }
 
         //// 使用stat函数获取保存后的txt修改时间
