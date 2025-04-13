@@ -4,7 +4,7 @@
 #include "include/iosupport.h"
 #include "include/system.h"
 #include "include/supportbase.h"
-//#include "include/ioman.h"
+#include "include/ioman.h"
 #include "modules/iopcore/common/cdvd_config.h"
 #include "include/cheatman.h"
 #include "include/pggsm.h"
