@@ -510,8 +510,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char preModiTime[6];
     iox_stat_t fileStat;
     memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
-    //if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-    if (fileXioChStat(txtPath, &fileStat, FIO_CST_MT) >= 0) {
+    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
 
@@ -849,8 +848,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fclose(file);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-        //if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-        if (fileXioChStat(txtPath, &fileStat, FIO_CST_MT) >= 0) {
+        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
             // 通过文件修改时间判断txt是否改动
             memcpy(preModiTime, curModiTime, 6);
             sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
