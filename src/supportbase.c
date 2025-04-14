@@ -758,7 +758,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     while ((elementsRead = fread(fullName, sizeof(char), sizeof(fullName), file)) > 0) {
                         //fullName[elementsRead] = '\0';  // 确保字符串以null终止
                         // debug
-                        fprintf(debugFile, fullName);
+                        //fprintf(debugFile, fullName);
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->name, indexName, strlen(indexName));  
                             //game->name[strlen(indexName)] = '\0';
