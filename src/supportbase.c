@@ -547,7 +547,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
         }
 
-        char *tempIndexName = nullptr;
+        char *tempIndexName;
         while ((dirent = readdir(dir)) != NULL) {
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
@@ -769,14 +769,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             strcpy(game->transName, &fullName[strlen(game->indexName) + 1]);   // 赋值给翻译文本数组
                         
                             //sprintf(game->name, "%d", game->name[0]);
-                            //给游戏名加结束符，防止换行符被显示出来
-                            for (int i = 0; i < strlen(game->transName); i++) {
-                                if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
-                                    game->transName[i] = '\0';
-                                    strcpy(game->name, game->transName);
-                                    break;
-                                }
-                            }
+                            ////给游戏名加结束符，防止换行符被显示出来
+                            //for (int i = 0; i < strlen(game->transName); i++) {
+                            //    if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
+                            //        game->transName[i] = '\0';
+                            //        strcpy(game->name, game->transName);
+                            //        break;
+                            //    }
+                            //}
                             break;
                         }
                     }
