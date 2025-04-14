@@ -547,7 +547,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
         }
 
-        char *tempIndexName;
+        char indexNameBuffer[64];
         while ((dirent = readdir(dir)) != NULL) {
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
@@ -784,8 +784,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
                         strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
                         //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
-                        sprintf(tempIndexName, "%s.\r\n", game->indexName);
-                        fwrite(tempIndexName, sizeof(char), strlen(tempIndexName), file);
+                        sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
                     }
                 }
                  //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
