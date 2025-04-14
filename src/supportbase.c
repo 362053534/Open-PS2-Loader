@@ -784,7 +784,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
                         //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
                         sprintf(tempIndexName, "%s.\r\n", game->indexName);
-                        fwrite(tempIndexName, sizeof(char), sizeof(tempIndexName), file);
+                        fwrite(tempIndexName, sizeof(char), strlen(tempIndexName), file);
                     }
                 }
                  //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
