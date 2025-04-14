@@ -757,7 +757,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->transName[0] = '\0';
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        fullName[strlen(fullName) - strlen("\r\n")] = '\0';  // 避免transName的换行符被显示出来。
+                        fullName[strlen(fullName) - strlen("\r\n") - 1] = '\0';  // 避免transName的换行符被显示出来。
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->name, indexName, strlen(indexName));  
                             //game->name[strlen(indexName)] = '\0';
@@ -835,8 +835,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //strncpy(game->name, path, 40);
 
                 // debug
-                int tempnum = strlen("\r\n");
-                fprintf(debugFile, "%d有没有跳过txt扫描：%s：%d\r\n", tempnum, game->name, skipTxtScan);
+                fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
 
                 count++;
         }
