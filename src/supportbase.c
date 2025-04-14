@@ -540,20 +540,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         FILE *file;
         char fullName[256];
         file = fopen(txtPath, "ab+, ccs=UTF-8");
-        unsigned char _bom[3];
-        if (!(fread(_bom, 1, 3, file) == 3 && _bom[0] == 0xEF && _bom[1] == 0xBB && _bom[2] == 0xBF)) {
-            unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-            fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-        }
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0) {
-            rewind(file);
             unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
             fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
             fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
         }
 
-        char tempIndexName[64];
+        char *tempIndexName = nullptr;
         while ((dirent = readdir(dir)) != NULL) {
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
@@ -763,6 +757,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->transName[0] = '\0';
                     rewind(file);
                     while (fgets(fullName, sizeof(fullName), file) != NULL) {
+                        fullName[strlen(fullName)] = '\0';  // 避免transName的换行符被显示出来。
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->name, indexName, strlen(indexName));  
                             //game->name[strlen(indexName)] = '\0';
