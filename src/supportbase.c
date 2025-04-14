@@ -510,16 +510,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char preModiTime[6];
     iox_stat_t fileStat;
     memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
-    //if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-    //    // 通过文件修改时间判断txt是否改动
-    //    sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+        // 通过文件修改时间判断txt是否改动
+        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
 
-    //    if (strcmp(curModiTime, preModiTime) == 0) {
-    //        txtFileChanged = 0;
-    //    }
-    //}
-    //// debug
-    //fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
+        if (strcmp(curModiTime, preModiTime) == 0) {
+            txtFileChanged = 0;
+        }
+    }
+    // debug
+    fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
 
     // 使用stat函数获取文件修改时间，与缓存进行比对
     // struct stat fileStat;
@@ -537,14 +537,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
-            FILE *file;
+        FILE *file;
         char fullName[256];
         file = fopen(txtPath, "ab+, ccs=UTF-8");
         fseek(file, 0, SEEK_END);
         if (ftell(file) == 0) {
+            unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+            fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM
             fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
         }
 
+        char *tempIndexName;
         while ((dirent = readdir(dir)) != NULL) {
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
@@ -589,8 +592,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     
-                    //// debug
-                    //fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.indexName);
+                    // debug
+                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, cachedGInfo.indexName);
 
                     if (cachedGInfo.indexName[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
@@ -613,8 +616,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
-                //// debug
-                //fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
+                // debug
+                fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
 
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                 if (cachedGInfo.indexName[0] != '\0' && !txtFileChanged) {
@@ -753,12 +756,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 game->indexName[0] = '\0';
                 game->transName[0] = '\0';
                     rewind(file);
-                    //while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                    size_t elementsRead;
-                    while ((elementsRead = fread(fullName, sizeof(char), sizeof(fullName), file)) > 0) {
-                        fullName[elementsRead] = '\0';  // 确保字符串以null终止
-                        // debug
-                        fprintf(debugFile, fullName);
+                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->name, indexName, strlen(indexName));  
                             //game->name[strlen(indexName)] = '\0';
@@ -784,7 +782,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     // 如果txt里没有此游戏的英文名索引，则添加到txt里
                     if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
                         strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
-                        fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                        //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                        sprintf(tempIndexName, "%s.\r\n", game->indexName);
+                        fwrite(tempIndexName, sizeof(char), sizeof(tempIndexName), file);
                     }
                 }
                  //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
@@ -833,11 +833,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
             //strncpy(game->name, path, 40);
 
-                //// debug
-                //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name,skipTxtScan);
+                // debug
+                fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name,skipTxtScan);
 
                 count++;
         }
+        free(tempIndexName);
         fclose(file);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
@@ -851,9 +852,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
         }
 
-        //// debug 确认txt跳过扫描是否生效
-        //fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, cache.games[0].name, glist[0]->gameinfo.name);
-        //fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
+        // debug 确认txt跳过扫描是否生效
+        fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, cache.games[0].name, glist[0]->gameinfo.name);
+        fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
         fclose(debugFile);
 
         //// 使用stat函数获取保存后的txt修改时间
