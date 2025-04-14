@@ -509,21 +509,21 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char curModiTime[6];
     char preModiTime[6];
     iox_stat_t fileStat;
+    sprintf(preModiTime, "%02u%02u%02u", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         //memcpy(curModiTime, fileStat.mtime, 8);
         //memcpy(preModiTime, cache.games[0].preModiTime, 8);
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-        sprintf(preModiTime, "%02u%02u%02u", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
+
         if (strcmp(curModiTime, preModiTime) == 0) {
             txtFileChanged = 0;
-
-            // debug
-            fprintf(debugFile, "文件时间%s和缓存时间%s相等,所以文件没改动\r\n", curModiTime, preModiTime);
-            fprintf(debugFile, "文件时间为：%02u%02u%02u\r\n", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-            fprintf(debugFile, "缓存时间为：%02u%02u%02u\r\n", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
         }
     }
+    // debug
+    fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
+    //fprintf(debugFile, "文件时间为：%02u%02u%02u\r\n", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+    //fprintf(debugFile, "缓存时间为：%02u%02u%02u\r\n", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
 
     // 使用stat函数获取文件修改时间，与缓存进行比对
     // struct stat fileStat;
@@ -758,8 +758,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                     rewind(file);
                     //while (fgets(fullName, sizeof(fullName), file) != NULL) {
                     size_t elementsRead;
-                    while ((elementsRead = fread(fullName, sizeof(char), sizeof(fullName) - 1, file)) > 0) {
-                        fullName[elementsRead] = '\0';  // 确保字符串以null终止
+                    while ((elementsRead = fread(fullName, sizeof(char), sizeof(fullName), file)) > 0) {
+                        //fullName[elementsRead] = '\0';  // 确保字符串以null终止
                         if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
                             //memcpy(game->name, indexName, strlen(indexName));  
                             //game->name[strlen(indexName)] = '\0';
@@ -771,20 +771,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                             strcpy(game->transName, &fullName[strlen(game->indexName) + 1]);   // 赋值给翻译文本数组
                         
                             //sprintf(game->name, "%d", game->name[0]);
-                            ////给游戏名加结束符，防止换行符被显示出来
-                            //for (int i = 0; i < strlen(game->transName); i++) {
-                            //    if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
-                            //        game->transName[i] = '\0';
-                            //        strcpy(game->name, game->transName);
-                            //        break;
-                            //    }
-                            //}
-                            //for (int i = 0; i < strlen(fullName); i++) {
-                            //    if (fullName[i] == '\r' || fullName[i] == '\n' || fullName[i] == '\0') {
-                            //        game->name[i - strlen(game->indexName) - 1] = '\0';
-                            //        break;
-                            //    }
-                            //}
+                            //给游戏名加结束符，防止换行符被显示出来
+                            for (int i = 0; i < strlen(game->transName); i++) {
+                                if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
+                                    game->transName[i] = '\0';
+                                    strcpy(game->name, game->transName);
+                                    break;
+                                }
+                            }
                             break;
                         }
                     }
