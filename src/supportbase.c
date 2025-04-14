@@ -513,8 +513,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         // 通过文件修改时间判断txt是否改动
         //memcpy(curModiTime, fileStat.mtime, 8);
         //memcpy(preModiTime, cache.games[0].preModiTime, 8);
-        fprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-        fprintf(preModiTime, "%02u%02u%02u", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
+        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+        sprintf(preModiTime, "%02u%02u%02u", (cache.games[0].preModiTime)[1], (cache.games[0].preModiTime)[2], (cache.games[0].preModiTime)[3]);
         if (strcmp(curModiTime, preModiTime) == 0) {
             txtFileChanged = 0;
 
@@ -850,7 +850,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         if (fileXioGetStat(txtPath, &fileStat) >= 0) {
             // 通过文件修改时间判断txt是否改动
             memcpy(preModiTime, curModiTime, 6);
-            fprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+            sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
             if (strcmp(curModiTime, preModiTime) != 0) {
                 txtFileChanged = 1;
             }
