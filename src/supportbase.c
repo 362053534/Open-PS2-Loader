@@ -554,7 +554,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //sprintf(preModiTime, "%s", &cache->games[0].preModiTime);
     //sprintf(preModiTime, "%s", cache.games[0].preModiTime);
     //preModiTime[6] = '\0';
-    loadPreMtime(&cache, preModiTime);
+    //loadPreMtime(&cache, preModiTime);
+    if ((&cache)->count > 0) {
+        sprintf(preModiTime, "%s", (&cache)->games[0].preModiTime);
+        preModiTime[6] = '\0';
+        return 1;
+    } else {
+        sprintf(preModiTime, "000000");
+        preModiTime[6] = '\0';
+        return 0;
+    }
 
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
