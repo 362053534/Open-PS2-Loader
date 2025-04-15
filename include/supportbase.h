@@ -28,7 +28,7 @@ typedef struct
     char crc32name[9];
     char indexName[64];
     char transName[128];
-    char preModiTime[6];
+    char preModiTime[7];
     //time_t preModiTime;
 } base_game_info_t;
 

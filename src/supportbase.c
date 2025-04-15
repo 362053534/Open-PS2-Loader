@@ -476,6 +476,22 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
     return ENOENT;
 }
 
+// 将缓存中的时间戳，提取出来
+static int loadCacheMtime(const struct game_cache_list *cache, char *Mtime)
+{
+    if (cache->count > 0) {
+        snprintf(Mtime, sizeof(Mtime), "%s", cache->games[i].preModiTime);
+        Mtime[6] = '\0';
+        return 1;
+    } else {
+        snprintf(Mtime, sizeof(Mtime), "000000");
+        Mtime[6] = '\0';
+        return 0;
+    }
+
+    return 0;
+}
+
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
@@ -516,20 +532,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     }
 
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    char curModiTime[6];
-    char preModiTime[6];
+    char curModiTime[7];
+    char preModiTime[7];
     iox_stat_t fileStat;
-    if (cache.count > 0) {
-        //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
-        snprintf(preModiTime, 6, "%s", cache.games[0].preModiTime);
-    } else {
-        sprintf(preModiTime, "000000");
-    }
+
+    //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
+    loadCacheMtime(&cache, preModiTime);
 
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-
+        curModiTime[6] = '\0';
         if (strcmp(curModiTime, preModiTime) == 0) {
             txtFileChanged = 0;
         }
@@ -863,7 +876,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (strcmp(curModiTime, preModiTime) != 0) {
                 txtFileChanged = 1;
             }
-            snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
+            //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
             //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
         }
 
