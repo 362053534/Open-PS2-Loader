@@ -558,11 +558,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     if ((&cache)->count > 0) {
         sprintf(preModiTime, "%s", (&cache)->games[0].preModiTime);
         preModiTime[6] = '\0';
-        return 1;
     } else {
         sprintf(preModiTime, "000000");
         preModiTime[6] = '\0';
-        return 0;
     }
 
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
@@ -903,7 +901,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (strcmp(curModiTime, preModiTime) != 0) {
                 txtFileChanged = 1;
             }
-            saveCurMtime(*glist, curModiTime);
+            if (*glist != NULL) {
+                sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
+                (*glist)->gameinfo.preModiTime[6] = '\0';
+            }
+            //saveCurMtime(*glist, curModiTime);
+
             //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
             //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
         }
