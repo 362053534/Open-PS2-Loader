@@ -498,25 +498,36 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int skipTxtScan = 0;
     int txtFileChanged = 1;
     char txtPath[256];
-    size_t txtPathLen = strlen(path);
+    int txtPathLen = strlen(path);
     txtPathLen = strcasecmp(&path[txtPathLen - 3], "DVD") == 0 ? txtPathLen - 3 : txtPathLen - 2;
     strncpy(txtPath, path, txtPathLen);
     txtPath[txtPathLen] = '\0';
     snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
 
-    // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    char curModiTime[6];
-    char preModiTime[6];
-    iox_stat_t fileStat;
-    memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
-    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-        // 通过文件修改时间判断txt是否改动
-        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-
-        if (strcmp(curModiTime, preModiTime) == 0) {
-            txtFileChanged = 0;
-        }
+    // 创建txt文件
+    FILE *file;
+    char fullName[256];
+    file = fopen(txtPath, "ab+, ccs=UTF-8");
+    fseek(file, 0, SEEK_END);
+    if (ftell(file) == 0) {
+        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+        fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
     }
+
+    //// 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+    //char curModiTime[6];
+    //char preModiTime[6];
+    //iox_stat_t fileStat;
+    //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
+    //if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+    //    // 通过文件修改时间判断txt是否改动
+    //    sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+
+    //    if (strcmp(curModiTime, preModiTime) == 0) {
+    //        txtFileChanged = 0;
+    //    }
+    //}
     //// debug
     //fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
 
@@ -535,16 +546,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
-
-        FILE *file;
-        char fullName[256];
-        file = fopen(txtPath, "ab+, ccs=UTF-8");
-        fseek(file, 0, SEEK_END);
-        if (ftell(file) == 0) {
-            unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-            fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-            fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
-        }
 
         char indexNameBuffer[64];
         while ((dirent = readdir(dir)) != NULL) {
@@ -846,16 +847,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //free(tempIndexName);
         fclose(file);
 
-        // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-            // 通过文件修改时间判断txt是否改动
-            memcpy(preModiTime, curModiTime, 6);
-            sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-            if (strcmp(curModiTime, preModiTime) != 0) {
-                txtFileChanged = 1;
-            }
-            memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
-        }
+        //// 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+        //if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+        //    // 通过文件修改时间判断txt是否改动
+        //    memcpy(preModiTime, curModiTime, 6);
+        //    sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+        //    if (strcmp(curModiTime, preModiTime) != 0) {
+        //        txtFileChanged = 1;
+        //    }
+        //    memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
+        //}
 
         //// debug 确认txt跳过扫描是否生效
         //fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, cache.games[0].name, glist[0]->gameinfo.name);
