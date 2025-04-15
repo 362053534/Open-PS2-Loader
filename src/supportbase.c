@@ -436,7 +436,7 @@ static int updateISOGameList(const char *path, const struct game_cache_list *cac
                 memcpy(&list[i], &game->gameinfo, sizeof(base_game_info_t));
             }
 
-            file = fopen(filename, "wb, ccs=UTF-8");
+            file = fopen(filename, "wb");
             if (file != NULL) {
                 result = fwrite(list, sizeof(base_game_info_t), count, file) == count ? 0 : EIO;
 
@@ -507,7 +507,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     // 创建txt文件
     FILE *file;
     char fullName[256];
-    file = fopen(txtPath, "ab+, ccs=UTF-8");
+    file = fopen(txtPath, "a+, ccs=UTF-8");
     fseek(file, 0, SEEK_END);
     if (ftell(file) == 0) {
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
