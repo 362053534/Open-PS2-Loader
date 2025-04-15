@@ -480,7 +480,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 static int loadCacheMtime(const struct game_cache_list *cache, char *Mtime)
 {
     if (cache->count > 0) {
-        sprintf(Mtime, "%s", cache->games[i].preModiTime);
+        sprintf(Mtime, "%s", cache->games[0].preModiTime);
         Mtime[6] = '\0';
         return 1;
     } else {
