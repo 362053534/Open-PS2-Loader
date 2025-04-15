@@ -519,7 +519,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char curModiTime[6];
     char preModiTime[6];
     iox_stat_t fileStat;
-    strncpy(preModiTime, cache.games[0].preModiTime, 6);
+    //strncpy(preModiTime, cache.games[0].preModiTime, 6);
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
