@@ -492,6 +492,20 @@ static int loadCacheMtime(const struct game_cache_list *cache, char *Mtime)
     return 0;
 }
 
+// 将txt保存后的时间戳，存到缓存里
+static int saveCacheMtime(const struct game_list_t *head, char *Mtime)
+{
+    if (head != NULL) {
+        sprintf(head->gameinfo.preModiTime, "%s", Mtime);
+        head->gameinfo.preModiTime[6] = '\0';
+        return 1;
+    } else {
+        return 0;
+    }
+
+    return 0;
+}
+
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
@@ -537,6 +551,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     iox_stat_t fileStat;
 
     //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
+    //sprintf(preModiTime, "%s", &cache->games[0].preModiTime);
+    //sprintf(preModiTime, "%s", cache.games[0].preModiTime);
+    //preModiTime[6] = '\0';
     loadCacheMtime(&cache, preModiTime);
 
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
@@ -548,6 +565,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         }
     } else {
         sprintf(curModiTime, "000000");
+        curModiTime[6] = '\0';
     }
     //// debug
     //fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
@@ -876,6 +894,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (strcmp(curModiTime, preModiTime) != 0) {
                 txtFileChanged = 1;
             }
+            saveCacheMtime(*glist, curModiTime);
             //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
             //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
         }
