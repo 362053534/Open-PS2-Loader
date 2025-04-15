@@ -519,7 +519,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     char curModiTime[6];
     char preModiTime[6];
     iox_stat_t fileStat;
-    if (cache.games[0] != NULL) {
+    if (cache.count > 0) {
         //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
         snprintf(preModiTime, 6, "%s", cache.games[0].preModiTime);
     } else {
