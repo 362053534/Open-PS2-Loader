@@ -477,7 +477,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 }
 
 // 将缓存中的时间戳，提取出来
-static int loadCacheMtime(const struct game_cache_list *cache, char *Mtime)
+static int loadPreMtime(const struct game_cache_list *cache, char *Mtime)
 {
     if (cache->count > 0) {
         sprintf(Mtime, "%s", cache->games[0].preModiTime);
@@ -493,7 +493,7 @@ static int loadCacheMtime(const struct game_cache_list *cache, char *Mtime)
 }
 
 // 将txt保存后的时间戳，存到缓存里
-static int saveCacheMtime(struct game_list_t *head, char *Mtime)
+static int saveCurMtime(struct game_list_t *head, char *Mtime)
 {
     if (head != NULL) {
         sprintf(head->gameinfo.preModiTime, "%s", Mtime);
@@ -552,14 +552,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
     //sprintf(preModiTime, "%s", &cache->games[0].preModiTime);
-    if (cache.count > 0) {
-        sprintf(preModiTime, "%s", cache.games[0].preModiTime);
-        preModiTime[6] = '\0';
-    } else {
-        sprintf(preModiTime, "000000");
-        preModiTime[6] = '\0';
-    }
-    //loadCacheMtime(&cache, preModiTime);
+    //sprintf(preModiTime, "%s", cache.games[0].preModiTime);
+    //preModiTime[6] = '\0';
+    loadPreMtime(&cache, preModiTime);
 
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
@@ -899,9 +894,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (strcmp(curModiTime, preModiTime) != 0) {
                 txtFileChanged = 1;
             }
-            //saveCacheMtime(*glist, curModiTime);
-            sprintf((**glist).gameinfo.preModiTime, "%s", curModiTime);
-            (**glist).gameinfo.preModiTime[6] = '\0';
+            saveCurMtime(*glist, curModiTime);
             //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
             //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
         }
