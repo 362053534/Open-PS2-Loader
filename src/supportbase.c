@@ -555,7 +555,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //preModiTime[6] = '\0';
     //loadPreMtime(&cache, preModiTime);
     if ((&cache)->count > 0) {
-        memcpy(preModiTime, (&cache)->games[0].preModiTime, sizeof((&cache)->games[0].preModiTime))
+        memcpy(preModiTime, (&cache)->games[0].preModiTime, sizeof((&cache)->games[0].preModiTime));
         //sprintf(preModiTime, "%s", (&cache)->games[0].preModiTime);
         //preModiTime[6] = '\0';
     } else {
@@ -905,7 +905,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             }
             // txt操作完毕后，将它保存在glist里。
             if (*glist != NULL) {
-                memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime))
+                memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
                 //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
                 //(*glist)->gameinfo.preModiTime[6] = '\0';
             }
