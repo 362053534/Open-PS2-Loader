@@ -855,7 +855,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (strcmp(curModiTime, preModiTime) != 0) {
                 txtFileChanged = 1;
             }
-            //strncpy(glist[0]->gameinfo.preModiTime, curModiTime, 6); // txt操作完毕后，将它保存在glist里。
+            strncpy(glist[0]->gameinfo.preModiTime, curModiTime, 6); // txt操作完毕后，将它保存在glist里。
         }
 
         //// debug 确认txt跳过扫描是否生效
