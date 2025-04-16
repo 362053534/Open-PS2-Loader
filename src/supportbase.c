@@ -329,7 +329,7 @@ static int loadISOGameListCache(const char *path, struct game_cache_list *cache)
 
     freeISOGameListCache(cache);
 
-    sprintf(filename, "%s/games.bin", path);
+    sprintf(filename, "%s/txtList.bin", path);
     file = fopen(filename, "rb");
     if (file != NULL) {
         fseek(file, 0, SEEK_END);
@@ -424,7 +424,7 @@ static int updateISOGameList(const char *path, const struct game_cache_list *cac
     LOG("updateISOGameList: caching new game list.\n");
 
     result = 0;
-    sprintf(filename, "%s/games.bin", path);
+    sprintf(filename, "%s/txtList.bin", path);
     if ((head != NULL) && (count > 0)) {
         list = (base_game_info_t *)memalign(64, sizeof(base_game_info_t) * count);
 
