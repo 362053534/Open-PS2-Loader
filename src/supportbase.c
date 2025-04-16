@@ -894,8 +894,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 count++;
         }
-        //free(tempIndexName);
-
+        fclose(file);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
         if (fileXioGetStat(txtPath, &fileStat) >= 0) {
@@ -931,7 +930,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         // 
         //    //*glist.gameinfo.preModiTime;
         //}
-        fclose(file);
+
         closedir(dir);
     }
 
