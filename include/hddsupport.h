@@ -67,4 +67,8 @@ void hddLoadModules(void);
 void hddLoadSupportModules(void);
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);
 
+void scanTxtFile(hdl_game_info_t *ginfo);
+FILE *txtFile = NULL;
+int txtFileChanged = 1;
+int txtCacheChanged = 1;
 #endif
