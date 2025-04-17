@@ -99,44 +99,6 @@ static int hddCheckHDProKit(void)
 #define PFS_ZONE_SIZE 8192
 #define PFS_FRAGMENT  0x00000000
 
-void scanTxtFile(hdl_game_info_t *ginfo)
-{
-    //  把获取的名字作为索引名，替换成txt中对应的中文名
-    char fullName[256];
-    if (txtFile != NULL && (txtFileChanged || txtCacheChanged)) {
-        ginfo->indexName[0] = '\0';
-        ginfo->transName[0] = '\0';
-        rewind(txtFile);
-        while (fgets(fullName, sizeof(fullName), txtFile) != NULL) {
-            if (strncmp(fullName, ginfo->name, strlen(ginfo->name)) == 0 && (fullName[strlen(ginfo->name)] == '.')) {                                                     // 寻找iso名字  是否存在于txt内作为索引名
-                strcpy(ginfo->indexName, ginfo->name);                                                                                                                    // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
-                if (fullName[strlen(ginfo->indexName) + 1] == '\r' || fullName[strlen(ginfo->indexName) + 1] == '\n' || fullName[strlen(ginfo->indexName) + 1] == '\0') { // 判断索引的译名是否为空
-                    ginfo->transName[0] = '\0';
-                    ginfo->name[HDL_GAME_NAME_MAX] = '\0';
-                    break;
-                }
-                strcpy(ginfo->transName, &fullName[strlen(ginfo->indexName) + 1]); // 赋值给翻译文本数组
-
-                // 给游戏名加结束符，防止换行符被显示出来
-                for (int i = 0; i < strlen(ginfo->transName); i++) {
-                    if (ginfo->transName[i] == '\r' || ginfo->transName[i] == '\n' || ginfo->transName[i] == '\0') {
-                        ginfo->transName[i] = '\0';
-                        strcpy(ginfo->name, ginfo->transName);
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-        // 如果txt里没有此游戏的英文名索引，则添加到txt里
-        if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
-            ginfo->name[HDL_GAME_NAME_MAX] = '\0';
-            strcpy(ginfo->indexName, ginfo->name);          // 将真正的游戏名变成index索引名   index是否需要追加\0？
-            fprintf(txtFile, "%s.\r\n", ginfo->indexName); // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
-        }
-    }
-}
-
 static void hddCheckOPLFolder(const char *mountPoint)
 {
     DIR *dir;
@@ -409,8 +371,8 @@ static int hddUpdateGameList(item_list_t *itemList)
             hddGames = hddGamesNew;
         }
     }
+
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
-    fclose(txtFile);
 
     return (ret == 0 ? hddGames.count : 0);
 }
@@ -762,7 +724,7 @@ static int hddLoadGameListCache(hdl_games_list_t *cache)
 
     hddFreeHDLGamelist(cache);
 
-    sprintf(filename, "%stxtCache.bin", gHDDPrefix);
+    sprintf(filename, "%sgames.bin", gHDDPrefix);
     file = fopen(filename, "rb");
     if (file != NULL) {
         fseek(file, 0, SEEK_END);
@@ -831,19 +793,11 @@ static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *gam
         modified = (game_list->count > 0) ? 1 : 0;
     }
 
-    // txt文件有修改，缓存也得更新
-    if (txtFileChanged) {
-        modified = 1;
-    }
-
-    if (!modified) {
-        txtCacheChanged = 0;
+    if (!modified)
         return 0;
-    }
-
     LOG("hddUpdateGameListCache: caching new game list.\n");
 
-    sprintf(filename, "%stxtCache.bin", gHDDPrefix);
+    sprintf(filename, "%sgames.bin", gHDDPrefix);
     if (game_list->count > 0) {
         file = fopen(filename, "wb");
         if (file != NULL) {
@@ -857,23 +811,6 @@ static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *gam
         remove(filename);
         result = 0;
     }
-
-    // 缓存更新后，需要重新把txt文件代入到循环进行扫描，获取译名
-    txtCacheChanged = 1;
-    char txtPath[64];
-    // FILE *txtFile;
-    snprintf(txtPath, 64, "%sGameListTranslator.txt", gHDDPrefix);
-    txtFile = fopen(txtPath, "a+, ccs=UTF-8");
-    fseek(txtFile, 0, SEEK_END);
-    if (ftell(txtFile) == 0) {
-        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-        fwrite(bom, sizeof(unsigned char), 3, txtFile); // 写入BOM，避免文本打开后乱码
-        fprintf(txtFile, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
-    }
-    for (i = 0; i < game_list->count; i++) {
-        scanTxtFile(&game_list->games[i]);
-    }
-    fclose(txtFile);
 
     return result;
 }

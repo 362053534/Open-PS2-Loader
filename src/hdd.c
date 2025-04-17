@@ -140,7 +140,7 @@ struct GameDataEntry
     char id[APA_IDMAX + 1];
 };
 
-static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo)
+static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo, FILE *file)
 {
     int ret;
 
@@ -159,8 +159,42 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo)
         //else
         //    gHDDPrefix = "pfs0:+OPL/";
 
-        scanTxtFile(ginfo);
+        //  把获取的名字作为索引名，替换成txt中对应的中文名
+        ginfo->indexName[0] = '\0';
+        ginfo->transName[0] = '\0';
 
+        char fullName[256];
+        if (file != NULL) {
+            rewind(file);
+            while (fgets(fullName, sizeof(fullName), file) != NULL) {
+                if (strncmp(fullName, ginfo->name, strlen(ginfo->name)) == 0 && (fullName[strlen(ginfo->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                    strcpy(ginfo->indexName, ginfo->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+                    if (fullName[strlen(ginfo->indexName) + 1] == '\r' || fullName[strlen(ginfo->indexName) + 1] == '\n' || fullName[strlen(ginfo->indexName) + 1] == '\0') { // 判断索引的译名是否为空
+                        ginfo->transName[0] = '\0';
+                        ginfo->name[HDL_GAME_NAME_MAX] = '\0';
+                        break;
+                    }
+                    strcpy(ginfo->transName, &fullName[strlen(ginfo->indexName) + 1]); // 赋值给翻译文本数组
+
+                    // 给游戏名加结束符，防止换行符被显示出来
+                    for (int i = 0; i < strlen(ginfo->transName); i++) {
+                        if (ginfo->transName[i] == '\r' || ginfo->transName[i] == '\n' || ginfo->transName[i] == '\0') {
+                            ginfo->transName[i] = '\0';
+                            strcpy(ginfo->name, ginfo->transName);
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            // 如果txt里没有此游戏的英文名索引，则添加到txt里
+            if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
+                ginfo->name[HDL_GAME_NAME_MAX] = '\0';
+                strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名   index是否需要追加\0？
+                fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？                
+            }
+        }
+ 
         strncpy(ginfo->startup, hdl_header->startup, sizeof(ginfo->startup) - 1);
         ginfo->startup[sizeof(ginfo->startup) - 1] = '\0';
         ginfo->hdl_compat_flags = hdl_header->hdl_compat_flags;
@@ -192,6 +226,7 @@ static struct GameDataEntry *GetGameListRecord(struct GameDataEntry *head, const
 }
 
 
+//static FILE *file = NULL;
 int hddGetHDLGamelist(hdl_games_list_t *game_list)
 {
     struct GameDataEntry *head, *current, *next, *pGameEntry;
@@ -200,42 +235,6 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
     int fd, ret;
 
     hddFreeHDLGamelist(game_list);
-
-    // 创建txt文件
-    char txtPath[64];
-    //FILE *txtFile;
-    snprintf(txtPath, 64, "%sGameListTranslator.txt", gHDDPrefix);
-    txtFile = fopen(txtPath, "a+, ccs=UTF-8");
-    fseek(txtFile, 0, SEEK_END);
-    if (ftell(txtFile) == 0) {
-        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-        fwrite(bom, sizeof(unsigned char), 3, txtFile); // 写入BOM，避免文本打开后乱码
-        fprintf(txtFile, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
-    }
-
-    //// 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    //char curModiTime[6];
-    //char preModiTime[6];
-    //iox_stat_t fileStat;
-
-    //if ((&cache)->count > 0) {
-    //    memcpy(preModiTime, (&cache)->games[0].preModiTime, sizeof((&cache)->games[0].preModiTime));
-    //} else {
-    //    strncpy(preModiTime, "000000", 6);
-    //}
-
-    //if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-    //    // 通过文件修改时间判断txt是否改动
-    //    sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-    //    if (strcmp(curModiTime, preModiTime) == 0) {
-    //        txtFileChanged = 0;
-    //    }
-    //} else {
-    //    strncpy(curModiTime, "000000", 6);
-    //}
-    //// debug
-    //fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
-
 
     ret = 0;
     if ((fd = fileXioDopen("hdd0:")) >= 0) {
@@ -277,12 +276,20 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
             if ((game_list->games = malloc(sizeof(hdl_game_info_t) * count)) != NULL) {
                 memset(game_list->games, 0, sizeof(hdl_game_info_t) * count);
 
-                // 把txt文件代入到循环进行扫描，获取译名
+                char path[64];
+                FILE *file;
+                snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
+                file = fopen(path, "ab+, ccs=UTF-8");
+                fseek(file, 0, SEEK_END);
+                if (ftell(file) == 0)
+                    fprintf(file, "注意事项：\r\n// “.”符号左侧为游戏原名（不要改动），右侧写上对应的中文名，即可实现中文列表！\r\n// 每一行对应一个游戏，最后必须留且只留一个空行！\r\n// 中间不能断开存在空的行！！！！！！\r\n-----------------以下是游戏列表，请按需填充中文----------------\r\n");
+
                 for (i = 0, current = head; i < count; i++, current = current->next) {
-                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i])) != 0)
+                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i] ,file)) != 0)
                         break;
                 }
-                fclose(txtFile);
+
+                fclose(file);
 
                 if (ret) {
                     free(game_list->games);
