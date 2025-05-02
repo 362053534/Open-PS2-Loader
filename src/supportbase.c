@@ -591,7 +591,21 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //struct GameDataEntry *head, *current, *next, *pGameEntry;
     iox_dirent_t dirent;
     int fd;
-    if ((fd = fileXioDopen("smb0:")) >= 0) {
+    char deviceName[6];
+    if (strncmp(path, "smb",3) == 0) {
+        strncpy(deviceName, path, 5);
+        deviceName[5] = '\0';
+    } else if (strncmp(path, "mas", 3) == 0) {
+        strncpy(deviceName, path, 6);
+    } else if (strncmp(path, "mc", 2) == 0) {
+        strncpy(deviceName, path, 4);
+        deviceName[4] = '\0';
+    } else if (strncmp(path, "hdd", 3) == 0) {
+        strncpy(deviceName, path, 5);
+        deviceName[5] = '\0';
+    }
+
+    if ((fd = fileXioDopen(deviceName)) >= 0) {
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
