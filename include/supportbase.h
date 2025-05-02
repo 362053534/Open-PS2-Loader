@@ -29,7 +29,7 @@ typedef struct
     char indexName[64];
     char transName[128];
     char preModiTime[6];
-    int preTxtFileSize;
+    u16 preTxtFileSize;
     //time_t preModiTime;
 } base_game_info_t;
 
