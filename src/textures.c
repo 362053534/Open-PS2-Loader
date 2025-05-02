@@ -3,6 +3,7 @@
 #include "include/util.h"
 #include "include/ioman.h"
 #include <png.h>
+#include <libjpg_ps2_addons.h>
 
 extern void *load0_png;
 extern void *load1_png;
@@ -230,6 +231,25 @@ int texLookupInternalTexId(const char *name)
         }
     }
 
+    return result;
+}
+
+/// JPG SUPPORT ///////////////////////////////////////////////////////////////////////////////////////
+static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
+{
+    texPrepare(texture);
+    int result = ERR_BAD_FILE;
+    jpgData *jpg = NULL;
+
+    jpg = jpgFromFilename(filePath, JPG_NORMAL);
+    if (jpg) {
+        texture->Width = jpg->width;
+        texture->Height = jpg->height;
+        texture->PSM = GS_PSM_CT24;
+        texture->Mem = jpg->buffer;
+        free(jpg);
+        result = 0;
+    }
     return result;
 }
 
@@ -565,6 +585,14 @@ int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
         // File found, load it
         close(fd);
         return (texLoad(texture, filePath) >= 0) ? 0 : ERR_BAD_FILE;
+    } else {
+        if (texId != -1)
+            snprintf(filePath, sizeof(filePath), "%s%s.%s", path, internalDefault[texId].name, "jpg");
+        else
+            snprintf(filePath, sizeof(filePath), "%s.%s", path, "jpg");
+        // File found, load it
+        close(fd);
+        return (texJpgLoad(texture, filePath) >= 0) ? 0 : ERR_BAD_FILE;
     }
 
     return ERR_BAD_FILE;
