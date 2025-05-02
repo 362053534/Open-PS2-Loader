@@ -591,21 +591,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //struct GameDataEntry *head, *current, *next, *pGameEntry;
     iox_dirent_t dirent;
     int fd;
-    char deviceName[6];
-    if (strncmp(path, "smb",3) == 0) {
-        strncpy(deviceName, path, 5);
-        deviceName[5] = '\0';
-    } else if (strncmp(path, "mas", 3) == 0) {
-        strncpy(deviceName, path, 6);
-    } else if (strncmp(path, "mc", 2) == 0) {
-        strncpy(deviceName, path, 4);
-        deviceName[4] = '\0';
-    } else if (strncmp(path, "hdd", 3) == 0) {
-        strncpy(deviceName, path, 5);
-        deviceName[5] = '\0';
-    }
-
-    if ((fd = fileXioDopen(deviceName)) >= 0) {
+    if ((fd = fileXioDopen(path)) >= 0) {
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
@@ -942,10 +928,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         // }
         fileXioDclose(fd);
         //closedir(dir);
-    } else {
-        while (fileXioDread(fd, &dirent) > 0) {
-            fprintf(debugFile, "没有找到设备时，打印游戏名：%s\r\n", dirent.name);
-        }
     }
     fprintf(debugFile, "设备类型：%s和fd：%d\r\n", deviceName, fd);
     fclose(debugFile);
