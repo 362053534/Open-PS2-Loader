@@ -572,7 +572,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
     fseek(file, 0, SEEK_END);
-    long curTxtFileSize = ftell(file);
+    int curTxtFileSize = ftell(file);
     if (curTxtFileSize == 0) {
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
