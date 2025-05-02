@@ -516,12 +516,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     base_game_info_t cachedGInfo;
     char fullpath[256];
     //struct dirent *dirent;
-    DIR *dir;
+    //DIR *dir;
 
     // debug 文件
-    //char debugFileDir[64];
-    //snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
-    //FILE *debugFile = fopen(debugFileDir, "ab");
+    char debugFileDir[64];
+    snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
+    FILE *debugFile = fopen(debugFileDir, "ab");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
@@ -612,6 +612,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
         char indexNameBuffer[64];
         while (fileXioDread(fd, &dirent) > 0) {
+            fprintf(debugFile, "找到设备时游戏名：%s\r\n", dirent.name);
             skipTxtScan = 0; // 默认每次循环都会扫描txt文件
             int NameLen;
             int format = isValidIsoName(dirent.name, &NameLen);
@@ -941,10 +942,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         // }
         fileXioDclose(fd);
         //closedir(dir);
+    } else {
+        while (fileXioDread(fd, &dirent) > 0) {
+            fprintf(debugFile, "没有找到设备时，打印游戏名：%s\r\n", dirent.name);
+        }
     }
-
-
-//    if ((dir = opendir(path)) != NULL) {
+    fprintf(debugFile, "设备类型：%s和fd：%d\r\n", deviceName, fd);
+    fclose(debugFile);
+        //    if ((dir = opendir(path)) != NULL) {
 //        size_t base_path_len = strlen(path);
 //        strncpy(fullpath, path, base_path_len + 1);
 //        fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
