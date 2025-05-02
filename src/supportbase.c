@@ -555,7 +555,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //preModiTime[6] = '\0';
     //loadPreMtime(&cache, preModiTime);
     if ((&cache)->count > 0) {
-        memcpy(preModiTime, (&cache)->games[0].preModiTime, sizeof((&cache)->games[0].preModiTime));
+        memcpy(preModiTime, (&cache)->games[0].preModiTime, sizeof(preModiTime));
         //sprintf(preModiTime, "%s", (&cache)->games[0].preModiTime);
         //preModiTime[6] = '\0';
     } else {
