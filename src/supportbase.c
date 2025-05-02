@@ -922,7 +922,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             // txt操作完毕后，将时间和大小保存在glist里。
             if (*glist != NULL) {
                 memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
-                memcpy((*glist)->gameinfo.preTxtFileSize, curTxtFileSize, sizeof(curTxtFileSize));
+                memcpy((*glist)->gameinfo.preTxtFileSize, curTxtFileSize, sizeof(u16));
                 //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
                 //(*glist)->gameinfo.preModiTime[6] = '\0';
             }
