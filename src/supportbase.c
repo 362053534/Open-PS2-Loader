@@ -579,22 +579,29 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
     fseek(file, 0, SEEK_END);
-    u16 curTxtFileSize;
-    curTxtFileSize = (u16)(ftell(file));
-    if (curTxtFileSize == 0) {
+    //u16 curTxtFileSize;
+    //curTxtFileSize = (u16)(ftell(file));
+    char curTxtFileSize[6];
+    sprintf(curTxtFileSize, "%d", ftell(file));
+
+    //if (curTxtFileSize == 0) {
+    if (curTxtFileSize[0] == '0') {
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
         txtFileChanged = 1;
     }else {
-        if (curTxtFileSize != (&cache)->games[0].preTxtFileSize) {     // 如果txt大小变动，则强制扫描txt
+        //if (curTxtFileSize != (&cache)->games[0].preTxtFileSize) {     // 如果txt大小变动，则强制扫描txt
+        //    txtFileChanged = 1;
+        //}
+        if (strcmp(curTxtFileSize, &(((&cache)->games[0].preModiTime)[6])) != 0) {
             txtFileChanged = 1;
         }
     }
 
     // debug
     fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
-    fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, (&cache)->games[0].preTxtFileSize);
+    fprintf(debugFile, "本次txt大小%s和上次txt大小%s\r\n", curTxtFileSize, &(((&cache)->games[0].preModiTime)[6]));
 
     // 使用stat函数获取文件修改时间，与缓存进行比对
     // struct stat fileStat;
@@ -922,7 +929,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             // txt操作完毕后，将时间和大小保存在glist里。
             if (*glist != NULL) {
                 memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
-                memcpy(&((*glist)->gameinfo.preTxtFileSize), &curTxtFileSize, sizeof(u16));
+                //memcpy(&((*glist)->gameinfo.preTxtFileSize), &curTxtFileSize, sizeof(u16));
+                strcpy(&(((&cache)->games[0].preModiTime)[6]), curTxtFileSize);
                 //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
                 //(*glist)->gameinfo.preModiTime[6] = '\0';
             }
