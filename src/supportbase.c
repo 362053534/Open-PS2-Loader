@@ -528,7 +528,14 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int txtFileChanged = 1;
     char txtPath[256];
     int txtPathLen = strlen(path);
-    txtPathLen = strcasecmp(&path[txtPathLen - 3], "DVD") == 0 ? txtPathLen - 3 : txtPathLen - 2;
+    if (strcasecmp(&path[txtPathLen - 3], "DVD") == 0) {
+        txtPathLen = txtPathLen - 3;
+    } else if (strcasecmp(&path[txtPathLen - 2], "CD") == 0) {
+        txtPathLen = txtPathLen - 2;
+    } else {
+        // 错误识别到记忆卡时，直接跳过
+        return 0;
+    }
     strncpy(txtPath, path, txtPathLen);
     txtPath[txtPathLen] = '\0';
     snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
