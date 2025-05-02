@@ -234,25 +234,6 @@ int texLookupInternalTexId(const char *name)
     return result;
 }
 
-/// JPG SUPPORT ///////////////////////////////////////////////////////////////////////////////////////
-static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
-{
-    texPrepare(texture);
-    int result = ERR_BAD_FILE;
-    jpgData *jpg = NULL;
-
-    jpg = jpgFromFilename(filePath, JPG_NORMAL);
-    if (jpg) {
-        texture->Width = jpg->width;
-        texture->Height = jpg->height;
-        texture->PSM = GS_PSM_CT24;
-        texture->Mem = jpg->buffer;
-        free(jpg);
-        result = 0;
-    }
-    return result;
-}
-
 static int texSizeValidate(int width, int height, u8 psm)
 {
     if (width > 1024 || height > 1024)
@@ -279,6 +260,25 @@ static void texPrepare(GSTEXTURE *texture)
     texture->ClutStorageMode = GS_CLUT_STORAGE_CSM1; // Default
     // Do not load the texture to VRAM directly, only load it to EE RAM
     texture->Delayed = 1;
+}
+
+/// JPG SUPPORT ///////////////////////////////////////////////////////////////////////////////////////
+static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
+{
+    texPrepare(texture);
+    int result = ERR_BAD_FILE;
+    jpgData *jpg = NULL;
+
+    jpg = jpgFromFilename(filePath, JPG_NORMAL);
+    if (jpg) {
+        texture->Width = jpg->width;
+        texture->Height = jpg->height;
+        texture->PSM = GS_PSM_CT24;
+        texture->Mem = jpg->buffer;
+        free(jpg);
+        result = 0;
+    }
+    return result;
 }
 
 void texFree(GSTEXTURE *texture)
