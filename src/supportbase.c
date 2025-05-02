@@ -904,6 +904,12 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 count++;
         }
 
+        //  将扫描结束后的txt文件大小保存在glist里。
+        if (*glist != NULL) {
+            fseek(file, 0, SEEK_END);
+            (*glist)->gameinfo.preTxtFileSize = ftell(file);
+        }
+        fclose(file);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
         if (fileXioGetStat(txtPath, &fileStat) >= 0) {
@@ -940,12 +946,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //    //*glist.gameinfo.preModiTime;
         //}
 
-        //  将扫描结束后的txt文件大小保存在glist里。
-        if (*glist != NULL) {
-            fseek(file, 0, SEEK_END);
-            (*glist)->gameinfo.preTxtFileSize = ftell(file);
-        }
-        fclose(file);
         closedir(dir);
     }
 
