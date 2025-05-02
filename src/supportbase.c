@@ -930,7 +930,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             if (*glist != NULL) {
                 memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
                 //memcpy(&((*glist)->gameinfo.preTxtFileSize), &curTxtFileSize, sizeof(u16));
-                strcpy(&(((&cache)->games[0].preModiTime)[6]), curTxtFileSize);
+                strcpy(&(((*glist)->gameinfo.preModiTime)[6])), curTxtFileSize);
                 //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
                 //(*glist)->gameinfo.preModiTime[6] = '\0';
             }
