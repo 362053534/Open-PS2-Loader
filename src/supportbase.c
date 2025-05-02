@@ -929,7 +929,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         fileXioDclose(fd);
         //closedir(dir);
     }
-    fprintf(debugFile, "设备类型：%s和fd：%d\r\n", deviceName, fd);
+    fprintf(debugFile, "fd：%d\r\n", fd);
     fclose(debugFile);
         //    if ((dir = opendir(path)) != NULL) {
 //        size_t base_path_len = strlen(path);
