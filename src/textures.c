@@ -3,7 +3,6 @@
 #include "include/util.h"
 #include "include/ioman.h"
 #include <png.h>
-#include <jpeglib.h>
 
 extern void *load0_png;
 extern void *load1_png;
@@ -567,22 +566,6 @@ int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
         close(fd);
         return (texLoad(texture, filePath) >= 0) ? 0 : ERR_BAD_FILE;
     }
-    else {
-        close(fd);
-        if (texId != -1)
-            snprintf(filePath, sizeof(filePath), "%s%s.%s", path, internalDefault[texId].name, "jpg");
-        else
-            snprintf(filePath, sizeof(filePath), "%s.%s", path, "jpg");
 
-        int fd2 = open(filePath, O_RDONLY);
-        if (fd2 > 0) {
-            // File found, load it
-            close(fd2);
-            return (texLoad(texture, filePath) >= 0) ? 0 : ERR_BAD_FILE;
-        }
-        else {
-            close(fd2);
-        }
-    }
     return ERR_BAD_FILE;
 }
