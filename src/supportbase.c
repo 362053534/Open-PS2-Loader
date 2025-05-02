@@ -515,7 +515,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
     char fullpath[256];
-    struct dirent *dirent;
+    //struct dirent *dirent;
     DIR *dir;
 
     // debug 文件
@@ -588,22 +588,24 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //    txtFileChanged = 0;
         //}
     //}
-
-    if ((dir = opendir(path)) != NULL) {
+    //struct GameDataEntry *head, *current, *next, *pGameEntry;
+    iox_dirent_t dirent;
+    int fd;
+    if ((fd = fileXioDopen("smb0:")) >= 0) {
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
         char indexNameBuffer[64];
-        while ((dirent = readdir(dir)) != NULL) {
-            skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
+        while (fileXioDread(fd, &dirent) > 0) {
+            skipTxtScan = 0; // 默认每次循环都会扫描txt文件
             int NameLen;
-            int format = isValidIsoName(dirent->d_name, &NameLen);
+            int format = isValidIsoName(dirent.name, &NameLen);
 
             if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
                 continue; // Skip files that cannot be supported properly.
 
-            strcpy(fullpath + base_path_len + 1, dirent->d_name);
+            strcpy(fullpath + base_path_len + 1, dirent.name);
 
             struct game_list_t *next = malloc(sizeof(struct game_list_t));
             if (!next)
@@ -616,31 +618,30 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
-                //if (isCnName) {
-                //    memcpy(game->name, dirent->d_name, NameLen);
-                //    game->name[NameLen] = '\0';
-                //    memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
-                //    game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                //    memcpy(game->extension, &dirent->d_name[NameLen + 12], sizeof(game->extension) - 1);
-                //    game->extension[sizeof(game->extension) - 1] = '\0';
-                //} else
+                // if (isCnName) {
+                //     memcpy(game->name, dirent.name, NameLen);
+                //     game->name[NameLen] = '\0';
+                //     memcpy(game->startup, &dirent.name[NameLen + 1], GAME_STARTUP_MAX - 1);
+                //     game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                //     memcpy(game->extension, &dirent.name[NameLen + 12], sizeof(game->extension) - 1);
+                //     game->extension[sizeof(game->extension) - 1] = '\0';
+                // } else
                 {
-                    strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+                    strncpy(game->name, &dirent.name[GAME_STARTUP_MAX], NameLen);
                     game->name[NameLen] = '\0';
-                    strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+                    strncpy(game->startup, dirent.name, GAME_STARTUP_MAX - 1);
                     game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                    strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                    strncpy(game->extension, &dirent.name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                     game->extension[sizeof(game->extension) - 1] = '\0';
-                }
-;
+                };
                 // 查询缓存里的旧格式的游戏名
                 char fileName[160];
                 sprintf(fileName, "%s%s", game->name, game->extension);
                 if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                    
+
                     // debug
-                    //fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
+                    // fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
 
                     if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
@@ -653,13 +654,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                         skipTxtScan = 0;
                     }
                 }
-                //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
-                //game->name[NameLen] = '\0';
-                //strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
-                //game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                //strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
-                //game->extension[sizeof(game->extension) - 1] = '\0';
-            } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
+                // strncpy(game->name, &dirent.name[GAME_STARTUP_MAX], NameLen);
+                // game->name[NameLen] = '\0';
+                // strncpy(game->startup, dirent.name, GAME_STARTUP_MAX - 1);
+                // game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                // strncpy(game->extension, &dirent.name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+                // game->extension[sizeof(game->extension) - 1] = '\0';
+            } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent.name) == 0) {
                 // use cached entry
                 memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
 
@@ -669,7 +670,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 }
 
                 // debug
-                //fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
+                // fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent.name, game->indexName);
 
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                 if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
@@ -688,7 +689,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 // char oldpath[256], newpath[256];
                 // memcpy(oldpath, fullpath, strlen(fullpath) + 1);
                 // oldpath[base_path_len + 1] = '\0';
-                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent.name[NameLen]);
                 // size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
                 // wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
                 // mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
@@ -715,7 +716,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //{
 
                 //    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent.name[NameLen]);
                 //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
                 //    //_wrename(w_newpath,w_fullpath);
                 //    //rename(newpath, fullpath);
@@ -727,7 +728,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 //// 名字改回来
                 // oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent.name[NameLen]);
                 ////mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
                 //_wrename(w_newpath, w_fullpath);
                 // rename(newpath, fullpath);
@@ -735,11 +736,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
-                // strcpy(game->name, dirent->d_name);
-                strncpy(game->name, dirent->d_name, NameLen);
+                // strcpy(game->name, dirent.name);
+                strncpy(game->name, dirent.name, NameLen);
                 // sprintf(game->name, "%s", newpath);
                 game->name[NameLen] = '\0';
-                strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
+                strncpy(game->extension, &dirent.name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
                 // newpath[base_path_len] = '/';
                 fileXioUmount("iso:");
@@ -757,15 +758,13 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
                 //     game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 //     fileXioUmount("iso:");
                 // }
-
-
             }
 
 
             //// count and process games in iso.txt
-            //if (((game->name)[0] >= '0') && ((game->name)[0] <= '9')) {
-            //    memcpy(index, dirent->d_name, sizeof(index));
-            //    index[NameLen] = '\0';
+            // if (((game->name)[0] >= '0') && ((game->name)[0] <= '9')) {
+            //     memcpy(index, dirent.name, sizeof(index));
+            //     index[NameLen] = '\0';
 
             //    if (file != NULL) {
             //        // strncpy(game->name, "打开文件了", 30);
@@ -797,54 +796,53 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
 
 
-
             //// count and process games in txt
-            //if ((dirent->d_name[GAME_STARTUP_MAX - 8] == '_') && (dirent->d_name[GAME_STARTUP_MAX - 4] == '.') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
-            //    //strncpy(game->indexName, &dirent->d_name[GAME_STARTUP_MAX], strlen(game->indexName));
-            //    //game->indexName[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
-            //    //memcpy(game->game->indexName, game->indexName, strlen(game->indexName)); // 存在，就赋值给索引数组
+            // if ((dirent.name[GAME_STARTUP_MAX - 8] == '_') && (dirent.name[GAME_STARTUP_MAX - 4] == '.') && (dirent.name[GAME_STARTUP_MAX - 1] == '.')) {
+            //     //strncpy(game->indexName, &dirent.name[GAME_STARTUP_MAX], strlen(game->indexName));
+            //     //game->indexName[strlen(dirent.name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
+            //     //memcpy(game->game->indexName, game->indexName, strlen(game->indexName)); // 存在，就赋值给索引数组
 
-                if (file != NULL && !skipTxtScan) {
+            if (file != NULL && !skipTxtScan) {
                 game->indexName[0] = '\0';
                 game->transName[0] = '\0';
-                    rewind(file);
-                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                        fullName[strlen(fullName) - strlen("\r\n")] = '\0';  // 避免transName的换行符被显示出来。
-                        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
-                            //memcpy(game->name, indexName, strlen(indexName));  
-                            //game->name[strlen(indexName)] = '\0';
-                            strcpy(game->indexName, game->name);     // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
-                            if (fullName[strlen(game->indexName) + 1] == '\r' || fullName[strlen(game->indexName) + 1] == '\n' || fullName[strlen(game->indexName) + 1] == '\0') { // 判断索引的译名是否为空
-                                game->transName[0] = '\0';
-                                break;
-                            }
-                            strcpy(game->transName, &fullName[strlen(game->indexName) + 1]);   // 赋值给翻译文本数组
-                            strcpy(game->name, game->transName);
-                        
-                            ////给游戏名加结束符，防止换行符被显示出来
-                            //for (int i = 0; i < strlen(game->transName); i++) {
-                            //    if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
-                            //        game->transName[i] = '\0';
-                            //        strcpy(game->name, game->transName);
-                            //        break;
-                            //    }
-                            //}
+                rewind(file);
+                while (fgets(fullName, sizeof(fullName), file) != NULL) {
+                    fullName[strlen(fullName) - strlen("\r\n")] = '\0';                                                    // 避免transName的换行符被显示出来。
+                    if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+                        // memcpy(game->name, indexName, strlen(indexName));
+                        // game->name[strlen(indexName)] = '\0';
+                        strcpy(game->indexName, game->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+                        if (fullName[strlen(game->indexName) + 1] == '\r' || fullName[strlen(game->indexName) + 1] == '\n' || fullName[strlen(game->indexName) + 1] == '\0') { // 判断索引的译名是否为空
+                            game->transName[0] = '\0';
                             break;
                         }
-                    }
-                    // 如果txt里没有此游戏的英文名索引，则添加到txt里
-                    if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
-                        strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
-                        //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
-                        sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
-                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                        strcpy(game->transName, &fullName[strlen(game->indexName) + 1]); // 赋值给翻译文本数组
+                        strcpy(game->name, game->transName);
+
+                        ////给游戏名加结束符，防止换行符被显示出来
+                        // for (int i = 0; i < strlen(game->transName); i++) {
+                        //     if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
+                        //         game->transName[i] = '\0';
+                        //         strcpy(game->name, game->transName);
+                        //         break;
+                        //     }
+                        // }
+                        break;
                     }
                 }
-                 //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
-                 //strncpy(game->name, path, 40);
+                // 如果txt里没有此游戏的英文名索引，则添加到txt里
+                if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
+                    strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
+                    // fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                    sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+                    fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                }
+            }
+            // snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
+            // strncpy(game->name, path, 40);
             //} else {
-            //    //strncpy(game->name, dirent->d_name, strlen(game->name));
-            //    //game->name[strlen(dirent->d_name) - 4] = '\0';
+            //    //strncpy(game->name, dirent.name, strlen(game->name));
+            //    //game->name[strlen(dirent.name) - 4] = '\0';
 
             //    if (file != NULL) {
             //        rewind(file);
@@ -880,16 +878,16 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             //    // snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
             //    // strncpy(game->name, path, 40);
             //}
-            //if (game->transName[0] != '\0')
+            // if (game->transName[0] != '\0')
             //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->indexName, game->extension);
-            //else
+            // else
             //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
-            //strncpy(game->name, path, 40);
+            // strncpy(game->name, path, 40);
 
-                // debug
-                //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
+            // debug
+            // fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
 
-                count++;
+            count++;
         }
         fclose(file);
 
@@ -904,32 +902,375 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             // txt操作完毕后，将它保存在glist里。
             if (*glist != NULL) {
                 memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
-                //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
+                // sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
                 //(*glist)->gameinfo.preModiTime[6] = '\0';
             }
-            //saveCurMtime(*glist, curModiTime);
+            // saveCurMtime(*glist, curModiTime);
 
-            //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
-            //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
+            // snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
+            // memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
         }
 
         // debug 确认txt跳过扫描是否生效
-        //fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, (&cache)->games[0].name, (*glist)->gameinfo.name);
-        //fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
-        //fclose(debugFile);
+        // fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, (&cache)->games[0].name, (*glist)->gameinfo.name);
+        // fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
+        // fclose(debugFile);
 
         //// 使用stat函数获取保存后的txt修改时间
-        //if (stat(txtPath, &fileStat) == 0) {
-        //    if (curModiTime != fileStat.st_mtime) {
-        //        txtFileChanged = 1;
-        //    }
-        //    glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
-        // 
-        //    //*glist.gameinfo.preModiTime;
-        //}
-
-        closedir(dir);
+        // if (stat(txtPath, &fileStat) == 0) {
+        //     if (curModiTime != fileStat.st_mtime) {
+        //         txtFileChanged = 1;
+        //     }
+        //     glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
+        //
+        //     //*glist.gameinfo.preModiTime;
+        // }
+        fileXioDclose(fd);
+        //closedir(dir);
     }
+
+
+//    if ((dir = opendir(path)) != NULL) {
+//        size_t base_path_len = strlen(path);
+//        strncpy(fullpath, path, base_path_len + 1);
+//        fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
+//
+//        char indexNameBuffer[64];
+//        while ((dirent = readdir(dir)) != NULL) {
+//            skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
+//            int NameLen;
+//            int format = isValidIsoName(dirent->d_name, &NameLen);
+//
+//            if (format <= 0 || NameLen > ISO_GAME_NAME_MAX)
+//                continue; // Skip files that cannot be supported properly.
+//
+//            strcpy(fullpath + base_path_len + 1, dirent->d_name);
+//
+//            struct game_list_t *next = malloc(sizeof(struct game_list_t));
+//            if (!next)
+//                break; // Out of memory
+//
+//            next->next = *glist;
+//            *glist = next;
+//            base_game_info_t *game = &next->gameinfo;
+//            memset(game, 0, sizeof(base_game_info_t));
+//
+//            // old iso format can't be cached
+//            if (format == GAME_FORMAT_OLD_ISO) {
+//                //if (isCnName) {
+//                //    memcpy(game->name, dirent->d_name, NameLen);
+//                //    game->name[NameLen] = '\0';
+//                //    memcpy(game->startup, &dirent->d_name[NameLen + 1], GAME_STARTUP_MAX - 1);
+//                //    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+//                //    memcpy(game->extension, &dirent->d_name[NameLen + 12], sizeof(game->extension) - 1);
+//                //    game->extension[sizeof(game->extension) - 1] = '\0';
+//                //} else
+//                {
+//                    strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+//                    game->name[NameLen] = '\0';
+//                    strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+//                    game->startup[GAME_STARTUP_MAX - 1] = '\0';
+//                    strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+//                    game->extension[sizeof(game->extension) - 1] = '\0';
+//                }
+//;
+//                // 查询缓存里的旧格式的游戏名
+//                char fileName[160];
+//                sprintf(fileName, "%s%s", game->name, game->extension);
+//                if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
+//                    // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
+//                    
+//                    // debug
+//                    //fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
+//
+//                    if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
+//                        skipTxtScan = 1;
+//                        strcpy(game->indexName, (&cachedGInfo)->indexName);
+//                        strcpy(game->transName, (&cachedGInfo)->transName);
+//                        if (game->transName[0] != '\0') {
+//                            strcpy(game->name, game->transName);
+//                        }
+//                    } else {
+//                        skipTxtScan = 0;
+//                    }
+//                }
+//                //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
+//                //game->name[NameLen] = '\0';
+//                //strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
+//                //game->startup[GAME_STARTUP_MAX - 1] = '\0';
+//                //strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
+//                //game->extension[sizeof(game->extension) - 1] = '\0';
+//            } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
+//                // use cached entry
+//                memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
+//
+//                // 名字要改回英文名字，以免索引变成了中文。
+//                if (game->indexName[0] != '\0') {
+//                    strcpy(game->name, game->indexName);
+//                }
+//
+//                // debug
+//                //fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
+//
+//                // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
+//                if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
+//                    skipTxtScan = 1;
+//                    strcpy(game->indexName, (&cachedGInfo)->indexName);
+//                    strcpy(game->transName, (&cachedGInfo)->transName);
+//                    if (game->transName[0] != '\0') {
+//                        strcpy(game->name, game->transName);
+//                    }
+//                } else {
+//                    skipTxtScan = 0;
+//                }
+//            } else {
+//                // if (true)
+//
+//                // char oldpath[256], newpath[256];
+//                // memcpy(oldpath, fullpath, strlen(fullpath) + 1);
+//                // oldpath[base_path_len + 1] = '\0';
+//                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+//                // size_t len = mbstowcs(NULL, fullpath, 0) + 1; // 将多字节字符串转换为宽字符字符串
+//                // wchar_t *w_fullpath = (wchar_t *)malloc(len * sizeof(wchar_t));
+//                // mbstowcs(w_fullpath, fullpath, len); // 将多字节字符串转换为宽字符字符串
+//                // len = wcstombs(NULL, w_fullpath, 0) + 1;
+//                // wcstombs(fullpath, w_fullpath, len);
+//                //_wrename(w_fullpath, w_newpath);
+//                // rename(fullpath, newpath);
+//
+//                // need to mount and read SYSTEM.CNF
+//                char startup[GAME_STARTUP_MAX];
+//                int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+//
+//                if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+//                    fileXioUmount("iso:");
+//                    *glist = next->next;
+//                    free(next);
+//                    continue;
+//                }
+//                // char startup[GAME_STARTUP_MAX];
+//                // int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+//                // GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
+//                // delay(5);
+//                // if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
+//                //{
+//
+//                //    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+//                //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+//                //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
+//                //    //_wrename(w_newpath,w_fullpath);
+//                //    //rename(newpath, fullpath);
+//                //    free(next);
+//                //    *glist = next->next;
+//                //    fileXioUmount("iso:");
+//                //    continue;
+//                //}
+//
+//                //// 名字改回来
+//                // oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
+//                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
+//                ////mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
+//                //_wrename(w_newpath, w_fullpath);
+//                // rename(newpath, fullpath);
+//
+//
+//                strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+//                game->startup[GAME_STARTUP_MAX - 1] = '\0';
+//                // strcpy(game->name, dirent->d_name);
+//                strncpy(game->name, dirent->d_name, NameLen);
+//                // sprintf(game->name, "%s", newpath);
+//                game->name[NameLen] = '\0';
+//                strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
+//                game->extension[sizeof(game->extension) - 1] = '\0';
+//                // newpath[base_path_len] = '/';
+//                fileXioUmount("iso:");
+//
+//                // else {
+//                //     // need to mount and read SYSTEM.CNF
+//                //     int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+//                //     if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+//                //         fileXioUmount("iso:");
+//                //         free(next);
+//                //         *glist = next->next;
+//                //         continue;
+//                //     }
+//                //     memcpy(game->startup, startup, GAME_STARTUP_MAX - 1);
+//                //     game->startup[GAME_STARTUP_MAX - 1] = '\0';
+//                //     fileXioUmount("iso:");
+//                // }
+//
+//
+//            }
+//
+//
+//            //// count and process games in iso.txt
+//            //if (((game->name)[0] >= '0') && ((game->name)[0] <= '9')) {
+//            //    memcpy(index, dirent->d_name, sizeof(index));
+//            //    index[NameLen] = '\0';
+//
+//            //    if (file != NULL) {
+//            //        // strncpy(game->name, "打开文件了", 30);
+//            //        while (fgets(cnName, sizeof(cnName), file) != NULL) {
+//            //            if (strncmp(cnName, index, strlen(index)) == 0) {
+//            //                memcpy(game->name, &cnName[strlen(index) + 1], UL_GAME_NAME_MAX);
+//            //                memcpy(game->indexName, index, strlen(index));
+//            //                (game->indexName)[strlen(index)] = '\0';
+//            //                for (int i = 0; i < strlen(cnName); i++) {
+//            //                    if (cnName[i] == '\n' || cnName[i] == '\0' || cnName[i] == '\r' || &cnName[i] == "") {
+//            //                        game->name[i - strlen(index) - 1] = '\0';
+//            //                        break;
+//            //                    }
+//            //                }
+//            //                break;
+//            //            }
+//            //        }
+//            //        rewind(file);
+//            //    }
+//            //    snprintf(path, 256, "%s%s%s%s%s", path, (game->media == SCECdPS2CD) ? "CD" : "DVD", "/", game->indexName, game->extension);
+//            //    strncpy(game->name, path, 40);
+//            //}
+//
+//
+//            game->parts = 1;
+//            game->media = type;
+//            game->format = format;
+//            game->sizeMB = 0;
+//
+//
+//
+//
+//            //// count and process games in txt
+//            //if ((dirent->d_name[GAME_STARTUP_MAX - 8] == '_') && (dirent->d_name[GAME_STARTUP_MAX - 4] == '.') && (dirent->d_name[GAME_STARTUP_MAX - 1] == '.')) {
+//            //    //strncpy(game->indexName, &dirent->d_name[GAME_STARTUP_MAX], strlen(game->indexName));
+//            //    //game->indexName[strlen(dirent->d_name) - 4 - GAME_STARTUP_MAX] = '\0';     // 临时的索引名
+//            //    //memcpy(game->game->indexName, game->indexName, strlen(game->indexName)); // 存在，就赋值给索引数组
+//
+//                if (file != NULL && !skipTxtScan) {
+//                game->indexName[0] = '\0';
+//                game->transName[0] = '\0';
+//                    rewind(file);
+//                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
+//                        fullName[strlen(fullName) - strlen("\r\n")] = '\0';  // 避免transName的换行符被显示出来。
+//                        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+//                            //memcpy(game->name, indexName, strlen(indexName));  
+//                            //game->name[strlen(indexName)] = '\0';
+//                            strcpy(game->indexName, game->name);     // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+//                            if (fullName[strlen(game->indexName) + 1] == '\r' || fullName[strlen(game->indexName) + 1] == '\n' || fullName[strlen(game->indexName) + 1] == '\0') { // 判断索引的译名是否为空
+//                                game->transName[0] = '\0';
+//                                break;
+//                            }
+//                            strcpy(game->transName, &fullName[strlen(game->indexName) + 1]);   // 赋值给翻译文本数组
+//                            strcpy(game->name, game->transName);
+//                        
+//                            ////给游戏名加结束符，防止换行符被显示出来
+//                            //for (int i = 0; i < strlen(game->transName); i++) {
+//                            //    if (game->transName[i] == '\r' || game->transName[i] == '\n' || game->transName[i] == '\0') {
+//                            //        game->transName[i] = '\0';
+//                            //        strcpy(game->name, game->transName);
+//                            //        break;
+//                            //    }
+//                            //}
+//                            break;
+//                        }
+//                    }
+//                    // 如果txt里没有此游戏的英文名索引，则添加到txt里
+//                    if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
+//                        strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
+//                        //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+//                        sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+//                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+//                    }
+//                }
+//                 //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
+//                 //strncpy(game->name, path, 40);
+//            //} else {
+//            //    //strncpy(game->name, dirent->d_name, strlen(game->name));
+//            //    //game->name[strlen(dirent->d_name) - 4] = '\0';
+//
+//            //    if (file != NULL) {
+//            //        rewind(file);
+//            //        while (fgets(fullName, sizeof(fullName), file) != NULL) {
+//            //            if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) { // 寻找iso名字  是否存在于txt内作为索引名
+//            //                // memcpy(game->name, indexName, strlen(indexName));
+//            //                // game->name[strlen(indexName)] = '\0';
+//            //                strcpy(game->indexName, game->name);                                                                  // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+//            //                if (fullName[strlen(game->indexName) + 1] == '\n' || fullName[strlen(game->indexName) + 1] == '\0') { // 判断索引的译名是否为空
+//            //                    game->transName[0] = '\0';
+//            //                    break;
+//            //                }
+//            //                strcpy(game->transName, &fullName[strlen(game->indexName) + 1]); // 赋值给翻译文本数组
+//            //                strcpy(game->name, game->transName);
+//
+//            //                // sprintf(game->name, "%d", game->name[0]);
+//            //                // 给游戏名加结束符，防止换行符被显示出来
+//            //                for (int i = 0; i < strlen(fullName); i++) {
+//            //                    if (fullName[i] == '\n' || fullName[i] == '\0' || fullName[i] == '\r' || &fullName[i] == "") {
+//            //                        game->name[i - strlen(game->indexName) - 1] = '\0';
+//            //                        break;
+//            //                    }
+//            //                }
+//            //                break;
+//            //            }
+//            //        }
+//            //        if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
+//            //            strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
+//            //            fprintf(file, "%s.\n", game->indexName);
+//            //            // strncpy(game->indexName, indexName, strlen(indexName)); // 不存在就添加一笔，然后赋值给索引数组
+//            //        }
+//            //    }
+//            //    // snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
+//            //    // strncpy(game->name, path, 40);
+//            //}
+//            //if (game->transName[0] != '\0')
+//            //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->indexName, game->extension);
+//            //else
+//            //    snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game_name, game->extension);
+//            //strncpy(game->name, path, 40);
+//
+//                // debug
+//                //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
+//
+//                count++;
+//        }
+//        fclose(file);
+//
+//        // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+//        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+//            // 通过文件修改时间判断txt是否改动
+//            memcpy(preModiTime, curModiTime, sizeof(curModiTime));
+//            sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+//            if (strcmp(curModiTime, preModiTime) != 0) {
+//                txtFileChanged = 1;
+//            }
+//            // txt操作完毕后，将它保存在glist里。
+//            if (*glist != NULL) {
+//                memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
+//                //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
+//                //(*glist)->gameinfo.preModiTime[6] = '\0';
+//            }
+//            //saveCurMtime(*glist, curModiTime);
+//
+//            //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
+//            //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
+//        }
+//
+//        // debug 确认txt跳过扫描是否生效
+//        //fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, (&cache)->games[0].name, (*glist)->gameinfo.name);
+//        //fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
+//        //fclose(debugFile);
+//
+//        //// 使用stat函数获取保存后的txt修改时间
+//        //if (stat(txtPath, &fileStat) == 0) {
+//        //    if (curModiTime != fileStat.st_mtime) {
+//        //        txtFileChanged = 1;
+//        //    }
+//        //    glist[0]->gameinfo.preModiTime = fileStat.st_mtime; // txt操作完毕后，将它保存在glist里。
+//        // 
+//        //    //*glist.gameinfo.preModiTime;
+//        //}
+//
+//        closedir(dir);
+//    }
 
     if (cacheLoaded) {
         updateISOGameList(path, &cache, *glist, count, txtFileChanged);
