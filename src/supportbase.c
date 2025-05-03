@@ -609,7 +609,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     }
 
     // debug
-    fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
+    fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
     //fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
     fclose(debugFile);
 
