@@ -603,6 +603,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     // debug
     //fprintf(debugFile, "文件时间%s和缓存时间%s\r\n", curModiTime, preModiTime);
     fprintf(debugFile, "本次txt大小%s和上次txt大小%s\r\n", curTxtFileSize, (&cache)->games[0].preTxtFileSize);
+    fclose(debugFile);
 
     // 使用stat函数获取文件修改时间，与缓存进行比对
     // struct stat fileStat;
