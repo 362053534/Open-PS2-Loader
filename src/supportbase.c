@@ -927,6 +927,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         return 0;
     }
 
+    // debug 文件
+     char debugFileDir[64];
+    snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
+     FILE *debugFile = fopen(debugFileDir, "ab");
+
     // 创建txt文件
     int txtFileChanged = 1;
     char txtPath[256];
@@ -969,6 +974,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // sprintf(curModiTime, "000000");
         // curModiTime[6] = '\0';
     }
+
+    // debug
+    fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
+    //fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
+    fclose(debugFile);
 
     // temporary storage for the game names
     struct game_list_t *dlist_head = NULL;
@@ -1085,14 +1095,12 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
-        memcpy(preModiTime, curModiTime, sizeof(curModiTime));
-        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
 
         // txt操作完毕后，将时间和大小保存起来。
-        //if (txtInfo != NULL) {
         memcpy((&txtInfo)->preModiTime, curModiTime, sizeof(curModiTime));
         if (binFile != NULL) {
-                fclose(binFile);
+            fclose(binFile);
         }
 
         binFile = fopen(binPath, "wb");
@@ -1105,7 +1113,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
             // strcpy(&(((*glist)->gameinfo.preModiTime)[6]), curTxtFileSize);
             // sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
             //(*glist)->gameinfo.preModiTime[6] = '\0';
-        //}
         // saveCurMtime(*glist, curModiTime);
 
         // snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
