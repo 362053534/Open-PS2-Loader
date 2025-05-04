@@ -505,7 +505,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 //    return 0;
 //}
 
-static int scanForISO(char *path, char type, struct game_list_t **glist)
+static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *file, int txtFileChanged)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
@@ -525,20 +525,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
-    int txtFileChanged = 1;
-    char txtPath[256];
-    int txtPathLen = strlen(path);
-    if (strcasecmp(&path[txtPathLen - 3], "DVD") == 0) {
-        txtPathLen = txtPathLen - 3;
-    } else if (strcasecmp(&path[txtPathLen - 2], "CD") == 0) {
-        txtPathLen = txtPathLen - 2;
-    } else {
-        // 错误识别到记忆卡时，直接跳过
-        return 0;
-    }
-    strncpy(txtPath, path, txtPathLen);
-    txtPath[txtPathLen] = '\0';
-    snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
 
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
     char curModiTime[6];
@@ -576,37 +562,34 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //curModiTime[6] = '\0';
     }
 
-    // 创建txt文件
-    FILE *file;
-    char fullName[256];
-    file = fopen(txtPath, "ab+, ccs=UTF-8");
-    fseek(file, 0, SEEK_END);
-    u32 curTxtFileSize = ftell(file);
-    u32 preTxtFileSize;
-    if (cacheLoaded && ((&cache)->count > 0)) {
-        if ((&cache)->games[0].preTxtFileSize != NULL) {
-            preTxtFileSize = (&cache)->games[0].preTxtFileSize;
-        } else {
-            preTxtFileSize = 0;
-        }
-    } else {
-        preTxtFileSize = 0;
-    }
 
-    // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
-    if (curTxtFileSize == 0) {
-        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-        fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
-        txtFileChanged = 1;
-    }else {
-        // 如果txt大小变动，则强制扫描txt
-        if (curTxtFileSize != preTxtFileSize)
-            txtFileChanged = 1;
-        //if (strcmp(curTxtFileSize, &(((&cache)->games[0].preModiTime)[6])) != 0) {
-        //    txtFileChanged = 1;
-        //}
-    }
+    char fullName[256];
+    //u32 curTxtFileSize = ftell(file);
+    //u32 preTxtFileSize;
+    //if (cacheLoaded && ((&cache)->count > 0)) {
+    //    if ((&cache)->games[0].preTxtFileSize != NULL) {
+    //        preTxtFileSize = (&cache)->games[0].preTxtFileSize;
+    //    } else {
+    //        preTxtFileSize = 0;
+    //    }
+    //} else {
+    //    preTxtFileSize = 0;
+    //}
+
+    //// 如果文件是第一次被创建，则初始化内容，并强制扫描txt
+    //if (curTxtFileSize == 0) {
+    //    unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+    //    fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+    //    fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
+    //    txtFileChanged = 1;
+    //}else {
+    //    // 如果txt大小变动，则强制扫描txt
+    //    if (curTxtFileSize != preTxtFileSize)
+    //        txtFileChanged = 1;
+    //    //if (strcmp(curTxtFileSize, &(((&cache)->games[0].preModiTime)[6])) != 0) {
+    //    //    txtFileChanged = 1;
+    //    //}
+    //}
 
     // debug
     fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
@@ -930,7 +913,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
 
                 count++;
         }
-        fclose(file);
 
         // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
         if (fileXioGetStat(txtPath, &fileStat) >= 0) {
@@ -943,7 +925,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
             // txt操作完毕后，将时间和大小保存在glist里。
             if (*glist != NULL) {
                 memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
-                (*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
+                //(*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
                 //memcpy(&(*glist)->gameinfo.preTxtFileSize, &curTxtFileSize, sizeof(u32));
                 //strcpy(&(((*glist)->gameinfo.preModiTime)[6]), curTxtFileSize);
                 //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
@@ -998,16 +980,31 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         return 0;
     }
 
+    // 创建txt文件
+    int txtFileChanged = 1;
+    char txtPath[256];
+    sprintf(txtPath, "%sGameListTranslator.txt", prefix);
+    FILE *file;
+    file = fopen(txtPath, "ab+, ccs=UTF-8");
+    fseek(file, 0, SEEK_END);
+    // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
+    if (ftell(file) == 0) {
+        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+        fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
+        txtFileChanged = 1;
+    }
+
     // temporary storage for the game names
     struct game_list_t *dlist_head = NULL;
 
     // count iso games in "cd" directory
     snprintf(path, sizeof(path), "%sCD", prefix);
-    count = scanForISO(path, SCECdPS2CD, &dlist_head);
+    count = scanForISO(path, SCECdPS2CD, &dlist_head, file, txtFileChanged);
 
     // count iso games in "dvd" directory
     snprintf(path, sizeof(path), "%sDVD", prefix);
-    if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head)) >= 0) {
+    if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, file, txtFileChanged)) >= 0) {
         count = count < 0 ? result : count + result;
     }
 
@@ -1109,6 +1106,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     if (count > 0)
         *gamecount = count;
 
+    fclose(file);
     return count;
 }
 
