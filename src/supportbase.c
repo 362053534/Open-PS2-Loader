@@ -537,9 +537,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     int txtPathLen = strlen(path);
     if (strcasecmp(&path[txtPathLen - 3], "DVD") == 0) {
         txtPathLen = txtPathLen - 3;
-        if (&nextCache->games != NULL) {
-            freeISOGameListCache(&nextCache);
-        }
     } else if (strcasecmp(&path[txtPathLen - 2], "CD") == 0) {
         txtPathLen = txtPathLen - 2;
         strncpy(dvdPath, path, txtPathLen);
@@ -1007,6 +1004,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         updateISOGameList(path, NULL, *glist, count, txtFileChanged);
     }
 
+    if (strcasecmp(&path[strlen(path) - 3], "DVD") == 0) {
+        if (&nextCache->games != NULL) {
+            freeISOGameListCache(&nextCache);
+        }
+    }
     return count;
 }
 
