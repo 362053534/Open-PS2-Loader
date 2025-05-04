@@ -1095,7 +1095,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                 fclose(binFile);
         }
 
-        binFile = fopen(binFile, "wb");
+        binFile = fopen(binPath, "wb");
         if (binFile != NULL) {
             fwrite(&txtInfo, sizeof(txt_info), 1, binFile);
             fclose(binFile);
