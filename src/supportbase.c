@@ -525,9 +525,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     DIR *dir;
 
     // debug 文件
-    char debugFileDir[64];
-    snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
-    FILE *debugFile = fopen(debugFileDir, "ab");
+    //char debugFileDir[64];
+    //snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
+    //FILE *debugFile = fopen(debugFileDir, "ab");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
@@ -623,7 +623,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     
                     // debug
-                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
+                    //fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
 
                     if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
@@ -652,7 +652,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 }
 
                 // debug
-                fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
+                //fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
 
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                 if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
@@ -875,15 +875,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             //strncpy(game->name, path, 40);
 
                 // debug
-                fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
+                //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
 
                 count++;
         }
 
         // debug 确认txt跳过扫描是否生效
-        fprintf(debugFile, "缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", (&cache)->games[0].name, (*glist)->gameinfo.name);
-        fprintf(debugFile, "路径：%s\r\n\r\n", fullpath);
-        fclose(debugFile);
+        //fprintf(debugFile, "缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", (&cache)->games[0].name, (*glist)->gameinfo.name);
+        //fprintf(debugFile, "路径：%s\r\n\r\n", fullpath);
+        //fclose(debugFile);
 
         //// 使用stat函数获取保存后的txt修改时间
         //if (stat(txtPath, &fileStat) == 0) {
