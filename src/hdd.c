@@ -276,19 +276,21 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
             if ((game_list->games = malloc(sizeof(hdl_game_info_t) * count)) != NULL) {
                 memset(game_list->games, 0, sizeof(hdl_game_info_t) * count);
 
-                char path[64];
                 FILE *file;
-                snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
-                file = fopen(path, "ab+, ccs=UTF-8");
-                fseek(file, 0, SEEK_END);
-                if (ftell(file) == 0) {
-                    unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-                    fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-                    fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
+                char path[256];
+                if (strcasencmp(gHDDPrefix, "pfs", 3) == 0) {
+                    snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
+                    file = fopen(path, "ab+, ccs=UTF-8");
+                    fseek(file, 0, SEEK_END);
+                    if (ftell(file) == 0) {
+                        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+                        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+                        fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
+                    }
                 }
 
                 for (i = 0, current = head; i < count; i++, current = current->next) {
-                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i] ,file)) != 0)
+                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i], file)) != 0)
                         break;
                 }
 

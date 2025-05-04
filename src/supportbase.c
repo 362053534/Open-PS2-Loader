@@ -507,6 +507,10 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 
 static int scanForISO(char *path, char type, struct game_list_t **glist)
 {
+    // 错误识别到记忆卡时，跳过扫描
+    if (strcasencmp(path, "mc", 2) == 0) {
+        return 0;
+    }
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, ".UTF8");
