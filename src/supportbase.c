@@ -1005,7 +1005,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     }
 
     if (strcasecmp(&path[strlen(path) - 3], "DVD") == 0) {
-        if (&nextCache->games != NULL) {
+        if ((&nextCache)->games != NULL) {
             freeISOGameListCache(&nextCache);
         }
     }
