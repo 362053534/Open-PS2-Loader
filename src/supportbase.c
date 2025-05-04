@@ -525,9 +525,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     DIR *dir;
 
     // debug 文件
-    char debugFileDir[64];
-    snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
-    FILE *debugFile = fopen(debugFileDir, "ab");
+    //char debugFileDir[64];
+    //snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
+    //FILE *debugFile = fopen(debugFileDir, "ab");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
@@ -561,9 +561,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     //}
 
     // debug
-    fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
+    //fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
     //fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
-    fclose(debugFile);
+    //fclose(debugFile);
 
     // 使用stat函数获取文件修改时间，与缓存进行比对
     // struct stat fileStat;
@@ -952,7 +952,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     iox_stat_t fileStat;
     struct txt_info txtInfo = {{0}, 0};
     if (binFile != NULL) {
-        memcpy(preModiTime, &txtInfo->preModiTime, sizeof(preModiTime));
+        memcpy(preModiTime, (&txtInfo)->preModiTime, sizeof(preModiTime));
     } else {
         strncpy(preModiTime, "000000", 6);
     }
@@ -1097,7 +1097,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
         binFile = fopen(binPath, "wb");
         if (binFile != NULL) {
-            fwrite(&txtInfo, sizeof(txt_info), 1, binFile);
+            fwrite(&txtInfo, sizeof(txtInfo), 1, binFile);
             fclose(binFile);
         }
             //(*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
