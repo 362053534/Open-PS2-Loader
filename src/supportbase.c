@@ -32,6 +32,12 @@ struct game_cache_list
     base_game_info_t *games;
 };
 
+struct txt_info
+{
+    char preModiTime[6];
+    u32 preTxtFileSize;
+};
+
 int sbIsSameSize(const char *prefix, int prevSize)
 {
     int size = -1;
@@ -526,54 +532,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
 
-    // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-    char curModiTime[6];
-    char preModiTime[6];
-    iox_stat_t fileStat;
-    //memcpy(preModiTime, cache.games[0].preModiTime, sizeof(preModiTime));
-    //sprintf(preModiTime, "%s", &cache->games[0].preModiTime);
-    //sprintf(preModiTime, "%s", cache.games[0].preModiTime);
-    //preModiTime[6] = '\0';
-    //loadPreMtime(&cache, preModiTime);
-    if (cacheLoaded && ((&cache)->count > 0)) {
-        if ((&cache)->games[0].preModiTime != NULL) {
-            memcpy(preModiTime, (&cache)->games[0].preModiTime, sizeof(preModiTime));
-        } else {
-            strncpy(preModiTime, "000000", 6);
-        }
-        //sprintf(preModiTime, "%s", (&cache)->games[0].preModiTime);
-        //preModiTime[6] = '\0';
-    } else {
-        strncpy(preModiTime, "000000", 6);
-        //sprintf(preModiTime, "000000");
-        //preModiTime[6] = '\0';
-    }
-
-
-    char txtPath[256];
-    int txtPathLen = strlen(path);
-    if (strcasecmp(&path[txtPathLen - 3], "DVD") == 0) {
-        txtPathLen = txtPathLen - 3;
-    } else if (strcasecmp(&path[txtPathLen - 2], "CD") == 0) {
-        txtPathLen = txtPathLen - 2;
-    }
-    strncpy(txtPath, path, txtPathLen);
-    txtPath[txtPathLen] = '\0';
-    snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
-    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-        // 通过文件修改时间判断txt是否改动
-        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
-        //curModiTime[6] = '\0';
-        if (strcmp(curModiTime, preModiTime) == 0) {
-            txtFileChanged = 0;
-        }
-    } else {
-        strncpy(curModiTime, "000000", 6);
-        //sprintf(curModiTime, "000000");
-        //curModiTime[6] = '\0';
-    }
-
-
     char fullName[256];
     //u32 curTxtFileSize = ftell(file);
     //u32 preTxtFileSize;
@@ -871,6 +829,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                         //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
                         sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
                         fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                        txtFileChanged = 1;
                     }
                 }
                  //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
@@ -925,29 +884,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 count++;
         }
 
-        // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
-        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-            // 通过文件修改时间判断txt是否改动
-            memcpy(preModiTime, curModiTime, sizeof(curModiTime));
-            sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
-            if (strcmp(curModiTime, preModiTime) != 0) {
-                txtFileChanged = 1;
-            }
-            // txt操作完毕后，将时间和大小保存在glist里。
-            if (*glist != NULL) {
-                memcpy((*glist)->gameinfo.preModiTime, curModiTime, sizeof(curModiTime));
-                //(*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
-                //memcpy(&(*glist)->gameinfo.preTxtFileSize, &curTxtFileSize, sizeof(u32));
-                //strcpy(&(((*glist)->gameinfo.preModiTime)[6]), curTxtFileSize);
-                //sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
-                //(*glist)->gameinfo.preModiTime[6] = '\0';
-            }
-            //saveCurMtime(*glist, curModiTime);
-
-            //snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
-            //memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
-        }
-
         // debug 确认txt跳过扫描是否生效
         //fprintf(debugFile, "文件载入时间戳%s，文件关闭时间戳%s，缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", preModiTime, curModiTime, (&cache)->games[0].name, (*glist)->gameinfo.name);
         //fprintf(debugFile, "路径：%s\r\n\r\n", txtPath);
@@ -994,9 +930,13 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     // 创建txt文件
     int txtFileChanged = 1;
     char txtPath[256];
+    char binPath[256];
     sprintf(txtPath, "%sGameListTranslator.txt", prefix);
+    sprintf(binPath, "%stxtInfo.bin", prefix);
     FILE *file;
+    FILE *binFile;
     file = fopen(txtPath, "ab+, ccs=UTF-8");
+    binFile = fopen(binPath, "rb");
     fseek(file, 0, SEEK_END);
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
     if (ftell(file) == 0) {
@@ -1004,6 +944,30 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
         txtFileChanged = 1;
+    }
+
+    // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+    char curModiTime[6];
+    char preModiTime[6];
+    iox_stat_t fileStat;
+    struct txt_info txtInfo = {{0}, 0};
+    if (binFile != NULL) {
+        memcpy(preModiTime, &txtInfo->preModiTime, sizeof(preModiTime));
+    } else {
+        strncpy(preModiTime, "000000", 6);
+    }
+
+    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+        // 通过文件修改时间判断txt是否改动
+        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
+        // curModiTime[6] = '\0';
+        if (strcmp(curModiTime, preModiTime) == 0) {
+            txtFileChanged = 0;
+        }
+    } else {
+        strncpy(curModiTime, "000000", 6);
+        // sprintf(curModiTime, "000000");
+        // curModiTime[6] = '\0';
     }
 
     // temporary storage for the game names
@@ -1118,6 +1082,35 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         *gamecount = count;
 
     fclose(file);
+    // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+        // 通过文件修改时间判断txt是否改动
+        memcpy(preModiTime, curModiTime, sizeof(curModiTime));
+        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+
+        // txt操作完毕后，将时间和大小保存起来。
+        //if (txtInfo != NULL) {
+        memcpy((&txtInfo)->preModiTime, curModiTime, sizeof(curModiTime));
+        if (binFile != NULL) {
+                fclose(binFile);
+        }
+
+        binFile = fopen(binFile, "wb");
+        if (binFile != NULL) {
+            fwrite(&txtInfo, sizeof(txt_info), 1, binFile);
+            fclose(binFile);
+        }
+            //(*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
+            // memcpy(&(*glist)->gameinfo.preTxtFileSize, &curTxtFileSize, sizeof(u32));
+            // strcpy(&(((*glist)->gameinfo.preModiTime)[6]), curTxtFileSize);
+            // sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
+            //(*glist)->gameinfo.preModiTime[6] = '\0';
+        //}
+        // saveCurMtime(*glist, curModiTime);
+
+        // snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
+        // memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
+    }
     return count;
 }
 
