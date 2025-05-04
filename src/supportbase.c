@@ -531,6 +531,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
+    int forceUpdateCache = 0;
 
     char fullName[256];
     //u32 curTxtFileSize = ftell(file);
@@ -824,7 +825,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                         //fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
                         sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
                         fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
-                        txtFileChanged = 1;
+                        forceUpdateCache = 1;
                     }
                 }
                  //snprintf(game->name, 256, "%s%s%s", "/", game->indexName, game->extension);
@@ -898,10 +899,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     }
 
     if (cacheLoaded) {
-        updateISOGameList(path, &cache, *glist, count, txtFileChanged);
+        updateISOGameList(path, &cache, *glist, count, forceUpdateCache);
         freeISOGameListCache(&cache);
     } else {
-        updateISOGameList(path, NULL, *glist, count, txtFileChanged);
+        updateISOGameList(path, NULL, *glist, count, forceUpdateCache);
     }
 
     return count;
