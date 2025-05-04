@@ -549,6 +549,17 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
         //preModiTime[6] = '\0';
     }
 
+
+    char txtPath[256];
+    int txtPathLen = strlen(path);
+    if (strcasecmp(&path[txtPathLen - 3], "DVD") == 0) {
+        txtPathLen = txtPathLen - 3;
+    } else if (strcasecmp(&path[txtPathLen - 2], "CD") == 0) {
+        txtPathLen = txtPathLen - 2;
+    }
+    strncpy(txtPath, path, txtPathLen);
+    txtPath[txtPathLen] = '\0';
+    snprintf(txtPath, 256, "%sGameListTranslator.txt", txtPath);
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
