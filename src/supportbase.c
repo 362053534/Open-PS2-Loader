@@ -517,6 +517,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     //setlocale(LC_ALL, "en_US.utf8");
     int count = 0;
     struct game_cache_list cache = {0, NULL};
+    struct game_cache_list nextCache = {0, NULL};
+    char dvdPath[256];
     base_game_info_t cachedGInfo;
     char fullpath[256];
     struct dirent *dirent;
@@ -527,6 +529,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
     snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
     FILE *debugFile = fopen(debugFileDir, "ab");
 
+    int nextCacheLoaded = 0;
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
     int txtFileChanged = 1;
@@ -536,9 +539,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         txtPathLen = txtPathLen - 3;
     } else if (strcasecmp(&path[txtPathLen - 2], "CD") == 0) {
         txtPathLen = txtPathLen - 2;
-    } else {
-        // 错误识别到记忆卡时，直接跳过
-        return 0;
+        strncpy(dvdPath, path, txtPathLen);
+        dvdPath[txtPathLen] = '\0';
+        snprintf(dvdPath, 256, "%sDVD", dvdPath);
+        nextCacheLoaded = loadISOGameListCache(dvdPath, &nextCache) == 0;
     }
     strncpy(txtPath, path, txtPathLen);
     txtPath[txtPathLen] = '\0';
@@ -567,9 +571,28 @@ static int scanForISO(char *path, char type, struct game_list_t **glist)
         //preModiTime[6] = '\0';
     }
 
+    // 如果此时扫描的是CD文件夹，则强制使用DVD文件夹的缓存时间数据
+    if (nextCacheLoaded && ((&nextCache)->count > 0)) {
+        if ((&nextCache)->games[0].preModiTime != NULL) {
+            memcpy(preModiTime, (&nextCache)->games[0].preModiTime, sizeof(preModiTime));
+        } else {
+            strncpy(preModiTime, "000000", 6);
+        }
+        // sprintf(preModiTime, "%s", (&cache)->games[0].preModiTime);
+        // preModiTime[6] = '\0';
+    } else {
+        strncpy(preModiTime, "000000", 6);
+        // sprintf(preModiTime, "000000");
+        // preModiTime[6] = '\0';
+    }
+    if (nextCacheLoaded) {
+        freeISOGameListCache(&cache);
+    }
+
+
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
-        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[1], fileStat.mtime[2], fileStat.mtime[3]);
+        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
         //curModiTime[6] = '\0';
         if (strcmp(curModiTime, preModiTime) == 0) {
             txtFileChanged = 0;
