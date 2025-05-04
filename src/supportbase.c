@@ -957,7 +957,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     iox_stat_t fileStat;
     struct txt_info txtInfo = {{0}, 0};
     if (binFile != NULL) {
-        fread(&txtInfo, sizeof(txtInfo), 1, binFile)
+        fread(&txtInfo, sizeof(txtInfo), 1, binFile);
         memcpy(preModiTime, (&txtInfo)->preModiTime, sizeof(preModiTime));
     } else {
         strncpy(preModiTime, "000000", 6);
