@@ -28,9 +28,6 @@ typedef struct
     char crc32name[9];
     char indexName[64];
     char transName[128];
-    char preModiTime[6];
-    u32 preTxtFileSize;
-    //time_t preModiTime;
 } base_game_info_t;
 
 typedef struct

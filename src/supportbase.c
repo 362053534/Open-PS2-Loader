@@ -531,7 +531,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
-    int forceUpdateCache = 0;
+    int forceUpdateCache = txtFileChanged;
 
     char fullName[256];
     //u32 curTxtFileSize = ftell(file);
