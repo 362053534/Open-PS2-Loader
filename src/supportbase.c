@@ -936,16 +936,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     sprintf(binPath, "%stxtInfo.bin", prefix);
     FILE *file;
     FILE *binFile;
-    file = fopen(txtPath, "ab+, ccs=UTF-8");
     binFile = fopen(binPath, "rb");
-    fseek(file, 0, SEEK_END);
-    // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
-    if (ftell(file) == 0) {
-        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-        fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
-        txtFileChanged = 1;
-    }
 
     // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
     char curModiTime[6];
@@ -970,6 +961,16 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         strncpy(curModiTime, "000000", 6);
         // sprintf(curModiTime, "000000");
         // curModiTime[6] = '\0';
+    }
+
+    // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
+    file = fopen(txtPath, "ab+, ccs=UTF-8");
+    fseek(file, 0, SEEK_END);
+    if (ftell(file) == 0) {
+        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+        fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
+        txtFileChanged = 1;
     }
 
     // debug
