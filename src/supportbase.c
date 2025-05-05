@@ -924,9 +924,9 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug 文件
-     char debugFileDir[64];
-    snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
-     FILE *debugFile = fopen(debugFileDir, "ab");
+    // char debugFileDir[64];
+    //snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
+    // FILE *debugFile = fopen(debugFileDir, "ab");
 
     // 创建txt文件
     int txtFileChanged = 1;
@@ -973,7 +973,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug
-    fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
+    //fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
     //fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
     //fclose(debugFile);
 
@@ -1108,8 +1108,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
         // debug
         // fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
-        fprintf(debugFile, "closeTxtTime:%s\r\n", curModiTime);
-        fclose(debugFile);
+        //fprintf(debugFile, "closeTxtTime:%s\r\n", curModiTime);
+        //fclose(debugFile);
 
             //(*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
             // memcpy(&(*glist)->gameinfo.preTxtFileSize, &curTxtFileSize, sizeof(u32));
