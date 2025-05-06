@@ -525,9 +525,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     DIR *dir;
 
     // debug 文件
-    //char debugFileDir[64];
-    //snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
-    //FILE *debugFile = fopen(debugFileDir, "ab");
+    char debugFileDir[64];
+    snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
+    FILE *debugFile = fopen(debugFileDir, "ab");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
@@ -623,7 +623,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     
                     // debug
-                    //fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
+                    fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
 
                     if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
@@ -652,7 +652,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 }
 
                 // debug
-                //fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
+                fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
 
                 // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                 if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
@@ -875,15 +875,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             //strncpy(game->name, path, 40);
 
                 // debug
-                //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
+                fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
 
                 count++;
         }
 
         // debug 确认txt跳过扫描是否生效
         //fprintf(debugFile, "缓存的第一个游戏名%s，glist第一个游戏名%s\r\n", (&cache)->games[0].name, (*glist)->gameinfo.name);
-        //fprintf(debugFile, "路径：%s\r\n\r\n", fullpath);
-        //fclose(debugFile);
+        fprintf(debugFile, "路径：%s\r\n", fullpath);
+        fclose(debugFile);
 
         //// 使用stat函数获取保存后的txt修改时间
         //if (stat(txtPath, &fileStat) == 0) {
@@ -924,9 +924,9 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug 文件
-    // char debugFileDir[64];
-    //snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
-    // FILE *debugFile = fopen(debugFileDir, "ab");
+    char debugFileDir[64];
+    snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab");
 
     // 创建txt文件
     int txtFileChanged = 1;
@@ -937,24 +937,32 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     FILE *file;
     FILE *binFile;
     binFile = fopen(binPath, "rb");
+    file = fopen(txtPath, "ab+, ccs=UTF-8");
+    fseek(file, 0, SEEK_END);
 
-    // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+    // 比对txt上次的修改时间与大小
     char curModiTime[6];
     char preModiTime[6];
+    u32 curTxtFileSize = ftell(file);
+    u32 preTxtFileSize;
     iox_stat_t fileStat;
     struct txt_info txtInfo = {{0}, 0};
     if (binFile != NULL) {
         fread(&txtInfo, sizeof(txtInfo), 1, binFile);
         memcpy(preModiTime, (&txtInfo)->preModiTime, sizeof(preModiTime));
+        preTxtFileSize = (&txtInfo)->preTxtFileSize;
+        fclose(binFile);
     } else {
         strncpy(preModiTime, "000000", 6);
+        preTxtFileSize = 0;
     }
 
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
         // curModiTime[6] = '\0';
-        if (strcmp(curModiTime, preModiTime) == 0) {
+        // 修改时间和修改大小都没变，说明文件没改动
+        if ((strcmp(curModiTime, preModiTime) == 0) && (curTxtFileSize == preTxtFileSize)) {
             txtFileChanged = 0;
         }
     } else {
@@ -964,9 +972,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
-    file = fopen(txtPath, "ab+, ccs=UTF-8");
-    fseek(file, 0, SEEK_END);
-    if (ftell(file) == 0) {
+    if (curTxtFileSize == 0) {
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
@@ -974,8 +980,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug
-    //fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
-    //fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
+    fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
+    fprintf(debugFile, "curTxtFileSize:%d   preTxtFileSize%d\r\n", curTxtFileSize, preTxtFileSize);
     //fclose(debugFile);
 
     // temporary storage for the game names
@@ -1071,8 +1077,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         *list = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count);
     }
 
-
-
     if (*list != NULL) {
         // copy the dlist into the list
         while ((id < count) && dlist_head) {
@@ -1089,39 +1093,29 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     if (count > 0)
         *gamecount = count;
 
+    // txt操作完毕后，将大小保存起来。
+    fseek(file, 0, SEEK_END);
+    (&txtInfo)->preTxtFileSize = ftell(file);
     fclose(file);
-    // 使用newlib的stat函数获取文件修改时间，与缓存进行比对
+
+    // txt操作完毕后，将时间保存起来。
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
         // 通过文件修改时间判断txt是否改动
         sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
-
-        // txt操作完毕后，将时间和大小保存起来。
         memcpy((&txtInfo)->preModiTime, curModiTime, sizeof(curModiTime));
-        if (binFile != NULL) {
-            fclose(binFile);
-        }
-
-        binFile = fopen(binPath, "wb");
-        if (binFile != NULL) {
-            fwrite(&txtInfo, sizeof(txtInfo), 1, binFile);
-            fclose(binFile);
-        }
-
-        // debug
-        // fprintf(debugFile, "本次txt大小%d和上次txt大小%d\r\n", curTxtFileSize, preTxtFileSize);
-        //fprintf(debugFile, "closeTxtTime:%s\r\n", curModiTime);
-        //fclose(debugFile);
-
-            //(*glist)->gameinfo.preTxtFileSize = curTxtFileSize;
-            // memcpy(&(*glist)->gameinfo.preTxtFileSize, &curTxtFileSize, sizeof(u32));
-            // strcpy(&(((*glist)->gameinfo.preModiTime)[6]), curTxtFileSize);
-            // sprintf((*glist)->gameinfo.preModiTime, "%s", curModiTime);
-            //(*glist)->gameinfo.preModiTime[6] = '\0';
-        // saveCurMtime(*glist, curModiTime);
-
-        // snprintf(glist[0]->gameinfo.preModiTime, 6, "%s", curModiTime); // txt操作完毕后，将它保存在glist里。
-        // memcpy(glist[0]->gameinfo.preModiTime, curModiTime, sizeof(curModiTime)); // txt操作完毕后，将它保存在glist里。
     }
+
+    // debug
+    //fprintf(debugFile, "curTxtFileSize:%d    preTxtFileSize:%d\r\n", curTxtFileSize, preTxtFileSize);
+    fprintf(debugFile, "closeTxtTime:%s\r\n\r\n", curModiTime);
+    fclose(debugFile);
+
+    binFile = fopen(binPath, "wb");
+    if (binFile != NULL) {
+        fwrite(&txtInfo, sizeof(txtInfo), 1, binFile);
+        fclose(binFile);
+    }
+
     return count;
 }
 
