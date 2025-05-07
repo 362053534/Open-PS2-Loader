@@ -852,7 +852,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     // debug
     fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
     fprintf(debugFile, "curTxtFileSize:%d   preTxtFileSize:%d\r\n", curTxtFileSize, preTxtFileSize);
-    fclose(debugFile);
 
     // temporary storage for the game names
     struct game_list_t *dlist_head = NULL;
