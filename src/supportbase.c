@@ -759,7 +759,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
     // 将bdm hdd的txt优先在U盘进行读写
     char bdmHddTxtPath[256];
-    bdmHddTxtPath[0] = '\0';
+    bdmHddTxtPath[0] = '0';
     if (strncmp(prefix, "mass", 4) == 0) {
         if (prefix[4] != '0') {
             // 如果插了U盘，那么寻找bdm hdd硬盘
@@ -768,8 +768,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
             if (massDir >= 0) {
                 fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
                 if (strncmp(bdmType, "ata", 3) == 0) {
-                    sprintf(bdmHddTxtPath, "%sGameListTranslator_BdmHdd.txt", prefix);
-                    bdmHddTxtPath[4] = '0';
+                    strcpy(bdmHddTxtPath, "mass0:/GameListTranslator_BdmHdd.txt");
                 }
                 fileXioDclose(massDir);
             }
@@ -786,19 +785,24 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug 文件
-    //char debugFileDir[64];
-    //snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
-    //FILE *debugFile = fopen(debugFileDir, "ab");
+    char debugFileDir[64];
+    snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab");
 
     // 创建txt文件
     int txtFileChanged = 1;
     char txtPath[256];
     char binPath[256];
-    if (bdmHddTxtPath[0] != '\0') {
-        memcpy(txtPath, bdmHddTxtPath, sizeof(bdmHddTxtPath));
+    if (bdmHddTxtPath[0] != '0') {
+        strcpy(txtPath, bdmHddTxtPath);
     } else {
         sprintf(txtPath, "%sGameListTranslator.txt", prefix);
     }
+
+    // debug  打印txt路径
+    fprintf(debugFile, "%s\r\n\r\n", txtPath);
+    fclose(debugFile);
+
     sprintf(binPath, "%stxtInfo.bin", prefix);
     FILE *file;
     FILE *binFile;
