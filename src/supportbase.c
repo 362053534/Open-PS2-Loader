@@ -757,16 +757,23 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     int count;
     char path[256];
 
-    // 获取mass设备的类型
+    // 将bdm hdd的txt优先在U盘进行读写
     char bdmHddTxtPath[256];
     bdmHddTxtPath[0] = '\0';
     if (strncmp(prefix, "mass", 4) == 0) {
         if (prefix[4] != '0') {
-            if (strcmp((*list)->bdmType, "ata") == 0) {
-                sprintf(bdmHddTxtPath, "%sGameListTranslator_BdmHdd.txt", prefix);
-                bdmHddTxtPath[4] = '0';
+            // 如果插了U盘，那么寻找bdm hdd硬盘
+            char bdmType[32];
+            int massDir = fileXioDopen(prefix);
+            if (massDir >= 0) {
+                fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
+                if (strncmp(bdmType, "ata", 3) == 0) {
+                    sprintf(bdmHddTxtPath, "%sGameListTranslator_BdmHdd.txt", prefix);
+                    bdmHddTxtPath[4] = '0';
+                }
+                fileXioDclose(massDir);
             }
-        }      
+        }
     }
 
     free(*list);
