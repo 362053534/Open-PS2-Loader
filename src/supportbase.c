@@ -803,7 +803,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     // debug  打印txt路径
     char debugFileDir[64];
     strcpy(debugFileDir, "mass0:debug.txt");
-    FILE *debugFile = fopen(debugFileDir, "ab+");
+    FILE *debugFile = fopen(debugFileDir, "a+");
     fprintf(debugFile, "%s\r\n\r\n", txtPath);
     fclose(debugFile);
 
