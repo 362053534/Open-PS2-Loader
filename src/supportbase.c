@@ -945,7 +945,8 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     char path[256];
 
     // 获取mass设备的类型
-    char bdmHddTxtPath[256] = {0};
+    char bdmHddTxtPath[256];
+    bdmHddTxtPath[0] = '\0';
     if (strncmp(prefix, "mass", 4) == 0) {
         if (prefix[4] != '0') {
             if (strcmp((*list)->bdmType, "ata") == 0) {
@@ -973,7 +974,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     int txtFileChanged = 1;
     char txtPath[256];
     char binPath[256];
-    if (bdmHddTxtPath[0] != '0') {
+    if (bdmHddTxtPath[0] != '\0') {
         memcpy(txtPath, bdmHddTxtPath, sizeof(bdmHddTxtPath));
     } else {
         sprintf(txtPath, "%sGameListTranslator.txt", prefix);
