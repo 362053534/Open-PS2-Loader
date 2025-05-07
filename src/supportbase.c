@@ -764,11 +764,12 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         if (prefix[4] != '0') {
             // 如果插了U盘，那么寻找bdm hdd硬盘
             char bdmType[32];
-            int massDir = fileXioDopen(prefix);
+            sprintf(bdmType, "%s/", prefix);
+            int massDir = fileXioDopen(bdmType);
             if (massDir >= 0) {
                 fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
                 if (strncmp(bdmType, "ata", 3) == 0) {
-                    strcpy(bdmHddTxtPath, "mass0:/GameListTranslator_BdmHdd.txt");
+                    strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
                 }
                 fileXioDclose(massDir);
             }
@@ -801,7 +802,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
     // debug  打印txt路径
     char debugFileDir[64];
-    strcpy(debugFileDir, "mass0:/debug.txt");
+    strcpy(debugFileDir, "mass0:debug.txt");
     FILE *debugFile = fopen(debugFileDir, "ab");
     fprintf(debugFile, "%s\r\n\r\n", txtPath);
     fclose(debugFile);
