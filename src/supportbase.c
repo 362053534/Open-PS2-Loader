@@ -511,7 +511,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 //    return 0;
 //}
 
-static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *file, int txtFileChanged)
+static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *file, int txtFileChanged, u32 txtFileSize)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
     //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
@@ -577,7 +577,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
-        char indexNameBuffer[64];
+        char indexNameBuffer[256];
         while ((dirent = readdir(dir)) != NULL) {
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
@@ -635,6 +635,21 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     } else {
                         skipTxtScan = 0;
                     }
+
+                    // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
+                    if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
+                        skipTxtScan = 1;
+                        forceUpdateCache = 0;
+                        strcpy(game->indexName, (&cachedGInfo)->indexName);
+                        strcpy(game->transName, (&cachedGInfo)->transName);
+                        if (game->transName[0] != '\0') {
+                            strcpy(game->name, game->transName);
+                            sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
+                        } else {
+                            sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+                        }
+                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                    }
                 }
                 //strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 //game->name[NameLen] = '\0';
@@ -664,6 +679,21 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     }
                 } else {
                     skipTxtScan = 0;
+                }
+
+                // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
+                if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
+                    skipTxtScan = 1;
+                    forceUpdateCache = 0;
+                    strcpy(game->indexName, (&cachedGInfo)->indexName);
+                    strcpy(game->transName, (&cachedGInfo)->transName);
+                    if (game->transName[0] != '\0') {
+                        strcpy(game->name, game->transName);
+                        sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
+                    } else {
+                        sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+                    }
+                    fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
                 }
             } else {
                 // if (true)
@@ -914,6 +944,17 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     int count;
     char path[256];
 
+    // 获取mass设备的类型
+    char bdmHddTxtPath[256] = {0};
+    if (strncmp(prefix, "mass", 4) == 0) {
+        if (prefix[4] != '0') {
+            if (strcmp((*list)->bdmType, "ata") == 0) {
+                sprintf(bdmHddTxtPath, "%sGameListTranslator_BdmHdd.txt", prefix);
+                bdmHddTxtPath[4] = '0';
+            }
+        }      
+    }
+
     free(*list);
     *list = NULL;
     *fsize = -1;
@@ -932,7 +973,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     int txtFileChanged = 1;
     char txtPath[256];
     char binPath[256];
-    sprintf(txtPath, "%sGameListTranslator.txt", prefix);
+    if (bdmHddTxtPath[0] != '0') {
+        memcpy(txtPath, bdmHddTxtPath, sizeof(bdmHddTxtPath));
+    } else {
+        sprintf(txtPath, "%sGameListTranslator.txt", prefix);
+    }
     sprintf(binPath, "%stxtInfo.bin", prefix);
     FILE *file;
     FILE *binFile;
@@ -989,11 +1034,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
     // count iso games in "cd" directory
     snprintf(path, sizeof(path), "%sCD", prefix);
-    count = scanForISO(path, SCECdPS2CD, &dlist_head, file, txtFileChanged);
+    count = scanForISO(path, SCECdPS2CD, &dlist_head, file, txtFileChanged, curTxtFileSize);
 
     // count iso games in "dvd" directory
     snprintf(path, sizeof(path), "%sDVD", prefix);
-    if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, file, txtFileChanged)) >= 0) {
+    if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, file, txtFileChanged, curTxtFileSize)) >= 0) {
         count = count < 0 ? result : count + result;
     }
 

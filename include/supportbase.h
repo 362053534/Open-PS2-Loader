@@ -28,6 +28,7 @@ typedef struct
     char crc32name[9];
     char indexName[64];
     char transName[128];
+    char bdmType[32];
 } base_game_info_t;
 
 typedef struct
