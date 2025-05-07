@@ -600,7 +600,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                         } else {
                             sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
                         }
-                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                        if (file != NULL) {
+                            fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                        }
                     }
                 }
             } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
@@ -639,7 +641,9 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     } else {
                         sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
                     }
-                    fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                    if (file != NULL) {
+                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                    }
                 }
             } else {
 
@@ -801,24 +805,30 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug  打印txt路径
-    char debugFileDir[64];
-    strcpy(debugFileDir, "mass0:debug.txt");
-    FILE *debugFile = fopen(debugFileDir, "at+");
-    fprintf(debugFile, "%s\r\n\r\n", txtPath);
-    fclose(debugFile);
+    //char debugFileDir[64];
+    //strcpy(debugFileDir, "mass0:debug.txt");
+    //FILE *debugFile = fopen(debugFileDir, "at+");
+    //fprintf(debugFile, "%s\r\n\r\n", txtPath);
+    //fclose(debugFile);
 
     sprintf(binPath, "%stxtInfo.bin", prefix);
     FILE *file;
     FILE *binFile;
     binFile = fopen(binPath, "rb");
     file = fopen(txtPath, "ab+, ccs=UTF-8");
-    fseek(file, 0, SEEK_END);
 
     // 比对txt上次的修改时间与大小
     char curModiTime[6];
     char preModiTime[6];
-    u32 curTxtFileSize = ftell(file);
+    u32 curTxtFileSize;
     u32 preTxtFileSize;
+    if (file != NULL) {
+        fseek(file, 0, SEEK_END);
+        curTxtFileSize = ftell(file);
+    } else {
+        curTxtFileSize = 0;
+    }
+
     iox_stat_t fileStat;
     struct txt_info txtInfo = {{0}, 0};
     if (binFile != NULL) {
@@ -857,7 +867,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     //}
 
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
-    if (curTxtFileSize == 0) {
+    if (file != NULL && (curTxtFileSize == 0)) {
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
@@ -978,9 +988,13 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         *gamecount = count;
 
     // txt操作完毕后，将大小保存起来。
-    fseek(file, 0, SEEK_END);
-    (&txtInfo)->preTxtFileSize = ftell(file);
-    fclose(file);
+    if (file != NULL) {
+        fseek(file, 0, SEEK_END);
+        (&txtInfo)->preTxtFileSize = ftell(file);
+        fclose(file);
+    } else {
+        (&txtInfo)->preTxtFileSize = 0;
+    }
 
     // txt操作完毕后，将时间保存起来。
     if (fileXioGetStat(txtPath, &fileStat) >= 0) {
