@@ -527,7 +527,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     // debug 文件
     //char debugFileDir[64];
     //snprintf(debugFileDir, 256, "%s%cdebug.txt", path, path[0] == 's' ? '\\' : '/');
-    //FILE *debugFile = fopen(debugFileDir, "ab");
+    //FILE *debugFile = fopen(debugFileDir, "ab+");
 
     int cacheLoaded = loadISOGameListCache(path, &cache) == 0;
     int skipTxtScan = 0;
@@ -788,7 +788,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     // debug 文件
     //char debugFileDir[64];
     //snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
-    //FILE *debugFile = fopen(debugFileDir, "ab");
+    //FILE *debugFile = fopen(debugFileDir, "ab+");
 
     // 创建txt文件
     int txtFileChanged = 1;
@@ -801,11 +801,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     }
 
     // debug  打印txt路径
-    //char debugFileDir[64];
-    //strcpy(debugFileDir, "mass0:debug.txt");
-    //FILE *debugFile = fopen(debugFileDir, "ab");
-    //fprintf(debugFile, "%s\r\n\r\n", txtPath);
-    //fclose(debugFile);
+    char debugFileDir[64];
+    strcpy(debugFileDir, "mass0:debug.txt");
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    fprintf(debugFile, "%s\r\n\r\n", txtPath);
+    fclose(debugFile);
 
     sprintf(binPath, "%stxtInfo.bin", prefix);
     FILE *file;
