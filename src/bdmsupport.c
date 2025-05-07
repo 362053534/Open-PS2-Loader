@@ -255,7 +255,7 @@ static int bdmUpdateGameList(item_list_t *itemList)
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
     // 把bdm设备类型保存下来，传递到读取列表的函数里
-    sprintf(pDeviceData->bdmGames->bdmType, pDeviceData->bdmDriver);
+    strcpy(pDeviceData->bdmGames->bdmType, pDeviceData->bdmDriver);
 
     sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
     return pDeviceData->bdmGameCount;
