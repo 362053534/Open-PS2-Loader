@@ -780,8 +780,9 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         }
         // debug  在smb里打印mass路径
         char debugFileDir[64];
-        strcpy(debugFileDir, "smb0:debug.txt");
-        FILE *debugFile = fopen(debugFileDir, "at+");
+        //strcpy(debugFileDir, "smb0:debug.txt");
+        sprintf(debugFileDir, "%sdebug.txt", prefix);
+        FILE *debugFile = fopen(debugFileDir, "ab+");
         char bdmType[32];
         sprintf(bdmType, "%s/", prefix);
         int massDir = fileXioDopen(bdmType);
