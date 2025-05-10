@@ -786,7 +786,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                 if (strncmp(bdmType, "ata", 3) == 0) {
                     strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
 
-                    // 检测是否同时存在两个txt，只保留U盘里的txt
+                    // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
                     char curTxtPath[256];
                     sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
                     FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
@@ -794,19 +794,22 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                     if ((bdmTxt == NULL) && (curTxt != NULL)) {
                         bdmTxt = fopen(bdmHddTxtPath, "wb");
                         if ((bdmTxt != NULL) && (curTxt != NULL)) {
-                            char buf[2048];
-                            size_t n;
+                            fseek(curTxt, 0, SEEK_END);
+                            u32 curTxtFileSize = ftell(curTxt);
                             rewind(curTxt);
-                            while ((n = fread(buf, 2048, 1, curTxt)) > 0) {
-                                if (fwrite(buf, n, 1, bdmTxt) != n)
-                                    break;
+                            char *buf = malloc(curTxtFileSize * sizeof(char));
+                            if (buf != NULL) {
+                                fread(buf, curTxtFileSize, 1, curTxt);
+                                fwrite(buf, curTxtFileSize, 1, bdmTxt);
+                                free(buf);
+                                fclose(bdmTxt);
+                                fclose(curTxt);
+                                remove(curTxtPath);
                             }
-                            fclose(bdmTxt);
-                            fclose(curTxt);
-                            remove(curTxtPath);
                         } else {
                             fclose(curTxt);
                         }
+                    // 检测是否同时存在两个txt，只保留U盘里的txt
                     } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
                         fclose(bdmTxt);
                         fclose(curTxt);
@@ -936,11 +939,15 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     if (file != NULL) {
         rewind(file);
         char *buf = malloc(curTxtFileSize * sizeof(char));
-        FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
-        fread(buf, curTxtFileSize, 1, file);
-        fwrite(buf, curTxtFileSize, 1, copyFile);
-        free(buf);
-        fclose(copyFile);
+        if (buf != NULL) {
+            FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
+            if (copyFile != NULL) {
+                fread(buf, curTxtFileSize, 1, file);
+                fwrite(buf, curTxtFileSize, 1, copyFile);
+                free(buf);
+                fclose(copyFile);
+            }
+        }
     }
 
     // debug
