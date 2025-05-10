@@ -123,6 +123,7 @@ extern int bdmCacheSize;
 extern int hddCacheSize;
 extern int smbCacheSize;
 
+extern int gEnableUSB;
 extern int gEnableILK;
 extern int gEnableMX4SIO;
 extern int gEnableBdmHDD;
