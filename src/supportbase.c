@@ -935,7 +935,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     // debug 测试复制功能
     if (file != NULL) {
         rewind(file);
-        char *buf
+        char *buf;
         FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
         fread(buf, curTxtFileSize, 1, file);
         fwrite(buf, curTxtFileSize, 1, copyFile);
