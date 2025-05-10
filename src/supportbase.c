@@ -935,20 +935,20 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         txtFileChanged = 1;
     }
 
-    // debug 测试复制功能
-    if (file != NULL) {
-        rewind(file);
-        char *buf = malloc(curTxtFileSize * sizeof(char));
-        if (buf != NULL) {
-            FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
-            if (copyFile != NULL) {
-                fread(buf, curTxtFileSize, 1, file);
-                fwrite(buf, curTxtFileSize, 1, copyFile);
-                free(buf);
-                fclose(copyFile);
-            }
-        }
-    }
+    //// debug 测试复制功能
+    //if (file != NULL) {
+    //    rewind(file);
+    //    char *buf = malloc(curTxtFileSize * sizeof(char));
+    //    if (buf != NULL) {
+    //        FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
+    //        if (copyFile != NULL) {
+    //            fread(buf, curTxtFileSize, 1, file);
+    //            fwrite(buf, curTxtFileSize, 1, copyFile);
+    //            free(buf);
+    //            fclose(copyFile);
+    //        }
+    //    }
+    //}
 
     // debug
     //fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
