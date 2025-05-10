@@ -441,8 +441,8 @@ static void guiShowBlockDeviceConfig(void)
 {
     int ret;
 
+    diaSetEnabled(diaBlockDevicesConfig, CFG_ENABLEUSB, !gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
-    diaSetEnabled(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableBdmHDD);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
     diaSetEnabled(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, !gHDDStartMode);
