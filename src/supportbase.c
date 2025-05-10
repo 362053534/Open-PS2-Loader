@@ -762,10 +762,21 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     char path[256];
 
     // 将bdm hdd的txt优先在U盘进行读写
+    static int usbFound = 0;
     char bdmHddTxtPath[256];
     bdmHddTxtPath[0] = '0';
     if (strncmp(prefix, "mass", 4) == 0) {
-        if (prefix[4] != '0') {
+        if (prefix[4] == '0') {
+            char bdmType[32];
+            sprintf(bdmType, "%s/", prefix);
+            int massDir = fileXioDopen(bdmType);
+            if (massDir >= 0) {
+                fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
+                if (strncmp(bdmType, "usb", 3) == 0) {
+                    usbFound = 1;
+                }
+            }
+        } else if (usbFound && prefix[4] != '0') {
             // 如果插了U盘，那么寻找bdm hdd硬盘
             char bdmType[32];
             sprintf(bdmType, "%s/", prefix);
@@ -774,27 +785,54 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                 fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
                 if (strncmp(bdmType, "ata", 3) == 0) {
                     strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
+
+                    // 检测是否同时存在两个txt，只保留U盘里的txt
+                    char curTxtPath[256];
+                    sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
+                    FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
+                    FILE *curTxt = fopen(curTxtPath, "rb");
+                    if ((bdmTxt == NULL) && (curTxt != NULL)) {
+                        bdmTxt = fopen(bdmHddTxtPath, "wb");
+                        if ((bdmTxt != NULL) && (curTxt != NULL)) {
+                            char buf[2048];
+                            size_t n;
+                            while ((n = fread(buf, 2048, 1, curTxt)) > 0) {
+                                if (fwrite(buf, n, 1, bdmTxt) != n)
+                                    break;
+                            }
+                            fclose(bdmTxt);
+                            fclose(curTxt);
+                            remove(curTxtPath);
+                        }
+                    } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
+                        fclose(bdmTxt);
+                        fclose(curTxt);
+                        remove(curTxtPath);
+                    } else {
+                        if (bdmTxt != NULL) {
+                            fclose(bdmTxt);
+                        }
+                    }
                 }
                 fileXioDclose(massDir);
             }
         }
-        // debug  在smb里打印mass路径
-        char debugFileDir[64];
-        //strcpy(debugFileDir, "smb0:debug.txt");
-        sprintf(debugFileDir, "%sdebug.txt", prefix);
-        FILE *debugFile = fopen(debugFileDir, "ab+");
-        char bdmType[32];
-        sprintf(bdmType, "%s/", prefix);
-        int massDir = fileXioDopen(bdmType);
-        if (massDir >= 0) {
-            fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
-            if (debugFile != NULL) {
-                fprintf(debugFile, "%s%s\r\n", prefix, bdmType);
-                fclose(debugFile);
-            }
-            fileXioDclose(massDir);
-        }
-
+        //// debug  打印mass路径
+        //char debugFileDir[64];
+        ////strcpy(debugFileDir, "smb0:debug.txt");
+        //sprintf(debugFileDir, "%sdebug.txt", prefix);
+        //FILE *debugFile = fopen(debugFileDir, "ab+");
+        //char bdmType[32];
+        //sprintf(bdmType, "%s/", prefix);
+        //int massDir = fileXioDopen(bdmType);
+        //if (massDir >= 0) {
+        //    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
+        //    if (debugFile != NULL) {
+        //        fprintf(debugFile, "%s%s\r\n", prefix, bdmType);
+        //        fclose(debugFile);
+        //    }
+        //    fileXioDclose(massDir);
+        //}
     }
 
     free(*list);
@@ -889,6 +927,18 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
         txtFileChanged = 1;
+    }
+
+    // debug 测试复制功能
+    if (file != NULL) {
+        char buf[2048];
+        FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
+        size_t n;
+        while ((n = fread(buf, 2048, 1, file)) > 0) {
+            if (fwrite(buf, n, 1, copyFile) != n)
+                break;
+        }
+        fclose(copyFile);
     }
 
     // debug
