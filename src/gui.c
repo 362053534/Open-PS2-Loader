@@ -543,23 +543,11 @@ void guiShowConfig()
     diaSetInt(diaConfig, CFG_AUTOSTARTLAST, gAutoStartLastPlayed);
     diaSetVisible(diaConfig, CFG_AUTOSTARTLAST, gRememberLastPlayed);
     diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, gRememberLastPlayed);
-
-    //// 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
-    //if (gEnableBdmHDD) {
-    //    if (gDefaultDevice == HDD_MODE) {
-    //        gDefaultDevice = BDM_MODE;
-    //    }
-    //}
     int deviceModeIndex = guiIoModeToDeviceType(gDefaultDevice);
     diaSetInt(diaConfig, CFG_DEFDEVICE, deviceModeIndex);
     diaSetInt(diaConfig, CFG_BDMMODE, gBDMStartMode);
     diaSetVisible(diaConfig, BLOCKDEVICE_BUTTON, gBDMStartMode);
     diaSetEnabled(diaConfig, CFG_HDDMODE, !gEnableBdmHDD);
-
-    //// 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
-    //if (gEnableBdmHDD) {
-    //    gHDDStartMode = START_MODE_DISABLED;
-    //}
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
@@ -578,17 +566,6 @@ void guiShowConfig()
         diaGetInt(diaConfig, CFG_AUTOSTARTLAST, &gAutoStartLastPlayed);
         DisableCron = 1; // Disable Auto Start Last Played counter (we don't want to call it right after enable it on GUI)
         diaGetInt(diaConfig, CFG_DEFDEVICE, &deviceModeIndex);
-
-        //// 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
-        //if (gEnableBdmHDD) {
-        //    if (gDefaultDevice == HDD_MODE) {
-        //        gDefaultDevice = BDM_MODE;
-        //    }
-        //    gHDDStartMode = START_MODE_DISABLED;
-        //} else {
-        //    gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
-        //    diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
-        //}
         gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
         diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);

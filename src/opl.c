@@ -402,9 +402,10 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         }
     }
 
-    if (gETHStartMode != START_MODE_DISABLED) {
-        gETHStartMode = START_MODE_DISABLED;
-    } 
+    //// debug 
+    //if (gETHStartMode != START_MODE_DISABLED) {
+    //    gETHStartMode = START_MODE_DISABLED;
+    //} 
 
     // Set the start mode flag based on device type.
     int startMode = 0;

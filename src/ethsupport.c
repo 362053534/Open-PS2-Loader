@@ -428,7 +428,7 @@ void ethInit(item_list_t *itemList)
         ioPutRequest(IO_CUSTOM_SIMPLEACTION, &ethInitSMB);
     } else {
         LOG("ETHSUPPORT Init\n");
-        ethBase = "smb0:";
+        ethBase = "smb:";
         ethULSizePrev = -2;
         ethModifiedCDPrev = 0;
         ethModifiedDVDPrev = 0;

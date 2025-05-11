@@ -388,16 +388,16 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         }
     }
 
-    // 修复SMB加载APP卡死问题
-    const char *smbOldPrefix = "smb:";
-    const char *smbNewPrefix = "smb0:";
-    if (strncmp(filename, smbOldPrefix, strlen(smbOldPrefix)) == 0) {
-        size_t oldPrefixLen = strlen(smbOldPrefix);
-        size_t newPrefixLen = strlen(smbNewPrefix);
-        memmove(filename + newPrefixLen, filename + oldPrefixLen, strlen(filename) - oldPrefixLen + 1);
+    //// 修复SMB加载APP卡死问题
+    //const char *smbOldPrefix = "smb:";
+    //const char *smbNewPrefix = "smb0:";
+    //if (strncmp(filename, smbOldPrefix, strlen(smbOldPrefix)) == 0) {
+    //    size_t oldPrefixLen = strlen(smbOldPrefix);
+    //    size_t newPrefixLen = strlen(smbNewPrefix);
+    //    memmove(filename + newPrefixLen, filename + oldPrefixLen, strlen(filename) - oldPrefixLen + 1);
 
-        memcpy(filename, smbNewPrefix, newPrefixLen);
-    }
+    //    memcpy(filename, smbNewPrefix, newPrefixLen);
+    //}
 
 
     fd = open(filename, O_RDONLY);
