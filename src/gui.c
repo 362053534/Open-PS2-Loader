@@ -562,7 +562,7 @@ void guiShowConfig()
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
 
     if (gETHStartMode == START_MODE_AUTO) {
-        gETHStartMode = START_MODE_DISABLED
+        gETHStartMode = START_MODE_DISABLED;
     }
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
