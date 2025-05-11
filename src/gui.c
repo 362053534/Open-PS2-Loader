@@ -442,10 +442,10 @@ static void guiShowBlockDeviceConfig(void)
     int ret;
 
     //diaSetEnabled(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
-    // 如果BDM设备一个都没开，那么USB会强行开启，保证兼容性
-    if (!gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) {
-        gEnableUSB = 1;
-    }
+    //// 如果BDM设备一个都没开，那么USB会强行开启，保证兼容性
+    //if (!gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) {
+    //    gEnableUSB = 1;
+    //}
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
@@ -557,9 +557,13 @@ void guiShowConfig()
 
     // 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
     if (gEnableBdmHDD) {
-        gHDDStartMode = 0;
+        gHDDStartMode = START_MODE_DISABLED;
     }
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
+
+    if (gETHStartMode == START_MODE_AUTO) {
+        gETHStartMode = START_MODE_DISABLED
+    }
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
 
