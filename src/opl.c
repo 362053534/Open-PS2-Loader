@@ -935,7 +935,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_AUTOSTART_LAST, &gAutoStartLastPlayed);
             configGetInt(configOPL, CONFIG_OPL_BDM_MODE, &gBDMStartMode);
             configGetInt(configOPL, CONFIG_OPL_HDD_MODE, &gHDDStartMode);
-            if (gETHStartMode == START_MODE_AUTO) {
+            if (gETHStartMode != START_MODE_DISABLED) {
                 gETHStartMode = START_MODE_DISABLED;
             } else {
                 configGetInt(configOPL, CONFIG_OPL_ETH_MODE, &gETHStartMode);
@@ -1097,6 +1097,9 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_AUTOSTART_LAST, gAutoStartLastPlayed);
         configSetInt(configOPL, CONFIG_OPL_BDM_MODE, gBDMStartMode);
         configSetInt(configOPL, CONFIG_OPL_HDD_MODE, gHDDStartMode);
+        if (gETHStartMode != START_MODE_DISABLED) {
+            gETHStartMode = START_MODE_DISABLED;
+        } 
         configSetInt(configOPL, CONFIG_OPL_ETH_MODE, gETHStartMode);
         configSetInt(configOPL, CONFIG_OPL_APP_MODE, gAPPStartMode);
         configSetInt(configOPL, CONFIG_OPL_BDM_CACHE, bdmCacheSize);
