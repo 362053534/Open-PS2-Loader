@@ -78,9 +78,9 @@ static void bdmLoadBlockDeviceModules(void)
     WaitSema(bdmLoadModuleLock);
 
     if (gEnableUSB && !usbModLoaded) {
-        // Load FATFS (mass:) driver
-        LOG("[BDMFS_FATFS]:\n");
-        sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL);
+        //// Load FATFS (mass:) driver
+        //LOG("[BDMFS_FATFS]:\n");
+        //sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL);
 
         // Load USB Block Device drivers
         LOG("[USBD]:\n");
@@ -845,8 +845,13 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
         // Make the menu item visible.
         if (itemList->owner != NULL) {
-            LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
-            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+            // 如果BDM里的USB关了，就隐藏USB游戏列表
+            if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+            } else {
+                LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+            }
         }
 
         // Close the device handle.
