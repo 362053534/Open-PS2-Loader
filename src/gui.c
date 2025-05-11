@@ -560,10 +560,6 @@ void guiShowConfig()
         gHDDStartMode = START_MODE_DISABLED;
     }
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
-
-    if (gETHStartMode == START_MODE_AUTO) {
-        gETHStartMode = START_MODE_DISABLED;
-    }
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
 
@@ -593,7 +589,10 @@ void guiShowConfig()
             diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         }
 
-        diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
+            if (gETHStartMode == START_MODE_AUTO) {
+            gETHStartMode = START_MODE_DISABLED;
+        }
+        //diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
         diaGetInt(diaConfig, CFG_BDMCACHE, &bdmCacheSize);
         diaGetInt(diaConfig, CFG_HDDCACHE, &hddCacheSize);
