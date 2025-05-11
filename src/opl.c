@@ -935,7 +935,11 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_AUTOSTART_LAST, &gAutoStartLastPlayed);
             configGetInt(configOPL, CONFIG_OPL_BDM_MODE, &gBDMStartMode);
             configGetInt(configOPL, CONFIG_OPL_HDD_MODE, &gHDDStartMode);
-            configGetInt(configOPL, CONFIG_OPL_ETH_MODE, &gETHStartMode);
+            if (gETHStartMode == START_MODE_AUTO) {
+                gETHStartMode = START_MODE_DISABLED;
+            } else {
+                configGetInt(configOPL, CONFIG_OPL_ETH_MODE, &gETHStartMode);
+            }
             configGetInt(configOPL, CONFIG_OPL_APP_MODE, &gAPPStartMode);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_USB, &gEnableUSB);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, &gEnableILK);

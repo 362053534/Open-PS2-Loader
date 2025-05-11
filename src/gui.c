@@ -454,12 +454,13 @@ static void guiShowBlockDeviceConfig(void)
 
     ret = diaExecuteDialog(diaBlockDevicesConfig, -1, 1, NULL);
     if (ret) {
-        // 如果BDM设备一个都没开，那么USB会强行开启，保证兼容性
-        if (!gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) {
-            gEnableUSB = 1;
-        } else {
-            diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
-        }
+        //// 如果BDM设备一个都没开，那么USB会强行开启，保证兼容性
+        //if (!gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) {
+        //    gEnableUSB = 1;
+        //} else {
+        //    diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
+        //}
+        diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
@@ -578,17 +579,18 @@ void guiShowConfig()
         DisableCron = 1; // Disable Auto Start Last Played counter (we don't want to call it right after enable it on GUI)
         diaGetInt(diaConfig, CFG_DEFDEVICE, &deviceModeIndex);
 
-        // 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
-        if (gEnableBdmHDD) {
-            if (gDefaultDevice == HDD_MODE) {
-                gDefaultDevice = BDM_MODE;
-            }
-            gHDDStartMode = START_MODE_DISABLED;
-        } else {
-            gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
-            diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
-        }
-
+        //// 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
+        //if (gEnableBdmHDD) {
+        //    if (gDefaultDevice == HDD_MODE) {
+        //        gDefaultDevice = BDM_MODE;
+        //    }
+        //    gHDDStartMode = START_MODE_DISABLED;
+        //} else {
+        //    gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
+        //    diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
+        //}
+        gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
+        diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
         diaGetInt(diaConfig, CFG_BDMCACHE, &bdmCacheSize);
