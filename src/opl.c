@@ -392,6 +392,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 {
     opl_io_module_t *mod = &list_support[mode];
 
+    if (gETHStartMode != START_MODE_DISABLED) {
+        gETHStartMode = START_MODE_DISABLED;
+    }
     // Set the start mode flag based on device type.
     int startMode = 0;
     if (mode >= BDM_MODE && mode < ETH_MODE)
