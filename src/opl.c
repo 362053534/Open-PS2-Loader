@@ -392,9 +392,20 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 {
     opl_io_module_t *mod = &list_support[mode];
 
+    // 解决HDD和BDMHDD的冲突问题
+    if (gEnableBdmHDD) {
+        if (gDefaultDevice == HDD_MODE) {
+            gDefaultDevice = BDM_MODE;
+        }
+        if (gHDDStartMode != START_MODE_DISABLED) {
+            gHDDStartMode = START_MODE_DISABLED;
+        }
+    }
+
     if (gETHStartMode != START_MODE_DISABLED) {
         gETHStartMode = START_MODE_DISABLED;
-    }
+    } 
+
     // Set the start mode flag based on device type.
     int startMode = 0;
     if (mode >= BDM_MODE && mode < ETH_MODE)
@@ -938,11 +949,12 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_AUTOSTART_LAST, &gAutoStartLastPlayed);
             configGetInt(configOPL, CONFIG_OPL_BDM_MODE, &gBDMStartMode);
             configGetInt(configOPL, CONFIG_OPL_HDD_MODE, &gHDDStartMode);
-            if (gETHStartMode != START_MODE_DISABLED) {
-                gETHStartMode = START_MODE_DISABLED;
-            } else {
-                configGetInt(configOPL, CONFIG_OPL_ETH_MODE, &gETHStartMode);
-            }
+            //if (gETHStartMode != START_MODE_DISABLED) {
+            //    gETHStartMode = START_MODE_DISABLED;
+            //} else {
+            //    configGetInt(configOPL, CONFIG_OPL_ETH_MODE, &gETHStartMode);
+            //}
+            configGetInt(configOPL, CONFIG_OPL_ETH_MODE, &gETHStartMode);
             configGetInt(configOPL, CONFIG_OPL_APP_MODE, &gAPPStartMode);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_USB, &gEnableUSB);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, &gEnableILK);
@@ -1100,9 +1112,9 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_AUTOSTART_LAST, gAutoStartLastPlayed);
         configSetInt(configOPL, CONFIG_OPL_BDM_MODE, gBDMStartMode);
         configSetInt(configOPL, CONFIG_OPL_HDD_MODE, gHDDStartMode);
-        if (gETHStartMode != START_MODE_DISABLED) {
-            gETHStartMode = START_MODE_DISABLED;
-        } 
+        //if (gETHStartMode != START_MODE_DISABLED) {
+        //    gETHStartMode = START_MODE_DISABLED;
+        //} 
         configSetInt(configOPL, CONFIG_OPL_ETH_MODE, gETHStartMode);
         configSetInt(configOPL, CONFIG_OPL_APP_MODE, gAPPStartMode);
         configSetInt(configOPL, CONFIG_OPL_BDM_CACHE, bdmCacheSize);
