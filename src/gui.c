@@ -543,22 +543,22 @@ void guiShowConfig()
     diaSetVisible(diaConfig, CFG_AUTOSTARTLAST, gRememberLastPlayed);
     diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, gRememberLastPlayed);
 
-    // 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
-    if (gEnableBdmHDD) {
-        if (gDefaultDevice == HDD_MODE) {
-            gDefaultDevice = BDM_MODE;
-        }
-    }
+    //// 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
+    //if (gEnableBdmHDD) {
+    //    if (gDefaultDevice == HDD_MODE) {
+    //        gDefaultDevice = BDM_MODE;
+    //    }
+    //}
     int deviceModeIndex = guiIoModeToDeviceType(gDefaultDevice);
     diaSetInt(diaConfig, CFG_DEFDEVICE, deviceModeIndex);
     diaSetInt(diaConfig, CFG_BDMMODE, gBDMStartMode);
     diaSetVisible(diaConfig, BLOCKDEVICE_BUTTON, gBDMStartMode);
     diaSetEnabled(diaConfig, CFG_HDDMODE, !gEnableBdmHDD);
 
-    // 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
-    if (gEnableBdmHDD) {
-        gHDDStartMode = START_MODE_DISABLED;
-    }
+    //// 修复BDMHDD和HDD，默认选单和启动模式冲突，导致游戏启动卡死的问题
+    //if (gEnableBdmHDD) {
+    //    gHDDStartMode = START_MODE_DISABLED;
+    //}
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
@@ -589,10 +589,7 @@ void guiShowConfig()
             diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         }
 
-            if (gETHStartMode == START_MODE_AUTO) {
-            gETHStartMode = START_MODE_DISABLED;
-        }
-        //diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
+        diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
         diaGetInt(diaConfig, CFG_BDMCACHE, &bdmCacheSize);
         diaGetInt(diaConfig, CFG_HDDCACHE, &hddCacheSize);
