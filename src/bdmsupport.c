@@ -707,6 +707,20 @@ void bdmInitSemaphore()
 
 void bdmInitDevicesData()
 {
+    // 检测是否已插入U盘，且关闭了U盘游戏列表
+    int usbOff = 0;
+    char usbPath[16] = {0};
+    char bdmDriver[16] = {0};
+    strcpy(usbPath, "mass0:/");
+    int dir = fileXioDopen(usbPath);
+    if (dir >= 0) {
+        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
+        if ((strncmp(bdmDriver, "usb", 3) == 0) && !gEnableUSB) {
+            usbOff = 1;
+        }
+        fileXioDclose(dir);
+    }
+
     // If the device list hasn't been initialized do it now.
     if (bdmDeviceListInitialized == 0) {
         bdmDeviceListInitialized = 1;
@@ -740,15 +754,33 @@ void bdmInitDevicesData()
                 // If BDM has already been started then make the page invisible and reset the bdm tick counter so visibility status is refreshed
                 // according to device state.
                 if (bdmDeviceModeStarted == 1) {
+                    // 如果BDM里的USB关了，就隐藏USB游戏列表
+                    if ((i == 0) && usbOff) {
+                        pOwner->menuItem.visible = 0;
+                    } else {
+                        pOwner->menuItem.visible = 0;
+                        ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
+                    }
+                } else {
+                    if (i == 0) {
+                        // 如果BDM里的USB关了，就隐藏USB游戏列表
+                        if (usbOff) {
+                            pOwner->menuItem.visible = 0;
+                        } else {
+                            pOwner->menuItem.visible = 1;
+                        }
+                    } else {
+                        pOwner->menuItem.visible = 0;
+                    }
+            } else if (gBDMStartMode == START_MODE_AUTO) {
+                // 如果BDM里的USB关了，就隐藏USB游戏列表
+                if ((i == 0) && usbOff) {
+                    pOwner->menuItem.visible = 0;
+                } else {
                     pOwner->menuItem.visible = 0;
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-                } else
-                    pOwner->menuItem.visible = (i == 0 ? 1 : 0);
-            } else if (gBDMStartMode == START_MODE_AUTO) {
-                pOwner->menuItem.visible = 0;
-                ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
+                }
             }
-
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
         }
     }
