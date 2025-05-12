@@ -772,6 +772,7 @@ void bdmInitDevicesData()
                     } else {
                         pOwner->menuItem.visible = 0;
                     }
+                }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 // 如果BDM里的USB关了，就隐藏USB游戏列表
                 if ((i == 0) && usbOff) {
