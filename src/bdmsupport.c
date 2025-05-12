@@ -709,8 +709,8 @@ void bdmInitDevicesData()
 {
     // 检测是否已插入U盘，且关闭了U盘游戏列表
     int usbOff = 0;
-    char usbPath[16] = {0};
-    char bdmDriver[16] = {0};
+    char usbPath[16];
+    char bdmDriver[32];
     strcpy(usbPath, "mass0:/");
     int dir = fileXioDopen(usbPath);
     if (dir >= 0) {
@@ -719,6 +719,15 @@ void bdmInitDevicesData()
             usbOff = 1;
         }
         fileXioDclose(dir);
+    }
+
+    // debug 关掉usb游戏列表
+    char debugFileDir[64];
+    strcpy(debugFileDir, "smb:debugUSB.txt");
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        fprintf(debugFile, "usbOff：%s   bdmDriver：%s\r\n", usbOff, bdmDriver);
+        fclose(debugFile);
     }
 
     // If the device list hasn't been initialized do it now.
@@ -779,7 +788,7 @@ void bdmInitDevicesData()
                     pOwner->menuItem.visible = 0;
                 } else {
                     pOwner->menuItem.visible = 0;
-                    //((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
+                    ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 }
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
