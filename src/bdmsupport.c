@@ -779,7 +779,7 @@ void bdmInitDevicesData()
                     pOwner->menuItem.visible = 0;
                 } else {
                     pOwner->menuItem.visible = 0;
-                    ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
+                    //((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 }
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
