@@ -707,7 +707,6 @@ void bdmInitSemaphore()
 
 void bdmInitDevicesData()
 {
-    return;
     // 检测是否已插入U盘，且关闭了U盘游戏列表
     int usbOff = 0;
     char usbPath[16];
@@ -724,7 +723,7 @@ void bdmInitDevicesData()
 
     // debug 关掉usb游戏列表
     char debugFileDir[64];
-    strcpy(debugFileDir, "smb:debugUSB.txt");
+    strcpy(debugFileDir, "smb0:debugUSB.txt");
     FILE *debugFile = fopen(debugFileDir, "ab+");
     if (debugFile != NULL) {
         fprintf(debugFile, "usbOff：%s   bdmDriver：%s\r\n", usbOff, bdmDriver);
@@ -785,7 +784,7 @@ void bdmInitDevicesData()
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 // 如果BDM里的USB关了，就隐藏USB游戏列表
-                if ((i == 0) && usbOff) {
+                if ((i == 1) && usbOff) {
                     pOwner->menuItem.visible = 0;
                 } else {
                     pOwner->menuItem.visible = 0;
