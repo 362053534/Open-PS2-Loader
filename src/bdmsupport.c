@@ -707,6 +707,7 @@ void bdmInitSemaphore()
 
 void bdmInitDevicesData()
 {
+    return;
     // 检测是否已插入U盘，且关闭了U盘游戏列表
     int usbOff = 0;
     char usbPath[16];
