@@ -275,6 +275,9 @@ static void itemExecSelect(struct menu_item *curMenu)
             if (support->mode == BDM_MODE) {
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
+                    if (i == 0) {
+                        continue;
+                    }
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
@@ -463,6 +466,9 @@ static void initAllSupport(int force_reinit)
 static void deinitAllSupport(int exception, int modeSelected)
 {
     for (int i = 0; i < MODE_COUNT; i++) {
+        if (i == 0) {
+            continue;
+        }
         if (list_support[i].support != NULL)
             moduleCleanup(&list_support[i], exception, modeSelected);
     }
@@ -759,6 +765,9 @@ static void menuUpdateHook()
     // schedule updates of all the list handlers
     if (gAutoRefresh) {
         for (i = 0; i < MODE_COUNT; i++) {
+            if (i == 0) {
+                continue;
+            }
             if ((list_support[i].support && list_support[i].support->enabled) && ((list_support[i].support->updateDelay > 0) && (frameCounter % list_support[i].support->updateDelay == 0)))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
@@ -767,6 +776,9 @@ static void menuUpdateHook()
     // Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
     if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
         for (i = 0; i < MODE_COUNT; i++) {
+            if (i == 0) {
+                continue;
+            }
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
@@ -1217,6 +1229,9 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
         initAllSupport(0);
 
         for (int i = 0; i < MODE_COUNT; i++) {
+            if (i == 0) {
+                continue;
+            }
             if (list_support[i].support == NULL)
                 continue;
 
@@ -1225,6 +1240,9 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
     } else {
         if (changed) {
             for (int i = 0; i < MODE_COUNT; i++) {
+                if (i == 0) {
+                    continue;
+                }
                 if (list_support[i].support && list_support[i].subMenu)
                     submenuRebuildCache(list_support[i].subMenu);
             }
