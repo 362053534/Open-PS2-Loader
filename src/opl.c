@@ -419,6 +419,12 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         startMode = gAPPStartMode;
 
     if (startMode) {
+        if (!mod->support) {
+            mod->support = itemList;
+            mod->support->owner = mod;
+            initMenuForListSupport(mod);
+        }
+
         // usb关闭时，不显示U盘游戏列表
         if ((mode == 0) && !gEnableUSB) {
             int dir = fileXioDopen("mass0:/");
@@ -432,12 +438,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 }
                 fileXioDclose(dir);
             }
-        }
-
-        if (!mod->support) {
-            mod->support = itemList;
-            mod->support->owner = mod;
-            initMenuForListSupport(mod);
         }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
