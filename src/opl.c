@@ -421,8 +421,11 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
     if (startMode) {
         // 当usb关闭时，不显示usb游戏列表
         if ((mode == BDM_MODE) && !gEnableUSB) {
-            mod->menuItem.visible = 0;
-            return;
+            bdm_device_data_t *pDeviceData = itemList->priv;
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB;) {
+                mod->menuItem.visible = 0;
+                return;
+            }
         }
 
         if (!mod->support) {
