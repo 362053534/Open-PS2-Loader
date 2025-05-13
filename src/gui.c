@@ -1566,6 +1566,7 @@ void guiIntroLoop(void)
         if (!screenHandlerTarget && screenHandler)
             screenHandler->handleInput();
     }
+    refreshMenuPos();
 }
 
 void guiMainLoop(void)
@@ -1606,9 +1607,6 @@ void guiMainLoop(void)
 
         if (gFrameHook)
             gFrameHook();
-
-
-        refreshMenuPos();
     }
 }
 
