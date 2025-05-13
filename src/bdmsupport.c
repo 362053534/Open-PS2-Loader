@@ -751,8 +751,10 @@ void bdmInitDevicesData()
     // Refresh the visibility of the menu.
     for (int i = 0; i < MAX_BDM_DEVICES; i++) {
         // Register the device structure into the UI.
+        bdmUpdateDeviceData(&bdmDeviceList[i]);
         initSupport(&bdmDeviceList[i], i, 0);
-
+        bdmUpdateDeviceData(&bdmDeviceList[i]);
+        return;
         // If bdm support is set to auto then make the page invisible and reset the bdm tick counter, when a bdm device is mounted it will dynamically be made visible.
         // If bdm support is set to manual then only make the first page visible.
         if (bdmDeviceList[i].owner != NULL) {
@@ -798,8 +800,6 @@ void bdmInitDevicesData()
                 //}
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
-
-            bdmUpdateDeviceData(&bdmDeviceList[i]);
         }
     }
 }
