@@ -1534,7 +1534,7 @@ void guiIntroLoop(void)
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
     clock_t tFadeDelayEnd = 0;
     int menuPosAdjusted = 0;
-
+    refreshMenuPos();
     while (!endIntro) {
         guiStartFrame();
 
@@ -1554,10 +1554,10 @@ void guiIntroLoop(void)
 
         if (gInitComplete && clock() >= tFadeDelayEnd)
         {
-            if (!menuPosAdjusted) {
-                refreshMenuPos();
-                menuPosAdjusted = 1;
-            }
+            //if (!menuPosAdjusted) {
+            //    refreshMenuPos();
+            //    menuPosAdjusted = 1;
+            //}
             greetingAlpha -= 2;
         }
 
