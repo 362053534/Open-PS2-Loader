@@ -273,17 +273,8 @@ static void itemExecSelect(struct menu_item *curMenu)
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
-                return;
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
-                    if (i == 0) {
-                        curMenu->visible = 0;
-                        opl_io_module_t *mod;
-                        mod->support = NULL;
-                        mod = NULL;
-                        itemInitSupport(mod->support);
-                        continue;
-                    }
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }

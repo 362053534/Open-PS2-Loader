@@ -192,8 +192,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
         int deviceEnabled = 0;
         switch (pDeviceData->bdmDeviceType) {
             case BDM_TYPE_USB:
-                deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
-                //deviceEnabled = gEnableUSB;
+                //deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
+                deviceEnabled = gEnableUSB;
                 break;
             case BDM_TYPE_ILINK:
                 deviceEnabled = gEnableILK;
@@ -798,6 +798,8 @@ void bdmInitDevicesData()
                 //}
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
+
+            bdmUpdateDeviceData(&bdmDeviceList[i]);
         }
     }
 }
@@ -918,7 +920,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     }
 
     // No change to the device state detected.
-    if (dir >= 0)
+    if (dir >= 0) {
+        if (itemList->owner != NULL) {
+            // 如果BDM里的USB关了，就隐藏USB游戏列表
+            if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+            }
+        }
         fileXioDclose(dir);
+    }
+
     return 0;
 }
