@@ -429,16 +429,17 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
 
-            // usb关闭时，不显示U盘游戏列表
-            if ((mode == 0) && !gEnableUSB) {
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
-                    mod->menuItem.visible = 0;
-                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-                    ((opl_io_module_t *)mod->support->owner)->menuItem.visible = 0;
-                }
-            }
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+        }
+
+        // usb关闭时，不显示U盘游戏列表
+        if ((mode == 0) && !gEnableUSB) {
+            bdm_device_data_t *pDeviceData = itemList->priv;
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                ((opl_io_module_t *)mod->support->owner)->menuItem.visible = 0;
+                mod->menuItem.visible = 0;
+            }
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
