@@ -774,6 +774,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                 fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
                 if (strncmp(bdmType, "usb", 3) == 0) {
                     usbFound = 1;
+                    // 如果usb开关为关闭，则不生成游戏列表
+                    if (!gEnableUSB) {
+                        return 0;
+                    }
                 }
             }
         } else if (usbFound && prefix[4] != '0') {
