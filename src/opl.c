@@ -402,11 +402,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         }
     }
 
-    //// debug 
-    //if (gETHStartMode != START_MODE_DISABLED) {
-    //    gETHStartMode = START_MODE_DISABLED;
-    //} 
-
     // Set the start mode flag based on device type.
     int startMode = 0;
     if (mode >= BDM_MODE && mode < ETH_MODE)
@@ -434,11 +429,11 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //    }
         //}
 
-        if (!mod->support) {
-            mod->support = itemList;
-            mod->support->owner = mod;
-            initMenuForListSupport(mod);
-        }
+        //if (!mod->support) {
+        //    mod->support = itemList;
+        //    mod->support->owner = mod;
+        //    initMenuForListSupport(mod);
+        //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             mod->support->itemInit(mod->support);
