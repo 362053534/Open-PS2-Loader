@@ -273,6 +273,7 @@ static void itemExecSelect(struct menu_item *curMenu)
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
+                return;
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
                     if (i == 0) {
