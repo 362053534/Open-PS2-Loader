@@ -430,6 +430,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             bdm_device_data_t *pDeviceData = itemList->priv;
             if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
                 mod->menuItem.visible = 0;
+                return;
             }
         }
 
