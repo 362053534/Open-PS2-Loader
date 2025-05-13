@@ -419,23 +419,32 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         startMode = gAPPStartMode;
 
     if (startMode) {
-        // usb关闭时，不显示U盘游戏列表
-        if ((startMode == gBDMStartMode) && !gEnableUSB) {
-            bdm_device_data_t *pDeviceData = itemList->priv;
-            if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                mod->menuItem.visible = 0;
-                return;
-            }
-        }
-
         if (!mod->support) {
             mod->support = itemList;
             mod->support->owner = mod;
+
+            // usb关闭时，不显示U盘游戏列表
+            if ((startMode == gBDMStartMode) && !gEnableUSB) {
+                bdm_device_data_t *pDeviceData = itemList->priv;
+                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                    mod->menuItem.visible = 0;
+                }
+            }
+
             initMenuForListSupport(mod);
         }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             mod->support->itemInit(mod->support);
+
+            // usb关闭时，不显示U盘游戏列表
+            if ((startMode == gBDMStartMode) && !gEnableUSB) {
+                bdm_device_data_t *pDeviceData = itemList->priv;
+                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                    mod->menuItem.visible = 0;
+                }
+            }
+
             moduleUpdateMenuInternal(mod, 0, 0);
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
