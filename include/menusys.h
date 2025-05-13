@@ -121,4 +121,6 @@ void menuRemoveHints(menu_item_t *menu);
 int menuSetParentalLockCheckState(int enabled);
 int menuCheckParentalLock(void);
 
+void refreshMenuPos();  // 刷新菜单位置
+
 #endif
