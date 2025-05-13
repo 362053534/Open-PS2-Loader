@@ -1532,8 +1532,9 @@ void guiIntroLoop(void)
     int greetingAlpha = 0x80;
     const int fadeFrameCount = 0x80 / 2;
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
-    clock_t tFadeDelayEnd = 1200;
+    clock_t tFadeDelayEnd = 0;
     int menuPosAdjusted = 0;
+    int endIntroDelayFrame = 600;
 
     while (!endIntro) {
         guiStartFrame();
@@ -1554,12 +1555,15 @@ void guiIntroLoop(void)
 
         if (gInitComplete && clock() >= tFadeDelayEnd)
         {
+            endIntroDelayFrame--;
             // 初始化结束时，纠正菜单位置
             if (!menuPosAdjusted) {
                 refreshMenuPos(); 
                 menuPosAdjusted = 1;
             }
-            greetingAlpha -= 2;
+            if (endIntroDelayFrame <= 0) {
+                greetingAlpha -= 2;
+            }
         }
 
         if (greetingAlpha <= 0)
