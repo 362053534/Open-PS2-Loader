@@ -422,19 +422,19 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         // debug 看看有没有成功识别到U盘
         if ((mode == 0) && !gEnableUSB) {
             bdm_device_data_t *pDeviceData = itemList->priv;
-            //int dir = fileXioDopen("mass0:/");
-            //if (dir >= 0) {
-            //    fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-            //    if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-            //        mod->menuItem.visible = 0;
-            //        return;
-            //    }
-            //    fileXioDclose(dir);
-            //}
-            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
-                mod->menuItem.visible = 0;
-                return;
+            int dir = fileXioDopen("mass0:/");
+            if (dir >= 0) {
+                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
+                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                    mod->menuItem.visible = 0;
+                    return;
+                }
+                fileXioDclose(dir);
             }
+            //if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
+            //    mod->menuItem.visible = 0;
+            //    return;
+            //}
         }
 
         if (!mod->support) {
