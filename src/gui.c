@@ -1532,7 +1532,7 @@ void guiIntroLoop(void)
     int greetingAlpha = 0x80;
     const int fadeFrameCount = 0x80 / 2;
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
-    clock_t tFadeDelayEnd = 0;
+    clock_t tFadeDelayEnd = 20;
     int menuPosAdjusted = 0;
 
     while (!endIntro) {
