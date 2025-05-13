@@ -1563,6 +1563,7 @@ void guiIntroLoop(void)
             }
             if (endIntroDelayFrame <= 0) {
                 greetingAlpha -= 2;
+                endIntro = 1;
             }
         }
 
