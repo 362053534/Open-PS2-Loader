@@ -1541,7 +1541,7 @@ void guiIntroLoop(void)
         if (greetingAlpha < 0x80)
             guiShow();
 
-        if (greetingAlpha > 0)
+        //if (greetingAlpha > 0)
             guiRenderGreeting(greetingAlpha);
 
         // Initialize boot sound
@@ -1559,13 +1559,14 @@ void guiIntroLoop(void)
                 refreshMenuPos(); 
                 menuPosAdjusted = 1;
             }
-            greetingAlpha -= 2;
+            endIntro = 1;
+            //greetingAlpha -= 2;
         }
 
-        if (greetingAlpha <= 0) {
-            endIntro = 1;
-            greetingAlpha = 0;
-        }
+        //if (greetingAlpha <= 0) {
+        //    endIntro = 1;
+        //    greetingAlpha = 0;
+        //}
 
         guiDrawOverlays();
 
@@ -1581,7 +1582,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 600;
+    int endIntroDelayFrame = 60;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
