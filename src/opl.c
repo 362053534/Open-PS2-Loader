@@ -419,47 +419,19 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         startMode = gAPPStartMode;
 
     if (startMode) {
-        // debug 看看有没有成功识别到U盘
-        if ((mode == 0) && !gEnableUSB) {
-            bdm_device_data_t *pDeviceData = itemList->priv;
-            int dir = fileXioDopen("mass0:/");
-            if (dir >= 0) {
-                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                    mod->menuItem.visible = 0;
-                    return;
-                }
-                fileXioDclose(dir);
-            }
-            //if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
-            //    mod->menuItem.visible = 0;
-            //    return;
-            //}
-        }
-
         if (!mod->support) {
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
         }
 
-        //// 当usb关闭时，不显示usb游戏列表
-        //if ((mode == 0) && !gEnableUSB) {
-        //    bdm_device_data_t *pDeviceData = itemList->priv;
-        //    int dir = fileXioDopen("mass0:/");
-        //    if (dir >= 0) {
-        //        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-        //        if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-        //            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-        //            //((opl_io_module_t *)mod->support->owner)->menuItem.visible = 0;
-        //        }
-        //        fileXioDclose(dir);
-        //    }
-        //    // if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
-        //    //     mod->menuItem.visible = 0;
-        //    //     return;
-        //    // }
-        //}
+        // usb关闭时，不显示U盘游戏列表
+        if ((mode == 0) && !gEnableUSB) {
+            bdm_device_data_t *pDeviceData = itemList->priv;
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
+                mod->menuItem.visible = 0;
+            }
+        }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             mod->support->itemInit(mod->support);
