@@ -344,7 +344,7 @@ static void initMenuForListSupport(opl_io_module_t *mod)
     mod->menuItem.icon_id = mod->support->itemIconId(mod->support);
     mod->menuItem.text = NULL;
     mod->menuItem.text_id = mod->support->itemTextId(mod->support);
-    mod->menuItem.visible = 1;
+    mod->menuItem.visible = 0;
 
     mod->menuItem.userdata = mod->support;
 
@@ -435,12 +435,12 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             initMenuForListSupport(mod);
         }
 
-        //if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-        //    mod->support->itemInit(mod->support);
-        //    moduleUpdateMenuInternal(mod, 0, 0);
+        if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
+            mod->support->itemInit(mod->support);
+            moduleUpdateMenuInternal(mod, 0, 0);
 
-        //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-        //}
+            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+        }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
         mod->menuItem.visible = 0;
