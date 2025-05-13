@@ -1606,6 +1606,8 @@ void guiMainLoop(void)
 
         if (gFrameHook)
             gFrameHook();
+
+        menuHandleInputMenu();
     }
 }
 

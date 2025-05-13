@@ -432,7 +432,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         if (!mod->support) {
             mod->support = itemList;
             mod->support->owner = mod;
-            initMenuForListSupport(mod, mode == ETH_MODE);
+            initMenuForListSupport(mod, 1);
         }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
