@@ -419,32 +419,29 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         startMode = gAPPStartMode;
 
     if (startMode) {
+        // usb关闭时，不显示U盘游戏列表
+        if ((mode == 0) && !gEnableUSB) {
+            int dir = fileXioDopen("mass0:/");
+            char bdmDriver[32];
+            if (dir >= 0) {
+                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
+                if (!strcmp(bdmDriver, "usb")) {
+                    mod->menuItem.visible = 0;
+                    fileXioDclose(dir);
+                    return;
+                }
+                fileXioDclose(dir);
+            }
+        }
+
         if (!mod->support) {
             mod->support = itemList;
             mod->support->owner = mod;
-
-            // usb关闭时，不显示U盘游戏列表
-            if ((startMode == gBDMStartMode) && !gEnableUSB) {
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                    mod->menuItem.visible = 0;
-                }
-            }
-
             initMenuForListSupport(mod);
         }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             mod->support->itemInit(mod->support);
-
-            // usb关闭时，不显示U盘游戏列表
-            if ((startMode == gBDMStartMode) && !gEnableUSB) {
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                    mod->menuItem.visible = 0;
-                }
-            }
-
             moduleUpdateMenuInternal(mod, 0, 0);
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
