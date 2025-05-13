@@ -192,8 +192,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
         int deviceEnabled = 0;
         switch (pDeviceData->bdmDeviceType) {
             case BDM_TYPE_USB:
-                //deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
-                deviceEnabled = gEnableUSB;
+                deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
+                //deviceEnabled = gEnableUSB;
                 break;
             case BDM_TYPE_ILINK:
                 deviceEnabled = gEnableILK;
