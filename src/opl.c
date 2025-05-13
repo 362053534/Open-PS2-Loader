@@ -429,18 +429,18 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //    }
         //}
 
-        if (true) {
+        if (!mod->support) {
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
         }
 
-        if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-            mod->support->itemInit(mod->support);
-            moduleUpdateMenuInternal(mod, 0, 0);
+        //if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
+        //    mod->support->itemInit(mod->support);
+        //    moduleUpdateMenuInternal(mod, 0, 0);
 
-            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-        }
+        //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+        //}
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
         mod->menuItem.visible = 0;
