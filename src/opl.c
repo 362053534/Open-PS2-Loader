@@ -420,9 +420,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
     if (startMode) {
         // usb关闭时，不显示U盘游戏列表
-        if ((mode == 1) && !gEnableUSB) {
+        if ((startMode == gBDMStartMode) && !gEnableUSB) {
             bdm_device_data_t *pDeviceData = itemList->priv;
-            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
+            if (!strcmp(pDeviceData->bdmDriver, "usb")) {
                 mod->menuItem.visible = 0;
                 return;
             }
