@@ -1538,8 +1538,8 @@ void guiIntroLoop(void)
     while (!endIntro) {
         guiStartFrame();
 
-        if (greetingAlpha < 0x80)
-            guiShow();
+        //if (greetingAlpha < 0x80)
+        //    guiShow();
 
         //if (greetingAlpha > 0)
             guiRenderGreeting(greetingAlpha);
@@ -1600,7 +1600,8 @@ void guiMainLoop(void)
         guiReadPads();
 
         // handle inputs and render screen
-        guiShow();
+        if (greetingAlpha < 0x80)
+            guiShow();
 
         if (endIntroDelayFrame > 0) {
             endIntroDelayFrame--;
@@ -1609,8 +1610,14 @@ void guiMainLoop(void)
                 greetingAlpha -= 2;
             }
         }
-        if (greetingAlpha > 0)
+        if (greetingAlpha > 0) {
             guiRenderGreeting(greetingAlpha);
+        } else {
+            if (greetingAlpha != 0) {
+                greetingAlpha = 0;
+                guiRenderGreeting(greetingAlpha);
+            }
+        }
 
         // Render overlaying gui thingies :)
         guiDrawOverlays();
