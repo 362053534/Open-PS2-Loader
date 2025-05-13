@@ -776,6 +776,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                     usbFound = 1;
                     // 如果usb开关为关闭，则不生成游戏列表
                     if (!gEnableUSB) {
+                        free(*list);
+                        *list = NULL;
+                        *fsize = -1;
+                        *gamecount = 0;
                         return 0;
                     }
                 }
