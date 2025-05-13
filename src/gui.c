@@ -1010,7 +1010,6 @@ static void guiHandleOp(struct gui_update_t *item)
 
     switch (item->type) {
         case GUI_INIT_DONE:
-            refreshMenuPos();  // 初始化结束时，纠正菜单位置
             gInitComplete = 1;
             break;
 
@@ -1534,6 +1533,7 @@ void guiIntroLoop(void)
     const int fadeFrameCount = 0x80 / 2;
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
     clock_t tFadeDelayEnd = 0;
+    int menuPosAdjusted = 0;
 
     while (!endIntro) {
         guiStartFrame();
@@ -1553,7 +1553,14 @@ void guiIntroLoop(void)
         }
 
         if (gInitComplete && clock() >= tFadeDelayEnd)
+        {
+            // 初始化结束时，纠正菜单位置
+            if (!menuPosAdjusted) {
+                refreshMenuPos(); 
+                menuPosAdjusted = 1;
+            }
             greetingAlpha -= 2;
+        }
 
         if (greetingAlpha <= 0)
             endIntro = 1;
