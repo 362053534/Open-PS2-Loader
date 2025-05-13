@@ -419,20 +419,20 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         startMode = gAPPStartMode;
 
     if (startMode) {
-        //// usb关闭时，不显示U盘游戏列表
-        //if ((mode == BDM_MODE1) && !gEnableUSB) {
-        //    int dir = fileXioDopen("mass0:/");
-        //    char bdmDriver[32];
-        //    if (dir >= 0) {
-        //        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
-        //        if (!strcmp(bdmDriver, "usb")) {
-        //            mod->menuItem.visible = 0;
-        //            fileXioDclose(dir);
-        //            return;
-        //        }
-        //        fileXioDclose(dir);
-        //    }
-        //}
+        // usb关闭时，不显示U盘游戏列表
+        if ((mode == 0) && !gEnableUSB) {
+            int dir = fileXioDopen("mass0:/");
+            char bdmDriver[32];
+            if (dir >= 0) {
+                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
+                if (!strcmp(bdmDriver, "usb")) {
+                    mod->menuItem.visible = 0;
+                    fileXioDclose(dir);
+                    return;
+                }
+                fileXioDclose(dir);
+            }
+        }
 
         if (!mod->support) {
             mod->support = itemList;
@@ -446,25 +446,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
         }
-
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
         mod->menuItem.visible = 0;
-    }
-    //  usb关闭时，不显示U盘游戏列表
-    if ((mode == 0) && !gEnableUSB) {
-        int dir = fileXioDopen("mass0:/");
-        char bdmDriver[32];
-        if (dir >= 0) {
-            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
-            if (!strcmp(bdmDriver, "usb")) {
-                // mod->menuItem.visible = 0;
-                // itemList->owner = NULL;
-                mod->menuItem.visible = 0;
-                itemList->owner = NULL;
-            }
-            fileXioDclose(dir);
-        }
     }
 }
 
