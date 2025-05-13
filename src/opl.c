@@ -390,6 +390,22 @@ static void clearMenuGameList(opl_io_module_t *mdl)
 
 void initSupport(item_list_t *itemList, int mode, int force_reinit)
 {
+    //  usb关闭时，不显示U盘游戏列表
+    if ((mode == 0) && !gEnableUSB) {
+        int dir = fileXioDopen("mass0:/");
+        char bdmDriver[32];
+        if (dir >= 0) {
+            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
+            if (!strcmp(bdmDriver, "usb")) {
+                // mod->menuItem.visible = 0;
+                // itemList->owner = NULL;
+                itemList = NULL;
+                itemList->owner = NULL;
+            }
+            fileXioDclose(dir);
+        }
+    }
+
     opl_io_module_t *mod = &list_support[mode];
 
     // 解决HDD和BDMHDD的冲突问题
@@ -433,20 +449,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //        fileXioDclose(dir);
         //    }
         //}
-        //  usb关闭时，不显示U盘游戏列表
-        if ((mode == 0) && !gEnableUSB) {
-            int dir = fileXioDopen("mass0:/");
-            char bdmDriver[32];
-            if (dir >= 0) {
-                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
-                if (!strcmp(bdmDriver, "usb")) {
-                    // mod->menuItem.visible = 0;
-                    //itemList->owner = NULL;
-                    mod = NULL;
-                }
-                fileXioDclose(dir);
-            }
-        }
 
         if (!mod->support) {
             mod->support = itemList;
