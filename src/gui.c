@@ -1533,6 +1533,7 @@ void guiIntroLoop(void)
     const int fadeFrameCount = 0x80 / 2;
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
     clock_t tFadeDelayEnd = 0;
+    int menuPosAdjusted = 0;
 
     while (!endIntro) {
         guiStartFrame();
@@ -1552,7 +1553,13 @@ void guiIntroLoop(void)
         }
 
         if (gInitComplete && clock() >= tFadeDelayEnd)
+        {
+            if (!menuPosAdjusted) {
+                refreshMenuPos();
+                menuPosAdjusted = 1;
+            }
             greetingAlpha -= 2;
+        }
 
         if (greetingAlpha <= 0)
             endIntro = 1;
@@ -1566,7 +1573,6 @@ void guiIntroLoop(void)
         if (!screenHandlerTarget && screenHandler)
             screenHandler->handleInput();
     }
-    refreshMenuPos();
 }
 
 void guiMainLoop(void)
