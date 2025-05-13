@@ -444,7 +444,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->itemInit(mod->support);
 
             // usb关闭时，不显示U盘游戏列表
-            if ((mode == 1) && !gEnableUSB) {
+            if ((mode == 0) && !gEnableUSB) {
                 int dir = fileXioDopen("mass0:/");
                 char bdmDriver[32];
                 if (dir >= 0) {
