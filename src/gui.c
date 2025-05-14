@@ -1605,8 +1605,7 @@ void guiMainLoop(void)
             }
             // handle inputs and render screen
             if (!mainScreenSwitchDone) {
-                guiSwitchScreen(GUI_SCREEN_MAIN, 13);
-                //guiShow();
+                guiSwitchScreenFadeOut(GUI_SCREEN_MAIN, 13);
                 mainScreenSwitchDone = 1;
             }   
             guiShow();
@@ -1641,7 +1640,18 @@ void guiSetFrameHook(gui_callback_t cback)
     gFrameHook = cback;
 }
 
-void guiSwitchScreen(int target, int _transIndex = 0)
+void guiSwitchScreen(int target)
+{
+    // Only initiate the transition once or else we could get stuck in an infinite loop.
+    if (screenHandlerTarget != NULL) {
+        return;
+    }
+    sfxPlay(SFX_TRANSITION);
+    transIndex = 0;
+    screenHandlerTarget = &screenHandlers[target];
+}
+
+void guiSwitchScreenFadeOut(int target, int _transIndex)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
