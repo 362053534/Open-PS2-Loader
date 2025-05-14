@@ -724,30 +724,6 @@ void bdmInitDevicesData()
         }
     }
 
-    //// 检测是否已插入U盘，且关闭了U盘游戏列表
-    //int usbOff = 0;
-    //char usbPath[16];
-    //char bdmDriver[32];
-    //strcpy(usbPath, "mass0:/");
-    //int dir = fileXioDopen(usbPath);
-    //if (dir >= 0) {
-    //    fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
-    //    if ((strncmp(bdmDriver, "usb", 3) == 0) && !gEnableUSB) {
-    //        usbOff = 1;
-    //    }
-    //    fileXioDclose(dir);
-    //}
-
-    //// debug 关掉usb游戏列表
-    //char debugFileDir[64];
-    //strcpy(debugFileDir, "mass0:debugUSB.txt");
-    //FILE *debugFile = fopen(debugFileDir, "ab+");
-    //if (debugFile != NULL) {
-    //    fprintf(debugFile, "usbOff：%d   bdmDriver：%s\r\n", usbOff, bdmDriver);
-    //    fclose(debugFile);
-    //}
-
-
     // Refresh the visibility of the menu.
     for (int i = 0; i < MAX_BDM_DEVICES; i++) {
         // Register the device structure into the UI.
@@ -766,36 +742,12 @@ void bdmInitDevicesData()
                 if (bdmDeviceModeStarted == 1) {
                     pOwner->menuItem.visible = 0;
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-                    //// 如果BDM里的USB关了，就隐藏USB游戏列表
-                    //if ((i == 0) && usbOff) {
-                    //    pOwner->menuItem.visible = 0;
-                    //} else {
-                    //    pOwner->menuItem.visible = 0;
-                    //    ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-                    //}
                 } else {
                     pOwner->menuItem.visible = (i == 0 ? 1 : 0);
-                    //if (i == 0) {
-                    //    // 如果BDM里的USB关了，就隐藏USB游戏列表
-                    //    if (usbOff) {
-                    //        pOwner->menuItem.visible = 0;
-                    //    } else {
-                    //        pOwner->menuItem.visible = 1;
-                    //    }
-                    //} else {
-                    //    pOwner->menuItem.visible = 0;
-                    //}
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 pOwner->menuItem.visible = 0;
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-                //// 如果BDM里的USB关了，就隐藏USB游戏列表
-                //if ((i == 0) && usbOff) {
-                //    pOwner->menuItem.visible = 0;
-                //} else {
-                //    pOwner->menuItem.visible = 0;
-                //    ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-                //}
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
         }

@@ -440,12 +440,6 @@ void guiShowNetCompatUpdateSingle(int id, item_list_t *support, config_set_t *co
 static void guiShowBlockDeviceConfig(void)
 {
     int ret;
-
-    //diaSetEnabled(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
-    //// 如果BDM设备一个都没开，那么USB会强行开启，保证兼容性
-    //if (!gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) {
-    //    gEnableUSB = 1;
-    //}
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
@@ -454,12 +448,6 @@ static void guiShowBlockDeviceConfig(void)
 
     ret = diaExecuteDialog(diaBlockDevicesConfig, -1, 1, NULL);
     if (ret) {
-        //// 如果BDM设备一个都没开，那么USB会强行开启，保证兼容性
-        //if (!gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) {
-        //    gEnableUSB = 1;
-        //} else {
-        //    diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
-        //}
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);

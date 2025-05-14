@@ -339,12 +339,12 @@ static void itemExecTriangle(struct menu_item *curMenu)
         guiMsgBox("NULL Support object. Please report", 0, NULL);
 }
 
-static void initMenuForListSupport(opl_io_module_t *mod, int visible)
+static void initMenuForListSupport(opl_io_module_t *mod)
 {
     mod->menuItem.icon_id = mod->support->itemIconId(mod->support);
     mod->menuItem.text = NULL;
     mod->menuItem.text_id = mod->support->itemTextId(mod->support);
-    mod->menuItem.visible = visible;
+    mod->menuItem.visible = 1;
 
     mod->menuItem.userdata = mod->support;
 
@@ -432,7 +432,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         if (!mod->support) {
             mod->support = itemList;
             mod->support->owner = mod;
-            initMenuForListSupport(mod, 1);
+            initMenuForListSupport(mod);
         }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
