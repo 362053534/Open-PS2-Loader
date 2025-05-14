@@ -1612,7 +1612,10 @@ void guiMainLoop(void)
                 guiRenderGreeting(greetingAlpha);
                 guiSwitchScreen(GUI_SCREEN_MAIN);
             }
-            //guiShow();
+        }
+
+        if (mainScreenSwitchDone) {
+            guiShow();
         }
 
         //// handle inputs and render screen
