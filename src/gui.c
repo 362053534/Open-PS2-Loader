@@ -1529,8 +1529,8 @@ void guiIntroLoop(void)
         //if (greetingAlpha < 0x80)
         //    guiShow();
 
-        // introloop就提前加载主界面，防止闪屏
-        guiShow();
+        //// introloop就提前加载主界面，防止闪屏
+        //guiShow();
 
         //if (greetingAlpha > 0)
             guiRenderGreeting(greetingAlpha);
@@ -1593,9 +1593,6 @@ void guiMainLoop(void)
         // Read the pad states to prepare for input processing in the screen handler
         guiReadPads();
 
-        // handle inputs and render screen
-        guiShow();
-
         // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
         if (endIntroDelayFrame > 0) {
             if (endIntroDelayFrame <= 13) {
@@ -1614,6 +1611,9 @@ void guiMainLoop(void)
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
         }
+
+        // handle inputs and render screen
+        guiShow();
 
         // Render overlaying gui thingies :)
         guiDrawOverlays();
