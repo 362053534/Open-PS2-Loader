@@ -1568,17 +1568,15 @@ void guiIntroLoop(void)
         if (!screenHandlerTarget && screenHandler)
             screenHandler->handleInput();
     }
-    // handle inputs and render screen
-    guiShow();
+    guiRenderGreeting(greetingAlpha);
 }
 
 void guiMainLoop(void)
 {
-    // handle inputs and render screen
-    guiShow();
     int greetingAlpha = 0x80;
     int endIntroDelayFrame = 80;
     int mainScreenSwitchDone = 0;
+    guiRenderGreeting(greetingAlpha);
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1588,7 +1586,7 @@ void guiMainLoop(void)
 
     if (gEnableBGM)
         bgmStart();
-
+    guiRenderGreeting(greetingAlpha);
     while (!gTerminate) {
         guiStartFrame();
 
