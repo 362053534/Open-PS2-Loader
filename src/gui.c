@@ -1569,7 +1569,7 @@ void guiIntroLoop(void)
 
 void guiMainLoop(void)
 {
-    int greetingAlpha = -1;
+    int greetingAlpha = 0x80;
     int endIntroDelayFrame = 0;
     int mainScreenSwitchDone = 0;
 
@@ -1590,35 +1590,21 @@ void guiMainLoop(void)
 
         // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
         if (endIntroDelayFrame > 0) {
-            //if (endIntroDelayFrame <= 30) {
-            //    if (!mainScreenSwitchDone) {
-            //        guiSwitchScreen(GUI_SCREEN_MAIN);
-            //        guiShow();
-            //        mainScreenSwitchDone = 1;
-            //    }   
-            //}
             endIntroDelayFrame--;
         } else {
             // 淡出开始时
             if (greetingAlpha >= 0) {
                 greetingAlpha -= 4;
             }
-            //if (!mainScreenSwitchDone) {
-            //    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-            //    mainScreenSwitchDone = 1;
-            //}   
         }
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
         } else {
             if (!mainScreenSwitchDone) {
-                //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-
-                guiRenderGreeting(greetingAlpha);
-                guiSwitchScreen(GUI_SCREEN_MAIN);
-                //  handle inputs and render screen
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 mainScreenSwitchDone = 1;
-            }
+            }   
+            //  handle inputs and render screen
             guiShow();
         }
 
