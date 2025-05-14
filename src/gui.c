@@ -1582,9 +1582,9 @@ void guiMainLoop(void)
             endIntroDelayFrame--;
         } else {
             // introLoop界面完全淡出后，再淡入到游戏列表
-            if (greetingAlpha >= 0) {
+            if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
-                greetingAlpha -= 0x10;
+                greetingAlpha -= 0x02;
             } else {
                 // 完全淡出后，淡入显示游戏列表
                 if (!mainScreenSwitchDone) {
