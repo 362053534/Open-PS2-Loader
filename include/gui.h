@@ -59,7 +59,7 @@ extern int guiFrameId;
 #define GUI_SCREEN_GAME_MENU 3
 #define GUI_SCREEN_APP_MENU  4
 
-void guiSwitchScreen(int target, int _transIndex);
+void guiSwitchScreen(int target, int _transIndex = 0);
 
 void guiReloadScreenExtents();
 
