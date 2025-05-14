@@ -1593,7 +1593,7 @@ void guiMainLoop(void)
 
         // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
         if (endIntroDelayFrame > 0) {
-            if (endIntroDelayFrame <= 12) {
+            if (endIntroDelayFrame <= 13) {
                 if (!mainScreenSwitchDone) {
                     guiSwitchScreen(GUI_SCREEN_MAIN);
                     mainScreenSwitchDone = 1;
