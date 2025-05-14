@@ -1592,6 +1592,7 @@ void guiMainLoop(void)
         if (endIntroDelayFrame > 0) {
             if (endIntroDelayFrame <= 30) {
                 if (!mainScreenSwitchDone) {
+                    guiShow();
                     guiSwitchScreen(GUI_SCREEN_MAIN);
                     mainScreenSwitchDone = 1;
                 }   
