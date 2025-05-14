@@ -1590,6 +1590,10 @@ void guiMainLoop(void)
 
         // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
         if (endIntroDelayFrame > 0) {
+            if (!mainScreenSwitchDone) {
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                mainScreenSwitchDone = 1;
+            }   
             //if (endIntroDelayFrame <= 30) {
             //    if (!mainScreenSwitchDone) {
             //        guiSwitchScreen(GUI_SCREEN_MAIN);
@@ -1604,14 +1608,15 @@ void guiMainLoop(void)
                 greetingAlpha -= 4;
             }
             // handle inputs and render screen
-            if (!mainScreenSwitchDone) {
-                guiSwitchScreenFadeOut(GUI_SCREEN_MAIN, 13);
-                mainScreenSwitchDone = 1;
-            }   
-            guiShow();
+            //if (!mainScreenSwitchDone) {
+            //    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            //    mainScreenSwitchDone = 1;
+            //}   
         }
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
+        } else {
+            guiShow();
         }
 
         // Render overlaying gui thingies :)
@@ -1651,7 +1656,7 @@ void guiSwitchScreen(int target)
     screenHandlerTarget = &screenHandlers[target];
 }
 
-void guiSwitchScreenFadeOut(int target, int _transIndex)
+void guiSwitchScreenFadeIn(int target, int _transIndex)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
