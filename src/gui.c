@@ -1558,7 +1558,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 60;
+    int endIntroDelayFrame = 120;
     int mainScreenSwitchDone = 0;
 
     guiResetNotifications();
@@ -1579,7 +1579,7 @@ void guiMainLoop(void)
         // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
         if (endIntroDelayFrame > 0) {
             endIntroDelayFrame--;
-            if (endIntroDelayFrame <= 30) {
+            if (endIntroDelayFrame <= 100) {
                 if (!mainScreenSwitchDone) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                     mainScreenSwitchDone = 1;
