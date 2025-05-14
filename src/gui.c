@@ -1584,6 +1584,10 @@ void guiMainLoop(void)
         } else {
             // 完全淡出后，delay一段时间再亮起游戏列表
             if (endIntroDelayFrame > 0) {
+                if (greetingAlpha != 0) {
+                    greetingAlpha = 0;
+                    guiRenderGreeting(greetingAlpha);
+                }
                 endIntroDelayFrame--;
             } else {
                 if (!mainScreenSwitchDone) {
