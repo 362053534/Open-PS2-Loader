@@ -1568,10 +1568,14 @@ void guiIntroLoop(void)
         if (!screenHandlerTarget && screenHandler)
             screenHandler->handleInput();
     }
+    // handle inputs and render screen
+    guiShow();
 }
 
 void guiMainLoop(void)
 {
+    // handle inputs and render screen
+    guiShow();
     int greetingAlpha = 0x80;
     int endIntroDelayFrame = 80;
     int mainScreenSwitchDone = 0;
