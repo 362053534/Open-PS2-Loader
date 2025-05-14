@@ -1586,15 +1586,14 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x02;
-            } else {
-                // 完全淡出后，淡入显示游戏列表
+                // 淡入显示游戏列表
                 if (!mainScreenSwitchDone) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                     mainScreenSwitchDone = 1;
                 }
-                //  handle inputs and render screen
-                guiShow();
             }
+            //  handle inputs and render screen
+            guiShow();
         }
 
         // Render overlaying gui thingies :)
