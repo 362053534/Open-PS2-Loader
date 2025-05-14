@@ -1521,16 +1521,13 @@ void guiIntroLoop(void)
     const int fadeFrameCount = 0x80 / 2;
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
     clock_t tFadeDelayEnd = 0;
-    int menuPosAdjusted = 0;
 
     while (!endIntro) {
         guiStartFrame();
 
-        //if (greetingAlpha < 0x80)
-        //    guiShow();
+        //guiShow();
 
-        //if (greetingAlpha > 0)
-            guiRenderGreeting(greetingAlpha);
+        guiRenderGreeting(greetingAlpha);
 
         // Initialize boot sound
         if (gInitComplete && !tFadeDelayEnd && gEnableBootSND) {
@@ -1542,19 +1539,10 @@ void guiIntroLoop(void)
 
         if (gInitComplete && clock() >= tFadeDelayEnd)
         {
-            // 初始化结束时，纠正菜单位置
-            if (!menuPosAdjusted) {
-                refreshMenuPos(); 
-                menuPosAdjusted = 1;
-            }
+            // 初始化结束时，纠正菜单位置，并退出循环
+            refreshMenuPos(); 
             endIntro = 1;
-            //greetingAlpha -= 2;
         }
-
-        //if (greetingAlpha <= 0) {
-        //    endIntro = 1;
-        //    greetingAlpha = 0;
-        //}
 
         guiDrawOverlays();
 
@@ -1570,7 +1558,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 0;
+    int endIntroDelayFrame = 30;
     int mainScreenSwitchDone = 0;
 
     guiResetNotifications();
@@ -1597,6 +1585,7 @@ void guiMainLoop(void)
                 greetingAlpha -= 4;
             }
         }
+        // introLoop界面完全淡出后，再淡入到游戏列表
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
         } else {
