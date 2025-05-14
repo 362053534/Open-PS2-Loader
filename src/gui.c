@@ -1563,7 +1563,7 @@ void guiIntroLoop(void)
 
         guiHandleDeferredOps();
 
-        //guiEndFrame();
+        guiEndFrame();
 
         if (!screenHandlerTarget && screenHandler)
             screenHandler->handleInput();
@@ -1586,7 +1586,7 @@ void guiMainLoop(void)
         bgmStart();
 
     while (!gTerminate) {
-        //guiStartFrame();
+        guiStartFrame();
 
         // Read the pad states to prepare for input processing in the screen handler
         guiReadPads();
