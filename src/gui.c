@@ -1605,6 +1605,8 @@ void guiMainLoop(void)
             }
             // handle inputs and render screen
             guiShow();
+            u64 blackColor = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
+            rmDrawRect(0, 0, screenWidth, screenHeight, blackColor);
         }
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
