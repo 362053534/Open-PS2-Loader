@@ -1600,7 +1600,8 @@ void guiMainLoop(void)
             //    mainScreenSwitchDone = 1;
             //}   
         } else {
-            if (greetingAlpha > 0) {
+            // 淡出开始时
+            if (greetingAlpha > 0) {    
                 greetingAlpha -= 2;
             }
             if (!mainScreenSwitchDone) {
@@ -1608,14 +1609,8 @@ void guiMainLoop(void)
                 mainScreenSwitchDone = 1;
             }   
         }
-        if (greetingAlpha > 0) {
+        if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
-        } else {
-            if (greetingAlpha != 0) {
-                greetingAlpha = 0;
-                guiRenderGreeting(greetingAlpha);
-                guiSwitchScreen(GUI_SCREEN_MAIN);
-            }
         }
 
         //// handle inputs and render screen
