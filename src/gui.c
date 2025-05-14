@@ -1529,6 +1529,9 @@ void guiIntroLoop(void)
         //if (greetingAlpha < 0x80)
         //    guiShow();
 
+        // introloop就提前加载主界面，防止闪屏
+        guiShow();
+
         //if (greetingAlpha > 0)
             guiRenderGreeting(greetingAlpha);
 
