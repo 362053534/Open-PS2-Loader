@@ -1525,7 +1525,7 @@ void guiIntroLoop(void)
     while (!endIntro) {
         guiStartFrame();
 
-        //guiShow();
+        guiShow();
 
         guiRenderGreeting(greetingAlpha);
 
