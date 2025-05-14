@@ -1558,7 +1558,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 120;
+    int endIntroDelayFrame = 60;
     int mainScreenSwitchDone = 0;
 
     guiResetNotifications();
@@ -1576,31 +1576,23 @@ void guiMainLoop(void)
         // Read the pad states to prepare for input processing in the screen handler
         guiReadPads();
 
-        // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
-        if (endIntroDelayFrame > 0) {
-            endIntroDelayFrame--;
-            if (endIntroDelayFrame <= 100) {
-                if (!mainScreenSwitchDone) {
-                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                    mainScreenSwitchDone = 1;
-                }   
-            }
-        } else {
-            // 淡出开始时
-            if (greetingAlpha >= 0) {
-                greetingAlpha -= 4;
-            }
-        }
+        // 把intro界面淡出移到mainloop里，提升加载体验。
         // introLoop界面完全淡出后，再淡入到游戏列表
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
+            greetingAlpha -= 8;
         } else {
-            //if (!mainScreenSwitchDone) {
-            //    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-            //    mainScreenSwitchDone = 1;
-            //}   
-            //  handle inputs and render screen
-            guiShow();
+            // 完全淡出后，delay一段时间再亮起游戏列表
+            if (endIntroDelayFrame > 0) {
+                endIntroDelayFrame--;
+            } else {
+                if (!mainScreenSwitchDone) {
+                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                    mainScreenSwitchDone = 1;
+                }
+                //  handle inputs and render screen
+                guiShow();
+            }
         }
 
         // Render overlaying gui thingies :)
