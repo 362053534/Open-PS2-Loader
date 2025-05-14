@@ -1539,8 +1539,7 @@ void guiIntroLoop(void)
 
         if (gInitComplete && clock() >= tFadeDelayEnd)
         {
-            // 初始化结束时，纠正菜单位置，并退出循环
-            refreshMenuPos(); 
+            // 初始化结束时，退出循环
             endIntro = 1;
         }
 
@@ -1584,6 +1583,7 @@ void guiMainLoop(void)
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenSwitchDone) {
+                refreshMenuPos(); 
                 guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 mainScreenSwitchDone = 1;
             }
