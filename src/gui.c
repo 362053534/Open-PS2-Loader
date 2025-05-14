@@ -1569,6 +1569,7 @@ void guiIntroLoop(void)
 
 void guiMainLoop(void)
 {
+    u64 blackColor = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
     int greetingAlpha = 0x80;
     int endIntroDelayFrame = 0;
     int mainScreenSwitchDone = 0;
@@ -1604,8 +1605,13 @@ void guiMainLoop(void)
                 greetingAlpha -= 4;
             }
             // handle inputs and render screen
+            rmDrawRect(0, 0, screenWidth, screenHeight, blackColor);
+            if (!mainScreenSwitchDone) {
+                guiSwitchScreen(GUI_SCREEN_MAIN);
+                //guiShow();
+                mainScreenSwitchDone = 1;
+            }   
             guiShow();
-            u64 blackColor = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
             rmDrawRect(0, 0, screenWidth, screenHeight, blackColor);
         }
         if (greetingAlpha >= 0) {
