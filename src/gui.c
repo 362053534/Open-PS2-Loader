@@ -1588,9 +1588,7 @@ void guiMainLoop(void)
         // Read the pad states to prepare for input processing in the screen handler
         guiReadPads();
 
-        if (mainScreenSwitchDone) {
-            guiShow();
-        }
+        guiShow();
 
         // 把intro界面淡出移到mainloop里，并添加一定延迟，保证淡出时，封面和游戏列表已加载完毕。
         if (endIntroDelayFrame > 0) {
