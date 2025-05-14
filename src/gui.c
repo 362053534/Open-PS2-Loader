@@ -1579,9 +1579,10 @@ void guiMainLoop(void)
         // 把intro界面淡出移到mainloop里，提升加载体验。
         // delay期间，让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
+            guiRenderGreeting(greetingAlpha);
             endIntroDelayFrame--;
         } else {
-            // introLoop界面完全淡出后，再淡入到游戏列表
+            // delay结束后，introLoop界面开始淡出
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x02;
