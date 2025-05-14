@@ -1569,7 +1569,6 @@ void guiIntroLoop(void)
 
 void guiMainLoop(void)
 {
-    u64 blackColor = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
     int greetingAlpha = 0x80;
     int endIntroDelayFrame = 0;
     int mainScreenSwitchDone = 0;
@@ -1605,14 +1604,12 @@ void guiMainLoop(void)
                 greetingAlpha -= 4;
             }
             // handle inputs and render screen
-            rmDrawRect(0, 0, screenWidth, screenHeight, blackColor);
             if (!mainScreenSwitchDone) {
-                guiSwitchScreen(GUI_SCREEN_MAIN);
+                guiSwitchScreen(GUI_SCREEN_MAIN, 13);
                 //guiShow();
                 mainScreenSwitchDone = 1;
             }   
             guiShow();
-            rmDrawRect(0, 0, screenWidth, screenHeight, blackColor);
         }
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
@@ -1644,14 +1641,14 @@ void guiSetFrameHook(gui_callback_t cback)
     gFrameHook = cback;
 }
 
-void guiSwitchScreen(int target)
+void guiSwitchScreen(int target, int _transIndex)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
         return;
     }
     sfxPlay(SFX_TRANSITION);
-    transIndex = 0;
+    transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
 }
 
