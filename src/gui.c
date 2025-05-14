@@ -1580,7 +1580,7 @@ void guiMainLoop(void)
         // introLoop界面完全淡出后，再淡入到游戏列表
         if (greetingAlpha >= 0) {
             guiRenderGreeting(greetingAlpha);
-            greetingAlpha -= 8;
+            greetingAlpha -= 0x08;
         } else {
             // 完全淡出后，delay一段时间再亮起游戏列表
             if (endIntroDelayFrame > 0) {
