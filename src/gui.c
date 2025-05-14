@@ -1569,7 +1569,8 @@ void guiIntroLoop(void)
 
 void guiMainLoop(void)
 {
-    int greetingAlpha = 0x80;
+    //int greetingAlpha = 0x80;
+    int greetingAlpha = -1;
     int endIntroDelayFrame = 0;
     int mainScreenSwitchDone = 0;
 
@@ -1613,10 +1614,11 @@ void guiMainLoop(void)
             guiRenderGreeting(greetingAlpha);
         } else {
             if (!mainScreenSwitchDone) {
-                guiShow();
+                //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                guiSwitchScreen(GUI_SCREEN_MAIN);
                 mainScreenSwitchDone = 1;
             }   
-
+            guiShow();
         }
 
         // Render overlaying gui thingies :)
