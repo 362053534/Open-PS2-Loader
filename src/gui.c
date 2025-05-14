@@ -1582,18 +1582,18 @@ void guiMainLoop(void)
             guiRenderGreeting(greetingAlpha);
             endIntroDelayFrame--;
         } else {
-            // delay结束后，introLoop界面开始淡出
-            if (greetingAlpha >= 0x00) {
-                guiRenderGreeting(greetingAlpha);
-                greetingAlpha -= 0x02;
-                // 淡入显示游戏列表
-                if (!mainScreenSwitchDone) {
-                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                    mainScreenSwitchDone = 1;
-                }
+            // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
+            if (!mainScreenSwitchDone) {
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                mainScreenSwitchDone = 1;
             }
             //  handle inputs and render screen
             guiShow();
+
+            if (greetingAlpha >= 0x00) {
+                guiRenderGreeting(greetingAlpha);
+                greetingAlpha -= 0x02;
+            }
         }
 
         // Render overlaying gui thingies :)
