@@ -1613,10 +1613,10 @@ void guiMainLoop(void)
             guiRenderGreeting(greetingAlpha);
         } else {
             if (!mainScreenSwitchDone) {
-                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                guiShow();
                 mainScreenSwitchDone = 1;
             }   
-            guiShow();
+
         }
 
         // Render overlaying gui thingies :)
