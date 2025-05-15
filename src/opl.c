@@ -456,6 +456,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
         // 将已开启的BDM设备，变为可见状态（只影响手动模式）
         if (mode >= BDM_MODE && mode < ETH_MODE) {
+            mod->menuItem.visible = 0;
             switch (mode) {
                 case 0:
                     if (gEnableUSB)
@@ -474,7 +475,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                         mod->menuItem.visible = 1;
                     break;
                 default:
-                    mod->menuItem.visible = 0;
                     break;
             }
         }
