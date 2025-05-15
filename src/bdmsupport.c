@@ -742,14 +742,15 @@ void bdmInitDevicesData()
                 if (bdmDeviceModeStarted == 1) {
                     pOwner->menuItem.visible = 0;
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-                } else {
-                    // 显示一个默认的页面，并停留在已开启的速度最快的设备的列表
-                    if (i > 0) {
-                        if (pOwner->menuItem.visible == 1) {
-                            ((opl_io_module_t *)bdmDeviceList[i - 1].owner)->menuItem.visible = 0;
-                        }
-                    }
                 }
+                //else {
+                //    // 显示一个默认的页面，并停留在已开启的速度最快的设备的列表
+                //    if (i > 0) {
+                //        if (pOwner->menuItem.visible == 1) {
+                //            ((opl_io_module_t *)bdmDeviceList[i - 1].owner)->menuItem.visible = 0;
+                //        }
+                //    }
+                //}
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 pOwner->menuItem.visible = 0;
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
