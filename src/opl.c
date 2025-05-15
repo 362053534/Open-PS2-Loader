@@ -435,15 +435,17 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
         // 将已开启的BDM设备，变为可见状态（只影响手动模式）
         if (mode >= BDM_MODE && mode < ETH_MODE) {
-            mod->menuItem.visible = 0;
-            if (!strncmp((itemList->priv)->bdmDriver, "usb", 3) && gEnableUSB) {
+            bdm_device_data_t *pDeviceData = itemList->priv;
+            if (!strncmp(pDeviceData->bdmDriver, "usb", 3) && gEnableUSB) {
                 mod->menuItem.visible = 1;
-            } else if (!strncmp((itemList->priv)->bdmDriver, "sd", 2) && gEnableILK) {
+            } else if (!strncmp(pDeviceData->bdmDriver, "sd", 2) && gEnableILK) {
                 mod->menuItem.visible = 1;
-            } else if (!strncmp((itemList->priv)->bdmDriver, "sdc", 3) && gEnableMX4SIO) {
+            } else if (!strncmp(pDeviceData->bdmDriver, "sdc", 3) && gEnableMX4SIO) {
                 mod->menuItem.visible = 1;
-            } else if (!strncmp((itemList->priv)->bdmDriver, "ata", 3) && gEnableBdmHDD) {
+            } else if (!strncmp(pDeviceData->bdmDriver, "ata", 3) && gEnableBdmHDD) {
                 mod->menuItem.visible = 1;
+            } else {
+                mod->menuItem.visible = 0;
             }
         }
         //// 将已开启的BDM设备，变为可见状态（只影响手动模式）
