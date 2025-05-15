@@ -122,5 +122,6 @@ int menuSetParentalLockCheckState(int enabled);
 int menuCheckParentalLock(void);
 
 void refreshMenuPos();  // 刷新菜单位置
+void refreshBdmMenu();  // 刷新BDM菜单位置
 
 #endif

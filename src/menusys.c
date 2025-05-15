@@ -618,6 +618,23 @@ static void menuNextH()
     }
 }
 
+// 自动跳转到已开启的BDM设备的游戏列表
+void refreshBdmMenu()
+{
+    if ((selected_item != NULL) && (selected_item->item->visible != 0)) {
+        return;
+    }
+    struct menu_list *next = selected_item->next;
+    while (next != NULL && next->item->visible == 0)
+        next = next->next;
+
+    // If we found a valid menu transition to it.
+    if (next != NULL) {
+        selected_item = next;
+        itemConfigId = -1;
+    }
+}
+
 static void menuPrevH()
 {
     struct menu_list *prev = selected_item->prev;
