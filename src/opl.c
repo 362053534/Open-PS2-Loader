@@ -477,6 +477,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 default:
                     break;
             }
+            // refresh device icon and text (for bdm)
+            mod->menuItem.icon_id = mod->support->itemIconId(mod->support);
+            mod->menuItem.text_id = mod->support->itemTextId(mod->support);
         }
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
