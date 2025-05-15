@@ -427,7 +427,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             if (dir >= 0) {
                 fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
                 if (!strcmp(bdmDriver, "usb")) {
-                    mod->menuItem.visible = 0;
+                    mod->menuItem.visible = 1;
                 }
                 fileXioDclose(dir);
             }
