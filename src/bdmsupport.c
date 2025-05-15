@@ -743,14 +743,32 @@ void bdmInitDevicesData()
                     pOwner->menuItem.visible = 0;
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 }
-                //else {
-                //    // 显示一个默认的页面，并停留在已开启的速度最快的设备的列表
-                //    if (i > 0) {
-                //        if (pOwner->menuItem.visible == 1) {
-                //            ((opl_io_module_t *)bdmDeviceList[i - 1].owner)->menuItem.visible = 0;
-                //        }
-                //    }
-                //}
+                else {
+                    // 根据bdm块设备配置，将最快的设备作为默认的页面
+                    pOwner->menuItem.visible = 0;
+                    if (i == 0) {
+                        if (gEnableUSB) {
+                            pOwner->menuItem.visible = 1;
+                        }
+                    }
+                    else {
+                        if (gEnableUSB) {
+                            pOwner->menuItem.visible = 0;
+                        } else if (i == 1 && gEnableILK) {
+                            pOwner->menuItem.visible = 1;
+                            ((opl_io_module_t *)bdmDeviceList[0].owner)->menuItem.visible = 0;
+                        } else if (i == 2 && gEnableMX4SIO) {
+                            pOwner->menuItem.visible = 1;
+                            ((opl_io_module_t *)bdmDeviceList[0].owner)->menuItem.visible = 0;
+                            ((opl_io_module_t *)bdmDeviceList[1].owner)->menuItem.visible = 0;
+                        } else if (i == 3 && gEnableBdmHDD) {
+                            pOwner->menuItem.visible = 1;
+                            ((opl_io_module_t *)bdmDeviceList[0].owner)->menuItem.visible = 0;
+                            ((opl_io_module_t *)bdmDeviceList[1].owner)->menuItem.visible = 0;
+                            ((opl_io_module_t *)bdmDeviceList[2].owner)->menuItem.visible = 0;
+                        }
+                    }
+                }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 pOwner->menuItem.visible = 0;
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;

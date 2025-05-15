@@ -454,33 +454,30 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //    }
         //}
 
-        // 将已开启的BDM设备，变为可见状态（只影响手动模式）
-        if (mode >= BDM_MODE && mode < ETH_MODE) {
-            mod->menuItem.visible = 0;
-            switch (mode) {
-                case 0:
-                    if (gEnableUSB)
-                        mod->menuItem.visible = 1;
-                    break;
-                case 1:
-                    if (gEnableILK)
-                        mod->menuItem.visible = 1;
-                    break;
-                case 2:
-                    if (gEnableMX4SIO)
-                        mod->menuItem.visible = 1;
-                    break;
-                case 3:
-                    if (gEnableBdmHDD)
-                        mod->menuItem.visible = 1;
-                    break;
-                default:
-                    break;
-            }
-            // refresh device icon and text (for bdm)
-            mod->menuItem.icon_id = mod->support->itemIconId(mod->support);
-            mod->menuItem.text_id = mod->support->itemTextId(mod->support);
-        }
+        //// 将已开启的BDM设备，变为可见状态（只影响手动模式）
+        //if (mode >= BDM_MODE && mode < ETH_MODE) {
+        //    mod->menuItem.visible = 0;
+        //    switch (mode) {
+        //        case 0:
+        //            if (gEnableUSB)
+        //                mod->menuItem.visible = 1;
+        //            break;
+        //        case 1:
+        //            if (gEnableILK)
+        //                mod->menuItem.visible = 1;
+        //            break;
+        //        case 2:
+        //            if (gEnableMX4SIO)
+        //                mod->menuItem.visible = 1;
+        //            break;
+        //        case 3:
+        //            if (gEnableBdmHDD)
+        //                mod->menuItem.visible = 1;
+        //            break;
+        //        default:
+        //            break;
+        //    }
+        //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             mod->support->itemInit(mod->support);
