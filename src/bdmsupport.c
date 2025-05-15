@@ -746,7 +746,7 @@ void bdmInitDevicesData()
                     // 显示一个默认的页面，并停留在已开启的速度最快的设备的列表
                     if (i > 0) {
                         if (pOwner->menuItem.visible == 1) {
-                            ((opl_io_module_t *)bdmDeviceList[i - 1].owner)->menuItem.visible = 0
+                            ((opl_io_module_t *)bdmDeviceList[i - 1].owner)->menuItem.visible = 0;
                         }
                     }
                 }
