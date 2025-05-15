@@ -745,6 +745,7 @@ void bdmInitDevicesData()
                 } else {
                     //pOwner->menuItem.visible = (i == 0 ? 1 : 0);
                     pOwner->menuItem.visible = 0;
+                    ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 pOwner->menuItem.visible = 0;
