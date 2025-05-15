@@ -742,6 +742,7 @@ void bdmInitDevicesData()
                 if (bdmDeviceModeStarted == 1) {
                     pOwner->menuItem.visible = 0;
                     if ((i == 0) && gEnableUSB) {
+                        pOwner->menuItem.visible = 1;
                         ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                     } else if ((i == 1) && gEnableILK) {
                         ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
