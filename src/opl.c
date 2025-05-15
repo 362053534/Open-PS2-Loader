@@ -420,13 +420,34 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             initMenuForListSupport(mod);
         }
 
-        // usb关闭时，不显示U盘游戏列表
-        if ((mode == 0) && !gEnableUSB) {
-            int dir = fileXioDopen("mass0:/");
+        //// usb关闭时，不显示U盘游戏列表
+        //if ((mode == 0) && !gEnableUSB) {
+        //    int dir = fileXioDopen("mass0:/");
+        //    char bdmDriver[32];
+        //    if (dir >= 0) {
+        //        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
+        //        if (!strcmp(bdmDriver, "usb")) {
+        //            mod->menuItem.visible = 0;
+        //        }
+        //        fileXioDclose(dir);
+        //    }
+        //}
+        
+        // 开启的BDM设备，根据配置关闭默认的可见状态（只影响手动模式）
+        if (mode >= BDM_MODE && mode < ETH_MODE) {
+            char bdmPath[8];
+            sprintf(bdmPath, "mass%d:/", mode);
+            int dir = fileXioDopen(bdmPath);
             char bdmDriver[32];
             if (dir >= 0) {
                 fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmDriver, sizeof(bdmDriver) - 1);
-                if (!strcmp(bdmDriver, "usb")) {
+                if (!strncmp(bdmDriver, "usb", 3) && !gEnableUSB) {
+                    mod->menuItem.visible = 0;
+                } else if (!strncmp(bdmDriver, "sd", 2) && !gEnableILK) {
+                    mod->menuItem.visible = 0;
+                } else if (!strncmp(bdmDriver, "sdc", 3) && !gEnableMX4SIO) {
+                    mod->menuItem.visible = 0;
+                } else if (!strncmp(bdmDriver, "ata", 3) && !gEnableBdmHDD) {
                     mod->menuItem.visible = 0;
                 }
                 fileXioDclose(dir);
