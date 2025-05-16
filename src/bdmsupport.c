@@ -19,7 +19,6 @@
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioIoctl, fileXioDevctl
 
-static int usbModLoaded = 0;
 static int iLinkModLoaded = 0;
 static int mx4sioModLoaded = 0;
 static int hddModLoaded = 0;
@@ -76,20 +75,6 @@ static void bdmEventHandler(void *packet, void *opt)
 static void bdmLoadBlockDeviceModules(void)
 {
     WaitSema(bdmLoadModuleLock);
-
-    //if (gEnableUSB && !usbModLoaded) {
-    //    //// Load FATFS (mass:) driver
-    //    //LOG("[BDMFS_FATFS]:\n");
-    //    //sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL);
-
-    //    // Load USB Block Device drivers
-    //    LOG("[USBD]:\n");
-    //    sysLoadModuleBuffer(&usbd_irx, size_usbd_irx, 0, NULL);
-    //    LOG("[USBMASS_BD]:\n");
-    //    sysLoadModuleBuffer(&usbmass_bd_irx, size_usbmass_bd_irx, 0, NULL);
-
-    //    usbModLoaded = 1;
-    //}
 
     if (gEnableILK && !iLinkModLoaded) {
         // Load iLink Block Device drivers
@@ -892,20 +877,20 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
     // No change to the device state detected.
     if (dir >= 0) {
-        if (visible == 1 && !gEnableUSB) {
-            if (itemList->owner != NULL) {
-                // 如果BDM里的USB关了，就隐藏USB游戏列表
-                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-                if (!strcmp(pDeviceData->bdmDriver, "usb"))
-                    pDeviceData->bdmDeviceType = BDM_TYPE_USB;
-                if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
-                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-                    fileXioDclose(dir);
-                    itemList->owner = NULL;
-                    return 1;
-                }
-            }
-        }
+        //if (visible == 1 && !gEnableUSB) {
+        //    if (itemList->owner != NULL) {
+        //        // 如果BDM里的USB关了，就隐藏USB游戏列表
+        //        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
+        //        if (!strcmp(pDeviceData->bdmDriver, "usb"))
+        //            pDeviceData->bdmDeviceType = BDM_TYPE_USB;
+        //        if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
+        //            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+        //            fileXioDclose(dir);
+        //            //itemList->owner = NULL;
+        //            return 1;
+        //        }
+        //    }
+        //}
         fileXioDclose(dir);
     }
 
