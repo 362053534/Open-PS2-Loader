@@ -915,6 +915,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 pDeviceData->bdmDeviceType = BDM_TYPE_USB;
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                fileXioDclose(dir);
+                return 1;
             } 
         }
         fileXioDclose(dir);
