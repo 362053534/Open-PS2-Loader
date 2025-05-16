@@ -833,10 +833,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         }
     }
 
-    // debug  打印信息
+    // debug  在smb目录下打印debug信息，方便调试
     char debugFileDir[64];
-    // strcpy(debugFileDir, "smb:debug.txt");
-    sprintf(debugFileDir, "%sdebug.txt", prefix);
+    strcpy(debugFileDir, "smb:debug.txt");
+    //sprintf(debugFileDir, "%sdebug.txt", prefix);
     FILE *debugFile = fopen(debugFileDir, "ab+");
     char bdmType[32];
     sprintf(bdmType, "%s/", prefix);
