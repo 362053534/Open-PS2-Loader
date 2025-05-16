@@ -247,8 +247,7 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     }
 
     sbCreateFolders(pDeviceData->bdmPrefix, 1);
-    refreshMenuPos();
-    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+
     return result;
 }
 
