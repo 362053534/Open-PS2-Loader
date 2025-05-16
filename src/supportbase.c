@@ -831,22 +831,23 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                 fileXioDclose(massDir);
             }
         }
-        // debug  打印信息
-        char debugFileDir[64];
-        //strcpy(debugFileDir, "smb:debug.txt");
-        sprintf(debugFileDir, "%sdebug.txt", prefix);
-        FILE *debugFile = fopen(debugFileDir, "ab+");
-        char bdmType[32];
-        sprintf(bdmType, "%s/", prefix);
-        int massDir = fileXioDopen(bdmType);
-        if (massDir >= 0) {
-            fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
-            if (debugFile != NULL) {
-                fprintf(debugFile, "%s   bdmType:%s  usbFound:%d\r\n", prefix, bdmType,usbFound);
-                fclose(debugFile);
-            }
-            fileXioDclose(massDir);
+    }
+
+    // debug  打印信息
+    char debugFileDir[64];
+    // strcpy(debugFileDir, "smb:debug.txt");
+    sprintf(debugFileDir, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    char bdmType[32];
+    sprintf(bdmType, "%s/", prefix);
+    int massDir = fileXioDopen(bdmType);
+    if (massDir >= 0) {
+        fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
+        if (debugFile != NULL) {
+            fprintf(debugFile, "%s   bdmType:%s  usbFound:%d\r\n", prefix, bdmType, usbFound);
+            fclose(debugFile);
         }
+        fileXioDclose(massDir);
     }
 
     free(*list);
