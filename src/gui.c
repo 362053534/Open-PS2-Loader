@@ -1584,7 +1584,7 @@ void guiMainLoop(void)
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenSwitchDone) {
                 //refreshMenuPos();
-                refreshBdmMenu();
+                //refreshBdmMenu();
                 guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 mainScreenSwitchDone = 1;
             }
