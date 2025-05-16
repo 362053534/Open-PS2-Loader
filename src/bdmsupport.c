@@ -754,7 +754,7 @@ void bdmInitDevicesData()
                 } else {                  
                     pOwner->menuItem.visible = 0;
                     if (i == 0) {
-                        if (gEnableUSB)
+                        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                             pOwner->menuItem.visible = 1;
                     }
                     // 根据bdm块设备配置，将最快的设备作为默认的页面
