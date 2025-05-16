@@ -1792,7 +1792,7 @@ static void setDefaults(void)
     gAutosort = 1;
     gAutoRefresh = 0;
     gEnableDebug = 0;
-    gPS2Logo = 0;
+    gPS2Logo = 1;
     gHDDGameListCache = 0;
     gEnableWrite = 0;
     gRememberLastPlayed = 1;
@@ -1818,10 +1818,10 @@ static void setDefaults(void)
     gETHStartMode = START_MODE_DISABLED;
     gAPPStartMode = START_MODE_DISABLED;
 
-    gEnableUSB = 1;
+    gEnableUSB = 0;
     gEnableILK = 0;
     gEnableMX4SIO = 0;
-    gEnableBdmHDD = 1;
+    gEnableBdmHDD = 0;
 
     frameCounter = 0;
 
