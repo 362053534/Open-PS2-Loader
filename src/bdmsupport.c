@@ -727,6 +727,8 @@ void bdmInitDevicesData()
                 if (bdmDeviceModeStarted == 1) {
                     pOwner->menuItem.visible = 0;
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
+                    refreshMenuPos();
+                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 } else {
                     if (i == 0) {
                         if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)

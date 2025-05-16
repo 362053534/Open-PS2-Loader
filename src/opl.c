@@ -1818,10 +1818,10 @@ static void setDefaults(void)
     gETHStartMode = START_MODE_DISABLED;
     gAPPStartMode = START_MODE_DISABLED;
 
-    gEnableUSB = 0;
+    gEnableUSB = 1;
     gEnableILK = 0;
     gEnableMX4SIO = 0;
-    gEnableBdmHDD = 0;
+    gEnableBdmHDD = 1;
 
     frameCounter = 0;
 
