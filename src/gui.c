@@ -1585,7 +1585,7 @@ void guiMainLoop(void)
             if (!mainScreenSwitchDone) {
                 refreshMenuPos();
                 //refreshBdmMenu();
-                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 mainScreenSwitchDone = 1;
             }
             //  handle inputs and render screen

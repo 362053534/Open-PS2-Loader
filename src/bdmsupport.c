@@ -877,20 +877,19 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
     // No change to the device state detected.
     if (dir >= 0) {
-        //if (visible == 1 && !gEnableUSB) {
-        //    if (itemList->owner != NULL) {
-        //        // 如果BDM里的USB关了，就隐藏USB游戏列表
-        //        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-        //        if (!strcmp(pDeviceData->bdmDriver, "usb"))
-        //            pDeviceData->bdmDeviceType = BDM_TYPE_USB;
-        //        if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
-        //            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-        //            fileXioDclose(dir);
-        //            //itemList->owner = NULL;
-        //            return 1;
-        //        }
-        //    }
-        //}
+        if (visible == 1 && !gEnableUSB) {
+            if (itemList->owner != NULL) {
+                // 如果BDM里的USB关了，就隐藏USB游戏列表
+                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
+                if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                    pDeviceData->bdmDeviceType = BDM_TYPE_USB;
+                if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                    fileXioDclose(dir);
+                    return 1;
+                }
+            }
+        }
         fileXioDclose(dir);
     }
 
