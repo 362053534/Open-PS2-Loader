@@ -1788,22 +1788,22 @@ static void setDefaults(void)
     gHDDSpindown = 20;
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
-    gDefaultDevice = APP_MODE;
+    gDefaultDevice = BDM_MODE;
     gAutosort = 1;
     gAutoRefresh = 0;
     gEnableDebug = 0;
     gPS2Logo = 0;
     gHDDGameListCache = 0;
     gEnableWrite = 0;
-    gRememberLastPlayed = 0;
-    gAutoStartLastPlayed = 9;
+    gRememberLastPlayed = 1;
+    gAutoStartLastPlayed = 0;
     gSelectButton = KEY_CIRCLE; // Default to Japan.
     gBDMPrefix[0] = '\0';
     gETHPrefix[0] = '\0';
     gEnableNotifications = 0;
-    gEnableArt = 0;
+    gEnableArt = 1;
     gWideScreen = 0;
-    gEnableSFX = 0;
+    gEnableSFX = 1;
     gEnableBootSND = 0;
     gEnableBGM = 0;
     gSFXVolume = 80;
@@ -1820,8 +1820,8 @@ static void setDefaults(void)
 
     gEnableUSB = 1;
     gEnableILK = 0;
-    gEnableMX4SIO = 0;
-    gEnableBdmHDD = 0;
+    gEnableMX4SIO = 1;
+    gEnableBdmHDD = 1;
 
     frameCounter = 0;
 
