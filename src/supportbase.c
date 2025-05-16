@@ -771,10 +771,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
             sprintf(bdmType, "%s/", prefix);
             int massDir = fileXioDopen(bdmType);
             if (massDir >= 0) {
-                fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
+                fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
                 if (strncmp(bdmType, "usb", 3) == 0) {
                     usbFound = 1;
-                    // 如果usb开关为关闭，则不生成游戏列表
+                    // 如果usb开关为关闭，则跳过扫描，不生成任何东西
                     if (!gEnableUSB) {
                         free(*list);
                         *list = NULL;
@@ -831,32 +831,28 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                 fileXioDclose(massDir);
             }
         }
-        //// debug  打印mass路径
-        //char debugFileDir[64];
-        ////strcpy(debugFileDir, "smb0:debug.txt");
+        // debug  打印信息
+        char debugFileDir[64];
+        strcpy(debugFileDir, "smb0:debug.txt");
         //sprintf(debugFileDir, "%sdebug.txt", prefix);
-        //FILE *debugFile = fopen(debugFileDir, "ab+");
-        //char bdmType[32];
-        //sprintf(bdmType, "%s/", prefix);
-        //int massDir = fileXioDopen(bdmType);
-        //if (massDir >= 0) {
-        //    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
-        //    if (debugFile != NULL) {
-        //        fprintf(debugFile, "%s%s\r\n", prefix, bdmType);
-        //        fclose(debugFile);
-        //    }
-        //    fileXioDclose(massDir);
-        //}
+        FILE *debugFile = fopen(debugFileDir, "ab+");
+        char bdmType[32];
+        sprintf(bdmType, "%s/", prefix);
+        int massDir = fileXioDopen(bdmType);
+        if (massDir >= 0) {
+            fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
+            if (debugFile != NULL) {
+                fprintf(debugFile, "%s   bdmType:%s  usbFound:%d\r\n", prefix, bdmType,usbFound);
+                fclose(debugFile);
+            }
+            fileXioDclose(massDir);
+        }
     }
 
     free(*list);
     *list = NULL;
     *fsize = -1;
     *gamecount = 0;
-    // 错误识别到记忆卡时，跳过扫描
-    if (strncasecmp(prefix, "mc", 2) == 0) {
-        return 0;
-    }
 
     // debug 文件
     //char debugFileDir[64];
