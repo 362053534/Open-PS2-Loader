@@ -484,6 +484,17 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             moduleUpdateMenuInternal(mod, 0, 0);
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+
+            // debug  打印debug信息，方便调试
+            char debugFileDir[64];
+            strcpy(debugFileDir, "smb:debug.txt");
+            // sprintf(debugFileDir, "%sdebug.txt", prefix);
+            FILE *debugFile = fopen(debugFileDir, "ab+");
+            if (debugFile != NULL) {
+                fprintf(debugFile, "opl initsuport时\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, (itemList->priv)->bdmPrefix, (itemList->priv)->bdmDriver, (itemList->priv)->bdmDeviceType);
+                fclose(debugFile);
+            }
+
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
