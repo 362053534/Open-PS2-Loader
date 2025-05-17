@@ -828,6 +828,24 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
+        // usb关闭的情况下，停止循环检测usb
+        if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
+        {
+
+            //// debug  打印debug信息，方便调试
+            //char debugFileDir[64];
+            //strcpy(debugFileDir, "smb:debug.txt");
+            //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+            //FILE *debugFile = fopen(debugFileDir, "ab+");
+            //if (debugFile != NULL) {
+            //    fprintf(debugFile, "visible == 0时循环检测\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+            //    fclose(debugFile);
+            //}
+
+            return 0;
+        }
+
+
         if (gBDMPrefix[0] != '\0')
             snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
         else
@@ -861,21 +879,21 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
         // Make the menu item visible.
         if (itemList->owner != NULL) {
-
-            // debug  打印debug信息，方便调试
-             char debugFileDir[64];
-             strcpy(debugFileDir, "smb:debug.txt");
-            //sprintf(debugFileDir, "%sdebug.txt", prefix);
-             FILE *debugFile = fopen(debugFileDir, "ab+");
-             if (debugFile != NULL) {
-                 fprintf(debugFile, "visible == 0   gEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-                 fclose(debugFile);
-             }
-
             // 如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
                 fileXioDclose(dir);
+
+                // debug  打印debug信息，方便调试
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "visible == 0时隐藏usb列表\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                    fclose(debugFile);
+                }
+
                 return 0;
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
@@ -911,7 +929,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "visible == 1 gEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                    fprintf(debugFile, "visible == 1时隐藏了游戏列表\r\n\gEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
                     fclose(debugFile);
                 }
 
