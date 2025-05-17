@@ -488,10 +488,11 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             // debug  打印debug信息，方便调试
             char debugFileDir[64];
             strcpy(debugFileDir, "smb:debug.txt");
+            bdm_device_data_t *pDeviceData = itemList->priv;
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "opl initsuport时\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, (&itemList)->priv->bdmPrefix, (&itemList)->priv->bdmDriver, (&itemList)->priv->bdmDeviceType);
+                fprintf(debugFile, "opl initsuport时进行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
                 fclose(debugFile);
             }
 
