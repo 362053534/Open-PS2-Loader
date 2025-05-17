@@ -486,14 +486,16 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
             // debug  打印debug信息，方便调试
-            char debugFileDir[64];
-            strcpy(debugFileDir, "mass0:debug.txt");
-            bdm_device_data_t *pDeviceData = itemList->priv;
-            // sprintf(debugFileDir, "%sdebug.txt", prefix);
-            FILE *debugFile = fopen(debugFileDir, "ab+");
-            if (debugFile != NULL) {
-                fprintf(debugFile, "opl initsuport时进行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-                fclose(debugFile);
+            if (mode == 0) {
+                char debugFileDir[64];
+                strcpy(debugFileDir, "mass0:debug.txt");
+                bdm_device_data_t *pDeviceData = itemList->priv;
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "opl initsuport时进行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                    fclose(debugFile);
+                }
             }
 
         }
