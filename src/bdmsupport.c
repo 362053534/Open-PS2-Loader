@@ -842,7 +842,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 fclose(debugFile);
             }
 
-            return 1;
+            return 0;
         }
 
 
@@ -893,7 +893,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
                 fileXioDclose(dir);
-                return 1;
+                return 0;
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
