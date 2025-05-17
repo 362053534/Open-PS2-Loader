@@ -838,7 +838,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "visible == 0时循环了\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                fprintf(debugFile, "visible == 0时循环检测到usb\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
                 fclose(debugFile);
             }
 
