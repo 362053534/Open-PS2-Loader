@@ -16,7 +16,6 @@
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
-#include <sys/statvfs.h> // 用于获取文件系统信息
 
 #include "../modules/isofs/zso.h"
 
@@ -756,23 +755,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     return count;
 }
 
-// 检查文件系统是否为FAT32或exFAT
-static int isSupportedFilesystem(const char *path)
-{
-    struct statvfs fsInfo;
-    if (statvfs(path, &fsInfo) != 0) {
-        return 0; // 获取文件系统信息失败，默认不支持
-    }
-
-    // 检查文件系统类型
-    if (strcmp(fsInfo.f_basetype, "vfat") == 0 ||  // FAT32
-        strcmp(fsInfo.f_basetype, "exfat") == 0) { // exFAT
-        return 1;
-    }
-
-    return 0;
-}
-
 int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount)
 {
     int fd, size, id = 0, result;
@@ -872,10 +854,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     *list = NULL;
     *fsize = -1;
     *gamecount = 0;
-
-    // debug 测试文件系统识别
-    if (!isSupportedFilesystem(prefix))
-        return 0;
 
     // debug 文件
     //char debugFileDir[64];
