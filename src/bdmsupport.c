@@ -922,7 +922,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             if (itemList->owner != NULL) {
                 // debug  打印debug信息，方便调试
                 char debugFileDir[64];
-                strcpy(debugFileDir, "smb:debug.txt");
+                strcpy(debugFileDir, "mass0:debug.txt");
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
