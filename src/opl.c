@@ -491,7 +491,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "opl initsuport时\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, (itemList->priv)->bdmPrefix, (itemList->priv)->bdmDriver, (itemList->priv)->bdmDeviceType);
+                fprintf(debugFile, "opl initsuport时\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, (&itemList)->priv->bdmPrefix, (&itemList)->priv->bdmDriver, (&itemList)->priv->bdmDeviceType);
                 fclose(debugFile);
             }
 
