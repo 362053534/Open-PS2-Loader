@@ -917,11 +917,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
     // No change to the device state detected.
     if (dir >= 0) {
+        // 如果BDM里的USB关了，就隐藏USB游戏列表
         if (visible == 1 && !gEnableUSB) {
             if (itemList->owner != NULL) {
-                // 如果BDM里的USB关了，就隐藏USB游戏列表
-                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-
                 // debug  打印debug信息，方便调试
                 char debugFileDir[64];
                 strcpy(debugFileDir, "smb:debug.txt");
@@ -932,9 +930,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                     fclose(debugFile);
                 }
 
-                if (!strcmp(pDeviceData->bdmDriver, "usb"))
-                    pDeviceData->bdmDeviceType = BDM_TYPE_USB;
-                if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
+                if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
                     fileXioDclose(dir);
                     return 1;
