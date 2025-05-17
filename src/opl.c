@@ -487,14 +487,14 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             // debug  打印debug信息，方便调试
             if (mode == 0) {
-                char debugFileDir[64];
-                strcpy(debugFileDir, "mass0:debug.txt");
+                char debugFileDir1[64];
+                strcpy(debugFileDir1, "mass0:debug-opl.txt");
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                FILE *debugFile = fopen(debugFileDir, "ab+");
-                if (debugFile != NULL) {
-                    fprintf(debugFile, "opl initsuport里visible == %d时进行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", mod->menuItem.visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-                    fclose(debugFile);
+                FILE *debugFile1 = fopen(debugFileDir1, "ab+");
+                if (debugFile1 != NULL) {
+                    fprintf(debugFile1, "opl initsuport visible == %d时进行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", (mod->menuItem.visible), gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                    fclose(debugFile1);
                 }
             }
 
