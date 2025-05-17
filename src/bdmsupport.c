@@ -842,7 +842,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 fclose(debugFile);
             }
 
-            return 0;
+            return 1;
         }
 
 
