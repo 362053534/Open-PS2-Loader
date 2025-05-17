@@ -729,12 +729,11 @@ void bdmInitDevicesData()
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 } else {
                     if (i == 0) {
-                        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+                        if (gEnableUSB)
                             pOwner->menuItem.visible = 1;
                         else
                             pOwner->menuItem.visible = 0;
                     }
-
                     else {
                         // 根据bdm块设备配置，将启用的第一个设备作为默认的页面
                         pOwner->menuItem.visible = 0;

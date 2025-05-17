@@ -386,11 +386,6 @@ static void refreshMenuPosition(void)
         selected_item = cur;
 }
 
-void refreshMenuPos()
-{
-    refreshMenuPosition();
-}
-
 void submenuRebuildCache(submenu_list_t *submenu)
 {
     while (submenu) {
