@@ -861,6 +861,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
         // Make the menu item visible.
         if (itemList->owner != NULL) {
+
+            // debug  打印debug信息，方便调试
+             char debugFileDir[64];
+             strcpy(debugFileDir, "mass0:debug.txt");
+            //sprintf(debugFileDir, "%sdebug.txt", prefix);
+             FILE *debugFile = fopen(debugFileDir, "ab+");
+             if (debugFile != NULL) {
+                 fprintf(debugFile, "gEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                 fclose(debugFile);
+             }
+
             // 如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
