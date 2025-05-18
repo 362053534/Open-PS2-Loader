@@ -616,6 +616,9 @@ static void menuNextH()
 // 自动跳转到已开启的BDM设备的游戏列表
 void refreshBdmMenu()
 {
+    // Find the first menu in the list that is visible and set it as the active menu.
+    if (menu == NULL)
+        return;
     if ((selected_item != NULL) && (selected_item->item->visible != 0)) {
         return;
     }
@@ -936,7 +939,8 @@ void menuHandleInputMenu()
     if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
         // Check if there is anything to show the user, at all.
         if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
-            refreshMenuPosition();
+            //refreshMenuPosition();
+            refreshBdmMenu();
             guiSwitchScreen(GUI_SCREEN_MAIN);
         }
     }
