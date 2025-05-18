@@ -1643,6 +1643,7 @@ void guiSwitchScreenFadeIn(int target, int _transIndex)
     if (screenHandlerTarget != NULL) {
         return;
     }
+    sfxPlay(SFX_TRANSITION);
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
 }
