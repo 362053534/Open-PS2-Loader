@@ -285,8 +285,8 @@ static void itemExecSelect(struct menu_item *curMenu)
                 // Normal initialization.
                 itemInitSupport(support);
             }
-            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-            refreshBdmMenu(); // 刷新BDM菜单的停留位置
+            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            //refreshBdmMenu(); // 刷新BDM菜单的停留位置
         }
     } else
         guiMsgBox("NULL Support object. Please report", 0, NULL);
@@ -502,7 +502,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
             //menuReinitMainMenu();
-            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
             refreshBdmMenu(); // 刷新BDM菜单的停留位置
             // debug  打印debug信息，方便调试
             if (mode == 0) {
