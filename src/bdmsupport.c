@@ -178,7 +178,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
         switch (pDeviceData->bdmDeviceType) {
             case BDM_TYPE_USB:
                 //deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
-                deviceEnabled = (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
+                //deviceEnabled = (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
+                deviceEnabled = gEnableUSB;
                 break;
             case BDM_TYPE_ILINK:
                 deviceEnabled = gEnableILK;
@@ -828,10 +829,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
-        // usb关闭的情况下，停止循环检测usb    已启用的情况下关闭usb会执行一次
+        // usb关闭的情况下，停止循环检测usb    下面return1的情况下，这段代码只会执行一次，但是手动模式会把usb图标显示出来
         if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
         {
-
             // debug  打印debug信息，方便调试
             char debugFileDir[64];
             strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
@@ -891,7 +891,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
             // 手动模式启用设备，会进来这里。如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
-                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
                 fileXioDclose(dir);
                 return 0;
             } else {

@@ -273,11 +273,12 @@ static void itemExecSelect(struct menu_item *curMenu)
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
-                // Initialize support for all bdm modules.
+                // Initialize support for all bdm modules.(手动模式启动后的处理？)
                 for (int i = 0; i <= BDM_MODE4; i++) {
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
+                refreshBdmMenu(); // 刷新BDM菜单的停留位置
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
@@ -418,6 +419,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
+            //refreshBdmMenu(); // 刷新BDM菜单的停留位置
         }
 
         //// 将已开启的BDM设备(可被访问)，变为可见状态（只影响手动模式）
@@ -493,6 +495,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
+            //refreshBdmMenu(); // 刷新BDM菜单的停留位置
             // debug  打印debug信息，方便调试
             if (mode == 0) {
                 char debugFileDir1[64];
