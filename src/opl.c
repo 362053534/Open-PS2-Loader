@@ -278,8 +278,8 @@ static void itemExecSelect(struct menu_item *curMenu)
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
-                refreshBdmMenu(); // 刷新BDM菜单的停留位置
                 guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                refreshBdmMenu(); // 刷新BDM菜单的停留位置
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
