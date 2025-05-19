@@ -278,9 +278,9 @@ static void itemExecSelect(struct menu_item *curMenu)
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
-                //// 手动模式启动后，纠正列表位置，防止usb页面显示出来
-                //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                // 手动模式启动后，纠正列表位置，防止usb页面显示出来
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
@@ -422,8 +422,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->owner = mod;
             initMenuForListSupport(mod);
 
-            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
         }
 
         //// 将已开启的BDM设备(可被访问)，变为可见状态（只影响手动模式）
