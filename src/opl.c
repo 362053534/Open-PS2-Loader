@@ -278,9 +278,9 @@ static void itemExecSelect(struct menu_item *curMenu)
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
-                // 手动模式启动后，纠正列表位置，防止usb页面显示出来
-                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                //// 手动模式启动后，纠正列表位置，防止usb页面显示出来
+                //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
@@ -422,7 +422,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->owner = mod;
             initMenuForListSupport(mod);
 
-            refreshBdmMenu(); // 刷新BDM菜单的停留位置
+            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
         }
 
         //// 将已开启的BDM设备(可被访问)，变为可见状态（只影响手动模式）
@@ -485,7 +486,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-            //// 自动模式时，纠正usb可见状态
+            //// 自动模式时，纠正usb可见状态（会导致重新打开usb后无法显示usb列表）
             //if (mode == 0) {
             //    bdm_device_data_t *pDeviceData = itemList->priv;
             //    if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
@@ -499,8 +500,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
 
-            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            
             // debug  打印debug信息，方便调试
             if (mode == 0) {
                 char debugFileDir1[64];

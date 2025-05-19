@@ -1587,7 +1587,7 @@ void guiMainLoop(void)
                 //    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 //}
                 //if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
-                //    refreshBdmMenu(); // 刷新BDM菜单的停留位置
+                //    refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 //}
                 mainScreenSwitchDone = 1;
             }
