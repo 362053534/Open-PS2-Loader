@@ -278,7 +278,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
-                menuInitMainMenu();
+                menuReinitMainMenu();
                 refreshBdmMenu(); // 刷新BDM菜单的停留位置
             } else {
                 // Normal initialization.
@@ -420,7 +420,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
-            menuInitMainMenu();
+            menuReinitMainMenu();
             refreshBdmMenu(); // 刷新BDM菜单的停留位置
         }
 
@@ -497,7 +497,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
-            menuInitMainMenu();
+            menuReinitMainMenu();
             refreshBdmMenu(); // 刷新BDM菜单的停留位置
             // debug  打印debug信息，方便调试
             if (mode == 0) {
