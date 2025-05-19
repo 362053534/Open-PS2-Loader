@@ -420,6 +420,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
+
+            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
             menuReinitMainMenu();
             refreshBdmMenu(); // 刷新BDM菜单的停留位置
         }
