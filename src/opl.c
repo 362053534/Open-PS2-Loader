@@ -278,15 +278,12 @@ static void itemExecSelect(struct menu_item *curMenu)
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
-                //menuReinitMainMenu();
-                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                 refreshBdmMenu(); // 刷新BDM菜单的停留位置
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
             }
-            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-            //refreshBdmMenu(); // 刷新BDM菜单的停留位置
         }
     } else
         guiMsgBox("NULL Support object. Please report", 0, NULL);
@@ -424,7 +421,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->owner = mod;
             initMenuForListSupport(mod);
 
-            //menuReinitMainMenu();
             refreshBdmMenu(); // 刷新BDM菜单的停留位置
         }
 
@@ -501,9 +497,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
-            //menuReinitMainMenu();
-            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
             refreshBdmMenu(); // 刷新BDM菜单的停留位置
+            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
             // debug  打印debug信息，方便调试
             if (mode == 0) {
                 char debugFileDir1[64];

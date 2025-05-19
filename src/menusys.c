@@ -630,6 +630,7 @@ void refreshBdmMenu()
     if (next != NULL) {
         selected_item = next;
         itemConfigId = -1;
+        sfxPlay(SFX_CURSOR);
     }
 }
 
