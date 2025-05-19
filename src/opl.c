@@ -279,7 +279,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     itemInitSupport(mod->support);
                 }
                 guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                refreshBdmMenu(); // 刷新BDM菜单的停留位置
+                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
@@ -497,8 +497,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
 
-            refreshBdmMenu(); // 刷新BDM菜单的停留位置
-            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+
+            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             // debug  打印debug信息，方便调试
             if (mode == 0) {
                 char debugFileDir1[64];

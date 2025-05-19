@@ -940,9 +940,10 @@ void menuHandleInputMenu()
     if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
         // Check if there is anything to show the user, at all.
         if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
-            //refreshMenuPosition();
-            refreshBdmMenu();
             guiSwitchScreen(GUI_SCREEN_MAIN);
+            refreshBdmMenu();
+            // refreshMenuPosition();
+
         }
     }
 }
