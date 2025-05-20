@@ -791,14 +791,14 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
             int massDir = fileXioDopen(bdmType);
             if (massDir >= 0) {
                 fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
+                // 找到bdmhdd后的处理。
                 if (strncmp(bdmType, "ata", 3) == 0) {
-                    strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
-
-                    // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
+                    strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");                
                     char curTxtPath[256];
                     sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
                     FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
                     FILE *curTxt = fopen(curTxtPath, "rb");
+                    // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
                     if ((bdmTxt == NULL) && (curTxt != NULL)) {
                         bdmTxt = fopen(bdmHddTxtPath, "wb");
                         if ((bdmTxt != NULL) && (curTxt != NULL)) {
@@ -809,16 +809,55 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                             if (buf != NULL) {
                                 fread(buf, curTxtFileSize, 1, curTxt);
                                 fwrite(buf, curTxtFileSize, 1, bdmTxt);
+                                // 删除硬盘txt之前备份一个，以防万一。
+                                char BackupTxtPath[256];
+                                sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                                FILE *bakTxt = fopen(BackupTxtPath, "wb");
+                                if (bakTxt != NULL) {
+                                    fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                    fclose(bakTxt);
+                                }    
                                 free(buf);
-                                fclose(bdmTxt);
-                                fclose(curTxt);
-                                remove(curTxtPath);
                             }
+                            fclose(bdmTxt);
+                            fclose(curTxt);
+                            remove(curTxtPath);
                         } else {
                             fclose(curTxt);
                         }
-                    // 检测是否同时存在两个txt，只保留U盘里的txt
-                    } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
+                    // 检测是否同时存在两个txt，把较大的txt保留在U盘，并删除硬盘里的txt
+                    } else if ((bdmTxt != NULL) && (curTxt != NULL)) {                     
+                        char *buf = malloc(curTxtFileSize * sizeof(char));                        
+                        if (buf != NULL) {
+                            // 比较两个txt文件的大小
+                            fseek(bdmTxt, 0, SEEK_END);
+                            fseek(curTxt, 0, SEEK_END);
+                            u32 bdmTxtFileSize = ftell(bdmTxt);
+                            u32 curTxtFileSize = ftell(curTxt);
+                            rewind(bdmTxt);
+                            rewind(curTxt);
+                            char BackupTxtPath[256];
+                            sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                            FILE *bakTxt = fopen(BackupTxtPath, "wb");
+                            fread(buf, curTxtFileSize, 1, curTxt);
+                            if (bdmTxtFileSize < curTxtFileSize) {
+                                fclose(bdmTxt);
+                                bdmTxt = fopen(bdmHddTxtPath, "wb");                             
+                                fwrite(buf, curTxtFileSize, 1, bdmTxt);
+                                // 删除硬盘txt之前备份一个，以防万一。
+                                if (bakTxt != NULL) {
+                                    fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                    fclose(bakTxt);
+                                }                                
+                            } else {
+                                // 删除硬盘txt之前备份一个，以防万一。
+                                if (bakTxt != NULL) {
+                                    fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                    fclose(bakTxt);                                  
+                                }
+                            }
+                            free(buf);
+                        }                       
                         fclose(bdmTxt);
                         fclose(curTxt);
                         remove(curTxtPath);
