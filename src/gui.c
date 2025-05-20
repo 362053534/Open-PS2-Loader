@@ -1557,7 +1557,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 120;
+    int endIntroDelayFrame = 6;
     int mainScreenSwitchDone = 0;
 
     guiResetNotifications();
@@ -1575,7 +1575,7 @@ void guiMainLoop(void)
         // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
         if (!mainScreenSwitchDone) {
             if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
             }
             if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
@@ -1594,7 +1594,7 @@ void guiMainLoop(void)
         // 把intro界面淡出移到mainloop里，提升加载体验。
         if (greetingAlpha >= 0x00) {
             guiRenderGreeting(greetingAlpha);
-            greetingAlpha -= 0x02;
+            greetingAlpha -= 0x04;
         }
 
         // Render overlaying gui thingies :)
@@ -1634,13 +1634,14 @@ void guiSwitchScreen(int target)
     screenHandlerTarget = &screenHandlers[target];
 }
 
-void guiSwitchScreenFadeIn(int target, int _transIndex)
+void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
         return;
     }
-    sfxPlay(SFX_TRANSITION);
+    if (_soundOn)
+        sfxPlay(SFX_TRANSITION);
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
 }
