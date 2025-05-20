@@ -486,13 +486,13 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-            // 自动模式时，纠正usb可见状态
-            if (mode == 0) {
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-                    mod->menuItem.visible = 0;
-                }
-            }
+            //// 自动模式时，纠正usb可见状态（会导致手动模式启用后，停留在usb界面，但也许这样才是对的？）
+            //if (mode == 0) {
+            //    bdm_device_data_t *pDeviceData = itemList->priv;
+            //    if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+            //        mod->menuItem.visible = 0;
+            //    }
+            //}
 
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
