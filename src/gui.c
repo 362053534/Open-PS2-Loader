@@ -1557,7 +1557,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 0;
+    int endIntroDelayFrame = 2;
     int mainScreenSwitchDone = 0;
 
     guiResetNotifications();
@@ -1572,34 +1572,29 @@ void guiMainLoop(void)
     while (!gTerminate) {
         guiStartFrame();
 
-        // Read the pad states to prepare for input processing in the screen handler
-        guiReadPads();
-
-        // 把intro界面淡出移到mainloop里，提升加载体验。
-        // delay期间，让游戏列表有充分时间生成
+        // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
+        if (!mainScreenSwitchDone) {
+            if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+            }
+            if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
+                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            }
+            mainScreenSwitchDone = 1;
+        }
+        // 延迟显示游戏列表主界面，delay期间让游戏列表和封面有充分时间生成
         if (endIntroDelayFrame > 0) {
-            guiRenderGreeting(greetingAlpha);
             endIntroDelayFrame--;
         } else {
-            // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
-            if (!mainScreenSwitchDone) {
-                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                }
-                if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
-                    refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                }
-                mainScreenSwitchDone = 1;
-            }
-
-
-            if (greetingAlpha >= 0x00) {
-                guiRenderGreeting(greetingAlpha);
-                greetingAlpha -= 0x02;
-            } else {
-                //  handle inputs and render screen
-                guiShow();
-            }
+            // Read the pad states to prepare for input processing in the screen handler
+            guiReadPads();
+            //  handle inputs and render screen
+            guiShow();
+        }
+        // 把intro界面淡出移到mainloop里，提升加载体验。
+        if (greetingAlpha >= 0x00) {
+            guiRenderGreeting(greetingAlpha);
+            greetingAlpha -= 0x02;
         }
 
         // Render overlaying gui thingies :)
