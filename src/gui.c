@@ -1558,7 +1558,7 @@ int mainScreenSwitchDone = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 120;
+    int endIntroDelayFrame = 12;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1577,12 +1577,13 @@ void guiMainLoop(void)
             if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                 guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
             }
-            if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
-                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-            }
+            //if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
+            //    refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            //}
+            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             mainScreenSwitchDone = 1;
         }
-        // 延迟显示游戏列表主界面，delay期间让游戏列表和封面有充分时间生成
+        // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
             endIntroDelayFrame--;
         } else {
@@ -1594,7 +1595,7 @@ void guiMainLoop(void)
         // 把intro界面淡出移到mainloop里，提升加载体验。
         if (greetingAlpha >= 0x00) {
             guiRenderGreeting(greetingAlpha);
-            greetingAlpha -= 0x02;  // 改这个会导致手动模式启动后，bdm列表修正失效？
+            greetingAlpha -= 0x04;  
         }
 
         // Render overlaying gui thingies :)
