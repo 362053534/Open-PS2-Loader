@@ -826,20 +826,20 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                             fclose(curTxt);
                         }
                     // 检测是否同时存在两个txt，把较大的txt保留在U盘，并删除硬盘里的txt
-                    } else if ((bdmTxt != NULL) && (curTxt != NULL)) {                     
+                    } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
+                        fseek(bdmTxt, 0, SEEK_END);
+                        fseek(curTxt, 0, SEEK_END);
+                        u32 bdmTxtFileSize = ftell(bdmTxt);
+                        u32 curTxtFileSize = ftell(curTxt);
+                        rewind(bdmTxt);
+                        rewind(curTxt);
                         char *buf = malloc(curTxtFileSize * sizeof(char));                        
-                        if (buf != NULL) {
-                            // 比较两个txt文件的大小
-                            fseek(bdmTxt, 0, SEEK_END);
-                            fseek(curTxt, 0, SEEK_END);
-                            u32 bdmTxtFileSize = ftell(bdmTxt);
-                            u32 curTxtFileSize = ftell(curTxt);
-                            rewind(bdmTxt);
-                            rewind(curTxt);
+                        if (buf != NULL) {                           
                             char BackupTxtPath[256];
                             sprintf(BackupTxtPath, "%sBackup.txt", prefix);
                             FILE *bakTxt = fopen(BackupTxtPath, "wb");
                             fread(buf, curTxtFileSize, 1, curTxt);
+                            // 比较两个txt文件的大小
                             if (bdmTxtFileSize < curTxtFileSize) {
                                 fclose(bdmTxt);
                                 bdmTxt = fopen(bdmHddTxtPath, "wb");                             
