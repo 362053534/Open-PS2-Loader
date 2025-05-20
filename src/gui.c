@@ -1591,12 +1591,14 @@ void guiMainLoop(void)
                 }
                 mainScreenSwitchDone = 1;
             }
-            //  handle inputs and render screen
-            guiShow();
+
 
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x02;
+            } else {
+                //  handle inputs and render screen
+                guiShow();
             }
         }
 
