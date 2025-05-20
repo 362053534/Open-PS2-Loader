@@ -1557,7 +1557,7 @@ void guiIntroLoop(void)
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 6;
+    int endIntroDelayFrame = 12;
     int mainScreenSwitchDone = 0;
 
     guiResetNotifications();
