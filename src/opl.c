@@ -492,7 +492,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
                     mod->menuItem.visible = 0;
-                    //mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
+                    mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
                 }
             }
 
