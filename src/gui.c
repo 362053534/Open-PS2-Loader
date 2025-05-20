@@ -1640,7 +1640,8 @@ void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
     if (screenHandlerTarget != NULL) {
         return;
     }
-    if (_soundOn) {
+    // 跳过音效播放，会导致bdm菜单修正失效？不知道什么鬼
+    if (_soundOn != 0) {
         sfxPlay(SFX_TRANSITION);
     }
     transIndex = _transIndex;
