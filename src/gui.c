@@ -1594,7 +1594,7 @@ void guiMainLoop(void)
         // 把intro界面淡出移到mainloop里，提升加载体验。
         if (greetingAlpha >= 0x00) {
             guiRenderGreeting(greetingAlpha);
-            greetingAlpha -= 0x02;  // 改这个会导致手动模式启动后，bdm列表修正失效
+            greetingAlpha -= 0x02;  // 改这个会导致手动模式启动后，bdm列表修正失效？
         }
 
         // Render overlaying gui thingies :)
@@ -1640,8 +1640,9 @@ void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
     if (screenHandlerTarget != NULL) {
         return;
     }
-    if (_soundOn)
+    if (_soundOn) {
         sfxPlay(SFX_TRANSITION);
+    }
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
 }
