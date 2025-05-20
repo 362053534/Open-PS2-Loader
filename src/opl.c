@@ -279,8 +279,8 @@ static void itemExecSelect(struct menu_item *curMenu)
                     itemInitSupport(mod->support);
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
-                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 19, 0);
-                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 0);
+                //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
