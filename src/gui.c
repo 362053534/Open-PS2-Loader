@@ -1558,7 +1558,7 @@ int mainScreenSwitchDone = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 12;
+    int endIntroDelayFrame = 120;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1594,7 +1594,7 @@ void guiMainLoop(void)
         // 把intro界面淡出移到mainloop里，提升加载体验。
         if (greetingAlpha >= 0x00) {
             guiRenderGreeting(greetingAlpha);
-            greetingAlpha -= 0x04;
+            greetingAlpha -= 0x02;  // 改这个会导致手动模式启动后，bdm列表修正失效
         }
 
         // Render overlaying gui thingies :)
