@@ -626,7 +626,8 @@ void refreshBdmMenu()
         if (support->priv != NULL) {
             bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
             fprintf(debugFile, "纠正菜单时检测到%s  隐藏属性为%d \r\nUSB开关状态为%d    路径为%s   bdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, selected_item->item->visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
- 
+        } else {
+            fprintf(debugFile, "BDM设备初始化出错，数据为空\r\n\r\n");
         }
         fclose(debugFile);
     }
@@ -635,7 +636,7 @@ void refreshBdmMenu()
     if (menu == NULL)
         return;
 
-    // 获取选择的菜单，如果是usb没被隐藏，且已关usb，则自动切到下一页
+    // 获取选择的菜单，即使usb没被隐藏，但usb开关为off，则自动切到下一页
     if ((selected_item->item != NULL) && (selected_item->item->visible != 0)) {
         item_list_t *support = selected_item->item->userdata;
         if (support->priv != NULL) {
