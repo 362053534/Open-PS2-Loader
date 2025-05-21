@@ -616,6 +616,18 @@ static void menuNextH()
 // 自动跳转到已开启的BDM设备的游戏列表
 void refreshBdmMenu()
 {
+    // debug  打印debug信息，方便调试
+    char debugFileDir[64];
+    strcpy(debugFileDir, "smb:debug-menusys.txt");
+    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        item_list_t *support = selected_item->item->userdata;
+        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
+        fprintf(debugFile, "纠正菜单时检测到%s  隐藏属性为%d \r\nUSB开关状态为%d    路径为%s   bdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+        fclose(debugFile);
+    }
+
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)
         return;
@@ -625,15 +637,10 @@ void refreshBdmMenu()
         item_list_t *support = selected_item->item->userdata;
         if (support->priv != NULL) {
             bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
-            if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-                ;
-            } else {
+            if (!(!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB))
                 return;
-            }
-        }
-        else {
+        } else
             return;
-        }
         //char bdmType[32];
         //sprintf(bdmType, "mass0:/");
         //int massDir = fileXioDopen(bdmType);
