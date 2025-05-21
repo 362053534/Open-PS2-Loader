@@ -616,24 +616,32 @@ static void menuNextH()
 // 自动跳转到已开启的BDM设备的游戏列表
 void refreshBdmMenu()
 {
-    //// debug  打印debug信息，方便调试
-    //char debugFileDir[64];
-    //strcpy(debugFileDir, "mass0:debug-menusys.txt");
-    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-    //FILE *debugFile = fopen(debugFileDir, "ab+");
-    //if (debugFile != NULL) {
-    //    item_list_t *support = selected_item->item->userdata;
-    //    if (support->priv != NULL) {
-    //        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
-    //        if (pDeviceData->bdmDriver[0] == '\0')
-    //            fprintf(debugFile, "BDM设备未初始化，数据为空\r\n\r\n");
-    //        else
-    //            fprintf(debugFile, "纠正菜单时检测到%s\r\n隐藏属性为%d\r\nUSB开关状态为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, selected_item->item->visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
-    //    } else {
-    //        fprintf(debugFile, "刷新菜单时，页面不在BDM设备列表上\r\n\r\n");
-    //    }
-    //    fclose(debugFile);
-    //}
+    // debug  打印debug信息，方便调试
+    char debugFileDir[64];
+    strcpy(debugFileDir, "mass0:debug-menusys.txt");
+    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        struct menu_list *next = selected_item->next;
+
+        item_list_t *support = selected_item->item->userdata;
+        if (next != NULL)
+            item_list_t *gpt = next->item->userdata;
+        if (support->priv != NULL) {
+            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
+            bdm_device_data_t *pDeviceDataGpt = (bdm_device_data_t *)gpt->priv;
+            if (pDeviceData->bdmDriver[0] == '\0')
+                fprintf(debugFile, "BDM设备未初始化，数据为空\r\n\r\n");
+            else {
+                fprintf(debugFile, "纠正菜单时检测到%s\r\n隐藏属性为%d\r\nUSB开关状态为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, selected_item->item->visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+                if (next != NULL)
+                    fprintf(debugFile, "GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
+            }
+        } else {
+            fprintf(debugFile, "刷新菜单时，页面不在BDM设备列表上\r\n\r\n");
+        }
+        fclose(debugFile);
+    }
 
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)
