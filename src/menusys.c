@@ -618,7 +618,7 @@ void refreshBdmMenu()
 {
     // debug  打印debug信息，方便调试
     char debugFileDir[64];
-    strcpy(debugFileDir, "smb:debug-menusys.txt");
+    strcpy(debugFileDir, "mass0:debug-menusys.txt");
     // sprintf(debugFileDir, "%sdebug.txt", prefix);
     FILE *debugFile = fopen(debugFileDir, "ab+");
     if (debugFile != NULL) {
