@@ -1537,7 +1537,7 @@ void guiIntroLoop(void)
             tFadeDelayEnd = clock() + (sfxGetSoundDuration(SFX_BOOT) - fadeDuration) * (CLOCKS_PER_SEC / 1000);
         }
 
-        if (gInitComplete && clock() >= tFadeDelayEnd)
+        if (gInitComplete && (clock() >= tFadeDelayEnd))
         {
             // 初始化结束时，退出循环
             endIntro = 1;
