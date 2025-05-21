@@ -624,7 +624,7 @@ void refreshBdmMenu()
     if (debugFile != NULL) {
         item_list_t *support = selected_item->item->userdata;
         bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
-        fprintf(debugFile, "纠正菜单时检测到%s  隐藏属性为%d \r\nUSB开关状态为%d    路径为%s   bdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+        fprintf(debugFile, "纠正菜单时检测到%s  隐藏属性为%d \r\nUSB开关状态为%d    路径为%s   bdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, selected_item->item->visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
         fclose(debugFile);
     }
 
