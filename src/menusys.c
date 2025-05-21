@@ -623,13 +623,15 @@ void refreshBdmMenu()
     // 获取选择的菜单，如果是usb没被隐藏，且已关usb，则自动切到下一页
     if ((selected_item != NULL) && (selected_item->item->visible != 0)) {
         item_list_t *support = selected_item->item->userdata;
-        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
-        if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-            // 如果usb开关为关闭，则跳过扫描，不生成任何东西
-            struct menu_list *next = selected_item->next;
-            while (next != NULL && next->item->visible == 0)
-                next = next->next;
-        } else {
+        if (support->priv != NULL) {
+            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
+            if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+                ;
+            } else {
+                return;
+            }
+        }
+        else {
             return;
         }
         //char bdmType[32];
