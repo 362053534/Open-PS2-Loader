@@ -1590,7 +1590,7 @@ void guiMainLoop(void)
             // Read the pad states to prepare for input processing in the screen handler
             guiReadPads();
             // 不停的判断当前页面是否为空，是的就切到下一个
-            refreshBdmMenu()
+            refreshBdmMenu();
             //  handle inputs and render screen
             guiShow();
         }
