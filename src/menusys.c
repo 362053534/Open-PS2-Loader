@@ -660,17 +660,6 @@ void refreshBdmMenu()
     if (menu == NULL)
         return;
 
-    //// 获取选择的菜单，即使usb没被隐藏，只要usb开关为off，还是会自动切到下一页
-    //if ((selected_item->item != NULL) && (selected_item->item->visible != 0)) {
-    //    item_list_t *support = selected_item->item->userdata;
-    //    if (support->priv != NULL) {
-    //        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
-    //        if (!(!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB))
-    //            return;
-    //    } else
-    //        return;       
-    //}
-
     if ((selected_item->item != NULL) && (selected_item->item->visible != 0))
     {
         return;

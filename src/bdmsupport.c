@@ -808,8 +808,42 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
     // }
 }
 
+static int bdmHddCheckDone = 0;
 int bdmUpdateDeviceData(item_list_t *itemList)
 {
+    // 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
+    if (gEnableBdmHDD) {
+        if (!bdmHddCheckDone) {
+            int bdmHddCheckCount = 300;  // 次数越多，扫描时间越长
+            char bdmType[32];
+            char tempPath[16] = {0};
+            int tempDir = 0;
+            int startCheckIndex = 0;
+            while (bdmHddCheckCount > 0) {
+                bdmHddCheckCount--;
+                for (int i = startCheckIndex; i < MAX_BDM_DEVICES; i++) {
+                    sprintf(tempPath, "mass%d:/", i);
+                    if ((tempDir = fileXioDopen(tempPath)) >= 0) {
+                        fileXioIoctl2(tempDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
+                        if (strncmp(bdmType, "ata", 3) == 0) {
+                            bdmHddCheckDone = 1;
+                            fileXioDclose(tempDir);
+                            break;
+                        } else if (strncmp(bdmType, "usb", 3) == 0) {
+                            startCheckIndex = 1;
+                        }
+                        fileXioDclose(tempDir);                        
+                    }
+                }
+                if (bdmHddCheckDone)
+                    break;
+            }
+            bdmHddCheckDone = 1;
+        }
+    }
+    
+
+
     char path[16] = {0};
 
     // If bdm mode is disabled bail out as we don't want to update the visibility state of the device pages.
