@@ -835,7 +835,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "硬盘识别失败！\r\n隐藏状态为：%d\r\n\r\n", pDeviceData->bdmDriver, visible);
+                fprintf(debugFile, "检测不到硬盘！\r\n隐藏状态为：%d\r\n\r\n", visible);
                 fclose(debugFile);
             }
         }

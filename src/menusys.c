@@ -641,7 +641,7 @@ void refreshBdmMenu()
                         if (dir >= 0) {
                             fprintf(debugFile, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
                         } else {
-                            fprintf(debugFile, "未识别到GPT设备\r\n\r\n");
+                            fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
                         }               
                     } else
                         fprintf(debugFile, "GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
