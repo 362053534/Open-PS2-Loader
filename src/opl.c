@@ -522,14 +522,14 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 if (pDeviceData->bdmDriver[0] == '\0') {
                     int dir = fileXioDopen("mass1:/");
                     if (dir >= 0) {
-                        fprintf(debugFile, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
+                        fprintf(debugFile1, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
                     } else {
-                        fprintf(debugFile, "未识别到GPT设备\r\n\r\n");
+                        fprintf(debugFile1, "未识别到GPT设备\r\n\r\n");
                     }
                 } else
-                    fprintf(debugFile, "成功识别GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, next->item->visible, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+                    fprintf(debugFile1, "成功识别GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, next->item->visible, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
             } else {
-                fprintf(debugFile, "未识别到GPT设备\r\n\r\n");
+                fprintf(debugFile1, "未识别到GPT设备\r\n\r\n");
             }
             fclose(debugFile1);
         }
