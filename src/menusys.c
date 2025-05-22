@@ -633,12 +633,17 @@ void refreshBdmMenu()
                 if (next != NULL) {
                     item_list_t *gpt = next->item->userdata;
                     bdm_device_data_t *pDeviceDataGpt = (bdm_device_data_t *)gpt->priv;
-                    if (pDeviceDataGpt->bdmDriver[0] == '\0')
-                        fprintf(debugFile, "GPT设备未初始化，数据为空\r\n\r\n");
-                    else
+                    if (pDeviceDataGpt->bdmDriver[0] == '\0') {
+                        int dir = fileXioDopen("mass1:/");
+                        if (dir >= 0) {
+                            fprintf(debugFile, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
+                        } else {
+                            fprintf(debugFile, "未识别到GPT设备\r\n\r\n");
+                        }               
+                    } else
                         fprintf(debugFile, "GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
                 } else
-                    fprintf(debugFile, "GPT没有识别到\r\n\r\n");
+                    fprintf(debugFile, "GPT未能成功注册到菜单\r\n\r\n");
             }
         } else {
             fprintf(debugFile, "刷新菜单时，页面不在BDM设备列表上\r\n\r\n");

@@ -279,7 +279,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     itemInitSupport(mod->support);
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
-                mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
+                //mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
                 // guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 26, 1);
                 //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
@@ -504,25 +504,38 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
             //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13,1);
             //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-            
-            // debug  打印debug信息，方便调试
-            if (mode == 0) {
-                char debugFileDir1[64];
-                strcpy(debugFileDir1, "mass0:debug-opl.txt");
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                FILE *debugFile1 = fopen(debugFileDir1, "ab+");
-                if (debugFile1 != NULL) {
-                    fprintf(debugFile1, "opl initsuport visible == %d时进行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", (mod->menuItem.visible), gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-                    fclose(debugFile1);
-                }
-            }
-
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
         mod->menuItem.visible = 0;
     }
+
+    // debug  打印debug信息，获取GPT设备信息，方便调试
+    if (mode == 1) {
+        char debugFileDir1[64];
+        strcpy(debugFileDir1, "mass0:debug-opl.txt");
+        bdm_device_data_t *pDeviceData = itemList->priv;
+        // sprintf(debugFileDir, "%sdebug.txt", prefix);
+        FILE *debugFile1 = fopen(debugFileDir1, "ab+");
+        if (debugFile1 != NULL) {
+            if (pDeviceData != NULL) {
+                if (pDeviceData->bdmDriver[0] == '\0') {
+                    int dir = fileXioDopen("mass1:/");
+                    if (dir >= 0) {
+                        fprintf(debugFile, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
+                    } else {
+                        fprintf(debugFile, "未识别到GPT设备\r\n\r\n");
+                    }
+                } else
+                    fprintf(debugFile, "成功识别GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, next->item->visible, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+            } else {
+                fprintf(debugFile, "未识别到GPT设备\r\n\r\n");
+            }
+            fclose(debugFile1);
+        }
+    }
+
+
 }
 
 static void initAllSupport(int force_reinit)
@@ -531,6 +544,7 @@ static void initAllSupport(int force_reinit)
     initSupport(ethGetObject(0), ETH_MODE, force_reinit || (gNetworkStartup >= ERROR_ETH_SMB_CONN));
     initSupport(hddGetObject(0), HDD_MODE, force_reinit);
     initSupport(appGetObject(0), APP_MODE, force_reinit);
+    allSupportInitDone = 1;
 }
 
 static void deinitAllSupport(int exception, int modeSelected)

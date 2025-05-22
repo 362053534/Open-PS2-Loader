@@ -827,25 +827,28 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
-    // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
-    if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
-        // usb关闭的情况下，停止循环检测usb    下面return1的情况下，这段代码只会执行一次，但是手动模式会把usb图标显示出来
-        if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
-        {
-            // debug  打印debug信息，方便调试
+    // debug  打印debug信息，找到gpt信息
+    if (dir < 0) {     
+        if (itemList->mode == 1) {
             char debugFileDir[64];
             strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "visible == %d时循环检测到usb\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n" , visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                fprintf(debugFile, "硬盘识别失败！\r\n隐藏状态为：%d\r\n\r\n", pDeviceData->bdmDriver, visible);
                 fclose(debugFile);
             }
+        }
+    }
 
+    // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
+    if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
+        // usb关闭的情况下，停止循环检测usb    下面return1的情况下，这段代码只会执行一次，但是手动模式会把usb图标显示出来
+        if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
+        {
             //mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
             return 0;
         }
-
 
         if (gBDMPrefix[0] != '\0')
             snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
@@ -880,15 +883,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
         // Make the menu item visible.
         if (itemList->owner != NULL) {
-            // debug  打印debug信息，方便调试
-            char debugFileDir[64];
-            strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-            // sprintf(debugFileDir, "%sdebug.txt", prefix);
-            FILE *debugFile = fopen(debugFileDir, "ab+");
-            if (debugFile != NULL) {
-                fprintf(debugFile, "visible == %d时执行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-                fclose(debugFile);
-            }
+            //// debug  打印debug信息，方便调试
+            //char debugFileDir[64];
+            //strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+            //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+            //FILE *debugFile = fopen(debugFileDir, "ab+");
+            //if (debugFile != NULL) {
+            //    fprintf(debugFile, "visible == %d时执行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+            //    fclose(debugFile);
+            //}
 
             // 手动模式启用设备，会进来这里。如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
@@ -899,6 +902,18 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+            }
+        }
+
+        // debug  打印debug信息，找到gpt信息
+        if (itemList->mode == 1) {
+            char debugFileDir[64];
+            strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+            // sprintf(debugFileDir, "%sdebug.txt", prefix);
+            FILE *debugFile = fopen(debugFileDir, "ab+");
+            if (debugFile != NULL) {
+                fprintf(debugFile, "%s硬盘识别成功！\r\n隐藏状态为：%d\r\n\r\n", pDeviceData->bdmDriver, visible);
+                fclose(debugFile);
             }
         }
 
