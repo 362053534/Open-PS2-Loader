@@ -19,6 +19,9 @@
 #include "include/sound.h"
 #include <assert.h>
 
+#define NEWLIB_PORT_AWARE
+#include <fileXio_rpc.h> // fileXioDopen
+
 enum MENU_IDs {
     MENU_SETTINGS = 0,
     MENU_GFX_SETTINGS,
