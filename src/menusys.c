@@ -650,7 +650,7 @@ void refreshBdmMenu()
                     fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
                 }
             } else
-                fprintf(debugFile, "GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
+                fprintf(debugFile, "发现GPT设备，初始化完成，类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
         } else
             fprintf(debugFile, "GPT未能成功注册到菜单\r\n\r\n");
         fclose(debugFile);
