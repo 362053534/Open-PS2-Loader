@@ -527,7 +527,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                         fprintf(debugFile1, "未识别到GPT设备\r\n\r\n");
                     }
                 } else
-                    fprintf(debugFile1, "成功识别GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, next->item->visible, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+                    fprintf(debugFile1, "成功识别GPT设备类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, mod->menuItem.visible, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
             } else {
                 fprintf(debugFile1, "未识别到GPT设备\r\n\r\n");
             }
