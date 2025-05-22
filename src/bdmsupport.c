@@ -814,7 +814,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     // 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
     if (gEnableBdmHDD) {
         if (!bdmHddCheckDone) {
-            int bdmHddCheckCount = 30000;  // 次数越多，扫描时间越长
+            int bdmHddCheckCount = 60;  // 次数越多，扫描时间越长
             char bdmType[32];
             char tempPath[16] = {0};
             int tempDir = 0;
