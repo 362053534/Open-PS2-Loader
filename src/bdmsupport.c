@@ -531,7 +531,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         if (dmaMode < 3)
             dmaType = 0x20;
         else if (dmaMode >= 7) {
-            dmaMode = pDeviceData->ataHighestUDMAMode + 1;
+            dmaMode = pDeviceData->ataHighestUDMAMode + (dmaMode - 7);
         } else {
             dmaMode = pDeviceData->ataHighestUDMAMode < dmaMode - 3 ? pDeviceData->ataHighestUDMAMode : dmaMode - 3;
         }

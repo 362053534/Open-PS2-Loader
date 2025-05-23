@@ -947,8 +947,10 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         int ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
         char highestUDMA[6];
-        sprintf(highestUDMA, "UDMA %d", ataHighestUDMAMode + 1);
-        const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", highestUDMA, NULL};
+        char highestUDMA_Plus[6];
+        sprintf(highestUDMA, "UDMA %d", ataHighestUDMAMode);
+        sprintf(highestUDMA_Plus, "UDMA %d", ataHighestUDMAMode + 1);
+        const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", highestUDMA, highestUDMA_Plus, NULL};
         diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
     } else {
         const char *dmaModes[] = {NULL};
