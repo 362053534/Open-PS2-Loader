@@ -871,7 +871,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "检测不到硬盘！\r\n隐藏状态为：%d\r\n\r\n", visible);
+                fprintf(debugFile, "检测不到硬盘！\r\n检测失败的重试次数为：%d\r\n\r\n", bdmHddRetryCount);
                 fclose(debugFile);
             }
         }
