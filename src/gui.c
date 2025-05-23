@@ -1556,10 +1556,11 @@ void guiIntroLoop(void)
 }
 
 int mainScreenSwitchDone = 0;
+int bdmNeedRefresh = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 0;
+    int endIntroDelayFrame = 2;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1576,6 +1577,7 @@ void guiMainLoop(void)
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
             endIntroDelayFrame--;
+            bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
             guiRenderGreeting(greetingAlpha);
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
@@ -1585,11 +1587,17 @@ void guiMainLoop(void)
                 }
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                // }
-                bdmEnumerateDevices();   // 刷新BDM页面之前重新获取一次BDM数据
+                // }            
                 refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 mainScreenSwitchDone = 1;
             }
+
+            // 手动模式启动BDM后，先更新数据，下一帧再刷新页面
+            if (bdmNeedRefresh) {
+                bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
+                mainScreenSwitchDone = 0;
+                bdmNeedRefresh = 0;
+            }      
 
             // Read the pad states to prepare for input processing in the screen handler
             guiReadPads();
