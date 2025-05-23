@@ -260,7 +260,8 @@ int BdmNeedRefresh(item_list_t *itemList)
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
     ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
     pDeviceData->bdmDeviceTick = -1;
-    bdmNeedsUpdate(itemList);
+    if (!forceRefreshBdm)
+        bdmNeedsUpdate(itemList);
 }
 
 static int bdmUpdateGameList(item_list_t *itemList)
