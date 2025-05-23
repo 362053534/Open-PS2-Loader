@@ -661,11 +661,11 @@ void refreshBdmMenu()
     if ((selected_item->item->userdata)->priv != NULL) {
         bdmUpdateDeviceData(selected_item->item->userdata);
     }
-    struct menu_list *next = selected_item->next;
-    while ((next != NULL) && ((next->item->userdata)->priv != NULL))
+    struct menu_list *next1 = selected_item->next;
+    while ((next1 != NULL) && ((next1->item->userdata)->priv != NULL))
     {
-        bdmUpdateDeviceData(next->item->userdata);
-        next = next->next;
+        bdmUpdateDeviceData(next1->item->userdata);
+        next1 = next1->next;
     }
     
     // Find the first menu in the list that is visible and set it as the active menu.
