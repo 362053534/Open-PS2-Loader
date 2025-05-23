@@ -1582,7 +1582,6 @@ void guiMainLoop(void)
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenSwitchDone) {
                 //bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
-                menuReinitMainMenu(); // 重新初始化主界面
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
                 }             
