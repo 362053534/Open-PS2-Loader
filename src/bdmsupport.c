@@ -813,7 +813,7 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 }
 
 static int bdmHddCheckDone = 0;
-//static int bdmHddRetryCount = 0;
+static int bdmHddRetryCount = 0;
 int bdmUpdateDeviceData(item_list_t *itemList)
 {
     // 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
@@ -824,7 +824,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             char tempPath[16] = {0};
             int tempDir = 0;
             int startCheckIndex = 0;
-            while (bdmHddCheckCount > 0) {
+            while (true) {
                 bdmHddCheckCount--;
                 for (int i = startCheckIndex; i < MAX_BDM_DEVICES; i++) {
                     sprintf(tempPath, "mass%d:/", i);
@@ -865,19 +865,19 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
-    //// debug  打印debug信息，找到gpt信息
-    //if (dir < 0) {     
-    //    if (itemList->mode == 1) {
-    //        char debugFileDir[64];
-    //        strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-    //        // sprintf(debugFileDir, "%sdebug.txt", prefix);
-    //        FILE *debugFile = fopen(debugFileDir, "ab+");
-    //        if (debugFile != NULL) {
-    //            fprintf(debugFile, "检测不到硬盘！\r\n检测失败的重试次数为：%d\r\n\r\n", bdmHddRetryCount);
-    //            fclose(debugFile);
-    //        }
-    //    }
-    //}
+    // debug  打印debug信息，找到gpt信息
+    if (dir < 0) {     
+        if (itemList->mode == 1) {
+            char debugFileDir[64];
+            strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+            // sprintf(debugFileDir, "%sdebug.txt", prefix);
+            FILE *debugFile = fopen(debugFileDir, "ab+");
+            if (debugFile != NULL) {
+                fprintf(debugFile, "检测不到硬盘！\r\n检测失败的重试次数为：%d\r\n\r\n", bdmHddRetryCount);
+                fclose(debugFile);
+            }
+        }
+    }
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
@@ -943,17 +943,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             }
         }
 
-        //// debug  打印debug信息，找到gpt信息
-        //if (itemList->mode == 1) {
-        //    char debugFileDir[64];
-        //    strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-        //    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-        //    FILE *debugFile = fopen(debugFileDir, "ab+");
-        //    if (debugFile != NULL) {
-        //        fprintf(debugFile, "%s硬盘识别成功！\r\n检测失败的重试次数为：%d\r\n\r\n", pDeviceData->bdmDriver, bdmHddRetryCount);
-        //        fclose(debugFile);
-        //    }
-        //}
+        // debug  打印debug信息，找到gpt信息
+        if (itemList->mode == 1) {
+            char debugFileDir[64];
+            strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+            // sprintf(debugFileDir, "%sdebug.txt", prefix);
+            FILE *debugFile = fopen(debugFileDir, "ab+");
+            if (debugFile != NULL) {
+                fprintf(debugFile, "%s硬盘识别成功！\r\n检测失败的重试次数为：%d\r\n\r\n", pDeviceData->bdmDriver, bdmHddRetryCount);
+                fclose(debugFile);
+            }
+        }
 
         // Close the device handle.
         fileXioDclose(dir);
