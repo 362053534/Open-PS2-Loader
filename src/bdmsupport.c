@@ -146,13 +146,6 @@ void bdmInit(item_list_t *itemList)
     itemList->enabled = 1;
 }
 
-int BdmNeedRefresh(item_list_t *itemList)
-{
-    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
-    pDeviceData->bdmDeviceTick = -1;
-    bdmNeedsUpdate(itemList);
-}
-
 static int bdmNeedsUpdate(item_list_t *itemList)
 {
     char path[256];
@@ -260,6 +253,13 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     //}
 
     return result;
+}
+
+int BdmNeedRefresh(item_list_t *itemList)
+{
+    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
+    pDeviceData->bdmDeviceTick = -1;
+    bdmNeedsUpdate(itemList);
 }
 
 static int bdmUpdateGameList(item_list_t *itemList)
