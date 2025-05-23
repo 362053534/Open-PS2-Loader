@@ -1556,7 +1556,7 @@ void guiIntroLoop(void)
 }
 
 int mainScreenSwitchDone = 0;
-int bdmNeedRefresh = 0;
+//int bdmNeedRefresh = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;

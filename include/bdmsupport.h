@@ -53,5 +53,6 @@ void bdmEnumerateDevices();
 void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData);
 
 int bdmUpdateDeviceData(item_list_t *itemList);
+int BdmNeedRefresh(item_list_t *itemList);
 
 #endif

@@ -279,7 +279,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     itemInitSupport(mod->support);
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
-                bdmNeedRefresh = 1; // 手动启动BDM后，需要让gui刷新一次列表
+                mainScreenSwitchDone = 0; // 手动启动BDM后，需要让gui刷新一次列表
                 // guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 26, 1);
                 //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
