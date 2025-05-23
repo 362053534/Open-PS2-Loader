@@ -825,6 +825,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             int tempDir = 0;
             int startCheckIndex = 0;
             while (true) {
+                ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmLoadBlockDeviceModules);
                 bdmHddCheckCount--;
                 for (int i = startCheckIndex; i < MAX_BDM_DEVICES; i++) {
                     sprintf(tempPath, "mass%d:/", i);
