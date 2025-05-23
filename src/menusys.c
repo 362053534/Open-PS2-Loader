@@ -657,6 +657,12 @@ void refreshBdmMenu()
     //    fclose(debugFile);
     //}
 
+    // 纠正菜单之前，再次获取一次BDM数据
+    item_list_t *support = selected_item->item->userdata;
+    if (support != NULL) {
+        bdmUpdateDeviceData(support);
+    }
+    
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)
         return;

@@ -29,7 +29,6 @@ static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
 
 void bdmInitDevicesData();
-int bdmUpdateDeviceData(item_list_t *itemList);
 
 // Identifies the partition that the specified file is stored on and generates a full path to it.
 int bdmFindPartition(char *target, const char *name, int write)
