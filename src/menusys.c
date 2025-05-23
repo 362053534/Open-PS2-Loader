@@ -658,9 +658,14 @@ void refreshBdmMenu()
     //}
 
     // 纠正菜单之前，再次获取一次BDM数据
-    item_list_t *support = selected_item->item->userdata;
-    if (support != NULL) {
-        bdmUpdateDeviceData(support);
+    if (selected_item->item->userdata->priv != NULL) {
+        bdmUpdateDeviceData(selected_item->item->userdata);
+    }
+    struct menu_list *next = selected_item->next;
+    while (next != NULL && next->item->userdata->priv != NULL)
+    {
+        bdmUpdateDeviceData(next->item->userdata);
+        next = next->next;
     }
     
     // Find the first menu in the list that is visible and set it as the active menu.
