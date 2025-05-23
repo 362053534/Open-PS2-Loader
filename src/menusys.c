@@ -619,43 +619,43 @@ static void menuNextH()
 // 自动跳转到已开启的BDM设备的游戏列表
 void refreshBdmMenu()
 {
-    //// debug  打印debug信息，方便调试
-    //char debugFileDir[64];
-    //strcpy(debugFileDir, "mass0:debug-menusys.txt");
-    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-    //FILE *debugFile = fopen(debugFileDir, "ab+");
-    //if (debugFile != NULL) {
-    //    struct menu_list *next = selected_item->next;
-    //    item_list_t *support = selected_item->item->userdata;
-    //    if (support->priv != NULL) {
-    //        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
-    //        if (pDeviceData->bdmDriver[0] == '\0')
-    //            fprintf(debugFile, "BDM可能为手动模式，并未初始化，数据为空\r\n\r\n");
-    //        else {
-    //            fprintf(debugFile, "纠正菜单时检测到%s\r\n隐藏属性为%d\r\nUSB开关状态为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, selected_item->item->visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
-    //        }
-    //    } else {
-    //        fprintf(debugFile, "进入主菜单时，默认选单不是BDM\r\n\r\n");
-    //    }
-    //    // debug 检测gpt硬盘
-    //    if (next != NULL) {
-    //        item_list_t *gpt = next->item->userdata;
-    //        if (gpt->priv != NULL) {
-    //            bdm_device_data_t *pDeviceDataGpt = (bdm_device_data_t *)gpt->priv;
-    //            if (pDeviceDataGpt->bdmDriver[0] == '\0') {
-    //                int dir = fileXioDopen("mass1:/");
-    //                if (dir >= 0) {
-    //                    fprintf(debugFile, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
-    //                } else {
-    //                    fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
-    //                }
-    //            } else
-    //                fprintf(debugFile, "发现GPT设备，初始化完成，类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
-    //        }
-    //    } else
-    //        fprintf(debugFile, "GPT未能成功注册到菜单\r\n\r\n");
-    //    fclose(debugFile);
-    //}
+    // debug  打印debug信息，方便调试
+    char debugFileDir[64];
+    strcpy(debugFileDir, "mass0:debug-menusys.txt");
+    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        struct menu_list *next = selected_item->next;
+        item_list_t *support = selected_item->item->userdata;
+        if (support->priv != NULL) {
+            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
+            if (pDeviceData->bdmDriver[0] == '\0')
+                fprintf(debugFile, "BDM可能为手动模式，并未初始化，数据为空\r\n\r\n");
+            else {
+                fprintf(debugFile, "纠正菜单时检测到%s\r\n隐藏属性为%d\r\nUSB开关状态为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceData->bdmDriver, selected_item->item->visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDeviceType);
+            }
+        } else {
+            fprintf(debugFile, "进入主菜单时，默认选单不是BDM\r\n\r\n");
+        }
+        // debug 检测gpt硬盘
+        if (next != NULL) {
+            item_list_t *gpt = next->item->userdata;
+            if (gpt->priv != NULL) {
+                bdm_device_data_t *pDeviceDataGpt = (bdm_device_data_t *)gpt->priv;
+                if (pDeviceDataGpt->bdmDriver[0] == '\0') {
+                    int dir = fileXioDopen("mass1:/");
+                    if (dir >= 0) {
+                        fprintf(debugFile, "发现GPT设备，但未初始化，数据为空\r\n\r\n");
+                    } else {
+                        fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
+                    }
+                } else
+                    fprintf(debugFile, "发现GPT设备，初始化完成，类型为%s\r\n隐藏属性为%d\r\n路径为%s\r\nbdmDeviceType为%d\r\n\r\n", pDeviceDataGpt->bdmDriver, next->item->visible, pDeviceDataGpt->bdmPrefix, pDeviceDataGpt->bdmDeviceType);
+            }
+        } else
+            fprintf(debugFile, "GPT未能成功注册到菜单\r\n\r\n");
+        fclose(debugFile);
+    }
 
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)

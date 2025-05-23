@@ -1586,6 +1586,7 @@ void guiMainLoop(void)
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // }
+                bdmEnumerateDevices();   // 刷新BDM页面之前重新获取一次BDM数据
                 refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 mainScreenSwitchDone = 1;
             }

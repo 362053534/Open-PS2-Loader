@@ -812,42 +812,42 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
     // }
 }
 
-static int bdmHddCheckDone = 0;
-static int bdmHddRetryCount = 0;
+//static int bdmHddCheckDone = 0;
+//static int bdmHddRetryCount = 0;
 int bdmUpdateDeviceData(item_list_t *itemList)
 {
-    // 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
-    if (gEnableBdmHDD) {
-        if (!bdmHddCheckDone) {
-            int bdmHddCheckCount = 2000;  // 次数越多，扫描时间越长，单位是毫秒？
-            char bdmType[32];
-            char tempPath[16] = {0};
-            int tempDir = 0;
-            int startCheckIndex = 0;
-            while (true) {
-                ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmLoadBlockDeviceModules);
-                bdmHddCheckCount--;
-                for (int i = startCheckIndex; i < MAX_BDM_DEVICES; i++) {
-                    sprintf(tempPath, "mass%d:/", i);
-                    if ((tempDir = fileXioDopen(tempPath)) >= 0) {
-                        fileXioIoctl2(tempDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
-                        if (strncmp(bdmType, "ata", 3) == 0) {
-                            bdmHddCheckDone = 1;
-                            fileXioDclose(tempDir);
-                            break;
-                        } else if (strncmp(bdmType, "usb", 3) == 0) {
-                            startCheckIndex = 1;
-                        }
-                        fileXioDclose(tempDir);                        
-                    }
-                }
-                if (bdmHddCheckDone)
-                    break;
-                bdmHddRetryCount++;
-            }
-            bdmHddCheckDone = 1;
-        }
-    }
+    //// 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
+    //if (gEnableBdmHDD) {
+    //    if (!bdmHddCheckDone) {
+    //        int bdmHddCheckCount = 2000;  // 次数越多，扫描时间越长，单位是毫秒？
+    //        char bdmType[32];
+    //        char tempPath[16] = {0};
+    //        int tempDir = 0;
+    //        int startCheckIndex = 0;
+    //        while (bdmHddCheckCount > 0) {
+    //            ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmLoadBlockDeviceModules);
+    //            bdmHddCheckCount--;
+    //            for (int i = startCheckIndex; i < MAX_BDM_DEVICES; i++) {
+    //                sprintf(tempPath, "mass%d:/", i);
+    //                if ((tempDir = fileXioDopen(tempPath)) >= 0) {
+    //                    fileXioIoctl2(tempDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
+    //                    if (strncmp(bdmType, "ata", 3) == 0) {
+    //                        bdmHddCheckDone = 1;
+    //                        fileXioDclose(tempDir);
+    //                        break;
+    //                    } else if (strncmp(bdmType, "usb", 3) == 0) {
+    //                        startCheckIndex = 1;
+    //                    }
+    //                    fileXioDclose(tempDir);                        
+    //                }
+    //            }
+    //            if (bdmHddCheckDone)
+    //                break;
+    //            bdmHddRetryCount++;
+    //        }
+    //        bdmHddCheckDone = 1;
+    //    }
+    //}
     
     char path[16] = {0};
 
@@ -874,7 +874,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "检测不到硬盘！\r\n检测失败的重试次数为：%d\r\n\r\n", bdmHddRetryCount);
+                fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
                 fclose(debugFile);
             }
         }
@@ -951,7 +951,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "%s硬盘识别成功！\r\n检测失败的重试次数为：%d\r\n\r\n", pDeviceData->bdmDriver, bdmHddRetryCount);
+                fprintf(debugFile, "%s硬盘识别成功！\r\n\r\n", pDeviceData->bdmDriver);
                 fclose(debugFile);
             }
         }
