@@ -658,13 +658,15 @@ void refreshBdmMenu()
     //}
 
     // 纠正菜单之前，再次获取一次BDM数据
-    if (selected_item->item->userdata->priv != NULL) {
-        bdmUpdateDeviceData(selected_item->item->userdata);
+    item_list_t *support = selected_item->item->userdata;
+    if (support->priv != NULL) {
+        bdmUpdateDeviceData(support);
     }
     struct menu_list *next1 = selected_item->next;
-    while ((next1 != NULL) && (next1->item->userdata->priv != NULL))
+    item_list_t *support1 = next1->item->userdata;
+    while ((next1 != NULL) && (support1->priv != NULL))
     {
-        bdmUpdateDeviceData(next1->item->userdata);
+        bdmUpdateDeviceData(support1);
         next1 = next1->next;
     }
     
