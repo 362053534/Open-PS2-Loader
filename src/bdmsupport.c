@@ -809,12 +809,13 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 }
 
 static int bdmHddCheckDone = 0;
+static int bdmHddRetryCount = 0;
 int bdmUpdateDeviceData(item_list_t *itemList)
 {
     // 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
     if (gEnableBdmHDD) {
         if (!bdmHddCheckDone) {
-            int bdmHddCheckCount = 240;  // 次数越多，扫描时间越长
+            int bdmHddCheckCount = 2000;  // 次数越多，扫描时间越长，单位是毫秒？
             char bdmType[32];
             char tempPath[16] = {0};
             int tempDir = 0;
@@ -837,6 +838,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 }
                 if (bdmHddCheckDone)
                     break;
+                bdmHddRetryCount++;
             }
             bdmHddCheckDone = 1;
         }
@@ -946,7 +948,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "%s硬盘识别成功！\r\n隐藏状态为：%d\r\n\r\n", pDeviceData->bdmDriver, visible);
+                fprintf(debugFile, "%s硬盘识别成功！\r\n检测失败的重试次数为：%d\r\n\r\n", pDeviceData->bdmDriver, bdmHddRetryCount);
                 fclose(debugFile);
             }
         }
