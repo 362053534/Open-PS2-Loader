@@ -1556,7 +1556,7 @@ void guiIntroLoop(void)
 }
 
 int mainScreenSwitchDone = 0;
-//int bdmNeedRefresh = 0;
+int forceRefreshBdm = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
@@ -1581,27 +1581,22 @@ void guiMainLoop(void)
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenSwitchDone) {
+                //bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
+                menuReinitMainMenu(); // 重新初始化主界面
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                }
+                }             
+                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                // }            
-                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                // }                      
                 mainScreenSwitchDone = 1;
-            }
-
-            //// 手动模式启动BDM后，先更新数据，下一帧再刷新页面
-            //if (bdmNeedRefresh) {
-            //    bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
-            //    mainScreenSwitchDone = 0;
-            //    bdmNeedRefresh = 0;
-            //}      
+                forceRefreshBdm = 0;
+            } 
 
             // Read the pad states to prepare for input processing in the screen handler
             guiReadPads();
-            //// 不停的判断当前页面是否为空，是的就切到下一个
-            //refreshBdmMenu();
+
             //  handle inputs and render screen
             guiShow();
 
@@ -1611,7 +1606,6 @@ void guiMainLoop(void)
                 greetingAlpha -= 0x04;
             }
         }
-
 
         // Render overlaying gui thingies :)
         guiDrawOverlays();

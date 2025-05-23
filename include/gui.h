@@ -54,7 +54,7 @@ extern int guiInactiveFrames;
 extern int guiFrameId;
 extern int mainScreenSwitchDone;
 extern int allSupportInitDone;
-extern int bdmNeedRefresh;
+extern int forceRefreshBdm;
 
 #define GUI_SCREEN_MAIN      0
 #define GUI_SCREEN_MENU      1
