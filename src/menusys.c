@@ -658,11 +658,11 @@ void refreshBdmMenu()
     //}
 
     // 纠正菜单之前，再次获取一次BDM数据
-    if (selected_item->item->userdata->priv != NULL) {
+    if ((selected_item->item->userdata)->priv != NULL) {
         bdmUpdateDeviceData(selected_item->item->userdata);
     }
     struct menu_list *next = selected_item->next;
-    while (next != NULL && next->item->userdata->priv != NULL)
+    while ((next != NULL) && ((next->item->userdata)->priv != NULL))
     {
         bdmUpdateDeviceData(next->item->userdata);
         next = next->next;
