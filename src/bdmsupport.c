@@ -531,7 +531,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         if (dmaMode < 3)
             dmaType = 0x20;
         else if (dmaMode >= 7) {
-            dmaMode = pDeviceData->ataHighestUDMAMode;
+            dmaMode = pDeviceData->ataHighestUDMAMode + 1;
         } else {
             dmaMode = pDeviceData->ataHighestUDMAMode < dmaMode - 3 ? pDeviceData->ataHighestUDMAMode : dmaMode - 3;
         }
@@ -866,19 +866,19 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
-    // debug  打印debug信息，找到gpt信息
-    if (dir < 0) {     
-        if (itemList->mode == 1) {
-            char debugFileDir[64];
-            strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-            // sprintf(debugFileDir, "%sdebug.txt", prefix);
-            FILE *debugFile = fopen(debugFileDir, "ab+");
-            if (debugFile != NULL) {
-                fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
-                fclose(debugFile);
-            }
-        }
-    }
+    //// debug  打印debug信息，找到gpt信息
+    //if (dir < 0) {     
+    //    if (itemList->mode == 1) {
+    //        char debugFileDir[64];
+    //        strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+    //        // sprintf(debugFileDir, "%sdebug.txt", prefix);
+    //        FILE *debugFile = fopen(debugFileDir, "ab+");
+    //        if (debugFile != NULL) {
+    //            fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
+    //            fclose(debugFile);
+    //        }
+    //    }
+    //}
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
@@ -944,17 +944,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             }
         }
 
-        // debug  打印debug信息，找到gpt信息
-        if (itemList->mode == 1) {
-            char debugFileDir[64];
-            strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-            // sprintf(debugFileDir, "%sdebug.txt", prefix);
-            FILE *debugFile = fopen(debugFileDir, "ab+");
-            if (debugFile != NULL) {
-                fprintf(debugFile, "%s硬盘识别成功！\r\n\r\n", pDeviceData->bdmDriver);
-                fclose(debugFile);
-            }
-        }
+        //// debug  打印debug信息，找到gpt信息
+        //if (itemList->mode == 1) {
+        //    char debugFileDir[64];
+        //    strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+        //    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+        //    FILE *debugFile = fopen(debugFileDir, "ab+");
+        //    if (debugFile != NULL) {
+        //        fprintf(debugFile, "%s硬盘识别成功！\r\n\r\n", pDeviceData->bdmDriver);
+        //        fclose(debugFile);
+        //    }
+        //}
 
         // Close the device handle.
         fileXioDclose(dir);
