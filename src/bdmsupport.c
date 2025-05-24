@@ -199,8 +199,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
             pOwner->menuItem.visible = 0;
     }
 
-    // 加上mainScreenSwitchDone变量，让初始化阶段每一帧都检测bdm是否有更新，防止硬盘延迟启动造成的问题
-    if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration) && mainScreenSwitchDone)
+    // 加上mainScreenInitDone变量，让初始化阶段每一帧都检测bdm是否有更新，防止硬盘延迟启动造成的问题
+    if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration) && mainScreenInitDone)
         return 0;
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
@@ -248,11 +248,6 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     }
 
     sbCreateFolders(pDeviceData->bdmPrefix, 1);
-
-    //if (mainScreenSwitchDone) {
-    //    mainScreenSwitchDone = 0; // return1，代表bdm有更新，此时需要让gui刷新一次列表
-    //}
-
     return result;
 }
 
@@ -765,7 +760,6 @@ void bdmInitDevicesData()
                         //    }
                         //} 
                     }
-                    ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 pOwner->menuItem.visible = 0;
@@ -886,7 +880,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         // usb关闭的情况下，停止循环检测usb    下面return1的情况下，这段代码只会执行一次，但是手动模式会把usb图标显示出来
         if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
         {
-            //mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
+            //mainScreenInitDone = 0; // 重置bdm菜单修正开关
             return 0;
         }
 
@@ -937,7 +931,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // 手动模式启用设备，会进来这里。如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-                //mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
+                //mainScreenInitDone = 0; // 重置bdm菜单修正开关
                 //fileXioDclose(dir);
                 //return 0;
             } else {

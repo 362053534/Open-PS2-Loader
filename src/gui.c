@@ -1554,13 +1554,13 @@ void guiIntroLoop(void)
     }
 }
 
-int mainScreenSwitchDone = 0;
+int mainScreenInitDone = 0;
 int forceRefreshBdm = 0;
 int GptFound = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 120;
+    int endIntroDelayFrame = 90;
     // 如果没开BdmHdd就不需要延迟，直接改为0
     if (gEnableBdmHDD) {
         if (GptFound) {
@@ -1597,7 +1597,7 @@ void guiMainLoop(void)
             guiRenderGreeting(greetingAlpha);
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
-            if (!mainScreenSwitchDone) {
+            if (!mainScreenInitDone) {
                 //bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
@@ -1606,7 +1606,7 @@ void guiMainLoop(void)
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // }                      
-                mainScreenSwitchDone = 1;
+                mainScreenInitDone = 1;
                 forceRefreshBdm = 0;
             } 
 

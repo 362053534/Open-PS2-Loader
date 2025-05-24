@@ -273,15 +273,26 @@ static void itemExecSelect(struct menu_item *curMenu)
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
+                // 手动模式启动后，纠正可见状态
+                bdm_device_data_t *pDeviceData = support->priv;
+                if (pDeviceData != NULL) {
+                    if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+                        mod->menuItem.visible = 0;
+                    } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) && gEnableILK) {
+                        mod->menuItem.visible = 1;
+                    } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && gEnableMX4SIO) {
+                        mod->menuItem.visible = 1;
+                    } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && gEnableBdmHDD) {
+                        mod->menuItem.visible = 1;
+                    }
+                }
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
                     opl_io_module_t *mod = &list_support[i];
                     itemInitSupport(mod->support);
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
-                mainScreenSwitchDone = 0; // 手动启动BDM后，需要让gui刷新一次列表
-                // guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 26, 1);
-                //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                mainScreenInitDone = 0; // 手动启动BDM后，需要让gui刷新一次列表
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
@@ -489,7 +500,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
                     mod->menuItem.visible = 0;
-                    //mainScreenSwitchDone = 0; // 重置bdm菜单修正开关
+                    //mainScreenInitDone = 0; // 重置bdm菜单修正开关
                 }
             }
 

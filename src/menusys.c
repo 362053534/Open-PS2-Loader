@@ -665,7 +665,7 @@ void refreshBdmMenu()
         return;
 
     //// 只有在主界面初始化阶段，才需要重新获取BDM数据
-    //if (!mainScreenSwitchDone) {
+    //if (!mainScreenInitDone) {
     //    if ((gBDMStartMode == START_MODE_AUTO) || forceRefreshBdm) {
     //        // 纠正菜单之前，更新所有BDM设备的数据，防止硬盘延迟启动，造成数据未获取的问题
     //        item_list_t *support = selected_item->item->userdata;
