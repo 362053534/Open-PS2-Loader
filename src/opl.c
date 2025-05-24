@@ -516,9 +516,10 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             //}
 
             mod->support->itemInit(mod->support);
-            moduleUpdateMenuInternal(mod, 0, 0);
+
 
             if (mode != 0) {
+                moduleUpdateMenuInternal(mod, 0, 0);
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
             }
 
