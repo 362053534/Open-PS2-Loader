@@ -506,19 +506,22 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-            // 自动模式时，纠正usb可见状态（不知道有什么用，也不知道修正后是好是坏）
-            if (mode == 0) {
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-                    mod->menuItem.visible = 0;
-                    //mainScreenInitDone = 0; // 重置bdm菜单修正开关
-                }
-            }
+            //// 自动模式时，纠正usb可见状态（不知道有什么用，也不知道修正后是好是坏）
+            //if (mode == 0) {
+            //    bdm_device_data_t *pDeviceData = itemList->priv;
+            //    if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+            //        mod->menuItem.visible = 0;
+            //        //mainScreenInitDone = 0; // 重置bdm菜单修正开关
+            //    }
+            //}
 
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
 
-            //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+            if (mode != 0) {
+                ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+            }
+
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
