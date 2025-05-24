@@ -55,6 +55,7 @@ extern int guiFrameId;
 extern int mainScreenSwitchDone;
 extern int allSupportInitDone;
 extern int forceRefreshBdm;
+extern int GptFound;
 
 #define GUI_SCREEN_MAIN      0
 #define GUI_SCREEN_MENU      1

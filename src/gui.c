@@ -1557,10 +1557,19 @@ void guiIntroLoop(void)
 
 int mainScreenSwitchDone = 0;
 int forceRefreshBdm = 0;
+int GptFound = 0;
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 0;
+    int endIntroDelayFrame = 120;
+    // 如果没开BdmHdd就不需要延迟，直接改为0
+    if (gEnableBdmHDD) {
+        if (GptFound) {
+            endIntroDelayFrame = 0;
+        }
+    } else {
+        endIntroDelayFrame = 0;
+    } 
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1576,7 +1585,16 @@ void guiMainLoop(void)
 
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
-            endIntroDelayFrame--;
+            // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
+            if (gEnableBdmHDD) {
+                if (GptFound) {
+                    endIntroDelayFrame = 0;
+                } else {
+                    endIntroDelayFrame--;
+                }
+            } else {
+                endIntroDelayFrame = 0;
+            }   
             guiRenderGreeting(greetingAlpha);
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表

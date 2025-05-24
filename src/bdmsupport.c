@@ -199,7 +199,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
             pOwner->menuItem.visible = 0;
     }
 
-    if (pDeviceData->bdmULSizePrev != -2 && pDeviceData->bdmDeviceTick == BdmGeneration)
+    // 加上mainScreenSwitchDone变量，让初始化阶段每一帧都检测bdm是否有更新，防止硬盘延迟启动造成的问题
+    if (pDeviceData->bdmULSizePrev != -2 && pDeviceData->bdmDeviceTick == BdmGeneration && mainScreenSwitchDone)
         return 0;
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
@@ -918,6 +919,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
             pDeviceData->bdmDeviceType = BDM_TYPE_ATA;
             itemList->flags = MODE_FLAG_COMPAT_DMA;
+            GptFound = 1;
         } else
             pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
 
