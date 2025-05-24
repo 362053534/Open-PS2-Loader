@@ -273,22 +273,24 @@ static void itemExecSelect(struct menu_item *curMenu)
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
-                // 手动模式启动后，纠正可见状态
-                bdm_device_data_t *pDeviceData = support->priv;
-                if (pDeviceData != NULL) {
-                    if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-                        mod->menuItem.visible = 0;
-                    } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) && gEnableILK) {
-                        mod->menuItem.visible = 1;
-                    } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && gEnableMX4SIO) {
-                        mod->menuItem.visible = 1;
-                    } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && gEnableBdmHDD) {
-                        mod->menuItem.visible = 1;
-                    }
-                }
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
                     opl_io_module_t *mod = &list_support[i];
+
+                    // 手动模式启动后，纠正可见状态
+                    bdm_device_data_t *pDeviceData = mod->support->priv;
+                    if (pDeviceData != NULL) {
+                        if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+                            mod->menuItem.visible = 0;
+                        } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) && gEnableILK) {
+                            mod->menuItem.visible = 1;
+                        } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && gEnableMX4SIO) {
+                            mod->menuItem.visible = 1;
+                        } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && gEnableBdmHDD) {
+                            mod->menuItem.visible = 1;
+                        }
+                    }
+
                     itemInitSupport(mod->support);
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
