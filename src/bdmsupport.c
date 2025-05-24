@@ -200,7 +200,7 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     }
 
     // 加上mainScreenSwitchDone变量，让初始化阶段每一帧都检测bdm是否有更新，防止硬盘延迟启动造成的问题
-    if (pDeviceData->bdmULSizePrev != -2 && pDeviceData->bdmDeviceTick == BdmGeneration && mainScreenSwitchDone)
+    if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration) && mainScreenSwitchDone)
         return 0;
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
@@ -254,15 +254,6 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     //}
 
     return result;
-}
-
-int BdmNeedRefresh(item_list_t *itemList)
-{
-    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
-    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-    pDeviceData->bdmDeviceTick = -1;
-    if (!forceRefreshBdm)
-        bdmNeedsUpdate(itemList);
 }
 
 static int bdmUpdateGameList(item_list_t *itemList)
@@ -747,6 +738,7 @@ void bdmInitDevicesData()
                             pOwner->menuItem.visible = 1;
                         else
                             pOwner->menuItem.visible = 0;
+                        ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                     }
                     else {
                         pOwner->menuItem.visible = 0;
@@ -788,12 +780,12 @@ void bdmEnumerateDevices()
 {
     LOG("bdmEnumerateDevices\n");
 
-    // Initialize the device list data if it hasn't been initialized yet.
-    bdmInitDevicesData();
-
     // Because bdmLoadModules is called before the config file is loaded bdmLoadBlockDeviceModules will not have loaded any
     // optional bdm modules. Now that the config file has been loaded try loading any optional modules that weren't previously loaded.
     ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmLoadBlockDeviceModules);
+
+    // Initialize the device list data if it hasn't been initialized yet.
+    bdmInitDevicesData();   // 换了个顺序到下面，看看会不会解决硬盘延迟启动问题？
 
     LOG("bdmEnumerateDevices done\n");
 }

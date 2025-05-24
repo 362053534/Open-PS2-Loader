@@ -53,7 +53,6 @@ typedef void (*gui_callback_t)(void);
 extern int guiInactiveFrames;
 extern int guiFrameId;
 extern int mainScreenSwitchDone;
-extern int allSupportInitDone;
 extern int forceRefreshBdm;
 extern int GptFound;
 

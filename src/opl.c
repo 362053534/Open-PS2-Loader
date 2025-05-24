@@ -280,7 +280,6 @@ static void itemExecSelect(struct menu_item *curMenu)
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
                 mainScreenSwitchDone = 0; // 手动启动BDM后，需要让gui刷新一次列表
-                forceRefreshBdm = 1;
                 // guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 26, 1);
                 //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
             } else {
@@ -423,9 +422,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
-
-            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 25,0);
-            //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
         }
 
         //// 将已开启的BDM设备(可被访问)，变为可见状态（只影响手动模式）
@@ -501,10 +497,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             moduleUpdateMenuInternal(mod, 0, 0);
 
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-
-
-            //guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13,1);
-            //refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
@@ -535,8 +527,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
     //        fclose(debugFile1);
     //    }
     //}
-
-
 }
 
 static void initAllSupport(int force_reinit)
@@ -545,7 +535,6 @@ static void initAllSupport(int force_reinit)
     initSupport(ethGetObject(0), ETH_MODE, force_reinit || (gNetworkStartup >= ERROR_ETH_SMB_CONN));
     initSupport(hddGetObject(0), HDD_MODE, force_reinit);
     initSupport(appGetObject(0), APP_MODE, force_reinit);
-    allSupportInitDone = 1;
 }
 
 static void deinitAllSupport(int exception, int modeSelected)
