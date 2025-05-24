@@ -495,8 +495,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //    }
         //}
         // 测试手动模式
-        if ((startMode == START_MODE_MANUAL) && (mode >= 0) && (mode < 4)) {
-            //mod->menuItem.visible = 0;
+        if ((startMode == START_MODE_MANUAL) && gEnableBdmHDD && (mode > 0) && (mode < 4)) {
+            mod->menuItem.visible = 0;
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
 
