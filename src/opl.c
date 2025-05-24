@@ -494,7 +494,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //            break;
         //    }
         //}
-        // 测试手动模式
+        
+        // BDM手动模式时，提前初始化U盘以外的设备
         if ((startMode == START_MODE_MANUAL) && gEnableBdmHDD && (mode > 0) && (mode < 4)) {
             mod->menuItem.visible = 0;
             mod->support->itemInit(mod->support);

@@ -937,6 +937,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+                if (gBDMStartMode == START_MODE_MANUAL) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                }
             }
         }
 
