@@ -504,6 +504,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 
         //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
         //}
+        return;
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             //// 自动模式时，纠正usb可见状态（不知道有什么用，也不知道修正后是好是坏）
@@ -515,15 +516,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             //    }
             //}
 
-            
-
-
-            if (mode != 0) {
-                mod->support->itemInit(mod->support);
-                moduleUpdateMenuInternal(mod, 0, 0);
-                ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-            }
-
+            mod->support->itemInit(mod->support);
+            moduleUpdateMenuInternal(mod, 0, 0);
+            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
