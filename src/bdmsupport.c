@@ -939,6 +939,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
                 if (gBDMStartMode == START_MODE_MANUAL) {
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                    fileXioDclose(dir);
+                    return 0;
                 }
             }
         }

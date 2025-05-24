@@ -276,9 +276,6 @@ static void itemExecSelect(struct menu_item *curMenu)
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
                     opl_io_module_t *mod = &list_support[i];
-                    if (i == 0) {
-                        itemInitSupport(mod->support);
-                    }
 
                     // 手动模式启动后，纠正可见状态
                     bdm_device_data_t *pDeviceData = mod->support->priv;
@@ -292,6 +289,9 @@ static void itemExecSelect(struct menu_item *curMenu)
                         } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && gEnableBdmHDD) {
                             mod->menuItem.visible = 1;
                         }
+                    }
+                    if (i == 0) {
+                        itemInitSupport(mod->support);
                     }
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
