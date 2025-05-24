@@ -275,8 +275,10 @@ static void itemExecSelect(struct menu_item *curMenu)
             if (support->mode == BDM_MODE) {
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
-                    opl_io_module_t *mod = &list_support[i];
-                    itemInitSupport(mod->support);
+                    if (i == 0) {
+                        opl_io_module_t *mod = &list_support[i];
+                        itemInitSupport(mod->support);
+                    }
 
                     // 手动模式启动后，纠正可见状态
                     bdm_device_data_t *pDeviceData = mod->support->priv;
