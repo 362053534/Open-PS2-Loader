@@ -930,18 +930,13 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
             // 手动模式启用设备，会进来这里。如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
-                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-                //mainScreenInitDone = 0; // 重置bdm菜单修正开关
-                //fileXioDclose(dir);
-                //return 0;
+                //((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
-                if (gBDMStartMode == START_MODE_MANUAL) {
-                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-                    //fileXioDclose(dir);
-                    //return 0;
-                }
+                //if (gBDMStartMode == START_MODE_MANUAL) {
+                //    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                //}
             }
         }
 

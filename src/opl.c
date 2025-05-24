@@ -290,9 +290,8 @@ static void itemExecSelect(struct menu_item *curMenu)
                             mod->menuItem.visible = 1;
                         }
                     }
-                    if (i == 0) {
+                    //if (i == 0)
                         itemInitSupport(mod->support);
-                    }
                 }
                 // 手动模式启动后，纠正列表位置，防止usb页面显示出来
                 mainScreenInitDone = 0; // 手动启动BDM后，需要让gui刷新一次列表
@@ -497,14 +496,14 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //    }
         //}
         
-        // BDM手动模式时，提前初始化U盘以外的设备
-        if ((startMode == START_MODE_MANUAL && !mod->support->enabled) && gEnableBdmHDD && (mode > 0) && (mode < 4)) {
-            mod->menuItem.visible = 0;
-            mod->support->itemInit(mod->support);
-            moduleUpdateMenuInternal(mod, 0, 0);
+        //// BDM手动模式时，提前初始化U盘以外的设备
+        //if ((startMode == START_MODE_MANUAL && !mod->support->enabled) && gEnableBdmHDD && (mode > 0) && (mode < 4)) {
+        //    mod->menuItem.visible = 0;
+        //    mod->support->itemInit(mod->support);
+        //    moduleUpdateMenuInternal(mod, 0, 0);
 
-            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-        }
+        //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
+        //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             // 自动模式时，纠正usb可见状态（不知道有什么用，也不知道修正后是好是坏）
