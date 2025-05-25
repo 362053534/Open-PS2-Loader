@@ -664,25 +664,6 @@ void refreshBdmMenu()
     if ((selected_item->item != NULL) && (selected_item->item->visible != 0))
         return;
 
-    //// 只有在主界面初始化阶段，才需要重新获取BDM数据
-    //if (!mainScreenInitDone) {
-    //    if ((gBDMStartMode == START_MODE_AUTO) || forceRefreshBdm) {
-    //        // 纠正菜单之前，更新所有BDM设备的数据，防止硬盘延迟启动，造成数据未获取的问题
-    //        item_list_t *support = selected_item->item->userdata;
-    //        if (support->priv != NULL) {
-    //            BdmNeedRefresh(support);
-    //        }
-    //        struct menu_list *next1 = selected_item->next;
-    //        while (next1 != NULL) {
-    //            item_list_t *support1 = next1->item->userdata;
-    //            if (support1->priv != NULL) {
-    //                BdmNeedRefresh(support1);
-    //            }
-    //            next1 = next1->next;
-    //        }
-    //    }
-    //}
-
     struct menu_list *next = selected_item->next;
     while (next != NULL && next->item->visible == 0)
         next = next->next;
