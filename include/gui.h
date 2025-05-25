@@ -162,4 +162,6 @@ int guiGameShowRemoveSettings(config_set_t *configSet, config_set_t *configGame)
 
 void guiManageCheats(void);
 
+void reFindGpt();// 重新扫描GPT，并刷新主界面
+
 #endif

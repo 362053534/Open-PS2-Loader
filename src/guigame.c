@@ -950,6 +950,15 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
         char highestUDMA_Plus[6];
         sprintf(highestUDMA, "UDMA %d", ataHighestUDMAMode);
         sprintf(highestUDMA_Plus, "UDMA %d", ataHighestUDMAMode + 1);
+        if (ataHighestUDMAMode == 5) {
+
+        } else if (ataHighestUDMAMode == 6) {
+
+        } else if (ataHighestUDMAMode < 5) {
+
+        } else {
+
+        }
         const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", highestUDMA, highestUDMA_Plus, NULL};
         diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
     } else {

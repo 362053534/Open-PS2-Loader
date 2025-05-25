@@ -200,9 +200,10 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     }
 
     //// 加上mainScreenInitDone变量，让初始化阶段每一帧都检测bdm是否有更新，防止硬盘延迟启动造成的问题
-    //if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration) && mainScreenInitDone)
-    if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration))
+    if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration) && mainScreenInitDone)
         return 0;
+    //if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration))
+        //return 0;
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
     // Check if the device has been connected or removed.
@@ -931,7 +932,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
             // 手动模式启用设备，会进来这里。如果BDM里的USB关了，就隐藏USB游戏列表
             if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
-                //((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;

@@ -1557,10 +1557,18 @@ void guiIntroLoop(void)
 int mainScreenInitDone = 0;
 int forceRefreshBdm = 0;
 int GptFound = 0;
+int endIntroDelayFrame = 90;
+
+void reFindGpt()
+{
+    mainScreenInitDone = 0;
+    endIntroDelayFrame = 90;
+}
+
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-    int endIntroDelayFrame = 90;
+
     // 如果没开BdmHdd就不需要延迟，直接改为0
     if (gEnableBdmHDD) {
         if (GptFound) {
@@ -1594,7 +1602,9 @@ void guiMainLoop(void)
             } else {
                 endIntroDelayFrame = 0;
             }   
-            guiRenderGreeting(greetingAlpha);
+            if (greetingAlpha >= 0x00) {
+                guiRenderGreeting(greetingAlpha);
+            }
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
