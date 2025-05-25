@@ -660,6 +660,7 @@ void refreshBdmMenu()
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)
         return;
+    menu_list_t *cur = menu;
 
     if ((selected_item->item != NULL) && (selected_item->item->visible != 0))
         return;
@@ -669,9 +670,11 @@ void refreshBdmMenu()
         next = next->next;
 
     // If we found a valid menu transition to it.
-    if (next != NULL) {
+    if (next != NULL && next->item->visible != 0) {
         selected_item = next;
         itemConfigId = -1;
+    } else {
+        selected_item = menu;  // 防止所有列表都隐藏时，会卡死的问题（最后会返回设置界面？）
     }
 }
 

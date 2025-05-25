@@ -287,7 +287,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                             mod->menuItem.visible = 1;
                         } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && gEnableMX4SIO) {
                             mod->menuItem.visible = 1;
-                        } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && gEnableBdmHDD) {
+                        } else if ((i == 3) && gEnableBdmHDD) {
                             mod->menuItem.visible = 1;
                         }
                     }
