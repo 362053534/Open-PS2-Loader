@@ -957,7 +957,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         // Close the device handle.
         fileXioDclose(dir);
         return 1;
-    } else if (dir < 0 && visible == 1) {
+    } else if (dir < 0 && visible == 1 && mainScreenInitDone) {
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
         if (itemList->owner != NULL) {
