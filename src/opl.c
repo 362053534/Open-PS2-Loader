@@ -262,7 +262,6 @@ static void itemInitSupport(item_list_t *support)
 static void itemExecSelect(struct menu_item *curMenu)
 {
     item_list_t *support = curMenu->userdata;
-    sfxPlay(SFX_CONFIRM);
 
     if (support) {
         if (support->enabled) {
@@ -270,6 +269,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                 config_set_t *configSet = menuLoadConfig();
                 support->itemLaunch(support, curMenu->current->item.id, configSet);
             }
+            sfxPlay(SFX_CONFIRM);
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
@@ -279,7 +279,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     //itemInitSupport(mod->support);
 
                     support->itemInit(mod->support);
-                    moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
+                    //moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
                     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
                     if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
                         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
@@ -300,11 +300,10 @@ static void itemExecSelect(struct menu_item *curMenu)
                 }
                 // 手动启动BDM后，需要让gui有时间重新获取一次GPT数据，并刷新主界面
                 reFindGpt();
-                while (!mainScreenInitDone) {
-                }
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
+                sfxPlay(SFX_CONFIRM);
             }
         }
     } else
