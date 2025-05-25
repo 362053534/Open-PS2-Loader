@@ -262,14 +262,15 @@ static void itemInitSupport(item_list_t *support)
 static void itemExecSelect(struct menu_item *curMenu)
 {
     item_list_t *support = curMenu->userdata;
+    if (mainScreenInitDone)
+        sfxPlay(SFX_CONFIRM);
 
     if (support) {
         if (support->enabled) {
             if (curMenu->current) {
                 config_set_t *configSet = menuLoadConfig();
                 support->itemLaunch(support, curMenu->current->item.id, configSet);
-            }
-            sfxPlay(SFX_CONFIRM);
+            }       
         } else {
             // If we're trying to enable BDM support we need to enable it for all BDM menu slots.
             if (support->mode == BDM_MODE) {
@@ -302,8 +303,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                 reFindGpt();
             } else {
                 // Normal initialization.
-                itemInitSupport(support);
-                sfxPlay(SFX_CONFIRM);
+                itemInitSupport(support);           
             }
         }
     } else
