@@ -1604,8 +1604,6 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
             } else {
-                //refreshBdmMenu();
-                guiReadPads();
                 //  handle inputs and render screen
                 guiShow();
             }

@@ -881,10 +881,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
         // usb关闭的情况下，停止循环检测usb    下面return1的情况下，这段代码只会执行一次，但是手动模式会把usb图标显示出来
         if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
-        {
-            //mainScreenInitDone = 0; // 重置bdm菜单修正开关
             return 0;
-        }
 
         if (gBDMPrefix[0] != '\0')
             snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
@@ -936,9 +933,6 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             } else {
                 LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
-                //if (gBDMStartMode == START_MODE_MANUAL) {
-                //    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-                //}
             }
         }
 
@@ -957,7 +951,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         // Close the device handle.
         fileXioDclose(dir);
         return 1;
-    } else if (dir < 0 && visible == 1 && mainScreenInitDone) {
+    } else if (dir < 0 && visible == 1) {
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
         if (itemList->owner != NULL) {
