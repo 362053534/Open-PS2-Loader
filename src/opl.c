@@ -281,8 +281,8 @@ static void itemExecSelect(struct menu_item *curMenu)
 
                          support->itemInit(mod->support);
                          //moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
-                         if (i != BDM_MODE4)
-                             moduleUpdateMenu(i, 0, 0);
+                         //if (i != BDM_MODE4)
+                         //    moduleUpdateMenu(i, 0, 0);
 
                         // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
                          if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
