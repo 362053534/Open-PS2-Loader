@@ -253,7 +253,6 @@ void moduleUpdateMenuInternal(opl_io_module_t *mod, int themeChanged, int langCh
 static void itemInitSupport(item_list_t *support)
 {
     support->itemInit(support);
-    return;
     moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
     if (!gAutoRefresh || (support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
@@ -277,7 +276,13 @@ static void itemExecSelect(struct menu_item *curMenu)
                 // Initialize support for all bdm modules.
                 for (int i = 0; i <= BDM_MODE4; i++) {
                     opl_io_module_t *mod = &list_support[i];
-                    itemInitSupport(mod->support);
+                    //itemInitSupport(mod->support);
+
+                    support->itemInit(mod->support);
+                    //moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
+                    // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
+                    if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
+                        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
 
                     //// 手动模式启动后，纠正可见状态
                     //bdm_device_data_t *pDeviceData = mod->support->priv;
