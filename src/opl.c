@@ -279,7 +279,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     //itemInitSupport(mod->support);
 
                     support->itemInit(mod->support);
-                    //moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
+                    moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
                     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
                     if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
                         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
@@ -300,6 +300,8 @@ static void itemExecSelect(struct menu_item *curMenu)
                 }
                 // 手动启动BDM后，需要让gui有时间重新获取一次GPT数据，并刷新主界面
                 reFindGpt();
+                while (!mainScreenInitDone) {
+                }
             } else {
                 // Normal initialization.
                 itemInitSupport(support);
