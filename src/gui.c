@@ -1604,10 +1604,9 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
             } else {
-                
+                refreshBdmMenu();
                 //  handle inputs and render screen
                 guiShow();
-                refreshBdmMenu();
             }
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表

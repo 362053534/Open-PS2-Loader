@@ -266,7 +266,7 @@ static void itemExecSelect(struct menu_item *curMenu)
         sfxPlay(SFX_CONFIRM);
 
     if (support) {
-        if (support->enabled) {
+        if (support->enabled && mainScreenInitDone) {
             if (curMenu->current) {
                 config_set_t *configSet = menuLoadConfig();
                 support->itemLaunch(support, curMenu->current->item.id, configSet);
