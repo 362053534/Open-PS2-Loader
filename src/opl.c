@@ -278,21 +278,16 @@ static void itemExecSelect(struct menu_item *curMenu)
                     for (int i = 0; i <= BDM_MODE4; i++) {
                         // BDM手动模式启动后，USB如何关闭了，页面0保持不变，等重新找到GPT硬盘后再刷新
                         opl_io_module_t *mod = &list_support[i];
-                        if (i == 0) {
-                            if (gEnableUSB)
-                                itemInitSupport(mod->support);
-                        } else
-                            itemInitSupport(mod->support);
+                        //itemInitSupport(mod->support);
 
-                        //// BDM手动模式启动后，页面0保持不更新，等重新找到GPT硬盘后再刷新        
-                        //if (i != 0) {
-                        //    support->itemInit(mod->support);
-                        //    moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);
-                        //    // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
-                        //    if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
-                        //        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
-                        //}
-
+                        // BDM手动模式启动后，页面0保持不更新，等重新找到GPT硬盘后再刷新
+                        support->itemInit(mod->support);
+                        if (i != 0) {                            
+                            moduleUpdateMenuInternal((opl_io_module_t *)mod->support->owner, 0, 0);                       
+                        }
+                        // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
+                        if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
+                            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
                         //// 手动模式启动后，纠正可见状态
                         // bdm_device_data_t *pDeviceData = mod->support->priv;
                         // if (pDeviceData != NULL) {

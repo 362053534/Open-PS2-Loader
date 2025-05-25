@@ -612,9 +612,12 @@ static int bdmGetIconId(item_list_t *itemList)
 
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
-    if (!strcmp(pDeviceData->bdmDriver, "usb"))
-        mode = USB_ICON;
-    else if (!strcmp(pDeviceData->bdmDriver, "sd") && strlen(pDeviceData->bdmDriver) == 2)
+    if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+        if (gEnableUSB)
+            mode = USB_ICON;
+        else
+            mode = BDM_ICON;
+    } else if (!strcmp(pDeviceData->bdmDriver, "sd") && strlen(pDeviceData->bdmDriver) == 2)
         mode = ILINK_ICON;
     else if (!strcmp(pDeviceData->bdmDriver, "sdc") && strlen(pDeviceData->bdmDriver) == 3)
         mode = MX4SIO_ICON;
