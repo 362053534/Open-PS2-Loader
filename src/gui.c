@@ -1594,6 +1594,7 @@ void guiMainLoop(void)
             // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
             if (gEnableBdmHDD) {
                 if (GptFound) {
+                    //moduleUpdateMenu(3, 0, 0);
                     endIntroDelayFrame = 0;
                 } else {
                     endIntroDelayFrame--;
