@@ -1555,6 +1555,7 @@ void guiIntroLoop(void)
 }
 
 int mainScreenInitDone = 0;
+int bdmManualStarted = 0;
 int GptFound = 0;
 int endIntroDelayFrame = 90;
 
@@ -1562,6 +1563,7 @@ void reFindGpt()
 {
     mainScreenInitDone = 0;
     endIntroDelayFrame = 90;
+    bdmManualStarted = 1;
 }
 
 void guiMainLoop(void)
@@ -1593,8 +1595,7 @@ void guiMainLoop(void)
         if (endIntroDelayFrame > 0) {
             // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
             if (gEnableBdmHDD) {
-                if (GptFound) {
-                    //moduleUpdateMenu(3, 0, 0);
+                if (GptFound) {                 
                     endIntroDelayFrame = 0;
                 } else {
                     endIntroDelayFrame--;
@@ -1611,14 +1612,18 @@ void guiMainLoop(void)
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
-                //bdmEnumerateDevices(); // 刷新BDM页面之前重新获取一次BDM数据
+                // BDM手动模式启动后，再更新第0个页面下方的文字
+                if ((gBDMStartMode == START_MODE_MANUAL) && bdmManualStarted) {
+                    moduleUpdateMenu(0, 0, 0);
+                }
+
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
                 }             
                 refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                // }                      
+                // }
                 mainScreenInitDone = 1;
 
                 //// debug  打印debug信息，找到gpt信息
