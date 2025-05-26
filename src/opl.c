@@ -212,17 +212,17 @@ void moduleUpdateMenu(int mode, int themeChanged, int langChanged)
 
     opl_io_module_t *mod = &list_support[mode];
 
-    // 手动模式启动时，会获取一次usb的数据
-    if (mode == 0 && bdmManualStarted)
-        mod->support->itemInit(mod->support);
+    //// 手动模式启动时，会获取一次usb的数据
+    //if (mode == 0 && bdmManualStarted)
+    //    mod->support->itemInit(mod->support);
     
     moduleUpdateMenuInternal(mod, themeChanged, langChanged);
 
-    // 手动模式启动时，会更新一次usb的数据
-    if (mode == 0 && bdmManualStarted) {
-        if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
-            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
-    }
+    //// 手动模式启动时，会更新一次usb的数据
+    //if (mode == 0 && bdmManualStarted) {
+    //    if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
+    //        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
+    //}
 }
 
 void moduleUpdateMenuInternal(opl_io_module_t *mod, int themeChanged, int langChanged)
@@ -289,8 +289,10 @@ static void itemExecSelect(struct menu_item *curMenu)
                     for (int i = 0; i <= BDM_MODE4; i++) {
                         // BDM手动模式启动后，USB如何关闭了，页面0保持不变，等重新找到GPT硬盘后再刷新
                         opl_io_module_t *mod = &list_support[i];
-                        if (i != 0)
-                            itemInitSupport(mod->support);                       
+                        itemInitSupport(mod->support);
+
+                        //if (i != 0)
+                        //    itemInitSupport(mod->support);                       
 
                         //// BDM手动模式启动后，页面0保持不更新，等重新找到GPT硬盘后再刷新
                         //support->itemInit(mod->support);
