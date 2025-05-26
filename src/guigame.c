@@ -81,7 +81,11 @@ static void guiGameLoadOSDLanguageConfig(config_set_t *configSet, config_set_t *
 
 static int getHighestUdmaMode()
 {
-    return fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    int highestMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    if ((highestMode < 0) || (highestMode > 7))
+        highestMode = 4;
+
+    return highestMode;
 }
 
 int guiGameAltStartupNameHandler(char *text, int maxLen)
@@ -1012,14 +1016,12 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
         compatMode |= (mdpart ? 1 : 0) << i;
     }
 
-    /*if (support->flags & MODE_FLAG_COMPAT_DMA)*/ {
+    //if (support->flags & MODE_FLAG_COMPAT_DMA)
+    {
         diaGetInt(diaCompatConfig, COMPAT_DMA, &dmaMode);
-        int highestUdmaMode = getHighestUdmaMode();
-        if ((highestUdmaMode < 0) || (highestUdmaMode > 7))
-            highestUdmaMode = 7; // defaulting to UDMA 4
-        else
-            highestUdmaMode += 3; // defaulting to HighestUdmaMode
-        if (dmaMode != highestUdmaMode)
+
+        // 将默认UDMA模式设为最高UDMA模式
+        if (dmaMode != (getHighestUdmaMode() + 3))
             result = configSetInt(configSet, CONFIG_ITEM_DMA, dmaMode);
         else
             configRemoveKey(configSet, CONFIG_ITEM_DMA);
@@ -1473,17 +1475,16 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     else if (configSourceID == CONFIG_SOURCE_DLOAD)
         snprintf(configSource, sizeof(configSource), _l(_STR_DOWNLOADED_DEFAULTS));
 
-    int highestUdmaMode = getHighestUdmaMode();
-    if ((highestUdmaMode < 0) || (highestUdmaMode > 7))
-        dmaMode = 7; // defaulting to UDMA 4
-    else
-        dmaMode = highestUdmaMode + 3; // defaulting to HighestUdmaMode
+    // 将默认UDMA模式设为最高UDMA模式
+    dmaMode = getHighestUdmaMode() + 3; // defaulting to HighestUdmaMode
     
-    /*if (support->flags & MODE_FLAG_COMPAT_DMA)*/ {
+    //if (support->flags & MODE_FLAG_COMPAT_DMA)
+    {
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
         diaSetInt(diaCompatConfig, COMPAT_DMA, dmaMode);
-    } /*else
-        diaSetInt(diaCompatConfig, COMPAT_DMA, 0);*/
+    }
+    //else
+    //    diaSetInt(diaCompatConfig, COMPAT_DMA, 0);
 
     compatMode = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
