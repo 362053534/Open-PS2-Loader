@@ -1647,12 +1647,8 @@ void guiMainLoop(void)
             // Read the pad states to prepare for input processing in the screen handler
             guiReadPads();
 
-            // 防止BDM手动模式启动后，有一帧可以看到USB？
-            //if (mainScreenInitDone)
-            {
-                //  handle inputs and render screen
-                guiShow();
-            }
+            //  handle inputs and render screen
+            guiShow();
 
             // 把intro界面淡出移到mainloop里，提升加载体验。
             if (greetingAlpha >= 0x00) {
