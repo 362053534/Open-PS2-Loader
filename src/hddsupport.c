@@ -522,24 +522,31 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     char gid[5];
     configGetDiscIDBinary(configSet, gid);
 
-    int dmaType = 0x40, dmaMode = 7, compatMode = 0;
+    // Query the drive for the highest UDMA mode.
+    int ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    if (ataHighestUDMAMode < 0 || ataHighestUDMAMode > 7)
+        ataHighestUDMAMode = 4;
+
+    int dmaType = 0x40, dmaMode = (ataHighestUDMAMode + 3), compatMode = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
     configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 
     // Set DMA mode and spindown time.
     if (dmaMode < 3)
         dmaType = 0x20;
-    else if (dmaMode >= 7) {
-        // Query the drive for the highest UDMA mode.
-        int ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
-        if (ataHighestUDMAMode < 0 || ataHighestUDMAMode > 7) {
-            // Failed to query highest UDMA mode supported.
-            ataHighestUDMAMode = 4;
-        }
-        dmaMode = ataHighestUDMAMode;
-    } else {
-        dmaMode = dmaMode - 3;
+    else
+        dmaMode -= 3;
+
+    // debug  打印debug信息，找到gpt信息
+    char debugFileDir[64];
+    strcpy(debugFileDir, "mass0:debug-UDMA.txt");
+    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        fprintf(debugFile, "游戏以UDMA %d模式启动了！\r\n\r\n", dmaMode);
+        fclose(debugFile);
     }
+
     hddSetTransferMode(dmaType, dmaMode);
     // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
     hddSetIdleTimeout(gHDDSpindown * 12);

@@ -1562,7 +1562,8 @@ int endIntroDelayFrame = 90;
 void reFindGpt()
 {
     mainScreenInitDone = 0;
-    endIntroDelayFrame = 90;
+    if (!GptFound)
+        endIntroDelayFrame = 90;
     bdmManualStarted = 1;
 }
 

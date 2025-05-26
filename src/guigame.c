@@ -953,27 +953,7 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
 {
     int i;
 
-    //if (support->flags & MODE_FLAG_COMPAT_DMA) {
-    //    int ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
-    //    char highestUDMA[6];
-    //    char highestUDMA_Plus[6];
-    //    sprintf(highestUDMA, "UDMA %d", ataHighestUDMAMode);
-    //    sprintf(highestUDMA_Plus, "UDMA %d", ataHighestUDMAMode + 1);
-    //    if (ataHighestUDMAMode == 5) {
-
-    //    } else if (ataHighestUDMAMode == 6) {
-
-    //    } else if (ataHighestUDMAMode < 5) {
-
-    //    } else {
-
-    //    }
-    //    const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", highestUDMA, highestUDMA_Plus, NULL};
-    //    diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
-    //} else {
-    //    const char *dmaModes[] = {NULL};
-    //    diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
-    //}
+    if (support->flags & MODE_FLAG_COMPAT_DMA) {
         int ataHighestUDMAMode = getHighestUdmaMode();
         if (ataHighestUDMAMode == 5) {
             const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4", "UDMA 5 当前设备最高模式", "UDMA 6 尝试开启", "UDMA 7 尝试开启", NULL};
@@ -988,6 +968,11 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
             const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 当前设备最高模式", "UDMA 5 尝试开启", "UDMA 6 尝试开启", "UDMA 7 尝试开启", NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         }
+    } else {
+        const char *dmaModes[] = {NULL};
+        diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
+    }
+
 
 
     int result = diaExecuteDialog(diaCompatConfig, -1, 1, NULL);
@@ -1029,8 +1014,7 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
         compatMode |= (mdpart ? 1 : 0) << i;
     }
 
-    //if (support->flags & MODE_FLAG_COMPAT_DMA)
-    {
+    if (support->flags & MODE_FLAG_COMPAT_DMA) {
         diaGetInt(diaCompatConfig, COMPAT_DMA, &dmaMode);
 
         // 将默认UDMA模式设为最高UDMA模式
@@ -1491,13 +1475,12 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     // 将默认UDMA模式设为最高UDMA模式
     dmaMode = getHighestUdmaMode() + 3; // defaulting to HighestUdmaMode
     
-    //if (support->flags & MODE_FLAG_COMPAT_DMA)
-    {
+    if (support->flags & MODE_FLAG_COMPAT_DMA) {
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
         diaSetInt(diaCompatConfig, COMPAT_DMA, dmaMode);
     }
-    //else
-    //    diaSetInt(diaCompatConfig, COMPAT_DMA, 0);
+    else
+        diaSetInt(diaCompatConfig, COMPAT_DMA, 0);
 
     compatMode = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
