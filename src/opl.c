@@ -287,10 +287,11 @@ static void itemExecSelect(struct menu_item *curMenu)
                 if (support->mode == BDM_MODE) {
                     // Initialize support for all bdm modules.
                     for (int i = 0; i <= BDM_MODE4; i++) {
-                        // BDM手动模式启动后，USB如何关闭了，页面0保持不变，等重新找到GPT硬盘后再刷新
+                        
                         opl_io_module_t *mod = &list_support[i];
                         itemInitSupport(mod->support);
 
+                        //// BDM手动模式启动后，USB如果关闭了，页面0保持不变，等重新找到GPT硬盘后再刷新
                         //if (i != 0)
                         //    itemInitSupport(mod->support);                       
 
