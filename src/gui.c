@@ -1660,7 +1660,7 @@ void guiMainLoop(void)
             guiShowNotifications();
 
         // handle deferred operations
-        //guiHandleDeferredOps();
+        guiHandleDeferredOps();
 
         guiEndFrame();
 
