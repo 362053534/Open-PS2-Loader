@@ -521,18 +521,14 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         // Get DMA settings for ATA mode.
-        int dmaType = 0x40, dmaMode = 7;
+        int dmaType = 0x40, dmaMode = pDeviceData->ataHighestUDMAMode + 3;
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 
         // Set DMA mode and spindown time.
         if (dmaMode < 3)
             dmaType = 0x20;
-        else if (dmaMode >= 7) {
-            dmaMode = pDeviceData->ataHighestUDMAMode + (dmaMode - 7);
-        } else {
-            dmaMode = pDeviceData->ataHighestUDMAMode < dmaMode - 3 ? pDeviceData->ataHighestUDMAMode : dmaMode - 3;
-        }
-
+        else
+            dmaMode = dmaMode - 3;
 
         hddSetTransferMode(dmaType, dmaMode);
         // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]

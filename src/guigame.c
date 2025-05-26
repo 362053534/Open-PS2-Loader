@@ -79,6 +79,11 @@ static void guiGameLoadPadMacroConfig(config_set_t *configSet, config_set_t *con
 static int guiGameSaveOSDLanguageGameConfig(config_set_t *configSet, int result);
 static void guiGameLoadOSDLanguageConfig(config_set_t *configSet, config_set_t *configGame);
 
+static int getHighestUdmaMode()
+{
+    return fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+}
+
 int guiGameAltStartupNameHandler(char *text, int maxLen)
 {
     int i;
@@ -944,27 +949,29 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
 {
     int i;
 
-    if (support->flags & MODE_FLAG_COMPAT_DMA) {
-        int ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
-        char highestUDMA[6];
-        char highestUDMA_Plus[6];
-        sprintf(highestUDMA, "UDMA %d", ataHighestUDMAMode);
-        sprintf(highestUDMA_Plus, "UDMA %d", ataHighestUDMAMode + 1);
-        if (ataHighestUDMAMode == 5) {
+    //if (support->flags & MODE_FLAG_COMPAT_DMA) {
+    //    int ataHighestUDMAMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    //    char highestUDMA[6];
+    //    char highestUDMA_Plus[6];
+    //    sprintf(highestUDMA, "UDMA %d", ataHighestUDMAMode);
+    //    sprintf(highestUDMA_Plus, "UDMA %d", ataHighestUDMAMode + 1);
+    //    if (ataHighestUDMAMode == 5) {
 
-        } else if (ataHighestUDMAMode == 6) {
+    //    } else if (ataHighestUDMAMode == 6) {
 
-        } else if (ataHighestUDMAMode < 5) {
+    //    } else if (ataHighestUDMAMode < 5) {
 
-        } else {
+    //    } else {
 
-        }
-        const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", highestUDMA, highestUDMA_Plus, NULL};
-        diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
-    } else {
-        const char *dmaModes[] = {NULL};
-        diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
-    }
+    //    }
+    //    const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", highestUDMA, highestUDMA_Plus, NULL};
+    //    diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
+    //} else {
+    //    const char *dmaModes[] = {NULL};
+    //    diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
+    //}
+    const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4", "UDMA 5", "UDMA 6", "UDMA 7", NULL};
+    diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
 
     int result = diaExecuteDialog(diaCompatConfig, -1, 1, NULL);
     if (result) {
@@ -1007,7 +1014,12 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
 
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         diaGetInt(diaCompatConfig, COMPAT_DMA, &dmaMode);
-        if (dmaMode != 7)
+        int highestUdmaMode = getHighestUdmaMode();
+        if ((highestUdmaMode < 0) || (highestUdmaMode > 7))
+            highestUdmaMode = 7; // defaulting to UDMA 4
+        else
+            highestUdmaMode += 3; // defaulting to HighestUdmaMode
+        if (dmaMode != highestUdmaMode)
             result = configSetInt(configSet, CONFIG_ITEM_DMA, dmaMode);
         else
             configRemoveKey(configSet, CONFIG_ITEM_DMA);
@@ -1461,7 +1473,12 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     else if (configSourceID == CONFIG_SOURCE_DLOAD)
         snprintf(configSource, sizeof(configSource), _l(_STR_DOWNLOADED_DEFAULTS));
 
-    dmaMode = 7; // defaulting to UDMA 4
+    int highestUdmaMode = getHighestUdmaMode();
+    if ((highestUdmaMode < 0) || (highestUdmaMode > 7))
+        dmaMode = 7; // defaulting to UDMA 4
+    else
+        dmaMode = highestUdmaMode + 3; // defaulting to HighestUdmaMode
+    
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
         diaSetInt(diaCompatConfig, COMPAT_DMA, dmaMode);
