@@ -1012,7 +1012,7 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
         compatMode |= (mdpart ? 1 : 0) << i;
     }
 
-    if (support->flags & MODE_FLAG_COMPAT_DMA) {
+    /*if (support->flags & MODE_FLAG_COMPAT_DMA)*/ {
         diaGetInt(diaCompatConfig, COMPAT_DMA, &dmaMode);
         int highestUdmaMode = getHighestUdmaMode();
         if ((highestUdmaMode < 0) || (highestUdmaMode > 7))
@@ -1479,11 +1479,11 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     else
         dmaMode = highestUdmaMode + 3; // defaulting to HighestUdmaMode
     
-    if (support->flags & MODE_FLAG_COMPAT_DMA) {
+    /*if (support->flags & MODE_FLAG_COMPAT_DMA)*/ {
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
         diaSetInt(diaCompatConfig, COMPAT_DMA, dmaMode);
-    } else
-        diaSetInt(diaCompatConfig, COMPAT_DMA, 0);
+    } /*else
+        diaSetInt(diaCompatConfig, COMPAT_DMA, 0);*/
 
     compatMode = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
