@@ -189,6 +189,10 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
             }
             // 如果txt里没有此游戏的英文名索引，则添加到txt里
             if (ginfo->indexName[0] == '\0' && ginfo->transName[0] == '\0') {
+                // 添加索引之前，判断txt最后有没有换行符，没有则手动添加一个换行符。
+                if ((fullName[strlen(fullName) - 1] != '\n') && (fullName[strlen(fullName) - 1] != '\r'))
+                    fwrite("\r\n", sizeof(char), 2, file);
+
                 ginfo->name[HDL_GAME_NAME_MAX] = '\0';
                 strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名   index是否需要追加\0？
                 fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？                
