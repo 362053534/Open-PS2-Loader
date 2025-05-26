@@ -379,7 +379,7 @@ static void freeISOGameListCache(struct game_cache_list *cache)
     }
 }
 
-static int updateISOGameList(const char *path, const struct game_cache_list *cache, const struct game_list_t *head, int count, int _txtFileChanged)
+static int updateISOGameList(const char *path, const struct game_cache_list *cache, const struct game_list_t *head, int count, int _forceUpdateCache)
 {
     char filename[256];
     FILE *file;
@@ -419,9 +419,8 @@ static int updateISOGameList(const char *path, const struct game_cache_list *cac
     }
 
     // txt文件有修改，缓存也得更新
-    if (_txtFileChanged) {
+    if (_forceUpdateCache)
         modified = 1;
-    }
 
     if (!modified)
         return 0;
@@ -770,6 +769,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     int fd, size, id = 0, result;
     int count;
     char path[256];
+    int forceUpdateCache = 0;
 
     // 将bdm hdd的txt优先在U盘进行读写
     static int usbFound = 0;
@@ -832,6 +832,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                             fclose(bdmTxt);
                             fclose(curTxt);
                             remove(curTxtPath);
+                            forceUpdateCache = 1;
                         } else {
                             fclose(curTxt);
                         }
@@ -871,6 +872,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                         fclose(bdmTxt);
                         fclose(curTxt);
                         remove(curTxtPath);
+                        forceUpdateCache = 1;
                     } else {
                         if (bdmTxt != NULL) {
                             fclose(bdmTxt);
@@ -989,6 +991,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         txtFileChanged = 1;
     }
 
+    // 如果需要强制更新缓存，则让缓存认为txt已更新
+    if (forceUpdateCache)
+        txtFileChanged = 1;
+    
     //// debug 测试复制功能
     //if (file != NULL) {
     //    rewind(file);
