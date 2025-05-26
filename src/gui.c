@@ -1613,16 +1613,12 @@ void guiMainLoop(void)
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
                 // BDM手动模式启动后，再更新第0个页面下方的文字
-                if (bdmManualStarted) {
-                    if (!gEnableUSB)
-                        moduleUpdateMenu(0, 0, 0);  
-                }
+                if (bdmManualStarted)
+                    moduleUpdateMenu(0, 0, 0);
 
-                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                    if (gEnableUSB && bdmManualStarted) {
-                    }else
-                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                }             
+                if (gBDMStartMode || gHDDStartMode || gETHStartMode)
+                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
+
                 refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效

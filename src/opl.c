@@ -264,10 +264,10 @@ void moduleUpdateMenuInternal(opl_io_module_t *mod, int themeChanged, int langCh
 static void itemInitSupport(item_list_t *support)
 {
     support->itemInit(support);
-    //moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
-    //// Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
-    //if (!gAutoRefresh || (support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
-    //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
+    moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
+    // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
+    if (!gAutoRefresh || (support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
+        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 }
 
 static void itemExecSelect(struct menu_item *curMenu)
@@ -289,7 +289,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     for (int i = 0; i <= BDM_MODE4; i++) {
                         // BDM手动模式启动后，USB如何关闭了，页面0保持不变，等重新找到GPT硬盘后再刷新
                         opl_io_module_t *mod = &list_support[i];
-                        if (i != 0 || gEnableUSB)
+                        if (i != 0)
                             itemInitSupport(mod->support);                       
 
                         //// BDM手动模式启动后，页面0保持不更新，等重新找到GPT硬盘后再刷新
