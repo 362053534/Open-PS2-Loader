@@ -1595,7 +1595,12 @@ void guiMainLoop(void)
         if (endIntroDelayFrame > 0) {
             // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
             if (gEnableBdmHDD) {
-                if (GptFound) {                 
+                if (GptFound) {
+                    // BDM手动模式启动后，再更新第0个页面下方的文字
+                    if (bdmManualStarted) {
+                        moduleUpdateMenu(0, 0, 0);
+                        bdmManualStarted = 0;
+                    }            
                     endIntroDelayFrame = 0;
                 } else {
                     endIntroDelayFrame--;
@@ -1613,8 +1618,10 @@ void guiMainLoop(void)
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
                 // BDM手动模式启动后，再更新第0个页面下方的文字
-                if (bdmManualStarted)
+                if (bdmManualStarted) {
                     moduleUpdateMenu(0, 0, 0);
+                    bdmManualStarted = 0;
+                }
 
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode)
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
