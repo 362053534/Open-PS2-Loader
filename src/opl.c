@@ -289,7 +289,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     for (int i = 0; i <= BDM_MODE4; i++) {
                         // BDM手动模式启动后，USB如何关闭了，页面0保持不变，等重新找到GPT硬盘后再刷新
                         opl_io_module_t *mod = &list_support[i];
-                        if (i != 0)
+                        if (i != 0 || gEnableUSB)
                             itemInitSupport(mod->support);                       
 
                         //// BDM手动模式启动后，页面0保持不更新，等重新找到GPT硬盘后再刷新

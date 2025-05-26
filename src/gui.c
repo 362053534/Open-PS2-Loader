@@ -1614,7 +1614,7 @@ void guiMainLoop(void)
             if (!mainScreenInitDone) {
                 // BDM手动模式启动后，再更新第0个页面下方的文字
                 if (bdmManualStarted) {
-                    //if (!gEnableUSB)
+                    if (!gEnableUSB)
                         moduleUpdateMenu(0, 0, 0);  
                 }
 
@@ -1660,7 +1660,7 @@ void guiMainLoop(void)
             guiShowNotifications();
 
         // handle deferred operations
-        guiHandleDeferredOps();
+        //guiHandleDeferredOps();
 
         guiEndFrame();
 
