@@ -214,7 +214,7 @@ void moduleUpdateMenu(int mode, int themeChanged, int langChanged)
 
     // 手动模式启动时，会获取一次usb的数据
     if (mode == 0 && bdmManualStarted)
-        support->itemInit(mod->support);
+        mod->support->itemInit(mod->support);
     
     moduleUpdateMenuInternal(mod, themeChanged, langChanged);
 
