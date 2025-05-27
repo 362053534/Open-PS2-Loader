@@ -590,7 +590,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
                     if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
                         skipTxtScan = 1;
-                        forceUpdateCache = 0;
                         strcpy(game->indexName, (&cachedGInfo)->indexName);
                         strcpy(game->transName, (&cachedGInfo)->transName);
                         if (game->transName[0] != '\0') {
@@ -631,7 +630,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
                 if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
                     skipTxtScan = 1;
-                    forceUpdateCache = 0;
                     strcpy(game->indexName, (&cachedGInfo)->indexName);
                     strcpy(game->transName, (&cachedGInfo)->transName);
                     if (game->transName[0] != '\0') {
