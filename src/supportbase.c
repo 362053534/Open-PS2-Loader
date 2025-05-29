@@ -11,8 +11,6 @@
 #include "include/cheatman.h"
 #include "include/ps2cnf.h"
 #include "include/gui.h"
-#include <windows.h>
-#include <wchar.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
