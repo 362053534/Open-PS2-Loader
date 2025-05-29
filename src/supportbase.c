@@ -16,6 +16,8 @@
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
 #include <ps2sdkapi.h>   // lseek64
+#include <windows.h>
+#include <wchar.h>
 
 #include "../modules/isofs/zso.h"
 
