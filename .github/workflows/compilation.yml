@@ -10,10 +10,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/ps2homebrew/ps2homebrew@sha256:6f9370f3437840c438616e2abb16131a485cac57eb928b941e22783c57baf985
+    container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -27,7 +27,7 @@ jobs:
 
     - name: Upload release artifact ELF
       if: ${{ success() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: OPNPS2LD
         path: |
@@ -35,7 +35,7 @@ jobs:
 
     - name: Upload release artifact info
       if: ${{ success() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: INFO
         path: |
@@ -48,13 +48,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
+        rtl: [RTL=0, RTL=1]
         pademu: [PADEMU=0, PADEMU=1]
+        igs: [IGS=0, IGS=1]
+        t10k: [DTL_T10000=0, DTL_T10000=1]
     runs-on: ubuntu-latest
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -64,37 +66,26 @@ jobs:
       run: |
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
-    - name: Compile -> make ${{ matrix.extra }} ${{ matrix.pademu }} ${{ matrix.extra }} NOT_PACKED=1
+    - name: Compile -> make ${{ matrix.t10k }} ${{ matrix.igs }} ${{ matrix.pademu }} ${{ matrix.rtl }} NOT_PACKED=1
       run: |
-        make --trace ${{ matrix.pademu }} ${{ matrix.extra }} NOT_PACKED=1
-        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.pademu }}-${{ matrix.extra }}.ELF
+        make --trace ${{ matrix.t10k }} ${{ matrix.igs }} ${{ matrix.pademu }} ${{ matrix.rtl }} NOT_PACKED=1
+        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.t10k }}-${{ matrix.igs }}-${{ matrix.pademu }}-${{ matrix.rtl }}.ELF
 
     - name: Create detailed changelog
       run: sh ./make_changelog.sh
 
     - name: Upload variants artifact ELF
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
-        name: OPNPS2LD-VARIANTS ${{ matrix.pademu }} ${{ matrix.extra }}
+        name: OPNPS2LD-VARIANTS
         path: OPNPS2LD*.ELF
-
-  merge-variants:
-    runs-on: ubuntu-latest
-    needs: build-variants
-    steps:
-      - name: Merge Artifacts
-        uses: actions/upload-artifact/merge@v4
-        with:
-          name: OPNPS2LD-VARIANTS
-          pattern: OPNPS2LD-VARIANTS*
-          delete-merged: true
 
   build-lang:
     runs-on: ubuntu-latest
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -108,7 +99,7 @@ jobs:
 
     - name: Upload release artifact
       if: ${{ success() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: OPNPS2LD-LANGS
         path: |
@@ -118,14 +109,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        debug: [iopcore_debug, ingame_debug, eesio_debug, iopcore_ppctty_debug, ingame_ppctty_debug, DTL_T10000=1]
-        # container_commit: [":main", "@sha256:1f00689809455d43b520e4cd4eea00c6be56d71819ae38efc6b55b56464cbd1e"] Replace with desired docker image hash or tag
-        container_commit: [":main"]
+        debug: [debug, iopcore_debug, ingame_debug, deci2_debug, eesio_debug]
     runs-on: ubuntu-latest
-    container: ghcr.io/ps2homebrew/ps2homebrew${{ matrix.container_commit }}
+    container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - name: git checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -134,32 +123,17 @@ jobs:
     - name: Get version
       run: |
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
-        SHORT_COMMIT="${{ matrix.container_commit }}"
-        # Extract the last 4 characters
-        SHORT_COMMIT=${SHORT_COMMIT: -4}
-        echo "SHORT_COMMIT=$SHORT_COMMIT" >> $GITHUB_ENV
 
     - name: Compile -> make debug
       run: |
         make ${{ matrix.debug }} --trace
-        mv opl.elf opl-${{ matrix.debug }}-${{ env.OPL_VERSION }}-${{ env.SHORT_COMMIT }}.elf
+        mv opl.elf opl-${{ matrix.debug }}.elf
 
     - name: Upload variants artifact ELF
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
-        name: opl-${{ matrix.debug }}-${{ env.OPL_VERSION }}-${{ env.SHORT_COMMIT }}
+        name: opl-debug-${{ env.OPL_VERSION }}-${{ matrix.docker }}
         path: opl-*.elf
-
-  merge-debug:
-    runs-on: ubuntu-latest
-    needs: build-debug
-    steps:
-      - name: Merge Artifacts
-        uses: actions/upload-artifact/merge@v4
-        with:
-          name: OPNPS2LD-DEBUG
-          pattern: opl-*
-          delete-merged: true
 
   release:
     needs: [build, build-variants, build-lang]
@@ -170,7 +144,7 @@ jobs:
       PASSWORD: ${{ secrets.PASSWORD }}
     steps:
     - name: git checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - run: git fetch --prune --unshallow
 
@@ -179,7 +153,7 @@ jobs:
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v3
 
     - name: Prepare artifacts for release
       run: |
@@ -195,7 +169,7 @@ jobs:
 
     - name: Create prerelease
       if: github.ref == 'refs/heads/master'
-      uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
+      uses: marvinpinto/action-automatic-releases@latest
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         prerelease: true
@@ -211,7 +185,7 @@ jobs:
 
     - name: Create release
       if: startsWith(github.ref, 'refs/tags/v')
-      uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
+      uses: marvinpinto/action-automatic-releases@latest
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         prerelease: "${{ contains(github.ref, '-rc') }}"
