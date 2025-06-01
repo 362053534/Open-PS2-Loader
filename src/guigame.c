@@ -482,6 +482,10 @@ static char *bt_ver_str[] = {
     "4.1",
     "4.2",
     "5.0",
+    "5.1",
+    "5.2",
+    "5.3",
+    "5.4",
 };
 
 static const char *PadEmuPorts_enums[][5] = {
@@ -575,18 +579,8 @@ static char *hex_to_str(char *str, u16 hex)
 
 static char *ver_to_str(char *str, u8 ma, u16 mi)
 {
-    // debug  打印debug信息，找到蓝牙接收器版本index
-     char debugFileDir[64];
-     strcpy(debugFileDir, "smb:debug-BT.txt");
-    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-     FILE *debugFile = fopen(debugFileDir, "ab+");
-     if (debugFile != NULL) {
-         fprintf(debugFile, "BT ver:%d\r\n\r\n", ma);
-         fclose(debugFile);
-     }
-
-    if (ma > 9)
-        ma = 0;
+    //if (ma > 9)
+    //    ma = 0;
 
     sprintf(str, "%X.%04X    BT %s", ma, mi, bt_ver_str[ma]);
 
