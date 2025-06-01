@@ -1021,8 +1021,8 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         diaGetInt(diaCompatConfig, COMPAT_DMA, &dmaMode);
 
-        // 将默认UDMA模式设为最高UDMA模式
-        if (dmaMode != (getHighestUdmaMode() + 3))
+        // 将默认UDMA模式设为最高UDMA模式+1
+        if (dmaMode != (getHighestUdmaMode() + 1 + 3))
             result = configSetInt(configSet, CONFIG_ITEM_DMA, dmaMode);
         else
             configRemoveKey(configSet, CONFIG_ITEM_DMA);
@@ -1476,8 +1476,8 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     else if (configSourceID == CONFIG_SOURCE_DLOAD)
         snprintf(configSource, sizeof(configSource), _l(_STR_DOWNLOADED_DEFAULTS));
 
-    // 将默认UDMA模式设为最高UDMA模式
-    dmaMode = getHighestUdmaMode() + 3; // defaulting to HighestUdmaMode
+    // 将默认UDMA模式设为最高UDMA模式+1
+    dmaMode = getHighestUdmaMode() + 1 + 3; // defaulting to HighestUdmaMode
     
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);

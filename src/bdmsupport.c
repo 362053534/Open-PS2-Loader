@@ -521,14 +521,14 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         // Get DMA settings for ATA mode.
-        int dmaType = 0x40, dmaMode = pDeviceData->ataHighestUDMAMode + 3;
+        int dmaType = 0x40, dmaMode = pDeviceData->ataHighestUDMAMode + 1 + 3;  // 默认为最高模式+1，理论上没问题，除非兼容性太烂
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 
         // Set DMA mode and spindown time.
         if (dmaMode < 3)
             dmaType = 0x20;
         else
-            dmaMode = dmaMode - 3;
+            dmaMode -= 3;
 
         //// debug  打印debug信息，找到gpt信息
         // char debugFileDir[64];
