@@ -579,8 +579,8 @@ static char *hex_to_str(char *str, u16 hex)
 
 static char *ver_to_str(char *str, u8 ma, u16 mi)
 {
-    //if (ma > 9)
-    //    ma = 0;
+    if (ma > 13)
+        ma = 0;
 
     sprintf(str, "%X.%04X    BT %s", ma, mi, bt_ver_str[ma]);
 
