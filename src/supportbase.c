@@ -782,15 +782,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     } else
         closedir(isoDir);
 
-    // 如果usb开关为关闭，则跳过usb扫描，不生成任何东西
-    if (!gEnableUSB && usbFound) {
-        free(*list);
-        *list = NULL;
-        *fsize = -1;
-        *gamecount = 0;
-        return 0;
-    }
-
     int fd, size, id = 0, result;
     int count;
     char path[256];
@@ -800,23 +791,25 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     char bdmHddTxtPath[256];
     bdmHddTxtPath[0] = '0';
     if (strncmp(prefix, "mass", 4) == 0) {
-        if (!usbFound && prefix[4] == '0') {
-            char bdmType[32];
-            sprintf(bdmType, "%s/", prefix);
-            int massDir = fileXioDopen(bdmType);
-            if (massDir >= 0) {
-                fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
-                if (strncmp(bdmType, "usb", 3) == 0) {
-                    usbFound = 1;
-                    // 如果usb开关为关闭，则跳过扫描，不生成任何东西
-                    if (!gEnableUSB) {
-                        free(*list);
-                        *list = NULL;
-                        *fsize = -1;
-                        *gamecount = 0;
-                        return 0;
+        if (prefix[4] == '0') {
+            if (!usbFound) {
+                char bdmType[32];
+                sprintf(bdmType, "%s/", prefix);
+                int massDir = fileXioDopen(bdmType);
+                if (massDir >= 0) {
+                    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
+                    if (strncmp(bdmType, "usb", 3) == 0) {
+                        usbFound = 1;
                     }
                 }
+            }
+            // 如果找到usb，且usb开关为关闭，则跳过扫描，不生成任何东西
+            if (usbFound && !gEnableUSB) {
+                free(*list);
+                *list = NULL;
+                *fsize = -1;
+                *gamecount = 0;
+                return 0;
             }
         } else if (usbFound && prefix[4] != '0') {
             // 如果插了U盘，那么寻找bdm hdd硬盘
