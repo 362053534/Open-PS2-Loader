@@ -762,19 +762,28 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     return count;
 }
 
+static int usbFound = 0;
 int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount)
 {
+    // 如果usb开关为关闭，则跳过扫描，不生成任何东西
+    if (!gEnableUSB && usbFound) {
+        free(*list);
+        *list = NULL;
+        *fsize = -1;
+        *gamecount = 0;
+        return 0;
+    }
+
     int fd, size, id = 0, result;
     int count;
     char path[256];
     int forceUpdateCache = 0;
 
     // 将bdm hdd的txt优先在U盘进行读写
-    static int usbFound = 0;
     char bdmHddTxtPath[256];
     bdmHddTxtPath[0] = '0';
     if (strncmp(prefix, "mass", 4) == 0) {
-        if (prefix[4] == '0') {
+        if (!usbFound && prefix[4] == '0') {
             char bdmType[32];
             sprintf(bdmType, "%s/", prefix);
             int massDir = fileXioDopen(bdmType);
