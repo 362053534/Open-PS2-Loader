@@ -785,12 +785,12 @@ void bdmEnumerateDevices()
 {
     LOG("bdmEnumerateDevices\n");
 
+    // Initialize the device list data if it hasn't been initialized yet.
+    bdmInitDevicesData();
+
     // Because bdmLoadModules is called before the config file is loaded bdmLoadBlockDeviceModules will not have loaded any
     // optional bdm modules. Now that the config file has been loaded try loading any optional modules that weren't previously loaded.
     ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmLoadBlockDeviceModules);
-
-    // Initialize the device list data if it hasn't been initialized yet.
-    bdmInitDevicesData();   // 换了个顺序到下面，看看会不会解决硬盘延迟启动问题？
 
     LOG("bdmEnumerateDevices done\n");
 }
