@@ -184,8 +184,8 @@ jobs:
     - name: Prepare artifacts for release
       run: |
         echo packing release of OPL ${{ env.OPL_VERSION }}
-        cp INFO/* OPNPS2LD/
         mkdir -p OPNPS2LD-VARIANTS
+        cp INFO/* OPNPS2LD/
         cp INFO/* OPNPS2LD-VARIANTS/
         7z a -t7z OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD/*
         7z a -t7z OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS/*
