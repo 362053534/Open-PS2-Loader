@@ -164,7 +164,7 @@ jobs:
   release:
     needs: [build, build-variants, build-lang]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/362053534-patch-1'
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/txtCN-Release'
     env:
       USERNAME: ${{ secrets.USERNAME }}
       PASSWORD: ${{ secrets.PASSWORD }}
@@ -185,6 +185,7 @@ jobs:
       run: |
         echo packing release of OPL ${{ env.OPL_VERSION }}
         cp INFO/* OPNPS2LD/
+        mkdir -p OPNPS2LD-VARIANTS
         cp INFO/* OPNPS2LD-VARIANTS/
         7z a -t7z OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD/*
         7z a -t7z OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS/*
@@ -195,7 +196,7 @@ jobs:
         cp -f OPNPS2LD/OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD.ELF
 
     - name: Create prerelease
-      if: github.ref == 'refs/heads/362053534-patch-1'
+      if: github.ref == 'refs/heads/txtCN-Release'
       uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
