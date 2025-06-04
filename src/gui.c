@@ -1615,6 +1615,8 @@ void guiMainLoop(void)
                 ////  handle inputs and render screen
                 //guiShow();
             }
+            // Render overlaying gui thingies :)
+            guiDrawOverlays();
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
@@ -1654,11 +1656,11 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x04;
+            } else {
+                // Render overlaying gui thingies :)
+                guiDrawOverlays();
             }
         }
-
-        // Render overlaying gui thingies :)
-        guiDrawOverlays();
 
         if (gEnableNotifications)
             guiShowNotifications();
