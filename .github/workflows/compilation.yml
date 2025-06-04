@@ -200,7 +200,7 @@ jobs:
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         prerelease: true
-        automatic_release_tag: "txtCN_v0.9"
+        automatic_release_tag: "latest"
         title: "${{ steps.version.outputs.version }}"
         files: |
           OPNPS2LD-${{ env.OPL_VERSION }}.7z
