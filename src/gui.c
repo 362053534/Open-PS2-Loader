@@ -1396,17 +1396,17 @@ static int endIntro = 0; // Break intro loop and start 'Last Played Auto Start' 
 static void guiDrawOverlays()
 {
     // are there any pending operations?
-    int pending = ioHasPendingRequests();
+    int pending = (ioHasPendingRequests() || !mainScreenInitDone);
     static int busyAlpha = 0x00; // Fully transparant
 
     if (!pending) {
         // Fade out
         if (busyAlpha > 0x00)
-            busyAlpha -= 0x02;
+            busyAlpha -= 0x04;
     } else {
         // Fade in
         if (busyAlpha < 0x80)
-            busyAlpha += 0x02;
+            busyAlpha += 0x04;
     }
 
     if (busyAlpha > 0x00)
@@ -1615,8 +1615,6 @@ void guiMainLoop(void)
                 ////  handle inputs and render screen
                 //guiShow();
             }
-            // Render overlaying gui thingies :)
-            guiDrawOverlays();
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
@@ -1656,11 +1654,11 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x04;
-            } else {
-                // Render overlaying gui thingies :)
-                guiDrawOverlays();
             }
         }
+
+        // Render overlaying gui thingies :)
+        guiDrawOverlays();
 
         if (gEnableNotifications)
             guiShowNotifications();
