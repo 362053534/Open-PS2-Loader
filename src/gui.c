@@ -686,8 +686,8 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_OVERSCAN, gOverscan);
     guiUIUpdater(1);
 
-    //int ret = diaExecuteDialog(diaUIConfig, -1, 1, guiUIUpdater);
-    //if (ret) {
+    int ret = diaExecuteDialog(diaUIConfig, -1, 1, guiUIUpdater);
+    if (ret) {
     //    diaGetInt(diaUIConfig, UICFG_LANG, &langID);
     //    diaGetInt(diaUIConfig, UICFG_THEME, &themeID);
     //    if (themeID == 0) {
@@ -717,7 +717,7 @@ reselect_video_mode:
 
     //    if (gEnableBGM && !isBgmPlaying())
     //        bgmStart();
-    //}
+    }
 
     if (previousVMode != gVMode) {
         if (guiConfirmVideoMode() == 0) {
