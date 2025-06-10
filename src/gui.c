@@ -1585,9 +1585,9 @@ void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
 
-    // 如果没开BdmHdd就不需要延迟，直接改为0
+    // 如果没开BdmHdd或开的手动模式，就不需要延迟，直接改为0
     if (gEnableBdmHDD) {
-        if (GptFound) {
+        if (GptFound || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted)) {
             endIntroDelayFrame = 0;
         }
     } else {
