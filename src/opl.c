@@ -1901,7 +1901,7 @@ static void setDefaults(void)
     gXSensitivity = 1;
     gYSensitivity = 1;
 
-    gBDMStartMode = START_MODE_DISABLED;
+    gBDMStartMode = START_MODE_AUTO; // 防止无配置时点击图像设置死机
     gHDDStartMode = START_MODE_DISABLED;
     gETHStartMode = START_MODE_DISABLED;
     gAPPStartMode = START_MODE_DISABLED;
