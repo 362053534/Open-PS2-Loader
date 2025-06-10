@@ -645,7 +645,7 @@ void guiShowUIConfig(void)
     int themeID = -1, langID = -1;
     curTheme = -1;
     showCfgPopup = 0;
-    //guiResetNotifications();
+    guiResetNotifications();
 
     // clang-format off
     const char *vmodeNames[] = {_l(_STR_AUTO)
@@ -684,7 +684,7 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_XOFF, gXOff);
     diaSetInt(diaUIConfig, UICFG_YOFF, gYOff);
     diaSetInt(diaUIConfig, UICFG_OVERSCAN, gOverscan);
-    //guiUIUpdater(1);
+    guiUIUpdater(1);
 
     //int ret = diaExecuteDialog(diaUIConfig, -1, 1, guiUIUpdater);
     //if (ret) {
