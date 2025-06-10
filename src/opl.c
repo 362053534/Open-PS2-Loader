@@ -322,7 +322,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     }
                     // 手动启动BDM后，需要让gui有时间重新获取一次GPT数据，并刷新主界面;
                     reFindGpt();
-                    bdmManualStarted = 1;
+                    bdmManualTrigger = 1;
                 } else {
                     // Normal initialization.
                     itemInitSupport(support);

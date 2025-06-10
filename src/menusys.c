@@ -981,15 +981,21 @@ void menuHandleInputMenu()
         readPads();
     }
 
-    if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
-        // Check if there is anything to show the user, at all.
-        if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
-            guiSwitchScreen(GUI_SCREEN_MAIN);
-            if (gEnableBdmHDD && !GptFound) {
-                reFindGpt();// 如果重新寻找硬盘，需要跳过正常刷新菜单，找到后再刷新
-            } else
+    // 游戏列表未准备好时，不可以返回到游戏列表
+    if (mainScreenInitDone) {
+        if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
+            // Check if there is anything to show the user, at all.
+            if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
+                //guiSwitchScreen(GUI_SCREEN_MAIN);
+                //if (gEnableBdmHDD && !GptFound) {
+                //    reFindGpt(); // 如果重新寻找硬盘，需要跳过正常刷新菜单，找到后再刷新
+                //} else
+                //    refreshBdmMenu();
+
+                guiSwitchScreen(GUI_SCREEN_MAIN);
                 refreshBdmMenu();
-            // refreshMenuPosition();
+                // refreshMenuPosition();
+            }
         }
     }
 }

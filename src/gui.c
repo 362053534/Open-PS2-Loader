@@ -1517,7 +1517,7 @@ static void guiShow()
         rmDrawRect(0, 0, screenWidth, screenHeight, GS_SETREG_RGBA(0x00, 0x00, 0x00, alpha));
 
         // 如果主界面未准备好，则屏幕不会亮起
-        if (transIndex >= 13 && !mainScreenInitDone) {
+        if (transIndex == 13 && !mainScreenInitDone) {
             transIndex = 13;
         } else {
             // Advance the effect
@@ -1573,7 +1573,8 @@ void guiIntroLoop(void)
 }
 
 int mainScreenInitDone = 0;
-int bdmManualStarted = 0;
+static int bdmManualStarted = 0;
+int bdmManualTrigger = 0;
 int GptFound = 0;
 int endIntroDelayFrame = 90;
 
@@ -1588,7 +1589,7 @@ void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
 
-    // 如果没开BdmHdd或开的手动模式，就不需要延迟，直接改为0
+    // 如果没开BdmHdd或开的手动模式，就不需要启动延迟
     if (gEnableBdmHDD) {
         if (GptFound || ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)) {
             endIntroDelayFrame = 0;
@@ -1609,64 +1610,45 @@ void guiMainLoop(void)
     while (!gTerminate) {
         guiStartFrame();
 
-        //// 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
-        //if (endIntroDelayFrame > 0) {
-        //    // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
-        //    if (gEnableBdmHDD) {
-        //        if (GptFound) {
-        //            //// BDM手动模式启动后，再更新第0个页面下方的文字
-        //            //if (bdmManualStarted) {
-        //            //    moduleUpdateMenu(0, 0, 0);
-        //            //    bdmManualStarted = 0;
-        //            //}            
-        //            endIntroDelayFrame = 0;
-        //        } else {
-        //            endIntroDelayFrame--;
-        //        }
-        //    } else {
-        //        endIntroDelayFrame = 0;
-        //    }   
-        //    if (greetingAlpha >= 0x00) {
-        //        guiRenderGreeting(greetingAlpha);
-        //    } else {
-        //        // 不是启动画面时，要显示Gui。手动启动BDM时直接黑屏，盖住寻找硬盘的过程
-        //        if (!bdmManualStarted)
-        //            guiShow();
-        //    }
-        //}
-        if (!GptFound)
-        {
-            if (!gEnableBdmHDD || (gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
-                GptFound = 1;
-
+        // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
+        if (endIntroDelayFrame > 0) {
+            // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
+            if (gEnableBdmHDD) {
+                if (GptFound) {         
+                    endIntroDelayFrame = 0;
+                } else {
+                    endIntroDelayFrame--;
+                }
+            } else {
+                endIntroDelayFrame = 0;
+            }   
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
             } else {
                 // 不是启动画面时，要显示Gui。手动启动BDM时直接黑屏，盖住寻找硬盘的过程
-                if (!bdmManualStarted)
+                if (!bdmManualTrigger)
                     guiShow();
             }
-        }
-        else {
+        } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
-                //// BDM手动模式启动后，再更新第0个页面下方的文字
-                //if (bdmManualStarted) {
-                //    moduleUpdateMenu(0, 0, 0);
-                //    bdmManualStarted = 0;
-                //}
-
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                    if (greetingAlpha >= 0x00 || bdmManualStarted) // 第一次启动，或手动启动BDM时，从全黑开始过度
+                    // 第一次启动，或手动启动BDM时，从全黑开始过度
+                    if (greetingAlpha >= 0x00 || bdmManualTrigger) {
                         guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                    refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                        refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                    }
                 }
-
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // }
                 mainScreenInitDone = 1;
-                //bdmManualStarted = 0;
+
+                // 手动启动BDM后的变量处理
+                if (bdmManualTrigger) {
+                    bdmManualTrigger = 0;
+                    bdmManualStarted = 1;
+                }   
                 //// debug  打印debug信息，找到gpt信息
                 //char debugFileDir[64];
                 //strcpy(debugFileDir, "mass0:debug-gui.txt");
