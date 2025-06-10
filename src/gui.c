@@ -453,6 +453,12 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
     }
+
+    // 开启BDMHDD时，需要重新寻找一下硬盘，关闭时重置Gpt变量;
+    if (gEnableBdmHDD)
+        reFindGpt(0);
+    else
+        GptFound = 0;
 }
 
 static int guiUpdater(int modified)
@@ -684,7 +690,7 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_XOFF, gXOff);
     diaSetInt(diaUIConfig, UICFG_YOFF, gYOff);
     diaSetInt(diaUIConfig, UICFG_OVERSCAN, gOverscan);
-    //guiUIUpdater(1);
+    guiUIUpdater(1);
 
     int ret = diaExecuteDialog(diaUIConfig, -1, 1, &guiUIUpdater);
     if (ret) {
@@ -1559,11 +1565,14 @@ int bdmManualStarted = 0;
 int GptFound = 0;
 int endIntroDelayFrame = 90;
 
-void reFindGpt()
+void reFindGpt(int _FadeIn)
 {
-    mainScreenInitDone = 0;
+    if (_FadeIn)
+        mainScreenInitDone = 0;
+   
     if (!GptFound)
         endIntroDelayFrame = 90;
+
     bdmManualStarted = 1;
 }
 
@@ -1624,10 +1633,11 @@ void guiMainLoop(void)
                 //    bdmManualStarted = 0;
                 //}
 
-                if (gBDMStartMode || gHDDStartMode || gETHStartMode)
+                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
+                    refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                }
 
-                refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // }
