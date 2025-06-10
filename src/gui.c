@@ -1609,23 +1609,36 @@ void guiMainLoop(void)
     while (!gTerminate) {
         guiStartFrame();
 
-        // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
-        if (!GptFound) {
-            // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
-            if (gEnableBdmHDD) {
-                if (GptFound) {
-                    //// BDM手动模式启动后，再更新第0个页面下方的文字
-                    //if (bdmManualStarted) {
-                    //    moduleUpdateMenu(0, 0, 0);
-                    //    bdmManualStarted = 0;
-                    //}            
-                    endIntroDelayFrame = 0;
-                } else {
-                    endIntroDelayFrame--;
-                }
-            } else {
-                endIntroDelayFrame = 0;
-            }   
+        //// 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
+        //if (endIntroDelayFrame > 0) {
+        //    // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
+        //    if (gEnableBdmHDD) {
+        //        if (GptFound) {
+        //            //// BDM手动模式启动后，再更新第0个页面下方的文字
+        //            //if (bdmManualStarted) {
+        //            //    moduleUpdateMenu(0, 0, 0);
+        //            //    bdmManualStarted = 0;
+        //            //}            
+        //            endIntroDelayFrame = 0;
+        //        } else {
+        //            endIntroDelayFrame--;
+        //        }
+        //    } else {
+        //        endIntroDelayFrame = 0;
+        //    }   
+        //    if (greetingAlpha >= 0x00) {
+        //        guiRenderGreeting(greetingAlpha);
+        //    } else {
+        //        // 不是启动画面时，要显示Gui。手动启动BDM时直接黑屏，盖住寻找硬盘的过程
+        //        if (!bdmManualStarted)
+        //            guiShow();
+        //    }
+        //}
+        if (!GptFound)
+        {
+            if (!gEnableBdmHDD || (gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
+                GptFound = 1;
+
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
             } else {
@@ -1633,7 +1646,8 @@ void guiMainLoop(void)
                 if (!bdmManualStarted)
                     guiShow();
             }
-        } else {
+        }
+        else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
                 //// BDM手动模式启动后，再更新第0个页面下方的文字
@@ -1652,7 +1666,7 @@ void guiMainLoop(void)
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // }
                 mainScreenInitDone = 1;
-                bdmManualStarted = 0;
+                //bdmManualStarted = 0;
                 //// debug  打印debug信息，找到gpt信息
                 //char debugFileDir[64];
                 //strcpy(debugFileDir, "mass0:debug-gui.txt");
