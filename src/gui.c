@@ -709,15 +709,15 @@ reselect_video_mode:
     //    if (ret == UICFG_RESETCOL)
     //        setDefaultColors();
 
-        if (previousTheme != themeID && isBgmPlaying())
-            bgmStop();
+    //    if (previousTheme != themeID && isBgmPlaying())
+    //        bgmStop();
 
-        applyConfig(themeID, langID, 1);
-        sfxInit(0);
+    //    applyConfig(themeID, langID, 1);
+    //    sfxInit(0);
 
-        if (gEnableBGM && !isBgmPlaying())
-            bgmStart();
-    }
+    //    if (gEnableBGM && !isBgmPlaying())
+    //        bgmStart();
+    //}
 
     if (previousVMode != gVMode) {
         if (guiConfirmVideoMode() == 0) {
