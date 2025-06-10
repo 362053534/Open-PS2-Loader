@@ -645,7 +645,7 @@ void guiShowUIConfig(void)
     int themeID = -1, langID = -1;
     curTheme = -1;
     showCfgPopup = 0;
-    guiResetNotifications();
+    //guiResetNotifications();
 
     // clang-format off
     const char *vmodeNames[] = {_l(_STR_AUTO)
@@ -684,30 +684,30 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_XOFF, gXOff);
     diaSetInt(diaUIConfig, UICFG_YOFF, gYOff);
     diaSetInt(diaUIConfig, UICFG_OVERSCAN, gOverscan);
-    guiUIUpdater(1);
+    //guiUIUpdater(1);
 
-    int ret = diaExecuteDialog(diaUIConfig, -1, 1, guiUIUpdater);
-    if (ret) {
-        diaGetInt(diaUIConfig, UICFG_LANG, &langID);
-        diaGetInt(diaUIConfig, UICFG_THEME, &themeID);
-        if (themeID == 0) {
-            diaGetColor(diaUIConfig, UICFG_BGCOL, gDefaultBgColor);
-            diaGetColor(diaUIConfig, UICFG_UICOL, gDefaultUITextColor);
-            diaGetColor(diaUIConfig, UICFG_TXTCOL, gDefaultTextColor);
-            diaGetColor(diaUIConfig, UICFG_SELCOL, gDefaultSelTextColor);
-        }
-        diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
-        diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
-        diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);
-        diaGetInt(diaUIConfig, UICFG_COVERART, &gEnableArt);
-        diaGetInt(diaUIConfig, UICFG_WIDESCREEN, &gWideScreen);
-        diaGetInt(diaUIConfig, UICFG_VMODE, &gVMode);
-        diaGetInt(diaUIConfig, UICFG_XOFF, &gXOff);
-        diaGetInt(diaUIConfig, UICFG_YOFF, &gYOff);
-        diaGetInt(diaUIConfig, UICFG_OVERSCAN, &gOverscan);
+    //int ret = diaExecuteDialog(diaUIConfig, -1, 1, guiUIUpdater);
+    //if (ret) {
+    //    diaGetInt(diaUIConfig, UICFG_LANG, &langID);
+    //    diaGetInt(diaUIConfig, UICFG_THEME, &themeID);
+    //    if (themeID == 0) {
+    //        diaGetColor(diaUIConfig, UICFG_BGCOL, gDefaultBgColor);
+    //        diaGetColor(diaUIConfig, UICFG_UICOL, gDefaultUITextColor);
+    //        diaGetColor(diaUIConfig, UICFG_TXTCOL, gDefaultTextColor);
+    //        diaGetColor(diaUIConfig, UICFG_SELCOL, gDefaultSelTextColor);
+    //    }
+    //    diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
+    //    diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
+    //    diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);
+    //    diaGetInt(diaUIConfig, UICFG_COVERART, &gEnableArt);
+    //    diaGetInt(diaUIConfig, UICFG_WIDESCREEN, &gWideScreen);
+    //    diaGetInt(diaUIConfig, UICFG_VMODE, &gVMode);
+    //    diaGetInt(diaUIConfig, UICFG_XOFF, &gXOff);
+    //    diaGetInt(diaUIConfig, UICFG_YOFF, &gYOff);
+    //    diaGetInt(diaUIConfig, UICFG_OVERSCAN, &gOverscan);
 
-        if (ret == UICFG_RESETCOL)
-            setDefaultColors();
+    //    if (ret == UICFG_RESETCOL)
+    //        setDefaultColors();
 
         if (previousTheme != themeID && isBgmPlaying())
             bgmStop();
