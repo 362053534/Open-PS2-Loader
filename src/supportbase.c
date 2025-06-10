@@ -762,7 +762,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     return count;
 }
 
-static int usbFound = 0;
+//static int usbFound = 0;
 int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount)
 {
     // 如果没有DVD和CD文件夹，直接跳过扫描，避免设备"假存在"而引起的卡死

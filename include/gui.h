@@ -54,6 +54,9 @@ extern int guiInactiveFrames;
 extern int guiFrameId;
 extern int mainScreenInitDone;
 extern int bdmManualTrigger;
+extern int usbFound;
+extern int ILKFound;
+extern int MX4SIOFound;
 extern int GptFound;
 
 #define GUI_SCREEN_MAIN      0
@@ -162,6 +165,6 @@ int guiGameShowRemoveSettings(config_set_t *configSet, config_set_t *configGame)
 
 void guiManageCheats(void);
 
-void reFindGpt(); // 重新扫描GPT，并刷新主界面
+void reFindBDM(); // 重新扫描BDM设备，并刷新主界面
 
 #endif

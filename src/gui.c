@@ -454,17 +454,18 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
     }
 
-    // 开启BDMHDD时，需要重新寻找一下硬盘，关闭时重置Gpt变量;
+    // 如果有开启的设备，需要重新检测一下设备是否就绪
+    if (gEnableUSB)
+        usbFound = 0;
+    if (gEnableILK)
+        ILKFound = 0;
+    if (gEnableMX4SIO)
+        MX4SIOFound = 0;
     if (gEnableBdmHDD)
-    {
         GptFound = 0;
-        reFindGpt();
-    } else {
-        if (GptFound) {
-            GptFound = 0;
-            reFindGpt();
-        }
-    }
+
+    if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+        reFindBDM();
 }
 
 static int guiUpdater(int modified)
@@ -1575,28 +1576,43 @@ void guiIntroLoop(void)
 int mainScreenInitDone = 0;
 static int bdmManualStarted = 0;
 int bdmManualTrigger = 0;
+int usbFound = 0;
+int ILKFound = 0;
+int MX4SIOFound = 0;
 int GptFound = 0;
 int endIntroDelayFrame = 90;
 
-void reFindGpt()
+void reFindBDM()
 {
     mainScreenInitDone = 0;
-    if (!GptFound)
+    //if (!GptFound || !usbFound)
+    //    endIntroDelayFrame = 90;
+
+    // 根据设备的就绪状态来添加延迟
+    if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
         endIntroDelayFrame = 90;
+    else
+        endIntroDelayFrame = 0;
 }
 
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
 
-    // 如果没开BdmHdd或开的手动模式，就不需要启动延迟
-    if (gEnableBdmHDD) {
-        if (GptFound || ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)) {
-            endIntroDelayFrame = 0;
-        }
-    } else {
+    //// 如果没开BdmHdd或开的手动模式，就不需要启动延迟
+    //if (gEnableBdmHDD) {
+    //    if (GptFound || ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)) {
+    //        endIntroDelayFrame = 0;
+    //    }
+    //} else {
+    //    endIntroDelayFrame = 0;
+    //}
+
+    // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
+    if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
         endIntroDelayFrame = 0;
-    } 
+    else if ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)
+        endIntroDelayFrame = 0;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1612,16 +1628,23 @@ void guiMainLoop(void)
 
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
-            // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
-            if (gEnableBdmHDD) {
-                if (GptFound) {         
-                    endIntroDelayFrame = 0;
-                } else {
-                    endIntroDelayFrame--;
-                }
-            } else {
+            //// 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
+            //if (gEnableBdmHDD) {
+            //    if (GptFound) {         
+            //        endIntroDelayFrame = 0;
+            //    } else {
+            //        endIntroDelayFrame--;
+            //    }
+            //} else {
+            //    endIntroDelayFrame = 0;
+            //}
+
+            // 所有设备准备就绪，才可以结束延迟
+            if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
                 endIntroDelayFrame = 0;
-            }   
+            else
+                endIntroDelayFrame--;
+
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
             } else {
