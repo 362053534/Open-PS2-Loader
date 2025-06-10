@@ -458,9 +458,12 @@ static void guiShowBlockDeviceConfig(void)
     if (gEnableBdmHDD)
     {
         GptFound = 0;
-        reFindGpt();     
+        reFindGpt();
     } else {
-        GptFound = 0;
+        if (GptFound) {
+            GptFound = 0;
+            reFindGpt();
+        }
     }
 }
 
@@ -1587,7 +1590,7 @@ void guiMainLoop(void)
 
     // 如果没开BdmHdd或开的手动模式，就不需要延迟，直接改为0
     if (gEnableBdmHDD) {
-        if (GptFound || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted)) {
+        if (GptFound || ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)) {
             endIntroDelayFrame = 0;
         }
     } else {
@@ -1607,7 +1610,7 @@ void guiMainLoop(void)
         guiStartFrame();
 
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
-        if (endIntroDelayFrame > 0) {
+        if (!GptFound) {
             // 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
             if (gEnableBdmHDD) {
                 if (GptFound) {
