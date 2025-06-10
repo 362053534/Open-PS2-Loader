@@ -456,9 +456,12 @@ static void guiShowBlockDeviceConfig(void)
 
     // 开启BDMHDD时，需要重新寻找一下硬盘，关闭时重置Gpt变量;
     if (gEnableBdmHDD)
-        reFindGpt();
-    else
+    {
         GptFound = 0;
+        reFindGpt();     
+    } else {
+        GptFound = 0;
+    }
 }
 
 static int guiUpdater(int modified)
