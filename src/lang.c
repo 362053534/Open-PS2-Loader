@@ -171,8 +171,8 @@ void lngInit(void)
 {
     fntInit();
 
-    //// 外网反应这句代码会导致黑屏卡死，注释掉也许可以提高兼容性，防止把记忆卡当成mass0目录，在里面生成txt？
-    //lngAddLanguages(gBaseMCDir, "/", -1);
+    // 外网反应这句代码会导致黑屏卡死，注释掉也许可以提高兼容性，防止把记忆卡当成mass0目录，在里面生成txt？
+    lngAddLanguages(gBaseMCDir, "/", -1);
 }
 
 void lngEnd(void)
