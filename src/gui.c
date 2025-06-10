@@ -456,7 +456,7 @@ static void guiShowBlockDeviceConfig(void)
 
     // 开启BDMHDD时，需要重新寻找一下硬盘，关闭时重置Gpt变量;
     if (gEnableBdmHDD)
-        reFindGpt(0);
+        reFindGpt();
     else
         GptFound = 0;
 }
@@ -1510,8 +1510,14 @@ static void guiShow()
         // Overlay the actual "fade"
         rmDrawRect(0, 0, screenWidth, screenHeight, GS_SETREG_RGBA(0x00, 0x00, 0x00, alpha));
 
-        // Advance the effect
-        transIndex++;
+        // 如果主界面未准备好，则屏幕不会亮起
+        if (transIndex >= 13 && !mainScreenInitDone) {
+            transIndex = 13;
+        } else {
+            // Advance the effect
+            transIndex++;
+        }
+
         if (transIndex >= transition_frames) {
             screenHandler = screenHandlerTarget;
             screenHandlerTarget = NULL;
@@ -1565,15 +1571,11 @@ int bdmManualStarted = 0;
 int GptFound = 0;
 int endIntroDelayFrame = 90;
 
-void reFindGpt(int _FadeIn)
+void reFindGpt()
 {
-    if (_FadeIn)
-        mainScreenInitDone = 0;
-   
+    mainScreenInitDone = 0;
     if (!GptFound)
         endIntroDelayFrame = 90;
-
-    bdmManualStarted = 1;
 }
 
 void guiMainLoop(void)
@@ -1621,8 +1623,9 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
             } else {
-                ////  handle inputs and render screen
-                //guiShow();
+                // 不是启动画面时，要显示Gui。手动启动BDM时直接黑屏，盖住寻找硬盘的过程
+                if (!bdmManualStarted)
+                    guiShow();
             }
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
@@ -1634,7 +1637,8 @@ void guiMainLoop(void)
                 //}
 
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
+                    if (greetingAlpha >= 0x00 || bdmManualStarted) // 第一次启动，或手动启动BDM时，从全黑开始过度
+                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
                     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 }
 
@@ -1642,7 +1646,7 @@ void guiMainLoop(void)
                 //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                 // }
                 mainScreenInitDone = 1;
-
+                bdmManualStarted = 0;
                 //// debug  打印debug信息，找到gpt信息
                 //char debugFileDir[64];
                 //strcpy(debugFileDir, "mass0:debug-gui.txt");

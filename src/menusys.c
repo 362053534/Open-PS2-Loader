@@ -978,16 +978,18 @@ void menuHandleInputMenu()
         }
 
         // so the exit press wont propagate twice
-        //readPads();
+        readPads();
     }
 
     if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
         // Check if there is anything to show the user, at all.
         if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
             guiSwitchScreen(GUI_SCREEN_MAIN);
-            refreshBdmMenu();
+            if (gEnableBdmHDD && !GptFound) {
+                reFindGpt();// 如果重新寻找硬盘，需要跳过正常刷新菜单，找到后再刷新
+            } else
+                refreshBdmMenu();
             // refreshMenuPosition();
-
         }
     }
 }
