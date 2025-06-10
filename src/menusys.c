@@ -978,7 +978,7 @@ void menuHandleInputMenu()
         }
 
         // so the exit press wont propagate twice
-        readPads();
+        //readPads();
     }
 
     if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
