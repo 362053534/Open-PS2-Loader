@@ -1580,17 +1580,18 @@ int usbFound = 0;
 int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
-int endIntroDelayFrame = 90;
+int defaultDelayFrame = 120;
+int endIntroDelayFrame = defaultDelayFrame;
 
 void reFindBDM()
 {
     mainScreenInitDone = 0;
     //if (!GptFound || !usbFound)
-    //    endIntroDelayFrame = 90;
+    //    endIntroDelayFrame = defaultDelayFrame;
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
-        endIntroDelayFrame = 90;
+        endIntroDelayFrame = defaultDelayFrame;
     else
         endIntroDelayFrame = 0;
 }
