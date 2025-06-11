@@ -1580,7 +1580,7 @@ int usbFound = 0;
 int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
-int defaultDelayFrame = 180;
+int defaultDelayFrame = 200;
 int endIntroDelayFrame;
 
 void reFindBDM()
@@ -1590,10 +1590,13 @@ void reFindBDM()
     //    endIntroDelayFrame = defaultDelayFrame;
 
     // 根据设备的就绪状态来添加延迟
-    if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
+    if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
         endIntroDelayFrame = defaultDelayFrame;
+    else if (gEnableUSB > usbFound)
+        endIntroDelayFrame = 61;
     else
         endIntroDelayFrame = 0;
+
 }
 
 void guiMainLoop(void)
@@ -1610,10 +1613,18 @@ void guiMainLoop(void)
     //}
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
-    if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
-        endIntroDelayFrame = 0;
+    if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
+    {
+        // usb设备开启的情况下没插U盘，延迟时间需要缩短
+        if (gEnableUSB > usbFound)
+            endIntroDelayFrame = 61;
+        else
+            endIntroDelayFrame = 0;
+    }
     else if ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)
         endIntroDelayFrame = 0;
+
+
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
