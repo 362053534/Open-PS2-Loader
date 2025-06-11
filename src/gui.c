@@ -1580,7 +1580,7 @@ int usbFound = 0;
 int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
-int defaultDelayFrame = 120;
+int defaultDelayFrame = 150;
 int endIntroDelayFrame;
 
 void reFindBDM()
