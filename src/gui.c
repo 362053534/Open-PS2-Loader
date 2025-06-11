@@ -22,7 +22,6 @@
 #include "include/cheatman.h"
 #include "include/sound.h"
 #include "include/guigame.h"
-#include "include/bdmsupport.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -1652,7 +1651,6 @@ void guiMainLoop(void)
             //    endIntroDelayFrame = 0;
             //}
 
-            //bdmEnumerateDevices();
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
                 endIntroDelayFrame = 0;
@@ -1669,7 +1667,6 @@ void guiMainLoop(void)
         } else {
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
-                bdmEnumerateDevices();
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     // 第一次启动，或手动启动BDM时，从全黑开始过度
                     if (greetingAlpha >= 0x00 || bdmManualTrigger) {
