@@ -22,6 +22,7 @@
 #include "include/cheatman.h"
 #include "include/sound.h"
 #include "include/guigame.h"
+#include "include/bdmsupport.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -1580,7 +1581,7 @@ int usbFound = 0;
 int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
-int defaultDelayFrame = 200;
+int defaultDelayFrame = 210;
 int endIntroDelayFrame;
 
 void reFindBDM()
@@ -1651,6 +1652,7 @@ void guiMainLoop(void)
             //    endIntroDelayFrame = 0;
             //}
 
+            bdmEnumerateDevices();
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
                 endIntroDelayFrame = 0;
@@ -1665,6 +1667,8 @@ void guiMainLoop(void)
                     guiShow();
             }
         } else {
+            bdmEnumerateDevices();
+
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
