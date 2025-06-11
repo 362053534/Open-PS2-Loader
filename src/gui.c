@@ -1667,10 +1667,9 @@ void guiMainLoop(void)
                     guiShow();
             }
         } else {
-            bdmEnumerateDevices();
-
             // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
             if (!mainScreenInitDone) {
+                //bdmEnumerateDevices();
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     // 第一次启动，或手动启动BDM时，从全黑开始过度
                     if (greetingAlpha >= 0x00 || bdmManualTrigger) {
