@@ -160,11 +160,11 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
         //    gHDDPrefix = "pfs0:+OPL/";
 
         //  把获取的名字作为索引名，替换成txt中对应的中文名
-        ginfo->indexName[0] = '\0';
-        ginfo->transName[0] = '\0';
-
         char fullName[256];
+        char indexNameBuffer[256];
         if (file != NULL) {
+            ginfo->indexName[0] = '\0';
+            ginfo->transName[0] = '\0';
             rewind(file);
             int noLineBreaks = 0;
             while (fgets(fullName, sizeof(fullName), file) != NULL) {
@@ -185,15 +185,16 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                         break;
                     }
                     strcpy(ginfo->transName, &fullName[strlen(ginfo->indexName) + 1]); // 赋值给翻译文本数组
+                    strcpy(ginfo->name, ginfo->transName);
 
-                    // 给游戏名加结束符，防止换行符被显示出来
-                    for (int i = 0; i < strlen(ginfo->transName); i++) {
-                        if (ginfo->transName[i] == '\r' || ginfo->transName[i] == '\n' || ginfo->transName[i] == '\0') {
-                            ginfo->transName[i] = '\0';
-                            strcpy(ginfo->name, ginfo->transName);
-                            break;
-                        }
-                    }
+                    //// 给游戏名加结束符，防止换行符被显示出来
+                    //for (int i = 0; i < strlen(ginfo->transName); i++) {
+                    //    if (ginfo->transName[i] == '\r' || ginfo->transName[i] == '\n' || ginfo->transName[i] == '\0') {
+                    //        ginfo->transName[i] = '\0';
+                    //        strcpy(ginfo->name, ginfo->transName);
+                    //        break;
+                    //    }
+                    //}
                     break;
                 }
             }
@@ -205,7 +206,9 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
 
                 ginfo->name[HDL_GAME_NAME_MAX] = '\0';
                 strcpy(ginfo->indexName, ginfo->name); // 将真正的游戏名变成index索引名   index是否需要追加\0？
-                fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？                
+                //fprintf(file, "%s.\r\n", ginfo->indexName);  // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                sprintf(indexNameBuffer, "%s.\r\n", ginfo->indexName);
+                fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
             }
         }
  
@@ -294,7 +297,7 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
                 char path[256];
                 if (strncasecmp(gHDDPrefix, "pfs", 3) == 0) {
                     snprintf(path, 64, "%sGameListTranslator.txt", gHDDPrefix);
-                    file = fopen(path, "a+");
+                    file = fopen(path, "ab+, ccs=UTF-8");
                     fseek(file, 0, SEEK_END);
                     if (ftell(file) == 0) {
                         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
