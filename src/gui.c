@@ -1581,7 +1581,7 @@ int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
 int defaultDelayFrame = 120;
-int endIntroDelayFrame = defaultDelayFrame;
+int endIntroDelayFrame;
 
 void reFindBDM()
 {
@@ -1599,7 +1599,7 @@ void reFindBDM()
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
-
+    endIntroDelayFrame = defaultDelayFrame;
     //// 如果没开BdmHdd或开的手动模式，就不需要启动延迟
     //if (gEnableBdmHDD) {
     //    if (GptFound || ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)) {
