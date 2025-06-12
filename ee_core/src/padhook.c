@@ -326,9 +326,9 @@ static int IGR_Intc_Handler(int cause)
         // Check number of power button press after 1 ~ sec
         if (Power_Button.vb_count++ >= 50) {
             if (Power_Button.press == 1)
-                Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 1 time, so poweroff
+                Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 1 time, so poweroff
             else
-                Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 2 time, so reset
+                Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 2 time, so reset
         }
     }
 
