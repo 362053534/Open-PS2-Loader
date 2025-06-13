@@ -897,6 +897,8 @@ static void menuUpdateHook()
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
+        if (!menuUpdateHookDone)
+            menuUpdateHookDone = 1;    
     }
 }
 

@@ -58,6 +58,7 @@ extern int usbFound;
 extern int ILKFound;
 extern int MX4SIOFound;
 extern int GptFound;
+extern int menuUpdateHookDone;
 
 #define GUI_SCREEN_MAIN      0
 #define GUI_SCREEN_MENU      1

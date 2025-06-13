@@ -1581,13 +1581,12 @@ int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
 int defaultDelayFrame = 210;
-int endIntroDelayFrame;
+int endIntroDelayFrame = 0;
+int menuUpdateHookDone = 0;
 
 void reFindBDM()
 {
     mainScreenInitDone = 0;
-    //if (!GptFound || !usbFound)
-    //    endIntroDelayFrame = defaultDelayFrame;
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
@@ -1597,20 +1596,14 @@ void reFindBDM()
     else
         endIntroDelayFrame = 0;
 
+    if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
+        endIntroDelayFrame = 0;
 }
 
 void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
-    //// 如果没开BdmHdd或开的手动模式，就不需要启动延迟
-    //if (gEnableBdmHDD) {
-    //    if (GptFound || ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)) {
-    //        endIntroDelayFrame = 0;
-    //    }
-    //} else {
-    //    endIntroDelayFrame = 0;
-    //}
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
@@ -1621,10 +1614,8 @@ void guiMainLoop(void)
         else
             endIntroDelayFrame = 0;
     }
-    else if ((gBDMStartMode <= START_MODE_MANUAL) && !bdmManualStarted)
+    if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
         endIntroDelayFrame = 0;
-
-
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1640,61 +1631,49 @@ void guiMainLoop(void)
 
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
-            //// 如果开了BdmHdd就给一段时间的延迟，去循环检测硬盘
-            //if (gEnableBdmHDD) {
-            //    if (GptFound) {         
-            //        endIntroDelayFrame = 0;
-            //    } else {
-            //        endIntroDelayFrame--;
-            //    }
-            //} else {
-            //    endIntroDelayFrame = 0;
-            //}
-
             // 所有设备准备就绪，才可以结束延迟
-            if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
+            if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
                 endIntroDelayFrame = 0;
-            else
-                endIntroDelayFrame--;
-
-            if (greetingAlpha >= 0x00) {
-                guiRenderGreeting(greetingAlpha);
-            } else {
-                // 不是启动画面时，要显示Gui。手动启动BDM时直接黑屏，盖住寻找硬盘的过程
-                if (!bdmManualTrigger)
-                    guiShow();
+                menuUpdateHookDone = 0;
             }
+            else {
+                endIntroDelayFrame--;
+                if (endIntroDelayFrame <= 0)
+                    menuUpdateHookDone = 0;
+            }              
         } else {
-            // delay结束后，introLoop界面开始淡出，并淡入显示游戏列表
-            if (!mainScreenInitDone) {
-                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                    // 第一次启动，或手动启动BDM时，从全黑开始过度
-                    if (greetingAlpha >= 0x00 || bdmManualTrigger) {
-                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                        refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            // 找到bdm设备或delay结束后，还要等刷新周期结束
+            if (menuUpdateHookDone) {
+                // 一切就绪后，改变mainScreenInitDone变量
+                if (!mainScreenInitDone) {
+                    if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
+                        // 第一次启动，或手动启动BDM时，从全黑开始过度
+                        if (greetingAlpha >= 0x00 || bdmManualTrigger) {
+                            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
+                            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                        }
                     }
+                    mainScreenInitDone = 1;
+
+                    // 手动启动BDM后的变量处理
+                    if (bdmManualTrigger) {
+                        bdmManualTrigger = 0;
+                        bdmManualStarted = 1;
+                    }
+                    //// debug  打印debug信息，找到gpt信息
+                    // char debugFileDir[64];
+                    // strcpy(debugFileDir, "mass0:debug-gui.txt");
+                    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+                    // FILE *debugFile = fopen(debugFileDir, "ab+");
+                    // if (debugFile != NULL) {
+                    //     fprintf(debugFile, GptFound ? "硬盘成功启动了！\r\n\r\n": "硬盘启动失败，找不到硬盘内的数据！\r\n\r\n");
+                    //     fclose(debugFile);
+                    // }
                 }
-                // if (gBDMStartMode && (gDefaultDevice == BDM_MODE)) {
-                //     refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                // }
-                mainScreenInitDone = 1;
+            }
+        }
 
-                // 手动启动BDM后的变量处理
-                if (bdmManualTrigger) {
-                    bdmManualTrigger = 0;
-                    bdmManualStarted = 1;
-                }   
-                //// debug  打印debug信息，找到gpt信息
-                //char debugFileDir[64];
-                //strcpy(debugFileDir, "mass0:debug-gui.txt");
-                //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-                //FILE *debugFile = fopen(debugFileDir, "ab+");
-                //if (debugFile != NULL) {
-                //    fprintf(debugFile, GptFound ? "硬盘成功启动了！\r\n\r\n": "硬盘启动失败，找不到硬盘内的数据！\r\n\r\n");
-                //    fclose(debugFile);
-                //}
-            } 
-
+        if (mainScreenInitDone) {
             // Read the pad states to prepare for input processing in the screen handler
             guiReadPads();
 
@@ -1705,6 +1684,14 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x04;
+            }
+        } else {
+            if (greetingAlpha >= 0x00) {
+                guiRenderGreeting(greetingAlpha);
+            } else {
+                // 不是启动画面时，要显示Gui。手动启动BDM时直接黑屏，盖住寻找硬盘的过程
+                if (!bdmManualTrigger)
+                    guiShow();
             }
         }
 
