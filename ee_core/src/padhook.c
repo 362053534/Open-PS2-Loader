@@ -152,7 +152,7 @@ static void IGR_Thread(void *arg)
     SifInitRpc(0);
 
     // If Pad Combo is Start + Select then Return to Home, else if Pad Combo is UP then take IGS
-    if (((Pad_Data.combo_type == IGR_COMBO_START_SELECT) || Power_Button.press)
+    if ((Pad_Data.combo_type == IGR_COMBO_START_SELECT)
 #ifdef IGS
         || ((Pad_Data.combo_type == IGR_COMBO_UP) && (config->EnableGSMOp))
 #endif
@@ -246,11 +246,11 @@ static void IGR_Thread(void *arg)
 
         IGR_Exit(0);
     } else {
-        //if (EnableDebug)
-        //    DBGCOL(0x0000FF, IGR, "oplIGRShutdown(1)");
+        if (EnableDebug)
+            DBGCOL(0x0000FF, IGR, "oplIGRShutdown(1)");
 
-        //// If combo is R3 + L3, Poweroff PS2
-        //oplIGRShutdown(1);
+        // If combo is R3 + L3, Poweroff PS2
+        oplIGRShutdown(1);
     }
 }
 
@@ -311,28 +311,26 @@ static int IGR_Intc_Handler(int cause)
 
     ee_kmode_enter();
 
-    //// Check power button press
-    //if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
-    //    // Increment button press counter
-    //    Power_Button.press++;
+    // Check power button press
+    if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
+        // Increment button press counter
+        Power_Button.press++;
 
-    //    // Cancel poweroff to catch the second button press
-    //    *CDVD_R_SDIN = 0x00;
-    //    *CDVD_R_SCMD = 0x1B;
+        // Cancel poweroff to catch the second button press
+        *CDVD_R_SDIN = 0x00;
+        *CDVD_R_SCMD = 0x1B;
+    }
 
-    //    Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 2 time, so reset
-    //}
-
-    //// Start VBlank counter when power button is pressed
-    //if (Power_Button.press) {
-    //    // Check number of power button press after 1 ~ sec
-    //    if (Power_Button.vb_count++ >= 50) {
-    //        if (Power_Button.press == 1)
-    //            Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 1 time, so poweroff
-    //        else
-    //            Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 2 time, so reset
-    //    }
-    //}
+    // Start VBlank counter when power button is pressed
+    if (Power_Button.press) {
+        // Check number of power button press after 1 ~ sec
+        if (Power_Button.vb_count++ >= 50) {
+            if (Power_Button.press == 1)
+                Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 1 time, so poweroff
+            else
+                Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 2 time, so reset
+        }
+    }
 
     ee_kmode_exit();
 
