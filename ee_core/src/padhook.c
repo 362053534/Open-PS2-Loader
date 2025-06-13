@@ -311,15 +311,15 @@ static int IGR_Intc_Handler(int cause)
 
     ee_kmode_enter();
 
-    //// Check power button press
-    //if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
-    //    // Increment button press counter
-    //    Power_Button.press++;
+    // Check power button press
+    if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
+        // Increment button press counter
+        Power_Button.press++;
 
-    //    // Cancel poweroff to catch the second button press
-    //    *CDVD_R_SDIN = 0x00;
-    //    *CDVD_R_SCMD = 0x1B;
-    //}
+        //// Cancel poweroff to catch the second button press
+        //*CDVD_R_SDIN = 0x00;
+        //*CDVD_R_SCMD = 0x1B;
+    }
 
     //// Start VBlank counter when power button is pressed
     //if (Power_Button.press) {
