@@ -316,9 +316,11 @@ static int IGR_Intc_Handler(int cause)
         // Increment button press counter
         Power_Button.press++;
 
-        //// Cancel poweroff to catch the second button press
-        //*CDVD_R_SDIN = 0x00;
-        //*CDVD_R_SCMD = 0x1B;
+        // Cancel poweroff to catch the second button press
+        *CDVD_R_SDIN = 0x00;
+        *CDVD_R_SCMD = 0x1B;
+
+        Pad_Data.combo_type = 1; // power button press 2 time, so reset
     }
 
     //// Start VBlank counter when power button is pressed
