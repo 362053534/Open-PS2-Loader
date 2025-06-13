@@ -315,7 +315,7 @@ static int IGR_Intc_Handler(int cause)
     if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
         // Increment button press counter
         Power_Button.press++;
-
+        Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 1 time, so poweroff
         //// Cancel poweroff to catch the second button press
         //*CDVD_R_SDIN = 0x00;
         //*CDVD_R_SCMD = 0x1B;
