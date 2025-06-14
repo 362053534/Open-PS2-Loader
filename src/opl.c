@@ -842,6 +842,16 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
 
             if (gRememberLastPlayed && temp && strcmp(temp, mdl->support->itemGetStartup(mdl->support, i)) == 0) {
                 gup->submenu.selected = 1; // Select Last Played Game
+
+                // debug  打印debug信息，找到gpt信息
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-LastPlayed.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "LastPlayed:%s\r\nmdl:%s\r\n\r\n", temp, mdl->support->itemGetStartup(mdl->support, i));
+                    fclose(debugFile);
+                }
             }
 
             guiDeferUpdate(gup);
