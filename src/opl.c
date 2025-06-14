@@ -843,8 +843,9 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
             if (gRememberLastPlayed && temp && strcmp(temp, mdl->support->itemGetStartup(mdl->support, i)) == 0) {
                 gup->submenu.selected = 1; // Select Last Played Game
             }
+
+            guiDeferUpdate(gup);
         }
-        guiDeferUpdate(gup);
     }
 
     if (gAutosort) {
