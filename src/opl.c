@@ -848,12 +848,12 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
         }
     }
 
-    if (gAutosort) {
-        gup = guiOpCreate(GUI_OP_SORT);
-        gup->menu.menu = &mdl->menuItem;
-        gup->menu.subMenu = &mdl->subMenu;
-        guiDeferUpdate(gup);
-    }
+    //if (gAutosort) {
+    //    gup = guiOpCreate(GUI_OP_SORT);
+    //    gup->menu.menu = &mdl->menuItem;
+    //    gup->menu.subMenu = &mdl->subMenu;
+    //    guiDeferUpdate(gup);
+    //}
 }
 
 void menuDeferredUpdate(void *data)
