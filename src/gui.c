@@ -1036,7 +1036,6 @@ static void guiHandleOp(struct gui_update_t *item)
                 if ((gAutoStartLastPlayed) && !(KeyPressedOnce))
                     DisableCron = 0; // Release Auto Start Last Played counter
             }
-
             break;
 
         case GUI_OP_SELECT_MENU:
