@@ -843,17 +843,17 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
             if (gRememberLastPlayed && temp && strcmp(temp, mdl->support->itemGetStartup(mdl->support, i)) == 0) {
                 gup->submenu.selected = 1; // Select Last Played Game
             }
-
-            guiDeferUpdate(gup);
         }
+        if (!gAutosort)
+            guiDeferUpdate(gup);
     }
 
-    //if (gAutosort) {
-    //    gup = guiOpCreate(GUI_OP_SORT);
-    //    gup->menu.menu = &mdl->menuItem;
-    //    gup->menu.subMenu = &mdl->subMenu;
-    //    guiDeferUpdate(gup);
-    //}
+    if (gAutosort) {
+        gup = guiOpCreate(GUI_OP_SORT);
+        gup->menu.menu = &mdl->menuItem;
+        gup->menu.subMenu = &mdl->subMenu;
+        guiDeferUpdate(gup);
+    }
 }
 
 void menuDeferredUpdate(void *data)
