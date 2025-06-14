@@ -1028,12 +1028,15 @@ static void guiHandleOp(struct gui_update_t *item)
                 item->menu.menu->pagestart = result;
             }
             if (item->submenu.selected) { // remember last played game feature
+                item->menu.menu->current = result;
+                item->menu.menu->pagestart = result;
                 item->menu.menu->remindLast = 1;
 
                 // Last Played Auto Start
                 if ((gAutoStartLastPlayed) && !(KeyPressedOnce))
                     DisableCron = 0; // Release Auto Start Last Played counter
             }
+
             break;
 
         case GUI_OP_SELECT_MENU:
