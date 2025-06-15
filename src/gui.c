@@ -1586,9 +1586,6 @@ int menuUpdateHookDone = 0;
 
 void reFindBDM()
 {
-    mainScreenInitDone = 0;
-    menuUpdateHookDone = 0;
-
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
         endIntroDelayFrame = defaultDelayFrame;
@@ -1597,8 +1594,16 @@ void reFindBDM()
     else
         endIntroDelayFrame = 0;
 
-    if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
-        endIntroDelayFrame = 0;
+    if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted)) {  
+        if (bdmManualTrigger)
+            mainScreenInitDone = 0;
+        else
+            endIntroDelayFrame = 0;
+    } else {
+        mainScreenInitDone = 0;
+        if (!endIntroDelayFrame)
+            menuUpdateHookDone = 0;        
+    }
 }
 
 void guiMainLoop(void)
