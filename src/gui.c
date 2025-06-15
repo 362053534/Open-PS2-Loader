@@ -1599,16 +1599,6 @@ void reFindBDM()
 
     if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
         endIntroDelayFrame = 0;
-
-    // debug  打印debug信息
-     char debugFileDir[64];
-     strcpy(debugFileDir, "smb:debug-refindBDM.txt");
-    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-     FILE *debugFile = fopen(debugFileDir, "ab+");
-     if (debugFile != NULL) {
-         fprintf(debugFile,"执行了refindBDM！\r\n\r\n");
-         fclose(debugFile);
-     }
 }
 
 void guiMainLoop(void)
