@@ -544,10 +544,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 }
             }
 
-            // BDM自动模式时，手动启动的变量直接改为true
-            if (mode >= BDM_MODE && mode < ETH_MODE && !bdmManualStarted)
-                bdmManualStarted = 1;
-
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
