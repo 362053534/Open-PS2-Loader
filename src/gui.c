@@ -1602,7 +1602,7 @@ void reFindBDM()
 
     // debug  打印debug信息
      char debugFileDir[64];
-     strcpy(debugFileDir, "mass0:debug-refindBDM.txt");
+     strcpy(debugFileDir, "smb:debug-refindBDM.txt");
     // sprintf(debugFileDir, "%sdebug.txt", prefix);
      FILE *debugFile = fopen(debugFileDir, "ab+");
      if (debugFile != NULL) {
