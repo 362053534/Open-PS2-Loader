@@ -575,6 +575,10 @@ void guiShowConfig()
         diaGetInt(diaConfig, CFG_HDDCACHE, &hddCacheSize);
         diaGetInt(diaConfig, CFG_SMBCACHE, &smbCacheSize);
 
+        // BDM自动模式时，手动启动的变量直接改为true
+        if ((gBDMStartMode == START_MODE_AUTO) && !bdmManualStarted)
+            bdmManualStarted = 1;
+
         if (ret == BLOCKDEVICE_BUTTON)
             guiShowBlockDeviceConfig();
 
@@ -1610,6 +1614,10 @@ void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
+
+    // BDM自动模式时，手动启动的变量直接改为true
+    if ((gBDMStartMode == START_MODE_AUTO) && !bdmManualStarted)
+        bdmManualStarted = 1;
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
