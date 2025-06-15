@@ -455,19 +455,13 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
 
-         // 确定后，重新检测所有BDM设备是否就绪
-         if (gEnableUSB)
-             usbFound = 0;
-         if (gEnableILK)
-             ILKFound = 0;
-         if (gEnableMX4SIO)
-             MX4SIOFound = 0;
-         if (gEnableBdmHDD)
-             GptFound = 0;
-         reFindBDM();
-    } else
-        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
-        reFindBDM(); // 取消时，不重置found状态
+        // 确定后，重新检测所有BDM设备是否就绪
+        usbFound = 0;
+        ILKFound = 0;
+        MX4SIOFound = 0;
+        GptFound = 0;
+    }
+    reFindBDM(); // 取消时，不重置found状态
 }
 
 static int guiUpdater(int modified)
@@ -593,10 +587,8 @@ void guiShowConfig()
                     GptFound = 0;
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
-            } else if (BdmStarted && (gBDMStartMode > 0)) {
-                if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
-                    reFindBDM();
-            }
+            } else if (BdmStarted && (gBDMStartMode > 0))
+                reFindBDM();
         }
 
         applyConfig(-1, -1, 0);
@@ -1628,10 +1620,12 @@ void reFindBDM()
     } else { // BDM已启动后的处理
         // BDM启动模式关闭或BDM块设备全关时，要等menuUpdateHookDone
         mainScreenInitDone = 0;
+        if (!endIntroDelayFrame) {
+            endIntroDelayFrame = 61; // BDM全关时，要给足够的时间去隐藏设备
+            menuUpdateHookDone = 0;
+        }
         if (!gBDMStartMode)
             endIntroDelayFrame = 0;
-        if (!endIntroDelayFrame)
-            menuUpdateHookDone = 0;
     }
 }
 
