@@ -462,10 +462,10 @@ static void guiShowBlockDeviceConfig(void)
              MX4SIOFound = 0;
          if (gEnableBdmHDD)
              GptFound = 0;
-
-         if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
-             reFindBDM();
     }
+    // 取消时，不重置found状态
+    if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+        reFindBDM();
 }
 
 static int guiUpdater(int modified)
@@ -1587,6 +1587,7 @@ int menuUpdateHookDone = 0;
 void reFindBDM()
 {
     mainScreenInitDone = 0;
+    menuUpdateHookDone = 0;
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
@@ -1598,6 +1599,16 @@ void reFindBDM()
 
     if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
         endIntroDelayFrame = 0;
+
+    // debug  打印debug信息
+     char debugFileDir[64];
+     strcpy(debugFileDir, "mass0:debug-refindBDM.txt");
+    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+     FILE *debugFile = fopen(debugFileDir, "ab+");
+     if (debugFile != NULL) {
+         fprintf(debugFile,"执行了refindBDM！\r\n\r\n");
+         fclose(debugFile);
+     }
 }
 
 void guiMainLoop(void)
