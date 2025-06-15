@@ -455,13 +455,24 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
 
-        // 确定后，重新检测所有BDM设备是否就绪
-        usbFound = 0;
-        ILKFound = 0;
-        MX4SIOFound = 0;
-        GptFound = 0;
+        // 选择确定后，若BDM已启用，则检测BDM设备是否就绪
+        if (BdmStarted) {
+            // 重新检测所有BDM设备是否就绪
+            if (gEnableUSB)
+                usbFound = 0;
+            if (gEnableILK)
+                ILKFound = 0;
+            if (gEnableMX4SIO)
+                MX4SIOFound = 0;
+            if (gEnableBdmHDD)
+                GptFound = 0;
+            if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+                reFindBDM();
+        }
     }
-    reFindBDM(); // 取消时，不重置found状态
+    if (BdmStarted)
+        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+            reFindBDM(); // 取消时，不重置found状态
 }
 
 static int guiUpdater(int modified)
