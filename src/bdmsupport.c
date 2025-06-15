@@ -887,67 +887,94 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     //}
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
-    if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
-        // usb关闭的情况下，停止循环检测usb    下面return1的情况下，这段代码只会执行一次，但是手动模式会把usb图标显示出来
-        if ((itemList->owner != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
-            return 0;
+    if (dir >= 0) {
+        if (pDeviceData->bdmPrefix[0] == '\0') {
+            if (gBDMPrefix[0] != '\0')
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
+            else
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
 
-        if (gBDMPrefix[0] != '\0')
-            snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
-        else
-            snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
+            // Get the name of the underlying device driver that backs the fat fs.
+            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
+            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &pDeviceData->massDeviceIndex, sizeof(pDeviceData->massDeviceIndex));
 
-        // Get the name of the underlying device driver that backs the fat fs.
-        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-        fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &pDeviceData->massDeviceIndex, sizeof(pDeviceData->massDeviceIndex));
+            itemList->flags = 0;
 
-        itemList->flags = 0;
+            // Determine the bdm device type based on the underlying device driver.
+            if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                pDeviceData->bdmDeviceType = BDM_TYPE_USB;
+                usbFound = 1;
+            } else if (!strcmp(pDeviceData->bdmDriver, "sd") && strlen(pDeviceData->bdmDriver) == 2) {
+                pDeviceData->bdmDeviceType = BDM_TYPE_ILINK;
+                ILKFound = 1;
+            } else if (!strcmp(pDeviceData->bdmDriver, "sdc") && strlen(pDeviceData->bdmDriver) == 3) {
+                pDeviceData->bdmDeviceType = BDM_TYPE_SDC;
+                MX4SIOFound = 1;
+            } else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
+                pDeviceData->bdmDeviceType = BDM_TYPE_ATA;
+                itemList->flags = MODE_FLAG_COMPAT_DMA;
+                GptFound = 1;
+            } else
+                pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
 
-        // Determine the bdm device type based on the underlying device driver.
-        if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-            pDeviceData->bdmDeviceType = BDM_TYPE_USB;
-            usbFound = 1;
-        }
-        else if (!strcmp(pDeviceData->bdmDriver, "sd") && strlen(pDeviceData->bdmDriver) == 2) {
-            pDeviceData->bdmDeviceType = BDM_TYPE_ILINK;
-            ILKFound = 1;
-        } else if (!strcmp(pDeviceData->bdmDriver, "sdc") && strlen(pDeviceData->bdmDriver) == 3) {
-            pDeviceData->bdmDeviceType = BDM_TYPE_SDC;
-            MX4SIOFound = 1;
-        }
-        else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
-            pDeviceData->bdmDeviceType = BDM_TYPE_ATA;
-            itemList->flags = MODE_FLAG_COMPAT_DMA;
-            GptFound = 1;
-        } else
-            pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
+            // If the device is backed by the ATA driver then get the supported LBA size for the drive.
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
+                bdmResolveLBA_UDMA(pDeviceData);
+                LOG("Mass device: %d (%d LBA%d UDMA%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, (pDeviceData->bdmHddIsLBA48 == 1 ? 48 : 28), pDeviceData->ataHighestUDMAMode, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);
+            } else
+                LOG("Mass device: %d (%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);
 
-        // If the device is backed by the ATA driver then get the supported LBA size for the drive.
-        if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-            bdmResolveLBA_UDMA(pDeviceData);
-            LOG("Mass device: %d (%d LBA%d UDMA%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, (pDeviceData->bdmHddIsLBA48 == 1 ? 48 : 28), pDeviceData->ataHighestUDMAMode, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);
-        } else
-            LOG("Mass device: %d (%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);
+            // Make the menu item visible.
+            if (itemList->owner != NULL) {
+                //// debug  打印debug信息，方便调试
+                // char debugFileDir[64];
+                // strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
+                //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+                // FILE *debugFile = fopen(debugFileDir, "ab+");
+                // if (debugFile != NULL) {
+                //     fprintf(debugFile, "visible == %d时执行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
+                //     fclose(debugFile);
+                // }
 
-        // Make the menu item visible.
-        if (itemList->owner != NULL) {
-            //// debug  打印debug信息，方便调试
-            //char debugFileDir[64];
-            //strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-            //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-            //FILE *debugFile = fopen(debugFileDir, "ab+");
-            //if (debugFile != NULL) {
-            //    fprintf(debugFile, "visible == %d时执行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-            //    fclose(debugFile);
-            //}
-
-            // 手动模式启用设备，会进来这里。如果BDM里的USB关了，就隐藏USB游戏列表
-            if ((pDeviceData->bdmDeviceType == BDM_TYPE_USB) && !gEnableUSB) {
-                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-            } else {
-                LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
-                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+                // 设备初始化完成后，根据BDM设备开关，来决定visible的值
+                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
+                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
+                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
+                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
+                } else {
+                    LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+                }
             }
+            // Close the device handle.
+            fileXioDclose(dir);
+            return 1;
+        } else { // 如果已经初始化
+            int result = 0;
+            if (itemList->owner != NULL) {        
+                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                    if (result = (visible != gEnableUSB))
+                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
+                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
+                    if (result = (visible != gEnableILK))
+                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
+                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                    if (result = (visible != gEnableMX4SIO))
+                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
+                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
+                    if (result = (visible != gEnableBdmHDD))
+                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
+                } else {
+                    result = 0;
+                }
+            }
+            // Close the device handle.
+            fileXioDclose(dir);
+            return result;
         }
 
         //// debug  打印debug信息，找到gpt信息
@@ -961,10 +988,6 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         //        fclose(debugFile);
         //    }
         //}
-
-        // Close the device handle.
-        fileXioDclose(dir);
-        return 1;
     } else if (dir < 0 && visible == 1) {
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
