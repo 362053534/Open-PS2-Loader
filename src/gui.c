@@ -30,6 +30,8 @@
 // Last Played Auto Start
 #include <time.h>
 
+static int bdmManualStarted = 0; // BDM手动模式已启动
+
 static int gScheduledOps;
 static int gCompletedOps;
 static int gTerminate;
@@ -1578,7 +1580,6 @@ void guiIntroLoop(void)
 }
 
 int mainScreenInitDone = 0;
-int bdmManualStarted = 0;
 int bdmManualTrigger = 0;
 int usbFound = 0;
 int ILKFound = 0;
