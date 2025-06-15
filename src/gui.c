@@ -1638,6 +1638,16 @@ void reFindBDM()
         if (!gBDMStartMode)
             endIntroDelayFrame = 0;
     }
+
+    // debug  打印debug信息
+    char debugFileDir[64];
+    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        fprintf(debugFile, "开始找设备时：最大延迟%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
+        fclose(debugFile);
+    }
 }
 
 void guiMainLoop(void)
