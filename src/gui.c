@@ -1617,15 +1617,25 @@ void reFindBDM()
     else
         endIntroDelayFrame = 0;
 
-    if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted)) {  
+    if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted)) {  
         if (bdmManualTrigger)
             mainScreenInitDone = 0;
         else
-            endIntroDelayFrame = 0;
+            endIntroDelayFrame = 0; 
     } else {
         mainScreenInitDone = 0;
         if (!endIntroDelayFrame)
             menuUpdateHookDone = 0;        
+    }
+
+    // 把BDM关了要等menuUpdateHookDone
+    if (!gBDMStartMode) {
+        endIntroDelayFrame = 0;
+        mainScreenInitDone = 0;
+        menuUpdateHookDone = 0;
+    } else if (!endIntroDelayFrame && (gBDMStartMode == START_MODE_MANUAL) && bdmManualStarted) {
+        mainScreenInitDone = 0;
+        menuUpdateHookDone = 0;
     }
 }
 
