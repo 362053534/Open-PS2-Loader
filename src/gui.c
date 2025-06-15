@@ -452,16 +452,8 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
-        // debug  打印debug信息
-         char debugFileDir[64];
-         strcpy(debugFileDir, "smb:debug-bdmbutton.txt");
-        // sprintf(debugFileDir, "%sdebug.txt", prefix);
-         FILE *debugFile = fopen(debugFileDir, "ab+");
-         if (debugFile != NULL) {
-             fprintf(debugFile, "进了ret\r\n\r\n");
-             fclose(debugFile);
-         }
-         // 如果有开启的设备，需要重新检测一下设备是否就绪
+
+         // 确定后，重新检测所有BDM设备是否就绪
          if (gEnableUSB)
              usbFound = 0;
          if (gEnableILK)
