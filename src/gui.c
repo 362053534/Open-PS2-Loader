@@ -1676,6 +1676,9 @@ void guiMainLoop(void)
     if (gEnableBGM)
         bgmStart();
 
+    // debug
+    int delayFrameCount = 0;
+
     while (!gTerminate) {
         guiStartFrame();
 
@@ -1689,14 +1692,16 @@ void guiMainLoop(void)
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", defaultDelayFrame - endIntroDelayFrame, usbFound, GptFound);
+                    fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", delayFrameCount, usbFound, GptFound);
                     fclose(debugFile);
                 }
 
                 endIntroDelayFrame = 0;
                 menuUpdateHookDone = 0;
-            }
-            else {
+            } else {
+                // debug
+                delayFrameCount++
+
                 endIntroDelayFrame--;
                 if (endIntroDelayFrame <= 0) {
                     menuUpdateHookDone = 0;
@@ -1707,7 +1712,7 @@ void guiMainLoop(void)
                     // sprintf(debugFileDir, "%sdebug.txt", prefix);
                     FILE *debugFile = fopen(debugFileDir, "ab+");
                     if (debugFile != NULL) {
-                        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", defaultDelayFrame - endIntroDelayFrame, gEnableUSB, gEnableBdmHDD);
+                        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", delayFrameCount, gEnableUSB, gEnableBdmHDD);
                         fclose(debugFile);
                     }
                 }
