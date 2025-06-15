@@ -464,10 +464,10 @@ static void guiShowBlockDeviceConfig(void)
              MX4SIOFound = 0;
          if (gEnableBdmHDD)
              GptFound = 0;
-    }
-    // 取消时，不重置found状态
-    if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
-        reFindBDM();
+         reFindBDM();
+    } else
+        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+        reFindBDM(); // 取消时，不重置found状态
 }
 
 static int guiUpdater(int modified)
@@ -1668,18 +1668,18 @@ void guiMainLoop(void)
         if (endIntroDelayFrame > 0) {
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
-                endIntroDelayFrame = 0;
-                menuUpdateHookDone = 0;
-
                 // debug  打印debug信息
                 char debugFileDir[64];
                 strcpy(debugFileDir, "smb:debug-BDMReady.txt");
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "找到设备\r\nUsbFound:%d  GptFound:%d\r\n\r\n", usbFound, GptFound);
+                    fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", defaultDelayFrame - endIntroDelayFrame, usbFound, GptFound);
                     fclose(debugFile);
                 }
+
+                endIntroDelayFrame = 0;
+                menuUpdateHookDone = 0;
             }
             else {
                 endIntroDelayFrame--;
@@ -1692,7 +1692,7 @@ void guiMainLoop(void)
                     // sprintf(debugFileDir, "%sdebug.txt", prefix);
                     FILE *debugFile = fopen(debugFileDir, "ab+");
                     if (debugFile != NULL) {
-                        fprintf(debugFile, "设备寻找超时\r\nUsbFound:%d  GptFound:%d\r\n\r\n", usbFound, GptFound);
+                        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", defaultDelayFrame - endIntroDelayFrame, gEnableUSB, gEnableBdmHDD);
                         fclose(debugFile);
                     }
                 }
