@@ -1578,7 +1578,7 @@ void guiIntroLoop(void)
 }
 
 int mainScreenInitDone = 0;
-static int bdmManualStarted = 0;
+int bdmManualStarted = 0;
 int bdmManualTrigger = 0;
 int usbFound = 0;
 int ILKFound = 0;
