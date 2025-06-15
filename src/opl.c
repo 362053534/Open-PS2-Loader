@@ -321,8 +321,8 @@ static void itemExecSelect(struct menu_item *curMenu)
                         // }
                     }
                     // 手动启动BDM后，需要让gui有时间重新获取一次数据，并刷新主界面;
-                    reFindBDM();
                     bdmManualTrigger = 1;
+                    reFindBDM();
                 } else {
                     // Normal initialization.
                     itemInitSupport(support);
