@@ -1000,30 +1000,5 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         return -1;
     }
 
-    // No change to the device state detected.
-    if (dir >= 0) {
-        //// 如果BDM里的USB关了，就隐藏USB游戏列表
-        //if (visible == 1 && !gEnableUSB) {
-        //    if (itemList->owner != NULL) {
-        //        // debug  打印debug信息，方便调试
-        //        char debugFileDir[64];
-        //        strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-        //        // sprintf(debugFileDir, "%sdebug.txt", prefix);
-        //        FILE *debugFile = fopen(debugFileDir, "ab+");
-        //        if (debugFile != NULL) {
-        //            fprintf(debugFile, "visible == 1时隐藏了游戏列表\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-        //            fclose(debugFile);
-        //        }
-
-        //        if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-        //            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-        //            fileXioDclose(dir);
-        //            return 1;
-        //        }
-        //    }
-        //}
-        fileXioDclose(dir);
-    }
-
     return 0;
 }
