@@ -30,7 +30,7 @@
 // Last Played Auto Start
 #include <time.h>
 
-static int bdmManualStarted = 0; // BDM手动模式已启动
+static int BdmStarted = 0; // BDM模式已启动
 
 static int gScheduledOps;
 static int gCompletedOps;
@@ -580,12 +580,9 @@ void guiShowConfig()
         if (ret == BLOCKDEVICE_BUTTON)
             guiShowBlockDeviceConfig();
         else {
-            // BDM自动模式时，手动启动的变量直接改为true
-            if (gBDMStartMode == START_MODE_AUTO) {
-                if (!bdmManualStarted)
-                    bdmManualStarted = 1;
-
-                // 配置改为BDM自动模式时，重新检测所有BDM设备是否就绪
+            // BDM中途设为自动模式时
+            if (!BdmStarted && gBDMStartMode == START_MODE_AUTO) {
+                // 重新检测所有BDM设备是否就绪
                 if (gEnableUSB)
                     usbFound = 0;
                 if (gEnableILK)
@@ -596,7 +593,7 @@ void guiShowConfig()
                     GptFound = 0;
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
-            } else if ((gBDMStartMode == START_MODE_MANUAL) && bdmManualStarted) {
+            } else if (BdmStarted && (gBDMStartMode > 0)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
             }
@@ -1605,7 +1602,7 @@ int MX4SIOFound = 0;
 int GptFound = 0;
 int defaultDelayFrame = 210;
 int endIntroDelayFrame = 0;
-int menuUpdateHookDone = 0;
+int menuUpdateHookDone = 1;
 
 void reFindBDM()
 {
@@ -1617,25 +1614,24 @@ void reFindBDM()
     else
         endIntroDelayFrame = 0;
 
-    if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted)) {  
-        if (bdmManualTrigger)
+    if (!BdmStarted) { // BDM未启动时的处理
+        if (gBDMStartMode <= START_MODE_MANUAL) {
+            if (bdmManualTrigger)
+                mainScreenInitDone = 0;
+            else
+                endIntroDelayFrame = 0;
+        } else {
             mainScreenInitDone = 0;
-        else
-            endIntroDelayFrame = 0; 
-    } else {
+            if (!endIntroDelayFrame)
+                menuUpdateHookDone = 0;
+        }
+    } else { // BDM已启动后的处理
+        // BDM启动模式关闭或BDM块设备全关时，要等menuUpdateHookDone
         mainScreenInitDone = 0;
+        if (!gBDMStartMode)
+            endIntroDelayFrame = 0;
         if (!endIntroDelayFrame)
-            menuUpdateHookDone = 0;        
-    }
-
-    // 把BDM关了要等menuUpdateHookDone
-    if (!gBDMStartMode) {
-        endIntroDelayFrame = 0;
-        mainScreenInitDone = 0;
-        menuUpdateHookDone = 0;
-    } else if (!endIntroDelayFrame && (gBDMStartMode == START_MODE_MANUAL) && bdmManualStarted) {
-        mainScreenInitDone = 0;
-        menuUpdateHookDone = 0;
+            menuUpdateHookDone = 0;
     }
 }
 
@@ -1643,10 +1639,6 @@ void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
-
-    // BDM自动模式时，手动启动的变量直接改为true
-    if ((gBDMStartMode == START_MODE_AUTO) && !bdmManualStarted)
-        bdmManualStarted = 1;
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
@@ -1657,7 +1649,7 @@ void guiMainLoop(void)
         else
             endIntroDelayFrame = 0;
     }
-    if ((gBDMStartMode == 0) || ((gBDMStartMode == START_MODE_MANUAL) && !bdmManualStarted))
+    if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !BdmStarted))
         endIntroDelayFrame = 0;
 
     guiResetNotifications();
@@ -1678,11 +1670,32 @@ void guiMainLoop(void)
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
                 endIntroDelayFrame = 0;
                 menuUpdateHookDone = 0;
+
+                // debug  打印debug信息
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "找到设备\r\nUsbFound:%d  GptFound:%d\r\n\r\n", usbFound, GptFound);
+                    fclose(debugFile);
+                }
             }
             else {
                 endIntroDelayFrame--;
-                if (endIntroDelayFrame <= 0)
+                if (endIntroDelayFrame <= 0) {
                     menuUpdateHookDone = 0;
+
+                    // debug  打印debug信息
+                    char debugFileDir[64];
+                    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+                    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                    FILE *debugFile = fopen(debugFileDir, "ab+");
+                    if (debugFile != NULL) {
+                        fprintf(debugFile, "设备寻找超时\r\nUsbFound:%d  GptFound:%d\r\n\r\n", usbFound, GptFound);
+                        fclose(debugFile);
+                    }
+                }
             }              
         } else {
             // 找到bdm设备或delay结束后，还要等刷新周期结束
@@ -1701,8 +1714,11 @@ void guiMainLoop(void)
                     // 手动启动BDM后的变量处理
                     if (bdmManualTrigger) {
                         bdmManualTrigger = 0;
-                        bdmManualStarted = 1;
+                        BdmStarted = 1;
                     }
+                    // BDM自动模式时，启动变量直接改为1
+                    if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
+                        BdmStarted = 1;
                     //// debug  打印debug信息，找到gpt信息
                     // char debugFileDir[64];
                     // strcpy(debugFileDir, "mass0:debug-gui.txt");
