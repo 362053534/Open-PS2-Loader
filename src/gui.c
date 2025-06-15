@@ -577,12 +577,30 @@ void guiShowConfig()
         diaGetInt(diaConfig, CFG_HDDCACHE, &hddCacheSize);
         diaGetInt(diaConfig, CFG_SMBCACHE, &smbCacheSize);
 
-        // BDM自动模式时，手动启动的变量直接改为true
-        if ((gBDMStartMode == START_MODE_AUTO) && !bdmManualStarted)
-            bdmManualStarted = 1;
-
         if (ret == BLOCKDEVICE_BUTTON)
             guiShowBlockDeviceConfig();
+        else {
+            // BDM自动模式时，手动启动的变量直接改为true
+            if (gBDMStartMode == START_MODE_AUTO) {
+                if (!bdmManualStarted)
+                    bdmManualStarted = 1;
+
+                // 配置改为BDM自动模式时，重新检测所有BDM设备是否就绪
+                if (gEnableUSB)
+                    usbFound = 0;
+                if (gEnableILK)
+                    ILKFound = 0;
+                if (gEnableMX4SIO)
+                    MX4SIOFound = 0;
+                if (gEnableBdmHDD)
+                    GptFound = 0;
+                if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+                    reFindBDM();
+            } else if ((gBDMStartMode == START_MODE_MANUAL) && bdmManualStarted) {
+                if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+                    reFindBDM();
+            }
+        }
 
         applyConfig(-1, -1, 0);
         menuReinitMainMenu();
