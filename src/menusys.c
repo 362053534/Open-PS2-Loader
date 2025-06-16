@@ -672,7 +672,7 @@ void refreshBdmMenu()
     // If we found a valid menu transition to it.
     if (next != NULL && next->item->visible != 0) {
         selected_item = next;
-        //itemConfigId = -1;
+        itemConfigId = -1;
     } else {
         selected_item = menu;  // 防止所有列表都隐藏时，会卡死的问题（最后会返回设置界面？）
     }
@@ -986,14 +986,8 @@ void menuHandleInputMenu()
         if (getKeyOn(KEY_START) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
             // Check if there is anything to show the user, at all.
             if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
-                //guiSwitchScreen(GUI_SCREEN_MAIN);
-                //if (gEnableBdmHDD && !GptFound) {
-                //    reFindBDM(); // 如果重新寻找硬盘，需要跳过正常刷新菜单，找到后再刷新
-                //} else
-                //    refreshBdmMenu();
-
                 guiSwitchScreen(GUI_SCREEN_MAIN);
-                refreshBdmMenu();
+                //refreshBdmMenu();
                 // refreshMenuPosition();
             }
         }
