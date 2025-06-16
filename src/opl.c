@@ -543,24 +543,24 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             //        //mainScreenInitDone = 0; // 重置bdm菜单修正开关
             //    }
             //}
-            // 根据设备开关，设定隐藏初始值
-            switch (mode) {
-                case 0:
-                    mod->menuItem.visible = gEnableUSB;
-                    break;
-                case 1:
-                    mod->menuItem.visible = gEnableILK;
-                    break;
-                case 2:
-                    mod->menuItem.visible = gEnableMX4SIO;
-                    break;
-                case 3:
-                    mod->menuItem.visible = gEnableBdmHDD;
-                    break;
-                default:
-                    mod->menuItem.visible = 0;
-                    break;
-            }
+            //// 根据设备开关，设定隐藏初始值
+            //switch (mode) {
+            //    case 0:
+            //        mod->menuItem.visible = gEnableUSB;
+            //        break;
+            //    case 1:
+            //        mod->menuItem.visible = gEnableILK;
+            //        break;
+            //    case 2:
+            //        mod->menuItem.visible = gEnableMX4SIO;
+            //        break;
+            //    case 3:
+            //        mod->menuItem.visible = gEnableBdmHDD;
+            //        break;
+            //    default:
+            //        mod->menuItem.visible = 0;
+            //        break;
+            //}
 
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
