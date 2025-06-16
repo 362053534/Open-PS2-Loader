@@ -454,25 +454,10 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
-
-        // 选择确定后，若BDM已启用，则检测BDM设备是否就绪
-        if (BdmStarted) {
-            // 重新检测所有BDM设备是否就绪
-            //if (gEnableUSB)
-            //    usbFound = 0;
-            //if (gEnableILK)
-            //    ILKFound = 0;
-            //if (gEnableMX4SIO)
-            //    MX4SIOFound = 0;
-            //if (gEnableBdmHDD)
-            //    GptFound = 0;
-            if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
-                reFindBDM();
-        }
     }
-    //if (BdmStarted)
-    //    if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
-    //        reFindBDM(); // 取消时，不重置found状态
+    if (BdmStarted)
+        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+            reFindBDM();
 }
 
 static int guiUpdater(int modified)
@@ -586,16 +571,7 @@ void guiShowConfig()
             guiShowBlockDeviceConfig();
         else {
             // BDM中途设为自动模式时
-            if (!BdmStarted && gBDMStartMode == START_MODE_AUTO) {
-                // 重新检测所有BDM设备是否就绪
-                //if (gEnableUSB)
-                //    usbFound = 0;
-                //if (gEnableILK)
-                //    ILKFound = 0;
-                //if (gEnableMX4SIO)
-                //    MX4SIOFound = 0;
-                //if (gEnableBdmHDD)
-                //    GptFound = 0;
+            if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
             } else if (BdmStarted && (gBDMStartMode > 0))
@@ -1623,7 +1599,7 @@ void reFindBDM()
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
         endIntroDelayFrame = defaultDelayFrame;
     else if (gEnableUSB > usbFound)
-        endIntroDelayFrame = 62;   // 只开了USB，延迟时间要缩短
+        endIntroDelayFrame = 92;   // 只开了USB，延迟时间要缩短
     else
         endIntroDelayFrame = 0;
 

@@ -258,6 +258,19 @@ static int bdmUpdateGameList(item_list_t *itemList)
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
     sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
+
+    if (pDeviceData != NULL) {
+        // 成功获取列表后，代表设备已就绪
+        if (!strcmp(pDeviceData->bdmDriver, "usb"))
+            usbFound = 1;
+        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+            ILKFound = 1;
+        else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+            MX4SIOFound = 1;
+        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+            GptFound = 1;
+    }
+
     return pDeviceData->bdmGameCount;
 }
 
@@ -878,19 +891,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             itemList->flags = 0;
 
             // Determine the bdm device type based on the underlying device driver.
-            if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+            if (!strcmp(pDeviceData->bdmDriver, "usb"))
                 pDeviceData->bdmDeviceType = BDM_TYPE_USB;
-                usbFound = 1;
-            } else if (!strcmp(pDeviceData->bdmDriver, "sd") && strlen(pDeviceData->bdmDriver) == 2) {
+            else if (!strcmp(pDeviceData->bdmDriver, "sd") && strlen(pDeviceData->bdmDriver) == 2)
                 pDeviceData->bdmDeviceType = BDM_TYPE_ILINK;
-                ILKFound = 1;
-            } else if (!strcmp(pDeviceData->bdmDriver, "sdc") && strlen(pDeviceData->bdmDriver) == 3) {
+            else if (!strcmp(pDeviceData->bdmDriver, "sdc") && strlen(pDeviceData->bdmDriver) == 3)
                 pDeviceData->bdmDeviceType = BDM_TYPE_SDC;
-                MX4SIOFound = 1;
-            } else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
+            else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
                 pDeviceData->bdmDeviceType = BDM_TYPE_ATA;
                 itemList->flags = MODE_FLAG_COMPAT_DMA;
-                GptFound = 1;
             } else
                 pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
 
@@ -914,15 +923,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 // }
 
                 // 设备初始化完成后，根据BDM设备开关，来决定visible的值
-                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                if (!strcmp(pDeviceData->bdmDriver, "usb"))
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
-                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
-                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
-                } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
-                } else {
+                else {
                     LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
                 }
