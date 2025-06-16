@@ -1598,15 +1598,15 @@ void reFindBDM()
         curShortDelayFrame = ShortDelayTime;
     }
 
-    // 重置已开启设备的found变量
-    if (gEnableUSB)
-        usbFound = 0;
-    if (gEnableILK)
-        ILKFound = 0;
-    if (gEnableMX4SIO)
-        MX4SIOFound = 0;
-    if (gEnableBdmHDD)
-        GptFound = 0;
+    //// 重置已开启设备的found变量
+    //if (gEnableUSB)
+    //    usbFound = 0;
+    //if (gEnableILK)
+    //    ILKFound = 0;
+    //if (gEnableMX4SIO)
+    //    MX4SIOFound = 0;
+    //if (gEnableBdmHDD)
+    //    GptFound = 0;
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
