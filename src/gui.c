@@ -1579,13 +1579,21 @@ int usbFound = 0;
 int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
-int defaultDelayFrame = 210;
+int defaultDelayFrame = 240;
+int LongDelayTime = 18000;
+int ShortDelayTime = 92;
 int endIntroDelayFrame = 0;
 int menuUpdateHookDone = 1;
 
 void reFindBDM()
 {
-    // 重置变量
+    // 如果百分百能找到设备，则延迟时间设到5分钟或更长
+    if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
+        defaultDelayFrame = LongDelayTime;
+        ShortDelayTime = LongDelayTime;
+    }
+
+    // 重置已开启设备的found变量
     if (gEnableUSB)
         usbFound = 0;
     if (gEnableILK)
@@ -1599,7 +1607,7 @@ void reFindBDM()
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
         endIntroDelayFrame = defaultDelayFrame;
     else if (gEnableUSB > usbFound)
-        endIntroDelayFrame = 92;   // 只开了USB，延迟时间要缩短
+        endIntroDelayFrame = ShortDelayTime; // 只开了USB，延迟时间要缩短
     else
         endIntroDelayFrame = 0;
 
@@ -1611,14 +1619,14 @@ void reFindBDM()
                 endIntroDelayFrame = 0;
         } else {
             mainScreenInitDone = 0;
-            //if (!endIntroDelayFrame)
-            //    menuUpdateHookDone = 0;
+            if (!endIntroDelayFrame)
+                menuUpdateHookDone = 0;
         }
     } else { // BDM已启动后的处理
         // BDM启动模式关闭或BDM块设备全关时，要等menuUpdateHookDone
         mainScreenInitDone = 0;
-        //if (!endIntroDelayFrame)
-        //    menuUpdateHookDone = 0;
+        if (!endIntroDelayFrame)
+            menuUpdateHookDone = 0;
         if (!gBDMStartMode)
             endIntroDelayFrame = 0;
     }
@@ -1676,14 +1684,13 @@ void guiMainLoop(void)
                 }
 
                 endIntroDelayFrame = 0;
-                //menuUpdateHookDone = 0;
+                menuUpdateHookDone = 0;
             } else {
                 // debug
                 delayFrameCount++;
 
                 endIntroDelayFrame--;
                 if (endIntroDelayFrame <= 0) {
-                    //menuUpdateHookDone = 0;
 
                     // debug  打印debug信息
                     char debugFileDir[64];
