@@ -749,7 +749,7 @@ void bdmInitDevicesData()
                 // If BDM has already been started then make the page invisible and reset the bdm tick counter so visibility status is refreshed
                 // according to device state.
                 if (bdmDeviceModeStarted == 1) {
-                    //pOwner->menuItem.visible = 0; // 这句不知道该不该注释掉，待测试
+                    //pOwner->menuItem.visible = 0; // 已经在itemExecSelect里赋值
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 } else {
                     if (i == 0) {

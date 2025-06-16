@@ -304,21 +304,21 @@ static void itemExecSelect(struct menu_item *curMenu)
                         //    // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
                         //    if (!gAutoRefresh || (mod->support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
                         //        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &mod->support->mode);
-                        //}                                              
+                        //}
 
-                        //// 手动模式启动后，纠正可见状态
-                        // bdm_device_data_t *pDeviceData = mod->support->priv;
-                        // if (pDeviceData != NULL) {
-                        //     if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
-                        //         mod->menuItem.visible = 0;
-                        //     } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) && gEnableILK) {
-                        //         mod->menuItem.visible = 1;
-                        //     } else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && gEnableMX4SIO) {
-                        //         mod->menuItem.visible = 1;
-                        //     } else if ((i == 3) && gEnableBdmHDD) {
-                        //         mod->menuItem.visible = 1;
-                        //     }
-                        // }
+                        // 手动模式根据设备开关，设定隐藏初始值（可能有负面影响）
+                        mod->menuItem.visible = 0;
+                        bdm_device_data_t *pDeviceData = mod->support->priv;
+                        if (pDeviceData != NULL) {
+                            if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                                mod->menuItem.visible = gEnableUSB;
+                            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                                mod->menuItem.visible = gEnableILK;
+                            else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                                mod->menuItem.visible = gEnableMX4SIO;
+                            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                                mod->menuItem.visible = gEnableBdmHDD;
+                        }
                     }
                     // 手动启动BDM后，需要让gui有时间重新获取一次数据，并刷新主界面;
                     bdmManualTrigger = 1;
