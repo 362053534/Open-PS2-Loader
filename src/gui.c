@@ -1520,13 +1520,8 @@ static void guiShow()
         // Overlay the actual "fade"
         rmDrawRect(0, 0, screenWidth, screenHeight, GS_SETREG_RGBA(0x00, 0x00, 0x00, alpha));
 
-        // 如果主界面未准备好，则屏幕不会亮起
-        if (transIndex == 13 && !mainScreenInitDone) {
-            transIndex = 13;
-        } else {
-            // Advance the effect
-            transIndex++;
-        }
+        // Advance the effect
+        transIndex++;
 
         if (transIndex >= transition_frames) {
             screenHandler = screenHandlerTarget;

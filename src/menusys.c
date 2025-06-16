@@ -672,7 +672,7 @@ void refreshBdmMenu()
     // If we found a valid menu transition to it.
     if (next != NULL && next->item->visible != 0) {
         selected_item = next;
-        itemConfigId = -1;
+        //itemConfigId = -1;
     } else {
         selected_item = menu;  // 防止所有列表都隐藏时，会卡死的问题（最后会返回设置界面？）
     }
