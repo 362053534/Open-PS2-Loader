@@ -535,13 +535,31 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-            // 自动模式时，纠正usb可见状态（不知道有什么用，也不知道修正后是好是坏）
-            if (mode == 0) {
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+            //// 自动模式时，纠正usb可见状态（不知道有什么用，也不知道修正后是好是坏）
+            //if (mode == 0) {
+            //    bdm_device_data_t *pDeviceData = itemList->priv;
+            //    if ((pDeviceData != NULL) && !strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB) {
+            //        mod->menuItem.visible = 0;
+            //        //mainScreenInitDone = 0; // 重置bdm菜单修正开关
+            //    }
+            //}
+            // 根据设备开关，设定隐藏初始值
+            switch (mode) {
+                case 0:
+                    mod->menuItem.visible = gEnableUSB;
+                    break;
+                case 1:
+                    mod->menuItem.visible = gEnableILK;
+                    break;
+                case 2:
+                    mod->menuItem.visible = gEnableMX4SIO;
+                    break;
+                case 3:
+                    mod->menuItem.visible = gEnableBdmHDD;
+                    break;
+                default:
                     mod->menuItem.visible = 0;
-                    //mainScreenInitDone = 0; // 重置bdm菜单修正开关
-                }
+                    break;
             }
 
             mod->support->itemInit(mod->support);

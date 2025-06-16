@@ -1625,16 +1625,14 @@ void reFindBDM()
                 endIntroDelayFrame = 0;
         } else {
             mainScreenInitDone = 0;
-            if (!endIntroDelayFrame)
-                menuUpdateHookDone = 0;
+            //if (!endIntroDelayFrame)
+            //    menuUpdateHookDone = 0;
         }
     } else { // BDM已启动后的处理
         // BDM启动模式关闭或BDM块设备全关时，要等menuUpdateHookDone
         mainScreenInitDone = 0;
-        if (!endIntroDelayFrame) {
-            //endIntroDelayFrame = 61; // BDM全关时，要给足够的时间去隐藏设备
-            menuUpdateHookDone = 0;
-        }
+        //if (!endIntroDelayFrame)
+        //    menuUpdateHookDone = 0;
         if (!gBDMStartMode)
             endIntroDelayFrame = 0;
     }
@@ -1693,18 +1691,19 @@ void guiMainLoop(void)
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
                     fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", delayFrameCount, usbFound, GptFound);
+                    delayFrameCount = 0;
                     fclose(debugFile);
                 }
 
                 endIntroDelayFrame = 0;
-                menuUpdateHookDone = 0;
+                //menuUpdateHookDone = 0;
             } else {
                 // debug
                 delayFrameCount++
 
                 endIntroDelayFrame--;
                 if (endIntroDelayFrame <= 0) {
-                    menuUpdateHookDone = 0;
+                    //menuUpdateHookDone = 0;
 
                     // debug  打印debug信息
                     char debugFileDir[64];
@@ -1713,6 +1712,7 @@ void guiMainLoop(void)
                     FILE *debugFile = fopen(debugFileDir, "ab+");
                     if (debugFile != NULL) {
                         fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", delayFrameCount, gEnableUSB, gEnableBdmHDD);
+                        delayFrameCount = 0;
                         fclose(debugFile);
                     }
                 }
