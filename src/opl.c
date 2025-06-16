@@ -539,27 +539,14 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             if (mode >= BDM_MODE && mode < ETH_MODE) {
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 if (pDeviceData != NULL) {
-                    switch (mode) {
-                        case 0:
-                            if (!strcmp(pDeviceData->bdmDriver, "usb"))
-                                mod->menuItem.visible = gEnableUSB;
-                            break;
-                        case 1:
-                            if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                                mod->menuItem.visible = gEnableILK;
-                            break;
-                        case 2:
-                            if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                                mod->menuItem.visible = gEnableMX4SIO;
-                            break;
-                        case 3:
-                            if (pDeviceData->bdmDeviceType = BDM_TYPE_ATA)
-                                mod->menuItem.visible = gEnableBdmHDD;
-                            break;
-                        default:
-                            mod->menuItem.visible = 1;
-                            break;
-                    }
+                    if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                        mod->menuItem.visible = gEnableUSB;
+                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                        mod->menuItem.visible = gEnableILK;
+                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                        mod->menuItem.visible = gEnableMX4SIO;
+                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                        mod->menuItem.visible = gEnableBdmHDD;
                 }
             }
 
