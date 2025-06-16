@@ -749,7 +749,7 @@ void bdmInitDevicesData()
                 // If BDM has already been started then make the page invisible and reset the bdm tick counter so visibility status is refreshed
                 // according to device state.
                 if (bdmDeviceModeStarted == 1) {
-                    pOwner->menuItem.visible = 0;
+                    //pOwner->menuItem.visible = 0; // 这句不知道该不该注释掉，待测试
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 } else {
                     if (i == 0) {
@@ -763,7 +763,7 @@ void bdmInitDevicesData()
                     }
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
-                pOwner->menuItem.visible = 0;
+                //pOwner->menuItem.visible = 0; // initSupport里已经赋值
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));

@@ -537,6 +537,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
             // 自动模式根据设备开关，设定隐藏初始值（可能有负面影响）
             if (mode >= BDM_MODE && mode < ETH_MODE) {
+                mod->menuItem.visible = 0;
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 if (pDeviceData != NULL) {
                     if (!strcmp(pDeviceData->bdmDriver, "usb"))
