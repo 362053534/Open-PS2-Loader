@@ -1587,10 +1587,15 @@ int menuUpdateHookDone = 1;
 
 void reFindBDM()
 {
+    int curLongDelayFrame = 0;
+    int curShortDelayFrame = 0;
     // 如果百分百能找到设备，则延迟时间设到5分钟或更长
     if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
-        defaultDelayFrame = LongDelayTime;
-        ShortDelayTime = LongDelayTime;
+        curLongDelayFrame = LongDelayTime;
+        curShortDelayFrame = LongDelayTime;
+    } else {
+        curLongDelayFrame = defaultDelayFrame;
+        curShortDelayFrame = ShortDelayTime;
     }
 
     // 重置已开启设备的found变量
@@ -1605,9 +1610,9 @@ void reFindBDM()
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
-        endIntroDelayFrame = defaultDelayFrame;
+        endIntroDelayFrame = curLongDelayFrame;
     else if (gEnableUSB > usbFound)
-        endIntroDelayFrame = ShortDelayTime; // 只开了USB，延迟时间要缩短
+        endIntroDelayFrame = curShortDelayFrame; // 只开了USB，延迟时间要缩短
     else
         endIntroDelayFrame = 0;
 
