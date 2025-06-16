@@ -987,7 +987,7 @@ void menuHandleInputMenu()
             // Check if there is anything to show the user, at all.
             if (gAPPStartMode || gETHStartMode || gBDMStartMode || gHDDStartMode) {
                 guiSwitchScreen(GUI_SCREEN_MAIN);
-                //refreshBdmMenu();
+                refreshBdmMenu();
                 // refreshMenuPosition();
             }
         }
