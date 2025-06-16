@@ -736,24 +736,7 @@ void bdmInitDevicesData()
                 // If BDM has already been started then make the page invisible and reset the bdm tick counter so visibility status is refreshed
                 // according to device state.
                 if (bdmDeviceModeStarted == 1) {
-                    // 根据设备开关，设定隐藏初始值
-                    switch (i) {
-                        case 0:
-                            pOwner->menuItem.visible = gEnableUSB;
-                            break;
-                        case 1:
-                            pOwner->menuItem.visible = gEnableILK;
-                            break;
-                        case 2:
-                            pOwner->menuItem.visible = gEnableMX4SIO;
-                            break;
-                        case 3:
-                            pOwner->menuItem.visible = gEnableBdmHDD;
-                            break;
-                        default:
-                            pOwner->menuItem.visible = 0;
-                            break;
-                    }
+                    pOwner->menuItem.visible = 0;
                     ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
                 } else {
                     if (i == 0) {
@@ -767,24 +750,7 @@ void bdmInitDevicesData()
                     }
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
-                // 根据设备开关，设定隐藏初始值
-                switch (i) {
-                    case 0:
-                        pOwner->menuItem.visible = gEnableUSB;
-                        break;
-                    case 1:
-                        pOwner->menuItem.visible = gEnableILK;
-                        break;
-                    case 2:
-                        pOwner->menuItem.visible = gEnableMX4SIO;
-                        break;
-                    case 3:
-                        pOwner->menuItem.visible = gEnableBdmHDD;
-                        break;
-                    default:
-                        pOwner->menuItem.visible = 0;
-                        break;
-                }
+                pOwner->menuItem.visible = 0;
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
