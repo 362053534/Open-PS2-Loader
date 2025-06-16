@@ -1699,7 +1699,7 @@ void guiMainLoop(void)
                 //menuUpdateHookDone = 0;
             } else {
                 // debug
-                delayFrameCount++
+                delayFrameCount++;
 
                 endIntroDelayFrame--;
                 if (endIntroDelayFrame <= 0) {
