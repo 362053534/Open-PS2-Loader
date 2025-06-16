@@ -454,10 +454,13 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
-    }
-    if (BdmStarted)
-        if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+        if (BdmStarted)
             reFindBDM();
+    } else {
+        //if (BdmStarted)
+        //    if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+        //        reFindBDM();
+    }
 }
 
 static int guiUpdater(int modified)
