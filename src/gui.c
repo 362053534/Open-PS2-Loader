@@ -1639,15 +1639,15 @@ void reFindBDM()
             endIntroDelayFrame = 0;
     }
 
-    // debug  打印debug信息
-    char debugFileDir[64];
-    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-    FILE *debugFile = fopen(debugFileDir, "ab+");
-    if (debugFile != NULL) {
-        fprintf(debugFile, "开始找设备时：最大延迟%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
-        fclose(debugFile);
-    }
+    //// debug  打印debug信息
+    //char debugFileDir[64];
+    //strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+    //FILE *debugFile = fopen(debugFileDir, "ab+");
+    //if (debugFile != NULL) {
+    //    fprintf(debugFile, "开始找设备时：最大延迟%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
+    //    fclose(debugFile);
+    //}
 }
 
 void guiMainLoop(void)
@@ -1670,8 +1670,8 @@ void guiMainLoop(void)
     if (gEnableBGM)
         bgmStart();
 
-    // debug
-    int delayFrameCount = 0;
+    //// debug
+    //int delayFrameCount = 0;
 
     while (!gTerminate) {
         guiStartFrame();
@@ -1680,37 +1680,37 @@ void guiMainLoop(void)
         if (endIntroDelayFrame > 0) {
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
-                // debug  打印debug信息
-                char debugFileDir[64];
-                strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-                // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                FILE *debugFile = fopen(debugFileDir, "ab+");
-                if (debugFile != NULL) {
-                    fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", delayFrameCount, usbFound, GptFound);
-                    delayFrameCount = 0;
-                    fclose(debugFile);
-                }
+                //// debug  打印debug信息
+                //char debugFileDir[64];
+                //strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+                //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+                //FILE *debugFile = fopen(debugFileDir, "ab+");
+                //if (debugFile != NULL) {
+                //    fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", delayFrameCount, usbFound, GptFound);
+                //    delayFrameCount = 0;
+                //    fclose(debugFile);
+                //}
 
                 endIntroDelayFrame = 0;
                 menuUpdateHookDone = 0;
             } else {
-                // debug
-                delayFrameCount++;
-
                 endIntroDelayFrame--;
-                if (endIntroDelayFrame <= 0) {
 
-                    // debug  打印debug信息
-                    char debugFileDir[64];
-                    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-                    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    FILE *debugFile = fopen(debugFileDir, "ab+");
-                    if (debugFile != NULL) {
-                        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", delayFrameCount, gEnableUSB, gEnableBdmHDD);
-                        delayFrameCount = 0;
-                        fclose(debugFile);
-                    }
-                }
+                //// debug  打印debug信息
+                //delayFrameCount++;
+                //if (endIntroDelayFrame <= 0) {
+
+                //    
+                //    char debugFileDir[64];
+                //    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+                //    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                //    FILE *debugFile = fopen(debugFileDir, "ab+");
+                //    if (debugFile != NULL) {
+                //        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", delayFrameCount, gEnableUSB, gEnableBdmHDD);
+                //        delayFrameCount = 0;
+                //        fclose(debugFile);
+                //    }
+                //}
             }              
         } else {
             // 找到bdm设备或delay结束后，还要等刷新周期结束
