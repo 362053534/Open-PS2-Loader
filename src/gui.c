@@ -582,7 +582,7 @@ reConfig:
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
             }
-            applyConfig(-1, -1, 0);
+            applyConfig(-1, -1, 1);
             menuReinitMainMenu();
         }
     }
