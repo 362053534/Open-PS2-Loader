@@ -456,7 +456,8 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (BdmStarted)
             reFindBDM();
-        applyConfig(-1, -1, 0);
+        applyConfig(-1, -1, 1);
+        menuReinitMainMenu();
     }
 }
 
@@ -582,7 +583,7 @@ reConfig:
                     reFindBDM();
             }
             applyConfig(-1, -1, 0);
-            //menuReinitMainMenu();
+            menuReinitMainMenu();
         }
     }
     UiId = -1; // 还原uiid
@@ -1798,7 +1799,6 @@ void guiSwitchScreen(int target)
     sfxPlay(SFX_TRANSITION);
     transIndex = 0;
     screenHandlerTarget = &screenHandlers[target];
-    guiShow();
 }
 
 void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
