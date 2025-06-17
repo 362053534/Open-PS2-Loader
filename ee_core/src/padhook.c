@@ -332,7 +332,7 @@ static int IGR_Intc_Handler(int cause)
 
     // 按下重启组合键后，给定时间内再次输入一次组合键，才重启
     if (IGRResetComboTrigger)
-        if (IGRResetComboTrigger++ >= IGRResetComboFrame)
+        if (IGRResetComboTrigger++ >= (IGRResetComboFrame / 2))
             IGRResetComboTrigger = 0;
 
     ee_kmode_enter();
