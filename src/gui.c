@@ -583,6 +583,8 @@ reConfig:
             }
             applyConfig(-1, -1, 0);
             menuReinitMainMenu();
+            //  handle inputs and render screen
+            guiShow();
         }
     }
     UiId = -1; // 还原uiid
