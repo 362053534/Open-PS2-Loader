@@ -908,6 +908,16 @@ int diaExecuteDialog(struct UIItem *ui, int uiId, short inMenu, int (*updater)(i
                 newf = diaGetNextControl(cur, cur);
                 if (newf == cur)
                     newf = diaGetFirstControl(ui);
+
+                // debug  打印debug信息
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-UiId.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "UiId：%d\r\n\r\n", newf->id);
+                    fclose(debugFile);
+                }
             }
 
             if (getKey(KEY_UP)) {
