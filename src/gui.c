@@ -457,6 +457,8 @@ static void guiShowBlockDeviceConfig(void)
         if (BdmStarted)
             reFindBDM();
     }
+
+    guiShowConfig(); // 反回上一个界面
 }
 
 static int guiUpdater(int modified)
@@ -573,8 +575,7 @@ void guiShowConfig()
             if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
-            } else if (BdmStarted && (gBDMStartMode > 0))
-                reFindBDM();
+            }
         }
 
         applyConfig(-1, -1, 0);
@@ -1598,16 +1599,6 @@ void reFindBDM()
         curLongDelayFrame = defaultDelayFrame;
         curShortDelayFrame = ShortDelayTime;
     }
-
-    //// 重置已开启设备的found变量
-    //if (gEnableUSB)
-    //    usbFound = 0;
-    //if (gEnableILK)
-    //    ILKFound = 0;
-    //if (gEnableMX4SIO)
-    //    MX4SIOFound = 0;
-    //if (gEnableBdmHDD)
-    //    GptFound = 0;
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))

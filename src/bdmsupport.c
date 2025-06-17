@@ -257,11 +257,9 @@ static int bdmUpdateGameList(item_list_t *itemList)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
-    sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
-
+    // 获取游戏列表前，检查设备是否就绪
     if (pDeviceData != NULL) {
-        // 成功获取列表后，代表设备已就绪
-        if (!strcmp(pDeviceData->bdmDriver, "usb"))
+        if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
             usbFound = 1;
         else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
             ILKFound = 1;
@@ -270,6 +268,8 @@ static int bdmUpdateGameList(item_list_t *itemList)
         else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
             GptFound = 1;
     }
+
+    sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
 
     return pDeviceData->bdmGameCount;
 }
@@ -923,7 +923,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 // }
 
                 // 设备初始化完成后，根据BDM设备开关，来决定visible的值
-                if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
@@ -941,8 +941,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             return 1;
         } else { // 如果已经初始化
             int result = 0;
-            if (itemList->owner != NULL) {        
-                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+            if (itemList->owner != NULL) {
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
                     if (result = (visible != gEnableUSB))
                         ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {

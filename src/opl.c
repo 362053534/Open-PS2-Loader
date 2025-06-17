@@ -310,7 +310,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                         mod->menuItem.visible = 0;
                         bdm_device_data_t *pDeviceData = mod->support->priv;
                         if (pDeviceData != NULL) {
-                            if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                                 mod->menuItem.visible = gEnableUSB;
                             else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                                 mod->menuItem.visible = gEnableILK;
@@ -540,7 +540,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 mod->menuItem.visible = 0;
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 if (pDeviceData != NULL) {
-                    if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                    if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                         mod->menuItem.visible = gEnableUSB;
                     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                         mod->menuItem.visible = gEnableILK;
@@ -899,7 +899,7 @@ static void menuUpdateHook()
     }
 
     // Schedule updates of all list handlers that are to run every frame, regardless of whether auto refresh is active or not.
-    if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
+    if ((frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) || !mainScreenInitDone) {
         for (i = 0; i < MODE_COUNT; i++) {
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
