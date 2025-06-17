@@ -572,7 +572,7 @@ reConfig:
             guiShowBlockDeviceConfig();
 
             // 反回上个界面，并选中块设备
-            UiId = 10;       // 块设备的uiid
+            UiId = 51;       // 块设备的uiid
             goto reConfig;
         } else {       
             // BDM中途设为自动模式时
