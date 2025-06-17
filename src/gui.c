@@ -456,7 +456,7 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (BdmStarted)
             reFindBDM();
-        applyConfig(-1, -1, 1);
+        applyConfig(-1, -1, 0);
         menuReinitMainMenu();
     }
 }
