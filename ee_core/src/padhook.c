@@ -265,9 +265,8 @@ void IGR_Exit(s32 exit_code)
     Exit(exit_code);
 }
 
-int IGRResetComboFrame = 120; // IGR重启的缓冲时间
-int IGRResetComboFrameCount = 0;
-int IGRResetComboTrigger = 0;
+int IGRResetComboFrameCount = 0; // IGR按住重启的变量
+int IGRResetComboTrigger = 0; // IGR连续按两次重启的变量
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
 static int IGR_Intc_Handler(int cause)
 {
@@ -313,7 +312,7 @@ static int IGR_Intc_Handler(int cause)
                         if (!IGRResetComboTrigger)
                             IGRResetComboTrigger = 1;
                         // 按住组合键一定时间，会重启
-                        if (IGRResetComboFrameCount++ >= IGRResetComboFrame)
+                        if (IGRResetComboFrameCount++ >= 180)
                             Pad_Data.combo_type = pad_pos_combo2;
                     }
                 } else {
@@ -332,7 +331,7 @@ static int IGR_Intc_Handler(int cause)
 
     // 按下重启组合键后，给定时间内再次输入一次组合键，才重启
     if (IGRResetComboTrigger)
-        if (IGRResetComboTrigger++ >= (IGRResetComboFrame / 2))
+        if (IGRResetComboTrigger++ >= 60)
             IGRResetComboTrigger = 0;
 
     ee_kmode_enter();
