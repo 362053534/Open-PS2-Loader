@@ -1588,29 +1588,26 @@ int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
 int defaultDelayFrame = 240;
-int LongDelayTime = 18000;
+//int LongDelayTime = 18000;
 int ShortDelayTime = 92;
 int endIntroDelayFrame = 0;
 int menuUpdateHookDone = 1;
 
 void reFindBDM()
 {
-    int curLongDelayFrame = 0;
-    int curShortDelayFrame = 0;
-    // 如果百分百能找到设备，则延迟时间设到5分钟或更长
-    if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
-        curLongDelayFrame = LongDelayTime;
-        curShortDelayFrame = LongDelayTime;
-    } else {
-        curLongDelayFrame = defaultDelayFrame;
-        curShortDelayFrame = ShortDelayTime;
-    }
+    //int curLongDelayFrame = defaultDelayFrame;
+    //int curShortDelayFrame = ShortDelayTime;
+    //// 如果百分百能找到设备，则延迟时间设到5分钟或更长
+    //if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
+    //    curLongDelayFrame = LongDelayTime;
+    //    curShortDelayFrame = LongDelayTime;
+    //}
 
     // 根据设备的就绪状态来添加延迟
     if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
-        endIntroDelayFrame = curLongDelayFrame;
+        endIntroDelayFrame = defaultDelayFrame;
     else if (gEnableUSB > usbFound)
-        endIntroDelayFrame = curShortDelayFrame; // 只开了USB，延迟时间要缩短
+        endIntroDelayFrame = ShortDelayTime; // 只开了USB，延迟时间要缩短
     else
         endIntroDelayFrame = 0;
 
