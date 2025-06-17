@@ -312,7 +312,7 @@ static int IGR_Intc_Handler(int cause)
                         if (!IGRResetComboTrigger)
                             IGRResetComboTrigger = 1;
                         // 按住组合键一定时间，会重启
-                        if (IGRResetComboFrameCount++ >= 180)
+                        if (IGRResetComboFrameCount++ >= 150)
                             Pad_Data.combo_type = pad_pos_combo2;
                     }
                 } else {
