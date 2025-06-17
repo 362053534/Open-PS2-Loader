@@ -582,10 +582,10 @@ reConfig:
             }
         }
 
-        UiId = -1; // 还原uiid
         applyConfig(-1, -1, 0);
         menuReinitMainMenu();
     }
+    UiId = -1; // 还原uiid
 }
 
 static int curTheme = -1;
