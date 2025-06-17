@@ -456,6 +456,7 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (BdmStarted)
             reFindBDM();
+        applyConfig(-1, -1, 0);
     }
 }
 
@@ -580,10 +581,9 @@ reConfig:
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
             }
+            applyConfig(-1, -1, 0);
+            menuReinitMainMenu();
         }
-
-        applyConfig(-1, -1, 0);
-        menuReinitMainMenu();
     }
     UiId = -1; // 还原uiid
 }
