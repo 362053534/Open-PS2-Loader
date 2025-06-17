@@ -457,8 +457,6 @@ static void guiShowBlockDeviceConfig(void)
         if (BdmStarted)
             reFindBDM();
     }
-
-    guiShowConfig(); // 反回上一个界面
 }
 
 static int guiUpdater(int modified)
@@ -509,6 +507,7 @@ int guiIoModeToDeviceType(int ioMode)
     }
 }
 
+int UiId = -1;
 void guiShowConfig()
 {
     // configure the enumerations
@@ -546,7 +545,8 @@ void guiShowConfig()
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
 
-    int ret = diaExecuteDialog(diaConfig, -1, 1, &guiUpdater);
+reConfig:
+    int ret = diaExecuteDialog(diaConfig, UiId, 1, &guiUpdater);
     if (ret) {
         diaGetInt(diaConfig, CFG_DEBUG, &gEnableDebug);
         diaGetInt(diaConfig, CFG_PS2LOGO, &gPS2Logo);
@@ -568,9 +568,13 @@ void guiShowConfig()
         diaGetInt(diaConfig, CFG_HDDCACHE, &hddCacheSize);
         diaGetInt(diaConfig, CFG_SMBCACHE, &smbCacheSize);
 
-        if (ret == BLOCKDEVICE_BUTTON)
+        if (ret == BLOCKDEVICE_BUTTON) {
             guiShowBlockDeviceConfig();
-        else {
+
+            // 反回上个界面，并选中块设备
+            UiId = 10;       // 块设备的uiid
+            goto reConfig;
+        } else {       
             // BDM中途设为自动模式时
             if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
@@ -578,6 +582,7 @@ void guiShowConfig()
             }
         }
 
+        UiId = -1; // 还原uiid
         applyConfig(-1, -1, 0);
         menuReinitMainMenu();
     }
