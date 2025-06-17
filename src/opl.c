@@ -310,7 +310,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                         mod->menuItem.visible = 0;
                         bdm_device_data_t *pDeviceData = mod->support->priv;
                         if (pDeviceData != NULL) {
-                            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                            if (!strcmp(pDeviceData->bdmDriver, "usb"))
                                 mod->menuItem.visible = gEnableUSB;
                             else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                                 mod->menuItem.visible = gEnableILK;
@@ -540,7 +540,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                 mod->menuItem.visible = 0;
                 bdm_device_data_t *pDeviceData = itemList->priv;
                 if (pDeviceData != NULL) {
-                    if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                    if (!strcmp(pDeviceData->bdmDriver, "usb"))
                         mod->menuItem.visible = gEnableUSB;
                     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                         mod->menuItem.visible = gEnableILK;
