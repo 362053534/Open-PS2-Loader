@@ -265,7 +265,7 @@ void IGR_Exit(s32 exit_code)
     Exit(exit_code);
 }
 
-int IGRResetComboFrame = 1200;
+int IGRResetComboFrame = 90; // IGR重启的缓冲时间
 int IGRResetComboFrameCount = 0;
 int IGRResetComboTrigger = 0;
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
@@ -306,21 +306,31 @@ static int IGR_Intc_Handler(int cause)
                     || ((pad_pos_combo2 == IGR_COMBO_UP) && (config->EnableGSMOp)) // UP combo, so take IGS
 #endif
                 ) {
+                    // 给定时间内再次按下组合键，会重启
                     if (!IGRResetComboFrameCount && IGRResetComboTrigger)
                         Pad_Data.combo_type = pad_pos_combo2;
                     else {
                         if (!IGRResetComboTrigger)
                             IGRResetComboTrigger = 1;
+                        // 按住组合键一定时间，会重启
                         if (IGRResetComboFrameCount++ >= IGRResetComboFrame)
                             Pad_Data.combo_type = pad_pos_combo2;
                     }
-                } else
+                } else {
+                    if (IGRResetComboFrameCount)
+                        IGRResetComboFrameCount = 0;
+                }
+            } else {
+                if (IGRResetComboFrameCount)
                     IGRResetComboFrameCount = 0;
-            } else
-                IGRResetComboFrameCount = 0;
+            }
         }
+    } else {
+        if (IGRResetComboFrameCount)
+            IGRResetComboFrameCount = 0;
     }
-    // 按下重启组合键后，60帧内再次输入一次组合键，才重启
+
+    // 按下重启组合键后，给定时间内再次输入一次组合键，才重启
     if (IGRResetComboTrigger)
         if (IGRResetComboTrigger++ >= IGRResetComboFrame)
             IGRResetComboTrigger = 0;
