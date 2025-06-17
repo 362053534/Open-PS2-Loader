@@ -265,10 +265,9 @@ void IGR_Exit(s32 exit_code)
     Exit(exit_code);
 }
 
-int IGRResetComboFrame = 60;
+int IGRResetComboFrame = 1200;
 int IGRResetComboFrameCount = 0;
 int IGRResetComboTrigger = 0;
-int IGRResetComboTriggerCount = 0;
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
 static int IGR_Intc_Handler(int cause)
 {
@@ -310,7 +309,8 @@ static int IGR_Intc_Handler(int cause)
                     if (!IGRResetComboFrameCount && IGRResetComboTrigger)
                         Pad_Data.combo_type = pad_pos_combo2;
                     else {
-                        IGRResetComboTrigger = 1;
+                        if (!IGRResetComboTrigger)
+                            IGRResetComboTrigger = 1;
                         if (IGRResetComboFrameCount++ >= IGRResetComboFrame)
                             Pad_Data.combo_type = pad_pos_combo2;
                     }
