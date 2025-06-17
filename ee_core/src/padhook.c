@@ -265,7 +265,7 @@ void IGR_Exit(s32 exit_code)
     Exit(exit_code);
 }
 
-int IGRResetComboFrame = 90; // IGR重启的缓冲时间
+int IGRResetComboFrame = 120; // IGR重启的缓冲时间
 int IGRResetComboFrameCount = 0;
 int IGRResetComboTrigger = 0;
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
