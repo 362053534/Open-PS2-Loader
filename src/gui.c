@@ -1756,18 +1756,18 @@ void guiMainLoop(void)
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x04;
             } else {
-                // 如果txt被创建，则弹出提示框
-                if (txtFileCreated) {
-                    txtFileCreated = 0; // 防止重复弹窗
-                    guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
-                } else if (txtFileRebuilded) {
-                    txtFileRebuilded = 0; // 防止重复弹窗
-                    guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
-                }
-                if (bdmTimeOut) {
-                    bdmTimeOut = 0; // 防止重复弹窗
-                    guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, diaBlockDevicesConfig);
-                }
+                //// 如果txt被创建，则弹出提示框
+                //if (txtFileCreated) {
+                //    txtFileCreated = 0; // 防止重复弹窗
+                //    guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
+                //} else if (txtFileRebuilded) {
+                //    txtFileRebuilded = 0; // 防止重复弹窗
+                //    guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
+                //}
+                //if (bdmTimeOut) {
+                //    bdmTimeOut = 0; // 防止重复弹窗
+                //    guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
+                //}
             }
 
             // Read the pad states to prepare for input processing in the screen handler
@@ -1792,6 +1792,22 @@ void guiMainLoop(void)
         guiHandleDeferredOps();
 
         guiEndFrame();
+
+        // 把intro界面淡出移到mainloop里，提升加载体验。
+        if (greetingAlpha < 0x00) {
+            // 如果txt被创建，则弹出提示框
+            if (txtFileCreated) {
+                txtFileCreated = 0; // 防止重复弹窗
+                guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
+            } else if (txtFileRebuilded) {
+                txtFileRebuilded = 0; // 防止重复弹窗
+                guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
+            }
+            if (bdmTimeOut) {
+                bdmTimeOut = 0; // 防止重复弹窗
+                guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
+            }
+        }
 
         // if not transiting, handle input
         // done here so we can use renderman if needed
