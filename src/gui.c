@@ -1587,11 +1587,13 @@ int usbFound = 0;
 int ILKFound = 0;
 int MX4SIOFound = 0;
 int GptFound = 0;
-int defaultDelayFrame = 240;
+int defaultDelayFrame = 300;
 //int LongDelayTime = 18000;
 int ShortDelayTime = 92;
 int endIntroDelayFrame = 0;
 int menuUpdateHookDone = 1;
+int txtFileCreated = 0;
+int txtFileRebuilded = 0;
 
 void reFindBDM()
 {
@@ -1604,10 +1606,10 @@ void reFindBDM()
     //}
 
     // 根据设备的就绪状态来添加延迟
-    if ((gEnableILK > ILKFound) || (gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
-        endIntroDelayFrame = defaultDelayFrame;
-    else if (gEnableUSB > usbFound)
-        endIntroDelayFrame = ShortDelayTime; // 只开了USB，延迟时间要缩短
+    if ((gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
+        endIntroDelayFrame = defaultDelayFrame; // 需要更长时间搜寻设备
+    else if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound))
+        endIntroDelayFrame = ShortDelayTime; // 搜寻设备的时间不需要太长
     else
         endIntroDelayFrame = 0;
 
@@ -1688,6 +1690,10 @@ void guiMainLoop(void)
             } else {
                 endIntroDelayFrame--;
 
+                // BDM设备超时，弹出提示框
+                if ((greetingAlpha <= 0x00) && (endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted))
+                    guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
+
                 //// debug  打印debug信息
                 //delayFrameCount++;
                 //if (endIntroDelayFrame <= 0) {
@@ -1750,6 +1756,15 @@ void guiMainLoop(void)
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x04;
+            } else {
+                // 如果txt被创建，则弹出提示框
+                if (txtFileCreated) {
+                    txtFileCreated = 0; // 防止重复弹窗
+                    guiMsgBox("txt文件已创建，可编辑游戏的中文名！", 0, NULL);
+                } else if (txtFileRebuilded) {
+                    txtFileRebuilded = 0; // 防止重复弹窗
+                    guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
+                }
             }
         } else {
             if (greetingAlpha >= 0x00) {

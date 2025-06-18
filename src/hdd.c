@@ -2,6 +2,7 @@
 #include "include/hdd.h"
 #include "include/ioman.h"
 #include "include/hddsupport.h"
+#include "include/gui.h"
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
@@ -300,6 +301,7 @@ int hddGetHDLGamelist(hdl_games_list_t *game_list)
                     file = fopen(path, "ab+, ccs=UTF-8");
                     fseek(file, 0, SEEK_END);
                     if (ftell(file) == 0) {
+                        txtFileCreated = 1;
                         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
                         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
                         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
