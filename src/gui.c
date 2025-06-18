@@ -1748,9 +1748,6 @@ void guiMainLoop(void)
         }
 
         if (mainScreenInitDone) {
-            // Read the pad states to prepare for input processing in the screen handler
-            guiReadPads();
-
             //  handle inputs and render screen
             guiShow();
 
@@ -1762,22 +1759,19 @@ void guiMainLoop(void)
                 // 如果txt被创建，则弹出提示框
                 if (txtFileCreated) {
                     txtFileCreated = 0; // 防止重复弹窗
-                    char text[128];
-                    strcpy(text, "txt文件已创建，可为游戏添加中文名！");
-                    guiMsgBox(text, 0, NULL);
+                    guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
                 } else if (txtFileRebuilded) {
                     txtFileRebuilded = 0; // 防止重复弹窗
-                    char text[128];
-                    strcpy(text, "txt文件已通过缓存重建！");
-                    guiMsgBox(text, 0, NULL);
+                    guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
                 }
                 if (bdmTimeOut) {
                     bdmTimeOut = 0; // 防止重复弹窗
-                    char text[128];
-                    strcpy(text, "请关闭不存在的块设备，以提升加载速度，预防死机！");
-                    guiMsgBox(text, 0, NULL);
+                    guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, diaBlockDevicesConfig);
                 }
             }
+
+            // Read the pad states to prepare for input processing in the screen handler
+            guiReadPads();
         } else {
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);

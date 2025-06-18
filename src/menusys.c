@@ -970,7 +970,7 @@ void menuHandleInputMenu()
                 menuSetParentalLockCheckState(1); // Re-enable parental lock check.
             }
         } else if (id == MENU_EXIT) {
-            if (guiMsgBox("确定要退出吗？", 1, NULL))
+            if (guiMsgBox(_l(_STR_CONFIRMATION_EXIT), 1, NULL))
                 sysExecExit();
         } else if (id == MENU_POWER_OFF) {
             if (guiMsgBox(_l(_STR_CONFIRMATION_POFF), 1, NULL))
