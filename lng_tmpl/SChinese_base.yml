@@ -141,7 +141,7 @@ gui_strings:
 - label: ERROR_LOADING_ID
   string: 读取游戏ID时出错
 - label: AUTOSORT
-  string: 自动滚动
+  string: 自动排序
 - label: ERR_LOADING_LANGFILE
   string: 读取语言文件时出错
 - label: DEBUG
@@ -627,7 +627,7 @@ gui_strings:
 - label: TURBO_SPEED
   string: 连发键速度
 - label: HINT_TURBO_SPEED
-  string: How fast the button is pressed when turbo is active.
+  string: 当按键按住时的自动连发速度.
 - label: ACT_WHILE_PRESSED
   string: While Button Pressed
 - label: ACT_TOGGLED
@@ -693,4 +693,4 @@ gui_strings:
 - label: CHEAT_SELECTION
   string: Cheat Selection
 - label: HDD_HINT
-  string: Only one HDD allowed, enabling locks APA or GPT.
+  string: 只能开启一种HDD模式，ATA(HDL)或GPT(BDMHDD)。
