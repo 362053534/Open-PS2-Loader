@@ -1594,6 +1594,7 @@ int endIntroDelayFrame = 0;
 int menuUpdateHookDone = 1;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
+int bdmTimeOut = 0;
 
 void reFindBDM()
 {
@@ -1692,10 +1693,7 @@ void guiMainLoop(void)
 
                 // BDM设备超时，弹出提示框
                 if ((greetingAlpha <= 0x00) && (endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted || bdmManualTrigger)) {
-                    //char text[128];
-                    //strcpy(text, "请关闭不存在的块设备，以提升加载速度，预防死机！");
-                    //guiMsgBox(text, 0, NULL);
-                    guiMsgBox("Find BDM Timeout!", 0, NULL);
+                    bdmTimeOut = 1;
                 }
 
                 //// debug  打印debug信息
@@ -1771,6 +1769,12 @@ void guiMainLoop(void)
                     txtFileRebuilded = 0; // 防止重复弹窗
                     char text[128];
                     strcpy(text, "txt文件已通过缓存重建！");
+                    guiMsgBox(text, 0, NULL);
+                }
+                if (bdmTimeOut) {
+                    bdmTimeOut = 0; // 防止重复弹窗
+                    char text[128];
+                    strcpy(text, "请关闭不存在的块设备，以提升加载速度，预防死机！");
                     guiMsgBox(text, 0, NULL);
                 }
             }
