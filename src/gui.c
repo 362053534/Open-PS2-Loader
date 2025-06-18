@@ -1767,7 +1767,7 @@ void guiMainLoop(void)
                 } else if (txtFileRebuilded) {
                     txtFileRebuilded = 0; // 防止重复弹窗
                     const char text[128] = "txt文件已通过缓存重建！";
-                    guiMsgBox(text, 0, NULL)
+                    guiMsgBox(text, 0, NULL);
                 }
             }
         } else {
