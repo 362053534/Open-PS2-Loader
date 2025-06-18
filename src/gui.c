@@ -1669,6 +1669,22 @@ void guiMainLoop(void)
     //int delayFrameCount = 0;
 
     while (!gTerminate) {
+        // 各种弹窗提示
+        if (greetingAlpha < 0x00) {
+            // 如果txt被创建，则弹出提示框
+            if (txtFileCreated) {
+                txtFileCreated = 0; // 防止重复弹窗
+                guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
+            } else if (txtFileRebuilded) {
+                txtFileRebuilded = 0; // 防止重复弹窗
+                guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
+            }
+            if (bdmTimeOut) {
+                bdmTimeOut = 0; // 防止重复弹窗
+                guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
+            }
+        }
+
         guiStartFrame();
 
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
@@ -1751,27 +1767,13 @@ void guiMainLoop(void)
             //  handle inputs and render screen
             guiShow();
 
+            // Read the pad states to prepare for input processing in the screen handler
+            guiReadPads();
             // 把intro界面淡出移到mainloop里，提升加载体验。
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
                 greetingAlpha -= 0x04;
-            } else {
-                //// 如果txt被创建，则弹出提示框
-                //if (txtFileCreated) {
-                //    txtFileCreated = 0; // 防止重复弹窗
-                //    guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
-                //} else if (txtFileRebuilded) {
-                //    txtFileRebuilded = 0; // 防止重复弹窗
-                //    guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
-                //}
-                //if (bdmTimeOut) {
-                //    bdmTimeOut = 0; // 防止重复弹窗
-                //    guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
-                //}
             }
-
-            // Read the pad states to prepare for input processing in the screen handler
-            guiReadPads();
         } else {
             if (greetingAlpha >= 0x00) {
                 guiRenderGreeting(greetingAlpha);
@@ -1792,22 +1794,6 @@ void guiMainLoop(void)
         guiHandleDeferredOps();
 
         guiEndFrame();
-
-        // 把intro界面淡出移到mainloop里，提升加载体验。
-        if (greetingAlpha < 0x00) {
-            // 如果txt被创建，则弹出提示框
-            if (txtFileCreated) {
-                txtFileCreated = 0; // 防止重复弹窗
-                guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
-            } else if (txtFileRebuilded) {
-                txtFileRebuilded = 0; // 防止重复弹窗
-                guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
-            }
-            if (bdmTimeOut) {
-                bdmTimeOut = 0; // 防止重复弹窗
-                guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
-            }
-        }
 
         // if not transiting, handle input
         // done here so we can use renderman if needed
