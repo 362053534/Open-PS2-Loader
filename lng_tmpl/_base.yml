@@ -251,7 +251,7 @@ gui_strings:
 - label: HINT_GUEST
   string: GUEST验证留空.
 - label: HINT_MODE1
-  string: 精确读取
+  string: 精确读取，开启后会禁用DMA模式，速度大幅下降。
 - label: HINT_MODE2
   string: 同步模式
 - label: HINT_MODE3
