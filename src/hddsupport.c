@@ -527,8 +527,8 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     if (ataHighestUDMAMode < 0 || ataHighestUDMAMode > 7)
         ataHighestUDMAMode = 4;
 
-    // 默认为最高模式+1，理论上没问题，除非兼容性太烂
-    int dmaType = 0x40, dmaMode = (ataHighestUDMAMode + 1 + 3), compatMode = 0;
+    // 默认为7，理论上没问题，除非兼容性太烂
+    int dmaType = 0x40, dmaMode = 10, compatMode = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
     configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 

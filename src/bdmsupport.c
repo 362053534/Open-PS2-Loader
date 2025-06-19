@@ -534,7 +534,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         // Get DMA settings for ATA mode.
-        int dmaType = 0x40, dmaMode = pDeviceData->ataHighestUDMAMode + 1 + 3;  // 默认为最高模式+1，理论上没问题，除非兼容性太烂
+        int dmaType = 0x40, dmaMode = 10;  // 默认为7，理论上没问题，除非兼容性太烂
         configGetInt(configSet, CONFIG_ITEM_DMA, &dmaMode);
 
         // Set DMA mode and spindown time.
