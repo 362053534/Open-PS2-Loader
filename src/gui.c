@@ -1675,7 +1675,7 @@ void guiMainLoop(void)
             if (txtFileCreated) {
                 txtFileCreated = 0; // 防止重复弹窗
                 if ((const char **)lngGetGuiList()[0][0] == 'E')
-                    guiMsgBox("The txt file has been created, \r\nallowing name mapping for game titles!", 0, NULL);
+                    guiMsgBox("The txt file has been created, \nallowing name mapping for game titles!", 0, NULL);
                 else
                     guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
             } else if (txtFileRebuilded) {
@@ -1688,7 +1688,7 @@ void guiMainLoop(void)
             if (bdmTimeOut) {
                 bdmTimeOut = 0; // 防止重复弹窗
                 if ((const char **)lngGetGuiList()[0][0] == 'E')
-                    guiMsgBox("Please close non-existent block devices\r\nto improve loading speed and prevent crashes!", 0, NULL);
+                    guiMsgBox("Please close non-existent block devices\nto improve loading speed and prevent crashes!", 0, NULL);
                 else
                     guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
             }
