@@ -1678,7 +1678,6 @@ void guiMainLoop(void)
                     guiMsgBox("The txt file has been created, allowing name mapping for game titles!", 0, NULL);
                 else
                     guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
-                
             } else if (txtFileRebuilded) {
                 txtFileRebuilded = 0; // 防止重复弹窗
                 if ((const char **)lngGetGuiList()[0] == 'E')
@@ -1692,6 +1691,15 @@ void guiMainLoop(void)
                     guiMsgBox("Please close non-existent block devices to improve loading speed and prevent crashes!", 0, NULL);
                 else
                     guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
+                // debug  打印debug信息
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-langName.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "%s\r\n\r\n", (const char **)lngGetGuiList());
+                    fclose(debugFile);
+                }
             }
         }
 
