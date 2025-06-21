@@ -120,7 +120,4 @@ void menuRemoveHints(menu_item_t *menu);
 
 int menuSetParentalLockCheckState(int enabled);
 int menuCheckParentalLock(void);
-
-void refreshBdmMenu();  // 刷新BDM菜单位置
-
 #endif

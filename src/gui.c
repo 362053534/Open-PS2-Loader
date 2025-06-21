@@ -1713,9 +1713,8 @@ void guiMainLoop(void)
                 endIntroDelayFrame--;
 
                 // BDM设备超时，弹出提示框
-                if ((greetingAlpha <= 0x00) && (endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted || bdmManualTrigger)) {
+                if ((greetingAlpha <= 0x00) && (endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted || bdmManualTrigger))
                     bdmTimeOut = 1;
-                }
 
                 //// debug  打印debug信息
                 //delayFrameCount++;
@@ -1740,7 +1739,7 @@ void guiMainLoop(void)
                     // 第一次启动，或手动启动BDM时，从全黑开始过度
                     if (greetingAlpha >= 0x00 || bdmManualTrigger) {
                         guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                        refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                        //refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                     }
                 }
                 mainScreenInitDone = 1;
