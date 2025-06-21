@@ -907,7 +907,7 @@ static void menuUpdateHook()
     //    if (!menuUpdateHookDone)
     //        menuUpdateHookDone = 1;
     //} else
-    if (frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) {
+    if ((frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) || !mainScreenInitDone) {
         for (i = 0; i < MODE_COUNT; i++) {
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);

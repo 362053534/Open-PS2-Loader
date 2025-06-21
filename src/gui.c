@@ -454,10 +454,10 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
-        if (BdmStarted)
-            reFindBDM();
         applyConfig(-1, -1, 0);
         menuReinitMainMenu();
+        if (BdmStarted)
+            reFindBDM();
     }
 }
 
@@ -576,14 +576,14 @@ reConfig:
             // 反回上个界面，并选中块设备
             UiId = 51;       // 块设备的uiid
             goto reConfig;
-        } else {       
+        } else {
+            applyConfig(-1, -1, 0);
+            menuReinitMainMenu();
             // BDM中途设为自动模式时
             if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
                     reFindBDM();
             }
-            applyConfig(-1, -1, 0);
-            menuReinitMainMenu();
         }
     }
     UiId = -1; // 还原uiid
@@ -1630,8 +1630,10 @@ void reFindBDM()
         mainScreenInitDone = 0;
         if (!endIntroDelayFrame)
             menuUpdateHookDone = 0;
-        if (!gBDMStartMode)
+        if (!gBDMStartMode) {
             endIntroDelayFrame = 0;
+            menuUpdateHookDone = 1;
+        }
     }
 
     //// debug  打印debug信息
