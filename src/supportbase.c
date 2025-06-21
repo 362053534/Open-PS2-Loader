@@ -786,27 +786,12 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     } else
         closedir(isoDir);
 
-    int fd, size, id = 0, result;
-    int count;
-    char path[256];
-    int forceUpdateCache = 0;
-
     // 将bdm hdd的txt优先在U盘进行读写
+    int forceUpdateCache = 0;
     char bdmHddTxtPath[256];
     bdmHddTxtPath[0] = '0';
     if (strncmp(prefix, "mass", 4) == 0) {
         if (prefix[4] == '0') {
-            if (!usbFound) {
-                char bdmType[32];
-                sprintf(bdmType, "%s/", prefix);
-                int massDir = fileXioDopen(bdmType);
-                if (massDir >= 0) {
-                    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
-                    if (strncmp(bdmType, "usb", 3) == 0) {
-                        usbFound = 1;
-                    }
-                }
-            }
             // 如果找到usb，且usb开关为关闭，则跳过扫描，不生成任何东西
             if (usbFound && !gEnableUSB) {
                 free(*list);
@@ -931,6 +916,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     //char debugFileDir[64];
     //snprintf(debugFileDir, 256, "%sdebug.txt", prefix);
     //FILE *debugFile = fopen(debugFileDir, "ab+");
+
+    int fd, size, id = 0, result;
+    int count;
+    char path[256];
 
     // 创建txt文件
     int txtFileChanged = 1;

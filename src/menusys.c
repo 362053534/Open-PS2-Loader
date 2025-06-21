@@ -660,22 +660,32 @@ void refreshBdmMenu()
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)
         return;
-    menu_list_t *cur = menu;
 
     if ((selected_item->item != NULL) && (selected_item->item->visible != 0))
         return;
 
-    struct menu_list *next = selected_item->next;
-    while (next != NULL && next->item->visible == 0)
-        next = next->next;
+    // 当前选择的设备不存在或隐藏时，寻找第一个可用设备
+    menu_list_t *cur = menu;
+    while (cur->item->visible == 0 && cur->next)
+        cur = cur->next;
 
-    // If we found a valid menu transition to it.
-    if (next != NULL && next->item->visible != 0) {
-        selected_item = next;
-        itemConfigId = -1;
-    } else {
-        selected_item = menu;  // 防止所有列表都隐藏时，会卡死的问题（最后会返回设置界面？）
-    }
+    if (cur->item->visible == 0) {
+        // No visible menu was found, just set the current menu to the first one in the list.
+        selected_item = menu;
+    } else
+        selected_item = cur;
+
+    //struct menu_list *next = selected_item->next;
+    //while (next != NULL && next->item->visible == 0)
+    //    next = next->next;
+
+    //// If we found a valid menu transition to it.
+    //if (next != NULL && next->item->visible != 0) {
+    //    selected_item = next;
+    //    itemConfigId = -1;
+    //} else {
+    //    selected_item = menu;  // 防止所有列表都隐藏时，会卡死的问题（最后会返回设置界面？）
+    //}
 }
 
 static void menuPrevH()
