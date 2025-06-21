@@ -1739,7 +1739,7 @@ void guiMainLoop(void)
                     // 第一次启动，或手动启动BDM时，从全黑开始过度
                     if (greetingAlpha >= 0x00 || bdmManualTrigger) {
                         guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                        //refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                        refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                     }
                 }
                 mainScreenInitDone = 1;

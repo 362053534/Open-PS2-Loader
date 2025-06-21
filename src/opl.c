@@ -465,17 +465,31 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->owner = mod;
             initMenuForListSupport(mod);
         }
-        // 根据开关，提前隐藏不需要的设备，开启设备由BDM负责
+        //// 根据开关，提前隐藏不需要的设备，开启设备由BDM负责
+        //if (mode >= BDM_MODE && mode < ETH_MODE) {
+        //    bdm_device_data_t *pDeviceData = itemList->priv;
+        //    if (pDeviceData != NULL) {
+        //        if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
+        //            mod->menuItem.visible = gEnableUSB;
+        //        else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) && !gEnableILK)
+        //            mod->menuItem.visible = gEnableILK;
+        //        else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && !gEnableMX4SIO)
+        //            mod->menuItem.visible = gEnableMX4SIO;
+        //        else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && !gEnableBdmHDD)
+        //            mod->menuItem.visible = gEnableBdmHDD;
+        //    }
+        //}
+        //  根据开关，提前设置隐藏状态
         if (mode >= BDM_MODE && mode < ETH_MODE) {
             bdm_device_data_t *pDeviceData = itemList->priv;
             if (pDeviceData != NULL) {
-                if (!strcmp(pDeviceData->bdmDriver, "usb") && !gEnableUSB)
+                if (!strcmp(pDeviceData->bdmDriver, "usb"))
                     mod->menuItem.visible = gEnableUSB;
-                else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) && !gEnableILK)
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                     mod->menuItem.visible = gEnableILK;
-                else if ((pDeviceData->bdmDeviceType == BDM_TYPE_SDC) && !gEnableMX4SIO)
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
                     mod->menuItem.visible = gEnableMX4SIO;
-                else if ((pDeviceData->bdmDeviceType == BDM_TYPE_ATA) && !gEnableBdmHDD)
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
                     mod->menuItem.visible = gEnableBdmHDD;
             }
         }

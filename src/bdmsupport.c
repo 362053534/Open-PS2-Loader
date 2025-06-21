@@ -943,18 +943,38 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // 设备从关到开，才需要return1，否则不更新
             int result = 0;
             if (itemList->owner != NULL) {
+                //if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                //    if (result = ((visible < gEnableUSB) && (pDeviceData->bdmGames == NULL)))
+                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
+                //} else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
+                //    if (result = ((visible < gEnableILK) && (pDeviceData->bdmGames == NULL)))
+                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
+                //} else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                //    if (result = ((visible < gEnableMX4SIO) && (pDeviceData->bdmGames == NULL)))
+                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
+                //} else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
+                //    if (result = ((visible < gEnableBdmHDD) && (pDeviceData->bdmGames == NULL)))
+                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
+                //} else {
+                //    result = 0;
+                //}
                 if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                    if (result = (visible < gEnableUSB))
-                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
+                    result = (visible && (pDeviceData->bdmGames == NULL));
+                    // debug  打印debug信息，方便调试
+                    char debugFileDir[64];
+                    strcpy(debugFileDir, "smb:debug-usbtest.txt");
+                    // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                    FILE *debugFile = fopen(debugFileDir, "ab+");
+                    if (debugFile != NULL) {
+                        fprintf(debugFile, "USB页面更新！\r\n\r\n");
+                        fclose(debugFile);
+                    }
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
-                    if (result = (visible < gEnableILK))
-                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
+                    result = (visible && (pDeviceData->bdmGames == NULL));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                    if (result = (visible < gEnableMX4SIO))
-                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
+                    result = (visible && (pDeviceData->bdmGames == NULL));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-                    if (result = (visible < gEnableBdmHDD))
-                        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
+                    result = (visible && (pDeviceData->bdmGames == NULL));
                 } else {
                     result = 0;
                 }

@@ -372,7 +372,7 @@ void menuAppendItem(menu_item_t *item)
     SignalSema(menuListSemaId);
 }
 
-static void refreshMenuPosition(void)
+void refreshMenuPosition(void)
 {
     // Find the first menu in the list that is visible and set it as the active menu.
     if (menu == NULL)
