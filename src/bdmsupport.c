@@ -960,14 +960,16 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 //}
                 if (!strcmp(pDeviceData->bdmDriver, "usb")) {
                     result = (visible && (pDeviceData->bdmGames == NULL));
-                    // debug  打印debug信息，方便调试
-                    char debugFileDir[64];
-                    strcpy(debugFileDir, "smb:debug-usbtest.txt");
-                    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    FILE *debugFile = fopen(debugFileDir, "ab+");
-                    if (debugFile != NULL) {
-                        fprintf(debugFile, "USB页面更新！\r\n\r\n");
-                        fclose(debugFile);
+                    if (result) {
+                        // debug  打印debug信息，方便调试
+                        char debugFileDir[64];
+                        strcpy(debugFileDir, "smb:debug-usbtest.txt");
+                        // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                        FILE *debugFile = fopen(debugFileDir, "ab+");
+                        if (debugFile != NULL) {
+                            fprintf(debugFile, "USB页面更新！\r\n\r\n");
+                            fclose(debugFile);
+                        }
                     }
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
                     result = (visible && (pDeviceData->bdmGames == NULL));
