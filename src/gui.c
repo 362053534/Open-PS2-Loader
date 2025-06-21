@@ -1591,8 +1591,6 @@ int defaultDelayFrame = 300;
 //int LongDelayTime = 18000;
 int ShortDelayTime = 92;
 int endIntroDelayFrame = 0;
-int menuUpdateHookDoneDelay = 0;
-int menuUpdateHookDone = 1;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
@@ -1623,18 +1621,11 @@ void reFindBDM()
                 endIntroDelayFrame = 0;
         } else {
             mainScreenInitDone = 0;
-            if (!endIntroDelayFrame)
-                menuUpdateHookDone = 0;
         }
     } else { // BDM已启动后的处理
-        // BDM启动模式关闭或BDM块设备全关时，要等menuUpdateHookDone
         mainScreenInitDone = 0;
-        if (!endIntroDelayFrame)
-            menuUpdateHookDone = 0;
-        if (!gBDMStartMode) {
+        if (!gBDMStartMode)
             endIntroDelayFrame = 0;
-            menuUpdateHookDone = menuUpdateHookDoneDelay;
-        }
     }
 
     //// debug  打印debug信息
@@ -1652,7 +1643,6 @@ void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
-    menuUpdateHookDone = menuUpdateHookDoneDelay;
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
@@ -1718,9 +1708,7 @@ void guiMainLoop(void)
                 //    delayFrameCount = 0;
                 //    fclose(debugFile);
                 //}
-
                 endIntroDelayFrame = 0;
-                menuUpdateHookDone = 0;
             } else {
                 endIntroDelayFrame--;
 
@@ -1746,37 +1734,34 @@ void guiMainLoop(void)
                 //}
             }              
         } else {
-            // 找到bdm设备或delay结束后，还要等刷新周期结束
-            if (menuUpdateHookDone && (menuUpdateHookDone++ > menuUpdateHookDoneDelay)) {
-                // 一切就绪后，改变mainScreenInitDone变量
-                if (!mainScreenInitDone) {
-                    if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                        // 第一次启动，或手动启动BDM时，从全黑开始过度
-                        if (greetingAlpha >= 0x00 || bdmManualTrigger) {
-                            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
-                            refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                        }
+            // 一切就绪后，改变mainScreenInitDone变量
+            if (!mainScreenInitDone) {
+                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
+                    // 第一次启动，或手动启动BDM时，从全黑开始过度
+                    if (greetingAlpha >= 0x00 || bdmManualTrigger) {
+                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
+                        refreshBdmMenu(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                     }
-                    mainScreenInitDone = 1;
-
-                    // 手动启动BDM后的变量处理
-                    if (bdmManualTrigger) {
-                        bdmManualTrigger = 0;
-                        BdmStarted = 1;
-                    }
-                    // BDM自动模式时，启动变量直接改为1
-                    if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
-                        BdmStarted = 1;
-                    //// debug  打印debug信息，找到gpt信息
-                    // char debugFileDir[64];
-                    // strcpy(debugFileDir, "mass0:debug-gui.txt");
-                    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    // FILE *debugFile = fopen(debugFileDir, "ab+");
-                    // if (debugFile != NULL) {
-                    //     fprintf(debugFile, GptFound ? "硬盘成功启动了！\r\n\r\n": "硬盘启动失败，找不到硬盘内的数据！\r\n\r\n");
-                    //     fclose(debugFile);
-                    // }
                 }
+                mainScreenInitDone = 1;
+
+                // 手动启动BDM后的变量处理
+                if (bdmManualTrigger) {
+                    bdmManualTrigger = 0;
+                    BdmStarted = 1;
+                }
+                // BDM自动模式时，启动变量直接改为1
+                if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
+                    BdmStarted = 1;
+                //// debug  打印debug信息，找到gpt信息
+                // char debugFileDir[64];
+                // strcpy(debugFileDir, "mass0:debug-gui.txt");
+                //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+                // FILE *debugFile = fopen(debugFileDir, "ab+");
+                // if (debugFile != NULL) {
+                //     fprintf(debugFile, GptFound ? "硬盘成功启动了！\r\n\r\n": "硬盘启动失败，找不到硬盘内的数据！\r\n\r\n");
+                //     fclose(debugFile);
+                // }
             }
         }
 

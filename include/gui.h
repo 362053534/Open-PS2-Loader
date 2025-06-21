@@ -58,7 +58,6 @@ extern int usbFound;
 extern int ILKFound;
 extern int MX4SIOFound;
 extern int GptFound;
-extern int menuUpdateHookDone;
 extern int txtFileCreated;
 extern int txtFileRebuilded;
 
