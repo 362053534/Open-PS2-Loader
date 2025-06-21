@@ -250,10 +250,6 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     }
 
     sbCreateFolders(pDeviceData->bdmPrefix, 1);
-
-    if (result)
-        if (!menuUpdateHookDone)
-            menuUpdateHookDone = 1;
     return result;
 }
 
