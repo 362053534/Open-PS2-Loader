@@ -194,10 +194,10 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     //            break;
     //    }
 
-        // If the device page is visible but the device support is not enabled, hide the device page.
-        if (deviceEnabled == 0)
-            pOwner->menuItem.visible = 0;
-    }
+    //    // If the device page is visible but the device support is not enabled, hide the device page.
+    //    if (deviceEnabled == 0)
+    //        pOwner->menuItem.visible = 0;
+    //}
 
     //// 加上mainScreenInitDone变量，让初始化阶段每一帧都检测bdm是否有更新，防止硬盘延迟启动造成的问题
     if ((pDeviceData->bdmULSizePrev != -2) && (pDeviceData->bdmDeviceTick == BdmGeneration) && mainScreenInitDone)
