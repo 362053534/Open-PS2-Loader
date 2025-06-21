@@ -465,87 +465,20 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->owner = mod;
             initMenuForListSupport(mod);
         }
-        // 根据设备开关，设定隐藏值（可能有负面影响）
-        if (mode >= BDM_MODE && mode < ETH_MODE) {
-            mod->menuItem.visible = 0;
-            bdm_device_data_t *pDeviceData = itemList->priv;
-            if (pDeviceData != NULL) {
-                if (!strcmp(pDeviceData->bdmDriver, "usb"))
-                    mod->menuItem.visible = gEnableUSB;
-                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                    mod->menuItem.visible = gEnableILK;
-                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                    mod->menuItem.visible = gEnableMX4SIO;
-                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                    mod->menuItem.visible = gEnableBdmHDD;
-            }
-        }
-        //// 将已开启的BDM设备(可被访问)，变为可见状态（只影响手动模式）
-        //if (mode >= BDM_MODE && mode < ETH_MODE) {
-        //    char bdmPath[8];
-        //    char bdmDriver[32];
-        //    mod->menuItem.visible = 0;
-        //    for (int i = 0; i < mode + 1; i++) {
-        //        sprintf(bdmPath, "mass%d:/", i);
-        //        int dir = fileXioDopen(bdmPath);
-        //        if (dir >= 0) {
-        //            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmDriver, sizeof(bdmDriver) - 1);
-        //            if ((mode == 0) && !strncmp(bdmDriver, "usb", 3) && gEnableUSB) {
-        //                mod->menuItem.visible = 1;
-        //                fileXioDclose(dir);
-        //                break;
-        //            } else if ((mode == 1) && !strncmp(bdmDriver, "sd", 2) && gEnableILK) {
-        //                mod->menuItem.visible = 1;
-        //                fileXioDclose(dir);
-        //                break;
-        //            } else if ((mode == 2) && !strncmp(bdmDriver, "sdc", 3) && gEnableMX4SIO) {
-        //                mod->menuItem.visible = 1;
-        //                fileXioDclose(dir);
-        //                break;
-        //            } else if ((mode == 3) && !strncmp(bdmDriver, "ata", 3) && gEnableBdmHDD) {
-        //                mod->menuItem.visible = 1;
-        //                fileXioDclose(dir);
-        //                break;
-        //            } else {
-        //                continue;
-        //            }
-        //            fileXioDclose(dir);
-        //        }
-        //    }
-        //}
-
-        //// 将已开启的BDM设备，变为可见状态（只影响手动模式）
+        //// 根据设备开关，设定隐藏值（可能有负面影响）
         //if (mode >= BDM_MODE && mode < ETH_MODE) {
         //    mod->menuItem.visible = 0;
-        //    switch (mode) {
-        //        case 0:
-        //            if (gEnableUSB)
-        //                mod->menuItem.visible = 1;
-        //            break;
-        //        case 1:
-        //            if (gEnableILK)
-        //                mod->menuItem.visible = 1;
-        //            break;
-        //        case 2:
-        //            if (gEnableMX4SIO)
-        //                mod->menuItem.visible = 1;
-        //            break;
-        //        case 3:
-        //            if (gEnableBdmHDD)
-        //                mod->menuItem.visible = 1;
-        //            break;
-        //        default:
-        //            break;
+        //    bdm_device_data_t *pDeviceData = itemList->priv;
+        //    if (pDeviceData != NULL) {
+        //        if (!strcmp(pDeviceData->bdmDriver, "usb"))
+        //            mod->menuItem.visible = gEnableUSB;
+        //        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+        //            mod->menuItem.visible = gEnableILK;
+        //        else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+        //            mod->menuItem.visible = gEnableMX4SIO;
+        //        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+        //            mod->menuItem.visible = gEnableBdmHDD;
         //    }
-        //}
-        
-        //// BDM手动模式时，提前初始化U盘以外的设备
-        //if ((startMode == START_MODE_MANUAL && !mod->support->enabled) && gEnableBdmHDD && (mode > 0) && (mode < 4)) {
-        //    mod->menuItem.visible = 0;
-        //    mod->support->itemInit(mod->support);
-        //    moduleUpdateMenuInternal(mod, 0, 0);
-
-        //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
         //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
