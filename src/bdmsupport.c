@@ -169,30 +169,30 @@ static int bdmNeedsUpdate(item_list_t *itemList)
         return 1;
     }
 
-    // If the device menu is visible double check the device type and if support for this device type is enabled. If the user switches device support
-    // to off for a bdm device we want to hide the menu even though the drivers are still loaded and the device is being detected by bdm.
-    opl_io_module_t *pOwner = (opl_io_module_t *)itemList->owner;
-    if (pOwner != NULL && pOwner->menuItem.visible == 1) {
-        int deviceEnabled = 0;
-        switch (pDeviceData->bdmDeviceType) {
-            case BDM_TYPE_USB:
-                //deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
-                //deviceEnabled = (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
-                deviceEnabled = gEnableUSB;
-                break;
-            case BDM_TYPE_ILINK:
-                deviceEnabled = gEnableILK;
-                break;
-            case BDM_TYPE_SDC:
-                deviceEnabled = gEnableMX4SIO;
-                break;
-            case BDM_TYPE_ATA:
-                deviceEnabled = gEnableBdmHDD;
-                break;
-            default:
-                deviceEnabled = 0;
-                break;
-        }
+    //// If the device menu is visible double check the device type and if support for this device type is enabled. If the user switches device support
+    //// to off for a bdm device we want to hide the menu even though the drivers are still loaded and the device is being detected by bdm.
+    //opl_io_module_t *pOwner = (opl_io_module_t *)itemList->owner;
+    //if (pOwner != NULL && pOwner->menuItem.visible == 1) {
+    //    int deviceEnabled = 0;
+    //    switch (pDeviceData->bdmDeviceType) {
+    //        case BDM_TYPE_USB:
+    //            //deviceEnabled = (gBDMStartMode != START_MODE_DISABLED);
+    //            //deviceEnabled = (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
+    //            deviceEnabled = gEnableUSB;
+    //            break;
+    //        case BDM_TYPE_ILINK:
+    //            deviceEnabled = gEnableILK;
+    //            break;
+    //        case BDM_TYPE_SDC:
+    //            deviceEnabled = gEnableMX4SIO;
+    //            break;
+    //        case BDM_TYPE_ATA:
+    //            deviceEnabled = gEnableBdmHDD;
+    //            break;
+    //        default:
+    //            deviceEnabled = 0;
+    //            break;
+    //    }
 
         // If the device page is visible but the device support is not enabled, hide the device page.
         if (deviceEnabled == 0)
