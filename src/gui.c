@@ -1591,7 +1591,7 @@ int defaultDelayFrame = 300;
 //int LongDelayTime = 18000;
 int ShortDelayTime = 92;
 int endIntroDelayFrame = 0;
-int menuUpdateHookDoneDelay = 180;
+int menuUpdateHookDoneDelay = 6;
 int menuUpdateHookDone = 1;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
@@ -1747,7 +1747,7 @@ void guiMainLoop(void)
             }              
         } else {
             // 找到bdm设备或delay结束后，还要等刷新周期结束
-            if (menuUpdateHookDone && (menuUpdateHookDone++ >= menuUpdateHookDoneDelay)) {
+            if (menuUpdateHookDone && (menuUpdateHookDone++ > menuUpdateHookDoneDelay)) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
                     if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
