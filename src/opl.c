@@ -465,7 +465,21 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->owner = mod;
             initMenuForListSupport(mod);
         }
-
+        // 根据设备开关，设定隐藏值（可能有负面影响）
+        if (mode >= BDM_MODE && mode < ETH_MODE) {
+            mod->menuItem.visible = 0;
+            bdm_device_data_t *pDeviceData = itemList->priv;
+            if (pDeviceData != NULL) {
+                if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                    mod->menuItem.visible = gEnableUSB;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                    mod->menuItem.visible = gEnableILK;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                    mod->menuItem.visible = gEnableMX4SIO;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                    mod->menuItem.visible = gEnableBdmHDD;
+            }
+        }
         //// 将已开启的BDM设备(可被访问)，变为可见状态（只影响手动模式）
         //if (mode >= BDM_MODE && mode < ETH_MODE) {
         //    char bdmPath[8];
@@ -535,22 +549,6 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
         //}
 
         if (((force_reinit) && (mod->support->enabled)) || (startMode == START_MODE_AUTO && !mod->support->enabled)) {
-            // 自动模式根据设备开关，设定隐藏初始值（可能有负面影响）
-            if (mode >= BDM_MODE && mode < ETH_MODE) {
-                mod->menuItem.visible = 0;
-                bdm_device_data_t *pDeviceData = itemList->priv;
-                if (pDeviceData != NULL) {
-                    if (!strcmp(pDeviceData->bdmDriver, "usb"))
-                        mod->menuItem.visible = gEnableUSB;
-                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                        mod->menuItem.visible = gEnableILK;
-                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                        mod->menuItem.visible = gEnableMX4SIO;
-                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                        mod->menuItem.visible = gEnableBdmHDD;
-                }
-            }
-
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
