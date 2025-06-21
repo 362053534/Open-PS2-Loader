@@ -1591,6 +1591,7 @@ int defaultDelayFrame = 300;
 //int LongDelayTime = 18000;
 int ShortDelayTime = 92;
 int endIntroDelayFrame = 0;
+int menuUpdateHookDoneDelay = 5;
 int menuUpdateHookDone = 1;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
@@ -1632,7 +1633,7 @@ void reFindBDM()
             menuUpdateHookDone = 0;
         if (!gBDMStartMode) {
             endIntroDelayFrame = 0;
-            menuUpdateHookDone = 1;
+            menuUpdateHookDone = menuUpdateHookDoneDelay;
         }
     }
 
@@ -1651,6 +1652,7 @@ void guiMainLoop(void)
 {
     int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
+    menuUpdateHookDone = menuUpdateHookDoneDelay;
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
@@ -1745,7 +1747,7 @@ void guiMainLoop(void)
             }              
         } else {
             // 找到bdm设备或delay结束后，还要等刷新周期结束
-            if (menuUpdateHookDone) {
+            if (menuUpdateHookDone && (menuUpdateHookDone++ >= menuUpdateHookDoneDelay)) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
                     if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
