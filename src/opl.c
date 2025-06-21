@@ -878,6 +878,9 @@ void menuDeferredUpdate(void *data)
         // If other modes have been updated, then the apps list should be updated too.
         if (mod->support->mode != APP_MODE)
             shouldAppsUpdate = 1;
+
+        if (!menuUpdateHookDone)
+            menuUpdateHookDone = 1;    
     }
 }
 
@@ -904,8 +907,6 @@ static void menuUpdateHook()
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
-        if (!menuUpdateHookDone)
-            menuUpdateHookDone = 1;    
     }
 }
 
