@@ -940,19 +940,20 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             fileXioDclose(dir);
             return 1;
         } else { // 如果已经初始化
+            // 设备从关到开，才需要return1，否则不更新
             int result = 0;
             if (itemList->owner != NULL) {
                 if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                    if (result = (visible != gEnableUSB))
+                    if (result = (visible < gEnableUSB))
                         ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
-                    if (result = (visible != gEnableILK))
+                    if (result = (visible < gEnableILK))
                         ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                    if (result = (visible != gEnableMX4SIO))
+                    if (result = (visible < gEnableMX4SIO))
                         ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-                    if (result = (visible != gEnableBdmHDD))
+                    if (result = (visible < gEnableBdmHDD))
                         ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
                 } else {
                     result = 0;
