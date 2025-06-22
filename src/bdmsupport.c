@@ -277,6 +277,15 @@ static int bdmUpdateGameList(item_list_t *itemList)
             return (pDeviceData->bdmGameCount = -1);
         else {
             sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
+            // debug  打印debug信息，方便调试
+            char debugFileDir[64];
+            strcpy(debugFileDir, "mass0:debug-sbReadList.txt");
+            // sprintf(debugFileDir, "%sdebug.txt", prefix);
+            FILE *debugFile = fopen(debugFileDir, "ab+");
+            if (debugFile != NULL) {
+                fprintf(debugFile, "%ssbReadList！\r\nbdmGameCount：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
+                fclose(debugFile);
+            }
             return pDeviceData->bdmGameCount;
         }
     } else
@@ -913,11 +922,10 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 }
                 // debug  打印debug信息，方便调试
                 char debugFileDir[64];
-                strcpy(debugFileDir, "smb:debug-BdmMenuTest.txt");
-                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                strcpy(debugFileDir, "mass0:debug-BdmMenuTest.txt");
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "%s已初始化！\r\nbdmGames == NULL：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL ? 1 : 0);
+                    fprintf(debugFile, "%sInitDone！\r\nbdmGameCount：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
                     fclose(debugFile);
                 }
             }
@@ -958,11 +966,11 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             if (result) {
                 // debug  打印debug信息，方便调试
                 char debugFileDir[64];
-                strcpy(debugFileDir, "smb:debug-BdmMenuTest.txt");
+                strcpy(debugFileDir, "mass0:debug-BdmMenuTest.txt");
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "%s中途强制更新！\r\nbdmGames == NULL：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL ? 1 : 0);
+                    fprintf(debugFile, "%sForceUpdate！\r\nbdmGameCount：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
                     fclose(debugFile);
                 }
             }

@@ -1752,15 +1752,15 @@ void guiMainLoop(void)
                 // BDM自动模式时，启动变量直接改为1
                 if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
                     BdmStarted = 1;
-                //// debug  打印debug信息，找到gpt信息
-                // char debugFileDir[64];
-                // strcpy(debugFileDir, "mass0:debug-gui.txt");
-                //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-                // FILE *debugFile = fopen(debugFileDir, "ab+");
-                // if (debugFile != NULL) {
-                //     fprintf(debugFile, GptFound ? "硬盘成功启动了！\r\n\r\n": "硬盘启动失败，找不到硬盘内的数据！\r\n\r\n");
-                //     fclose(debugFile);
-                // }
+                // debug  打印debug信息，找到gpt信息
+                char debugFileDir[64];
+                strcpy(debugFileDir, "mass0:debug-DeviceFound.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "UsbOn:%d     UsbFound:%d\r\nGptOn:%d    GptFound:%d\r\n\r\n", gEnableUSB, usbFoundg, EnableBdmHDD, GptFound);
+                    fclose(debugFile);
+                }
             }
         }
 
