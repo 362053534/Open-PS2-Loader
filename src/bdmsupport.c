@@ -941,7 +941,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "%s已初始化！\r\nbdmGames == NULL：%d\r\n\r\n" pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL);
+                    fprintf(debugFile, "%s已初始化！\r\nbdmGames == NULL：%d\r\n\r\n" pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL ? 1 : 0);
                     fclose(debugFile);
                 }
             }
@@ -986,7 +986,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "%s中途强制更新！\r\nbdmGames == NULL：%d\r\n\r\n" pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL);
+                    fprintf(debugFile, "%s中途强制更新！\r\nbdmGames == NULL：%d\r\n\r\n" pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL ? 1 : 0);
                     fclose(debugFile);
                 }
             }
