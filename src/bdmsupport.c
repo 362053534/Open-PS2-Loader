@@ -257,21 +257,30 @@ static int bdmUpdateGameList(item_list_t *itemList)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
-    // 获取游戏列表前，检查设备是否就绪
+    // 检查设备是否就绪，第一次没有开启设备时返回-1
     if (pDeviceData != NULL) {
-        if (!strcmp(pDeviceData->bdmDriver, "usb"))
+        int bdmDeviceOn = 1;
+        if (!strcmp(pDeviceData->bdmDriver, "usb") && !usbFound) {
             usbFound = 1;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+            bdmDeviceOn = gEnableUSB;
+        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK && !ILKFound) {
             ILKFound = 1;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+            bdmDeviceOn = gEnableILK;
+        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC && !MX4SIOFound) {
             MX4SIOFound = 1;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+            bdmDeviceOn = gEnableMX4SIO;
+        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA && !GptFound) {
             GptFound = 1;
-    }
-
-    sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
-
-    return pDeviceData->bdmGameCount;
+            bdmDeviceOn = gEnableBdmHDD;
+        }
+        if (!bdmDeviceOn)
+            return (pDeviceData->bdmGameCount = -1);
+        else {
+            sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
+            return pDeviceData->bdmGameCount;
+        }
+    } else
+        return 0;
 }
 
 static int bdmGetGameCount(item_list_t *itemList)
@@ -812,39 +821,6 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 //static int bdmHddRetryCount = 0;
 int bdmUpdateDeviceData(item_list_t *itemList)
 {
-    //// 阻塞式扫描硬盘，防止硬盘延迟启动所导致的各种问题
-    //if (gEnableBdmHDD) {
-    //    if (!bdmHddCheckDone) {
-    //        int bdmHddCheckCount = 2000;  // 次数越多，扫描时间越长，单位是毫秒？
-    //        char bdmType[32];
-    //        char tempPath[16] = {0};
-    //        int tempDir = 0;
-    //        int startCheckIndex = 0;
-    //        while (bdmHddCheckCount > 0) {
-    //            ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmLoadBlockDeviceModules);
-    //            bdmHddCheckCount--;
-    //            for (int i = startCheckIndex; i < MAX_BDM_DEVICES; i++) {
-    //                sprintf(tempPath, "mass%d:/", i);
-    //                if ((tempDir = fileXioDopen(tempPath)) >= 0) {
-    //                    fileXioIoctl2(tempDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &bdmType, sizeof(bdmType) - 1);
-    //                    if (strncmp(bdmType, "ata", 3) == 0) {
-    //                        bdmHddCheckDone = 1;
-    //                        fileXioDclose(tempDir);
-    //                        break;
-    //                    } else if (strncmp(bdmType, "usb", 3) == 0) {
-    //                        startCheckIndex = 1;
-    //                    }
-    //                    fileXioDclose(tempDir);                        
-    //                }
-    //            }
-    //            if (bdmHddCheckDone)
-    //                break;
-    //            bdmHddRetryCount++;
-    //        }
-    //        bdmHddCheckDone = 1;
-    //    }
-    //}
-    
     char path[16] = {0};
 
     // If bdm mode is disabled bail out as we don't want to update the visibility state of the device pages.
@@ -968,13 +944,13 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 //    result = 0;
                 //}
                 if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                    result = (visible && (pDeviceData->bdmGames == NULL));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
-                    result = (visible && (pDeviceData->bdmGames == NULL));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                    result = (visible && (pDeviceData->bdmGames == NULL));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-                    result = (visible && (pDeviceData->bdmGames == NULL));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else {
                     result = 0;
                 }
