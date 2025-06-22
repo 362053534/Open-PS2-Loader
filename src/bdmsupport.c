@@ -259,17 +259,17 @@ static int bdmUpdateGameList(item_list_t *itemList)
 
     // 检查设备是否就绪，第一次没有开启设备时返回-1
     if (pDeviceData != NULL) {
-        int bdmDeviceOn = 1;
-        if (!strcmp(pDeviceData->bdmDriver, "usb") && !usbFound) {
+        int bdmDeviceOn = 0;
+        if (!strcmp(pDeviceData->bdmDriver, "usb")) {
             usbFound = 1;
             bdmDeviceOn = gEnableUSB;
-        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK && !ILKFound) {
+        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
             ILKFound = 1;
             bdmDeviceOn = gEnableILK;
-        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC && !MX4SIOFound) {
+        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
             MX4SIOFound = 1;
             bdmDeviceOn = gEnableMX4SIO;
-        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA && !GptFound) {
+        } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
             GptFound = 1;
             bdmDeviceOn = gEnableBdmHDD;
         }
@@ -283,7 +283,7 @@ static int bdmUpdateGameList(item_list_t *itemList)
             // sprintf(debugFileDir, "%sdebug.txt", prefix);
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "%ssbReadList！\r\nbdmGameCount：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
+                fprintf(debugFile, "%s sbReadList!\r\nbdmGameCount:%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
                 fclose(debugFile);
             }
             return pDeviceData->bdmGameCount;
@@ -925,7 +925,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 strcpy(debugFileDir, "mass0:debug-BdmMenuTest.txt");
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "%sInitDone！\r\nbdmGameCount：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
+                    fprintf(debugFile, "%sInitDone!\r\nbdmGameCount:%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
                     fclose(debugFile);
                 }
             }
@@ -951,6 +951,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 //} else {
                 //    result = 0;
                 //}
+                // 设备初始化后，开关从关闭到开启
                 if (!strcmp(pDeviceData->bdmDriver, "usb")) {
                     result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
@@ -970,7 +971,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "%sForceUpdate！\r\nbdmGameCount：%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
+                    fprintf(debugFile, "%sForceUpdate!\r\nbdmGameCount:%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
                     fclose(debugFile);
                 }
             }
