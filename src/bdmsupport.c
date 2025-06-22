@@ -935,6 +935,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                     LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
                 }
+                // debug  打印debug信息，方便调试
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-BdmMenuTest.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "%s已初始化！\r\nbdmGames == NULL：%d\r\n\r\n" pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL);
+                    fclose(debugFile);
+                }
             }
             // Close the device handle.
             fileXioDclose(dir);
@@ -960,17 +969,6 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 //}
                 if (!strcmp(pDeviceData->bdmDriver, "usb")) {
                     result = (visible && (pDeviceData->bdmGames == NULL));
-                    if (result) {
-                        // debug  打印debug信息，方便调试
-                        char debugFileDir[64];
-                        strcpy(debugFileDir, "smb:debug-usbtest.txt");
-                        // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                        FILE *debugFile = fopen(debugFileDir, "ab+");
-                        if (debugFile != NULL) {
-                            fprintf(debugFile, "USB页面更新！\r\n\r\n");
-                            fclose(debugFile);
-                        }
-                    }
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
                     result = (visible && (pDeviceData->bdmGames == NULL));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
@@ -979,6 +977,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                     result = (visible && (pDeviceData->bdmGames == NULL));
                 } else {
                     result = 0;
+                }
+            }
+            if (result) {
+                // debug  打印debug信息，方便调试
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-BdmMenuTest.txt");
+                // sprintf(debugFileDir, "%sdebug.txt", prefix);
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "%s中途强制更新！\r\nbdmGames == NULL：%d\r\n\r\n" pDeviceData->bdmDriver, pDeviceData->bdmGames == NULL);
+                    fclose(debugFile);
                 }
             }
             // Close the device handle.
