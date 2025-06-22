@@ -510,6 +510,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 //    return 0;
 //}
 
+static int _txtFileRebuilded = 0;
 static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *file, int txtFileChanged, u32 txtFileSize)
 {
     //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
@@ -589,8 +590,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
 
                     // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
                     if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
-                        txtFileRebuilded = 1; // 弹窗用
-                        txtFileCreated = 0;
+                        _txtFileRebuilded = 1; // 弹窗用
                         skipTxtScan = 1;
                         strcpy(game->indexName, (&cachedGInfo)->indexName);
                         strcpy(game->transName, (&cachedGInfo)->transName);
@@ -631,8 +631,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
 
                 // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
                 if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
-                    txtFileRebuilded = 1; // 弹窗用
-                    txtFileCreated = 0;
+                    _txtFileRebuilded = 1; // 弹窗用
                     skipTxtScan = 1;
                     strcpy(game->indexName, (&cachedGInfo)->indexName);
                     strcpy(game->transName, (&cachedGInfo)->transName);
@@ -766,7 +765,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
     return count;
 }
 
-//static int usbFound = 0;
 int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount)
 {
     // 如果没有DVD和CD文件夹，直接跳过扫描，避免设备"假存在"而引起的卡死
@@ -995,7 +993,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
     if (file != NULL && (curTxtFileSize == 0)) {
-        txtFileCreated = 1;
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
         fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
@@ -1139,6 +1136,15 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         fseek(file, 0, SEEK_END);
         (&txtInfo)->preTxtFileSize = ftell(file);
         fclose(file);
+        // txt文件操作完了再改变txt弹窗变量
+        if (!curTxtFileSize) {
+            txtFileCreated = 1;
+            if (_txtFileRebuilded) {
+                txtFileRebuilded = _txtFileRebuilded;
+                txtFileCreated = 0;
+                _txtFileRebuilded = 0;
+            }
+        }
     } else {
         (&txtInfo)->preTxtFileSize = 0;
     }
