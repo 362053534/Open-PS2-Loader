@@ -272,20 +272,16 @@ static int bdmUpdateGameList(item_list_t *itemList)
         } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
             GptFound = 1;
             bdmDeviceOn = gEnableBdmHDD;
+        } else { // 未初始化，或未知设备
+            return 0;
         }
-        if (!bdmDeviceOn)
-            return (pDeviceData->bdmGameCount = -1);
+        // 已知设备没开就返回0，开了就生成列表
+        if (!bdmDeviceOn) {
+            pDeviceData->bdmGameCount = -1;
+            return 0;
+        }
         else {
             sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
-            // debug  打印debug信息，方便调试
-            char debugFileDir[64];
-            strcpy(debugFileDir, "mass0:debug-sbReadList.txt");
-            // sprintf(debugFileDir, "%sdebug.txt", prefix);
-            FILE *debugFile = fopen(debugFileDir, "ab+");
-            if (debugFile != NULL) {
-                fprintf(debugFile, "%s sbReadList!\r\nbdmGameCount:%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
-                fclose(debugFile);
-            }
             return pDeviceData->bdmGameCount;
         }
     } else
@@ -847,20 +843,6 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
-    //// debug  打印debug信息，找到gpt信息
-    //if (dir < 0) {     
-    //    if (itemList->mode == 1) {
-    //        char debugFileDir[64];
-    //        strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-    //        // sprintf(debugFileDir, "%sdebug.txt", prefix);
-    //        FILE *debugFile = fopen(debugFileDir, "ab+");
-    //        if (debugFile != NULL) {
-    //            fprintf(debugFile, "检测不到硬盘！\r\n\r\n");
-    //            fclose(debugFile);
-    //        }
-    //    }
-    //}
-
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
         if (pDeviceData->bdmPrefix[0] == '\0') {
@@ -897,18 +879,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
             // Make the menu item visible.
             if (itemList->owner != NULL) {
-                //// debug  打印debug信息，方便调试
-                // char debugFileDir[64];
-                // strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-                //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-                // FILE *debugFile = fopen(debugFileDir, "ab+");
-                // if (debugFile != NULL) {
-                //     fprintf(debugFile, "visible == %d时执行了初始化\r\ngEnableUSB:%d    bdmPrefix:%s   bdmDriver:%s   bdmDeviceType:%d\r\n\r\n", visible, gEnableUSB, pDeviceData->bdmPrefix, pDeviceData->bdmDriver, pDeviceData->bdmDeviceType);
-                //     fclose(debugFile);
-                // }
-
                 // 设备初始化完成后，根据BDM设备开关，来决定visible的值
-                if (!strcmp(pDeviceData->bdmDriver, "usb"))
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
@@ -916,18 +888,10 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
-                else {
-                    LOG("bdmUpdateDeviceData: setting device %d visible\n", itemList->mode);
-                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
-                }
-                // debug  打印debug信息，方便调试
-                char debugFileDir[64];
-                strcpy(debugFileDir, "mass0:debug-BdmMenuTest.txt");
-                FILE *debugFile = fopen(debugFileDir, "ab+");
-                if (debugFile != NULL) {
-                    fprintf(debugFile, "%sInitDone!\r\nbdmGameCount:%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
-                    fclose(debugFile);
-                }
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1; // 未知设备默认显示出来
+                else
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0; // 默认隐藏
             }
             // Close the device handle.
             fileXioDclose(dir);
@@ -936,23 +900,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // 设备从关到开，才需要return1，否则不更新
             int result = 0;
             if (itemList->owner != NULL) {
-                //if (!strcmp(pDeviceData->bdmDriver, "usb")) {
-                //    if (result = ((visible < gEnableUSB) && (pDeviceData->bdmGames == NULL)))
-                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
-                //} else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
-                //    if (result = ((visible < gEnableILK) && (pDeviceData->bdmGames == NULL)))
-                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
-                //} else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                //    if (result = ((visible < gEnableMX4SIO) && (pDeviceData->bdmGames == NULL)))
-                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
-                //} else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-                //    if (result = ((visible < gEnableBdmHDD) && (pDeviceData->bdmGames == NULL)))
-                //        ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
-                //} else {
-                //    result = 0;
-                //}
                 // 设备初始化后，开关从关闭到开启
-                if (!strcmp(pDeviceData->bdmDriver, "usb")) {
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
                     result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
                     result = (visible && (pDeviceData->bdmGameCount == -1));
@@ -964,33 +913,10 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                     result = 0;
                 }
             }
-            if (result) {
-                // debug  打印debug信息，方便调试
-                char debugFileDir[64];
-                strcpy(debugFileDir, "mass0:debug-BdmMenuTest.txt");
-                // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                FILE *debugFile = fopen(debugFileDir, "ab+");
-                if (debugFile != NULL) {
-                    fprintf(debugFile, "%sForceUpdate!\r\nbdmGameCount:%d\r\n\r\n", pDeviceData->bdmDriver, pDeviceData->bdmGameCount);
-                    fclose(debugFile);
-                }
-            }
             // Close the device handle.
             fileXioDclose(dir);
             return result;
         }
-
-        //// debug  打印debug信息，找到gpt信息
-        //if (itemList->mode == 1) {
-        //    char debugFileDir[64];
-        //    strcpy(debugFileDir, "mass0:debug-bdmsupport.txt");
-        //    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-        //    FILE *debugFile = fopen(debugFileDir, "ab+");
-        //    if (debugFile != NULL) {
-        //        fprintf(debugFile, "%s硬盘识别成功！\r\n\r\n", pDeviceData->bdmDriver);
-        //        fclose(debugFile);
-        //    }
-        //}
     } else if (dir < 0 && visible == 1) {
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
@@ -1002,6 +928,5 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
         return -1;
     }
-
     return 0;
 }
