@@ -1758,7 +1758,7 @@ void guiMainLoop(void)
                 // sprintf(debugFileDir, "%sdebug.txt", prefix);
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "UsbOn:%d     UsbFound:%d\r\nGptOn:%d    GptFound:%d\r\n\r\n", gEnableUSB, usbFoundg, EnableBdmHDD, GptFound);
+                    fprintf(debugFile, "UsbOn:%d     UsbFound:%d\r\nGptOn:%d    GptFound:%d\r\n\r\n", gEnableUSB, usbFound, gEnableBdmHDD, GptFound);
                     fclose(debugFile);
                 }
             }
