@@ -401,8 +401,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             LOG("BDMSUPPORT Cluster Chain OK\n");
                             have_error = 0;
                             bdm_vmc_infos.active = 1;
-                            bdm_vmc_infos.start_sector = startingLBA;
-                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, startingLBA);
+                            bdm_vmc_infos.start_sector = (u32)startingLBA;
+                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, (u32)startingLBA);
                         } else {
                             LOG("BDMSUPPORT Cluster Chain NG\n");
                             have_error = 2;
