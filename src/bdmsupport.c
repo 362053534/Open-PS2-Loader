@@ -346,7 +346,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     int i, fd, iop_fd, index, compatmask = 0;
     int EnablePS2Logo = 0;
     int result;
-    u32 startingLBA;
+    u64 startingLBA;
     unsigned int startCluster;
     char partname[256], filename[32];
     base_game_info_t *game;
