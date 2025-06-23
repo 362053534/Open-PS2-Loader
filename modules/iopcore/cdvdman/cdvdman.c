@@ -180,8 +180,10 @@ int DeviceReadSectorsCached(u32 lsn, void *buffer, unsigned int sectors)
             cur_sector = lsn;
         }
         int pos = lsn - cur_sector;
-        memcpy(buffer, &(sector_cache[pos * 2048]), 2048 * sectors);
-        return SCECdErNO;
+        if (pos >= 0) {
+            memcpy(buffer, &(sector_cache[pos * 2048]), 2048 * sectors);
+            return SCECdErNO;
+        }
     }
     return DeviceReadSectors(lsn, buffer, sectors);
 }
