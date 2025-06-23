@@ -346,7 +346,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     int i, fd, iop_fd, index, compatmask = 0;
     int EnablePS2Logo = 0;
     int result;
-    u32 startingLBA;
+    u64 startingLBA;
     unsigned int startCluster;
     char partname[256], filename[32];
     base_game_info_t *game;
@@ -392,7 +392,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                         // VMC only supports 32bit LBAs at the moment, so if the starting LBA + size of the VMC crosses the 32bit boundary
                         // just report the VMC as being fragmented to prevent file system corruption.
                         int vmcSectorCount = vmcSizeInMb * ((1024 * 1024) / 512); // size in MB * sectors per MB
-                        if (startingLBA + vmcSectorCount > 0x100000000) {
+                        if ((u32)startingLBA + (u32)vmcSectorCount > 0x100000000) {
                             LOG("BDMSUPPORT VMC bad LBA range\n");
                             have_error = 2;
                         }
@@ -401,8 +401,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             LOG("BDMSUPPORT Cluster Chain OK\n");
                             have_error = 0;
                             bdm_vmc_infos.active = 1;
-                            bdm_vmc_infos.start_sector = startingLBA;
-                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, startingLBA);
+                            bdm_vmc_infos.start_sector = (u32)startingLBA;
+                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, (u32)startingLBA);
                         } else {
                             LOG("BDMSUPPORT Cluster Chain NG\n");
                             have_error = 2;
