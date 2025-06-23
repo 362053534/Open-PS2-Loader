@@ -41,7 +41,7 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 // Sector cache to improve IO
 static u8 MAX_SECTOR_CACHE = 0;
 static u8 *sector_cache = NULL;
-static u32 cur_sector = 0xffffffff;
+static int cur_sector = -1;
 
 struct cdvdman_cb_data
 {
@@ -173,7 +173,7 @@ void *ziso_alloc(u32 size)
 int DeviceReadSectorsCached(u32 lsn, void *buffer, unsigned int sectors)
 {
     if (sectors < MAX_SECTOR_CACHE) { // if MAX_SECTOR_CACHE is 0 then it will act as disabled and passthrough
-        if (cur_sector == 0xffffffff || lsn < cur_sector || (lsn + sectors) - cur_sector > MAX_SECTOR_CACHE) {
+        if (cur_sector < 0 || lsn < cur_sector || (lsn + sectors) - cur_sector > MAX_SECTOR_CACHE) {
             DeviceReadSectors(lsn, sector_cache, MAX_SECTOR_CACHE);
             cur_sector = lsn;
         }
