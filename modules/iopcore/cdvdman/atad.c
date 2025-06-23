@@ -75,8 +75,8 @@ static ata_devinfo_t atad_devinfo;
 
 #ifdef USE_BDM_ATA
 static struct block_device g_ata_bd;
-static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 count);
-static int ata_bd_write(struct block_device *bd, u64 sector, const void *buffer, u16 count);
+static int ata_bd_read(struct block_device *bd, u32 sector, void *buffer, u16 count);
+static int ata_bd_write(struct block_device *bd, u32 sector, const void *buffer, u16 count);
 static void ata_bd_flush(struct block_device *bd);
 static int ata_bd_stop(struct block_device *bd);
 #endif
@@ -118,7 +118,7 @@ static unsigned int ata_alarm_cb(void *unused);
 static void ata_set_dir(int dir);
 static void ata_shutdown_cb(void);
 
-int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, int dir);
+int ata_device_sector_io_internal(int device, void *buf, u32 lba, u32 nsectors, int dir);
 
 /* In v1.04, DMA was enabled in ata_set_dir() instead. */
 static void ata_pre_dma_cb(int bcr, int dir)
@@ -609,10 +609,10 @@ int sceAtaFlushCache(int device)
 /* Note: this can only support DMA modes, due to the commands issued. */
 int sceAtaDmaTransfer(int device, void *buf, u32 lba, u32 nsectors, int dir)
 {
-    return ata_device_sector_io_internal(device, buf, (u64)lba, nsectors, dir);
+    return ata_device_sector_io_internal(device, buf, (u32)lba, nsectors, dir);
 }
 
-int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, int dir)
+int ata_device_sector_io_internal(int device, void *buf, u32 lba, u32 nsectors, int dir)
 {
     USE_SPD_REGS;
     int res = 0, retries;
@@ -711,7 +711,7 @@ static void ata_shutdown_cb(void)
 }
 
 #ifdef USE_BDM_ATA
-static int ata_bd_io_common(struct block_device *bd, u64 lba, void *buf, u16 nsectors, int dir)
+static int ata_bd_io_common(struct block_device *bd, u32 lba, void *buf, u16 nsectors, int dir)
 {
     return ata_device_sector_io_internal(bd->devNr, buf, lba, nsectors, dir);
 }
@@ -720,13 +720,13 @@ static int ata_bd_io_common(struct block_device *bd, u64 lba, void *buf, u16 nse
 // Block device interface
 //
 
-static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 count)
+static int ata_bd_read(struct block_device *bd, u32 sector, void *buffer, u16 count)
 {
     if (ata_bd_io_common(bd, sector, buffer, count, 0) != 0)
         return -EIO;
     return count;
 }
-static int ata_bd_write(struct block_device *bd, u64 sector, const void *buffer, u16 count)
+static int ata_bd_write(struct block_device *bd, u32 sector, const void *buffer, u16 count)
 {
     if (ata_bd_io_common(bd, sector, (void *)buffer, count, 1) != 0)
         return -EIO;

@@ -346,7 +346,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     int i, fd, iop_fd, index, compatmask = 0;
     int EnablePS2Logo = 0;
     int result;
-    u64 startingLBA;
+    u32 startingLBA;
     unsigned int startCluster;
     char partname[256], filename[32];
     base_game_info_t *game;
@@ -401,8 +401,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             LOG("BDMSUPPORT Cluster Chain OK\n");
                             have_error = 0;
                             bdm_vmc_infos.active = 1;
-                            bdm_vmc_infos.start_sector = (u32)startingLBA;
-                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, (u32)startingLBA);
+                            bdm_vmc_infos.start_sector = startingLBA;
+                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, startingLBA);
                         } else {
                             LOG("BDMSUPPORT Cluster Chain NG\n");
                             have_error = 2;
