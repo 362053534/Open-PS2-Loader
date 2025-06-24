@@ -165,7 +165,7 @@ gui_strings:
 - label: BDMMODE
   string: BDM设备启动模式
 - label: HDDMODE
-  string: HDD设备启动模式
+  string: HDD(APA)设备启动模式
 - label: ETHMODE
   string: ETH设备启动模式
 - label: APPMODE
