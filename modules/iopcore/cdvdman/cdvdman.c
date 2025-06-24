@@ -41,7 +41,7 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 // Sector cache to improve IO
 static u8 MAX_SECTOR_CACHE = 0;
 static u8 *sector_cache = NULL;
-static int cur_sector = -1;
+static u32 cur_sector = 0xFFFFFFFF;
 
 struct cdvdman_cb_data
 {
@@ -173,16 +173,19 @@ void *ziso_alloc(u32 size)
 int DeviceReadSectorsCached(u32 lsn, void *buffer, unsigned int sectors)
 {
     if (sectors < MAX_SECTOR_CACHE) { // if MAX_SECTOR_CACHE is 0 then it will act as disabled and passthrough
-        if (cur_sector < 0 || lsn < cur_sector || (lsn + sectors) - cur_sector > MAX_SECTOR_CACHE) {
-            DeviceReadSectors(lsn, sector_cache, MAX_SECTOR_CACHE);
+        if (cur_sector == 0xFFFFFFFF || lsn < cur_sector || (lsn - cur_sector) + sectors > MAX_SECTOR_CACHE) {
+            int res = DeviceReadSectors(lsn, sector_cache, MAX_SECTOR_CACHE);
+            if (res != SCECdErNO)
+                return res; // 读失败
             cur_sector = lsn;
         }
         int pos = lsn - cur_sector;
-        memcpy(buffer, &(sector_cache[pos * 2048]), 2048 * sectors);
-        return SCECdErNO;
+        if (pos >= 0) {
+            memcpy(buffer, &(sector_cache[pos * 2048]), 2048 * sectors);
+            return SCECdErNO;
+        }
     }
-    int res = DeviceReadSectors(lsn, buffer, sectors);
-    return res;
+    return DeviceReadSectors(lsn, buffer, sectors);
 }
 
 /*
@@ -354,15 +357,16 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
     cdvdman_stat.status = SCECdStatRead;
+    buf = (void *)PHYSADDR(buf);
 
+#if defined(HDD_DRIVER) || defined(USE_BDM_ATA) // As of now, only the ATA interface requires this. We do this here to share cdvdman_buf.
     // OPL only has 2048 bytes no matter what. For other sizes we have to copy to the offset and prepoluate the sector header data (the extra bytes.)
     u32 offset = 0;
 
     if (sector_size == 2340)
         offset = 12; // head - sub - data(2048) -- edc-ecc
 
-    buf = (void *)PHYSADDR(buf);
-    if (((u32)(buf)&3) || (sector_size != 2048)) {
+    if ((u32)(buf)&3) {
         // For transfers to unaligned buffers, a double-copy is required to avoid stalling the device's DMA channel.
         WaitSema(cdvdman_searchfilesema);
 
@@ -414,8 +418,11 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
         SignalSema(cdvdman_searchfilesema);
     } else {
+#endif
         cdvdman_read_sectors(lsn, sectors, buf);
+#if defined(HDD_DRIVER) || defined(USE_BDM_ATA)
     }
+#endif
 
     ReadPos = 0; /* Reset the buffer offset indicator. */
 
