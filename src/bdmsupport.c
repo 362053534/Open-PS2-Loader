@@ -391,8 +391,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
                         // VMC only supports 32bit LBAs at the moment, so if the starting LBA + size of the VMC crosses the 32bit boundary
                         // just report the VMC as being fragmented to prevent file system corruption.
-                        int vmcSectorCount = vmcSizeInMb * ((1024 * 1024) / 512); // size in MB * sectors per MB
-                        if ((u32)startingLBA + (u32)vmcSectorCount > 0x100000000) {
+                        u64 vmcSectorCount = vmcSizeInMb * ((1024 * 1024) / 512); // size in MB * sectors per MB
+                        if (startingLBA + vmcSectorCount > 0x100000000) {
                             LOG("BDMSUPPORT VMC bad LBA range\n");
                             have_error = 2;
                         }
@@ -401,8 +401,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             LOG("BDMSUPPORT Cluster Chain OK\n");
                             have_error = 0;
                             bdm_vmc_infos.active = 1;
-                            bdm_vmc_infos.start_sector = (u32)startingLBA;
-                            LOG("BDMSUPPORT VMC slot %d start: 0x%X\n", vmc_id, (u32)startingLBA);
+                            bdm_vmc_infos.start_sector = startingLBA;
+                            LOG("BDMSUPPORT VMC slot %d start: 0x%08x%08x\n", vmc_id, ((u32 *)&startingLBA)[1], ((u32 *)&startingLBA)[0]);
                         } else {
                             LOG("BDMSUPPORT Cluster Chain NG\n");
                             have_error = 2;
