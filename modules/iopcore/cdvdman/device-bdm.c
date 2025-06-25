@@ -141,7 +141,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         return SCECdErTRMOPN;
 
     WaitSema(bdm_io_sema);
-    if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], lsn * 4, buffer, sectors * 4) != (sectors * 4))
+    if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4) != (sectors * 4))
         rv = SCECdErREAD;
     SignalSema(bdm_io_sema);
 
@@ -157,7 +157,7 @@ void bdm_readSector(u32 lba, unsigned short int nsectors, unsigned char *buffer)
     DPRINTF("%s\n", __func__);
 
     WaitSema(bdm_io_sema);
-    g_bd->read(g_bd, lba, buffer, nsectors);
+    g_bd->read(g_bd, (u64)lba, buffer, nsectors);
     SignalSema(bdm_io_sema);
 }
 
@@ -166,6 +166,6 @@ void bdm_writeSector(u32 lba, unsigned short int nsectors, const unsigned char *
     DPRINTF("%s\n", __func__);
 
     WaitSema(bdm_io_sema);
-    g_bd->write(g_bd, lba, buffer, nsectors);
+    g_bd->write(g_bd, (u64)lba, buffer, nsectors);
     SignalSema(bdm_io_sema);
 }
