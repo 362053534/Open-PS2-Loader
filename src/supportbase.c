@@ -1411,14 +1411,14 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->indexName, game->extension);
             break;
     }
-    //// 把真实路径写到文本文件里，作为debug使用
-    //char fileDir[64];
-    //snprintf(fileDir, 256, "%sdebug.txt", prefix);
-    //FILE *file = fopen(fileDir, "at");
-    //fprintf(file, "%s\n", path);
-    //fclose(file);
+    // debug把真实路径写到文本文件里
+    char fileDir[64];
+    snprintf(fileDir, 64, "smb:CNdebug.txt");
+    FILE *file = fopen(fileDir, "a");
+    fprintf(file, "%s\n", path);
+    fclose(file);
 
-    //// 把翻译后的名字写到文本文件里，作为debug使用
+    //// debug把翻译后的名字写到文本文件里
     // char fileDir[64];
     // snprintf(fileDir, 256, "%sdebug.txt", prefix);
     // FILE *file = fopen(fileDir, "at");
