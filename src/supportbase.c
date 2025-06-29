@@ -740,8 +740,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     // fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
                     sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
                     fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
-                    forceUpdateCache = 1;
                 }
+                forceUpdateCache = 1; // 只要扫描了txt，一定会刷新缓存
             }
             // debug
             //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
