@@ -995,7 +995,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     if (file != NULL && (curTxtFileSize == 0)) {
         unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
         fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-        fprintf(file, "注意事项：\r\n// 请使用OplManager改好英文名后再运行本OPL，会自动生成英文列表！\r\n// 如果列表是空的，说明游戏没有放对位置！\r\n// 请避免手动在txt中添加游戏，容易出问题！\r\n--------------在“.”后面填写中文即可，不要干别的事情！-------------\r\n");
+        fprintf(file, "注意事项：\r\n// 此OPL已支持将iso直接改为中文名！！！此功能仅作为备选方案。\r\n// 本txt主要用来把英文名映射成中文，避免因iso改成中文名后与其他OPL不兼容！\r\n--------------在“.”后面填写映射名称即可！-------------\r\n");
         txtFileChanged = 1;
     }
 

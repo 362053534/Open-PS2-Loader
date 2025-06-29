@@ -1673,7 +1673,7 @@ void guiMainLoop(void)
                 if ((const char **)lngGetGuiList()[langID][0] == 'E')
                     guiMsgBox("The txt file has been created!", 0, NULL);
                 else
-                    guiMsgBox("txt文件已创建，可为游戏添加中文名！", 0, NULL);
+                    guiMsgBox("txt文件已创建，可通过txt映射中文名！", 0, NULL);
             } else if (txtFileRebuilded) {
                 txtFileRebuilded = 0; // 防止重复弹窗
                 diaGetInt(diaUIConfig, UICFG_LANG, &langID);
