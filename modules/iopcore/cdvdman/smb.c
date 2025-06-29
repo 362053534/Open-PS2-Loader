@@ -231,19 +231,37 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 //These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
 static int asciiToUtf16(char *out, const char *in)
 {
-    int len;
-    const char *pIn;
-    char *pOut;
+    unsigned char *pin = (unsigned char *)in;
+    unsigned char *pout = (unsigned char *)out;
+    int len = 0, wc;
 
-    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
-        pOut[0] = *pIn;
-        pOut[1] = '\0';
+    while (*pin) {
+        if (*pin < 0x80) {
+            // 1字节，ASCII
+            wc = *pin++;
+        } else if ((*pin & 0xe0) == 0xc0) {
+            // 2字节
+            wc = ((*pin & 0x1f) << 6) | (pin[1] & 0x3f);
+            pin += 2;
+        } else if ((*pin & 0xf0) == 0xe0) {
+            // 3字节
+            wc = ((*pin & 0x0f) << 12) | ((pin[1] & 0x3f) << 6) | (pin[2] & 0x3f);
+            pin += 3;
+        } else {
+            // 4字节码点，不支持（surrogate pair）
+            // 跳过或用?号
+            wc = '?';
+            pin++; // 或 pin += 4;
+        }
+        pout[0] = wc & 0xff; // LE低字节
+        pout[1] = (wc >> 8) & 0xff;
+        pout += 2;
+        len += 2;
     }
-
-    pOut[0] = '\0'; //NULL terminate.
-    pOut[1] = '\0';
+    // \0结尾
+    pout[0] = 0;
+    pout[1] = 0;
     len += 2;
-
     return len;
 }
 
