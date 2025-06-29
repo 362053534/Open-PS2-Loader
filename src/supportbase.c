@@ -746,6 +746,12 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game_name, game->extension);
             break;
     }
+    // debug把真实路径写到文本文件里
+    char fileDir[64];
+    snprintf(fileDir, 64, "smb:CNdebug.txt");
+    FILE *file = fopen(fileDir, "a");
+    fprintf(file, "%s\n", path);
+    fclose(file);
 }
 
 void sbCreatePath(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part)
