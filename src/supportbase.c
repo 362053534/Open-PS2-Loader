@@ -63,209 +63,22 @@ int sbCreateSemaphore(void)
     return CreateSema(&sema);
 }
 
-//static int isCnName = 0;
-//    // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
-//static int asciiToUtf16(char *out, const char *in)
-//{
-//    int len;
-//    const char *pIn;
-//    char *pOut;
-//
-//    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
-//        pOut[0] = *pIn;
-//        pOut[1] = '\0';
-//    }
-//
-//    pOut[0] = '\0'; // NULL terminate.
-//    pOut[1] = '\0';
-//    len += 2;
-//
-//    return len;
-//}
-//void unicodeToUtf8(int unicode, char *utf8)
-//{
-//    if (unicode <= 0x7F) { // 1 byte, 0xxxxxxx
-//        utf8[0] = unicode & 0x7F;
-//        utf8[1] = '\0';
-//    } else if (unicode <= 0x7FF) { // 2 bytes, 110xxxxx 10xxxxxx
-//        utf8[0] = 0xC0 | ((unicode >> 6) & 0x1F);
-//        utf8[1] = 0x80 | (unicode & 0x3F);
-//        utf8[2] = '\0';
-//    } else if (unicode <= 0xFFFF) { // 3 bytes, 1110xxxx 10xxxxxx 10xxxxxx
-//        utf8[0] = 0xE0 | ((unicode >> 12) & 0x0F);
-//        utf8[1] = 0x80 | ((unicode >> 6) & 0x3F);
-//        utf8[2] = 0x80 | (unicode & 0x3F);
-//        utf8[3] = '\0';
-//    } else {            // 4 bytes, more complex but not needed for basic BMP characters
-//        utf8[0] = '\0'; // Error handling or simply not supported in this example
-//    }
-//}
-//
-//void utf8_encode(char *str)
-//{
-//    int len = strlen(str);
-//    char *new_str = malloc(len * 3 + 1); // UTF-8 最多使用 3 个字节编码一个字符
-//    int i, j;
-//    for (i = 0, j = 0; i < len; ++i) {
-//        if ((str[i] & 0x80) == 0) { // ASCII 码值范围：0 ~ 127
-//            new_str[j++] = str[i];
-//        } else if ((str[i] & 0xE0) == 0xC0 && i + 1 < len && (str[i + 1] & 0xC0) == 0x80) { // 双字节编码，U+0080 ~ U+07FF
-//            new_str[j++] = ((str[i] & 0x1F) << 6) | (str[i + 1] & 0x3F);
-//            ++i;
-//        } else if ((str[i] & 0xF0) == 0xE0 && i + 2 < len && (str[i + 1] & 0xC0) == 0x80 && (str[i + 2] & 0xC0) == 0x80) { // 三字节编码，U+08000 ~ U+FFFFF
-//            new_str[j++] = ((str[i] & 15) << 12) | ((str[++i] & 63) << 6) | (str[++i] & 63);
-//        } else {
-//            printf("Unsupported character: %c\n", str[i]);
-//            return;
-//        }
-//    }
-//    new_str[j] = '\0';
-//    strcpy(str, new_str);
-//    free(new_str);
-//}
-
 // 0 = Not ISO disc image, GAME_FORMAT_OLD_ISO = legacy ISO disc image (filename follows old naming requirement), GAME_FORMAT_ISO = plain ISO image.
 int isValidIsoName(char *name, int *pNameLen)
 {
-    //setlocale(LC_ALL, "");   // 设置当前区域为环境变量指定的区域
-    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    //setlocale(LC_ALL, ".UTF8");
-    //setlocale(LC_ALL, "en_US.utf8");
-
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
-
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
-
     int size = strlen(name);
-    //// 修正size大小
-    //for (int i = 0; i < 100; i++) {
-    //    if (&name[i] == "o" || &name[i] == "O") {
-    //        size = i + 1;
-    //        break;
-    //    }
-    //}
-
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if (size >= 17 && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
-
-            //unicodeToUtf8(name[12], &name[12]);
-            //asciiToUtf16(&name[12], &name[12]);
-
-            //len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
-            //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            //mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
-
-            ////len = wcstombs(NULL, wname, 0) + 1;
-            ////char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            ////wcstombs(&mbname[12], wname, len);
-            ////mbname[len] = '\0';
-            ////name = mbname;
-            //memcpy(&name[12], wname, len);
-            ////free(mbname);
-            //free(wname);
-
-
-            //len = mbstowcs(wname, name, PATH_MAX); // 将多字节字符串转换为宽字符字符串
-            ////   计算转换后的多字节字符串长度
-            //len = wcstombs(NULL, wname, 0) + 1; // 包括终止符'\0'
-            //// 执行转换
-            //wcstombs(name, wname, len);
-            //strcpy(&name[12], "我");
-            //sprintf(&name[12], "%-s", &name[12]); // 使用sprintf连接字符串
-            //strcpy(&name[0], "没");
-            //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
-            //utf8_encode(name);
-
-            //sprintf(&name[12], "%d", *pNameLen);
             *pNameLen = size - 16;
             return GAME_FORMAT_OLD_ISO;
-
         }
-        // else if (size == 12) {
-        //    ////for (size_t i = 0; i < 8; i++) {
-        //    ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
-        //    ////}
-        //    //utf8_encode(name);
-
-        //    //len = mbstowcs(NULL, name, 0) + 1; // 将多字节字符串转换为宽字符字符串
-        //    //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-        //    //mbstowcs(wname, name, len); // 将多字节字符串转换为宽字符字符串
-
-        //    ////len = wcstombs(NULL, wname, 0) + 1;
-        //    ////char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-        //    ////wcstombs(&mbname[12], wname, len);
-        //    ////mbname[len] = '\0';
-        //    ////name = mbname;
-        //    // memcpy(name, wname, len);
-        //    ////free(mbname);
-        //    // free(wname);
-        //    isCnName = 1;
-        //    // 修正size大小
-        //    size = 0;
-        //    for (int i = 0; i < 255; i++) {
-        //        if (name[i] != "" ) {
-        //            size++;
-        //        }
-        //    }
-        //    //// 修正size大小
-        //    //for (int i = 0; i < 100; i++) {
-        //    //    if (&name[i] == "o" || &name[i] == "O") {
-        //    //        size = i + 1;
-        //    //        break;
-        //    //    }
-        //    //}
-        //    
-        //    *pNameLen = size;
-        //    //sprintf(&name[0], "%d", size);
-        //    sprintf(&name[0], "%s", "前缀改成后缀方可识别");
-        //    return GAME_FORMAT_OLD_ISO;
-        //}
         else {
-            //strcpy(&name[0], "没");
-            //sprintf(name, "%s%s", "没", &name[1]); // 使用sprintf连接字符串
-            //strcpy(mbname, name);
-            //for (size_t i = 0 ,j = 0; i < 16; i++ ,j++) {
-            //    if (name[12 + i] <= 9 && name[12 + i] >= 0) {
-            //        sprintf(&mbname[12 + j], "%d", name[12 + i]); // 使用sprintf连接字符串
-            //    } else {
-            //        sprintf(&mbname[12 + j++], "%d", name[12 + i]); // 使用sprintf连接字符串
-            //    }   
-            //}
-            //strcpy(name, mbname);
-
-            //len = mbstowcs(NULL, &name[12], 0) + 1; // 将多字节字符串转换为宽字符字符串
-            //wchar_t *wname = (wchar_t *)malloc(len * sizeof(wchar_t));
-            //mbstowcs(wname, &name[12], len); // 将多字节字符串转换为宽字符字符串
-
-            //len = wcstombs(NULL, wname, 0) + 1;
-            //char *mbname = (char *)malloc((len) * sizeof(char)); // 原始的字节字符串文件名
-            //wcstombs(&mbname[12], wname, len);
-            //mbname[len] = '\0';
-            ////name = mbname;
-            // memcpy(name, mbname, len);
-            // free(mbname);
-            //free(wname);
-
-
-            //sprintf(&name[12], "%s", name);
-            ////for (size_t i = 0; i < 8; i++) {
-            ////    sprintf(&name[12 + i], "%d", name[12 + i]); // 使用sprintf连接字符串
-            ////}
-            ////  修正size大小
-            //for (int i = 0; i < 256; i++) {
-            //    if (&name[i] == "") {
-            //        size = i;
-            //        break;
-            //    }
-            //}
-            //utf8_encode(name);
             *pNameLen = size - 4;
-            //sprintf(&name[0], "%d", *pNameLen);
-
             return GAME_FORMAT_ISO;
         }
     }
-
     return 0;
 }
 
@@ -480,43 +293,9 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
     return ENOENT;
 }
 
-//// 将缓存中的时间戳，提取出来
-//static int loadPreMtime(const struct game_cache_list *cache, char *Mtime)
-//{
-//    if (cache->count > 0) {
-//        sprintf(Mtime, "%s", cache->games[0].preModiTime);
-//        Mtime[6] = '\0';
-//        return 1;
-//    } else {
-//        sprintf(Mtime, "000000");
-//        Mtime[6] = '\0';
-//        return 0;
-//    }
-//
-//    return 0;
-//}
-//
-//// 将txt保存后的时间戳，存到缓存里
-//static int saveCurMtime(struct game_list_t *head, char *Mtime)
-//{
-//    if (head != NULL) {
-//        sprintf(head->gameinfo.preModiTime, "%s", Mtime);
-//        head->gameinfo.preModiTime[6] = '\0';
-//        return 1;
-//    } else {
-//        return 0;
-//    }
-//
-//    return 0;
-//}
-
 static int _txtFileRebuilded = 0;
 static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *file, int txtFileChanged, u32 txtFileSize)
 {
-    //setlocale(LC_ALL, ""); // 设置当前区域为环境变量指定的区域
-    //setlocale(LC_ALL, "zh_CN.UTF-8"); // 设置当前区域为环境变量指定的区域
-    //setlocale(LC_ALL, ".UTF8");
-    //setlocale(LC_ALL, "en_US.utf8");
     int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
@@ -646,7 +425,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     }
                 }
             } else {
-
                 // need to mount and read SYSTEM.CNF
                 char startup[GAME_STARTUP_MAX];
                 int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
@@ -657,32 +435,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     free(next);
                     continue;
                 }
-                // char startup[GAME_STARTUP_MAX];
-                // int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
-                // GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1);
-                // delay(5);
-                // if (GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0)
-                //{
-
-                //    //oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                //    //sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
-                //    //mbstowcs(w_newpath, newpath, len);   // 将多字节字符串转换为宽字符字符串
-                //    //_wrename(w_newpath,w_fullpath);
-                //    //rename(newpath, fullpath);
-                //    free(next);
-                //    *glist = next->next;
-                //    fileXioUmount("iso:");
-                //    continue;
-                //}
-
-                //// 名字改回来
-                // oldpath[base_path_len] = fullpath[0] == 's' ? '\\' : '/';
-                // sprintf(newpath, "%s%s%s", oldpath, "gggggg", &dirent->d_name[NameLen]);
-                ////mbstowcs(w_newpath, newpath, len); // 将多字节字符串转换为宽字符字符串
-                //_wrename(w_newpath, w_fullpath);
-                // rename(newpath, fullpath);
-
-
                 strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 // strcpy(game->name, dirent->d_name);
@@ -979,17 +731,6 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // sprintf(curModiTime, "000000");
         // curModiTime[6] = '\0';
     }
-
-    // 使用stat函数获取文件修改时间，与缓存进行比对
-    // struct stat fileStat;
-    // time_t curModiTime = 0;
-    // if (stat(txtPath, NULL) == 0) {
-    //// 通过文件修改时间判断txt是否改动
-    // curModiTime = fileStat->st_mtime;
-    // if (curModiTime == cache.games[0].preModiTime) {
-    //     txtFileChanged = 0;
-    // }
-    //}
 
     // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
     if (file != NULL && (curTxtFileSize == 0)) {
@@ -1411,19 +1152,6 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, game->indexName, game->extension);
             break;
     }
-    //// 把真实路径写到文本文件里，作为debug使用
-    //char fileDir[64];
-    //snprintf(fileDir, 256, "%sdebug.txt", prefix);
-    //FILE *file = fopen(fileDir, "at");
-    //fprintf(file, "%s\n", path);
-    //fclose(file);
-
-    //// 把翻译后的名字写到文本文件里，作为debug使用
-    // char fileDir[64];
-    // snprintf(fileDir, 256, "%sdebug.txt", prefix);
-    // FILE *file = fopen(fileDir, "at");
-    // fprintf(file, "%s\n", game->transName);
-    // fclose(file);
 }
 
 void sbCreatePath(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part)
@@ -1544,6 +1272,5 @@ int sbLoadCheats(const char *path, const char *file)
                 guiManageCheats();
         }
     }
-
     return cheatMode;
 }
