@@ -1669,23 +1669,23 @@ void guiMainLoop(void)
             // 如果txt被创建，则弹出提示框
             if (txtFileCreated) {
                 txtFileCreated = 0; // 防止重复弹窗
-                diaGetInt(diaUIConfig, UICFG_LANG, &langID);
-                if ((const char **)lngGetGuiList()[langID][0] == 'E')
+                //diaGetInt(diaUIConfig, UICFG_LANG, &langID);
+                if (lngGetValue[0] == 'E')
                     guiMsgBox("The txt file has been created!", 0, NULL);
                 else
                     guiMsgBox("txt文件已创建，可通过txt映射中文名！", 0, NULL);
             } else if (txtFileRebuilded) {
                 txtFileRebuilded = 0; // 防止重复弹窗
-                diaGetInt(diaUIConfig, UICFG_LANG, &langID);
-                if ((const char **)lngGetGuiList()[langID][0] == 'E')
+                // diaGetInt(diaUIConfig, UICFG_LANG, &langID);
+                if (lngGetValue[0] == 'E')
                     guiMsgBox("The txt file has been rebuilt!", 0, NULL);
                 else
                     guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
             }
             if (bdmTimeOut) {
                 bdmTimeOut = 0; // 防止重复弹窗
-                diaGetInt(diaUIConfig, UICFG_LANG, &langID);
-                if ((const char **)lngGetGuiList()[langID][0] == 'E')
+                // diaGetInt(diaUIConfig, UICFG_LANG, &langID);
+                if (lngGetValue[0] == 'E')
                     guiMsgBox("Please close non-existent block devices!", 0, NULL);
                 else
                     guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
