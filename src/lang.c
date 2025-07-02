@@ -58,6 +58,13 @@ static int lngLoadFromFile(char *path, char *name)
 
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
     if (fileBuffer) {
+        // 目标lng是SChinese，只变更字体
+        if (strncmp("SChinese", name, 8) == 0) {
+            closeFileBuffer(fileBuffer);
+            lngLoadFont(dir, name);
+            return 1;
+        }
+
         // file exists, try to read it and load the custom lang
         char **curL = lang_strs;
         char **newL = (char **)calloc(LANG_STR_COUNT, sizeof(char *));
@@ -196,15 +203,12 @@ int lngSetGuiValue(int langID)
         if (guiLangID != langID) {
             bgmMute();
             if (langID != 0) {
-                // 目标lng不是SChinese才需要变更lng内容
-                if (strncmp("SChinese", guiLangNames[langID], 8) != 0) {
-                    language_t *currLang = &languages[langID - 1];
-                    if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                        guiLangID = langID;
-                        thmSetGuiValue(thmGetGuiValue(), 1);
-                        bgmUnMute();
-                        return 1;
-                    }
+                language_t *currLang = &languages[langID - 1];
+                if (lngLoadFromFile(currLang->filePath, currLang->name)) {
+                    guiLangID = langID;
+                    thmSetGuiValue(thmGetGuiValue(), 1);
+                    bgmUnMute();
+                    return 1;
                 }
             }
             lang_strs = internalEnglish;
