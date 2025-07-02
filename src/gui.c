@@ -512,6 +512,7 @@ int guiIoModeToDeviceType(int ioMode)
 int UiId = -1;
 void guiShowConfig()
 {
+reConfig:
     // configure the enumerations
     const char *deviceNames[] = {_l(_STR_BDM_GAMES), _l(_STR_NET_GAMES), _l(_STR_HDD_GAMES), _l(_STR_APPS), NULL};
     const char *deviceModes[] = {_l(_STR_OFF), _l(_STR_MANUAL), _l(_STR_AUTO), NULL};
@@ -547,7 +548,6 @@ void guiShowConfig()
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
     diaSetInt(diaConfig, CFG_APPMODE, gAPPStartMode);
 
-reConfig:
     int ret = diaExecuteDialog(diaConfig, UiId, 1, &guiUpdater);
     if (ret) {
         diaGetInt(diaConfig, CFG_DEBUG, &gEnableDebug);
