@@ -196,12 +196,15 @@ int lngSetGuiValue(int langID)
         if (guiLangID != langID) {
             bgmMute();
             if (langID != 0) {
-                language_t *currLang = &languages[langID - 1];
-                if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                    guiLangID = langID;
-                    thmSetGuiValue(thmGetGuiValue(), 1);
-                    bgmUnMute();
-                    return 1;
+                // 目标lng不是SChinese才需要变更lng内容
+                if (strncmp("SChinese", lngGetValue(), 8) != 0) {
+                    language_t *currLang = &languages[langID - 1];
+                    if (lngLoadFromFile(currLang->filePath, currLang->name)) {
+                        guiLangID = langID;
+                        thmSetGuiValue(thmGetGuiValue(), 1);
+                        bgmUnMute();
+                        return 1;
+                    }
                 }
             }
             lang_strs = internalEnglish;

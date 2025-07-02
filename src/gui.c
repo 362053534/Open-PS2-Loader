@@ -1661,7 +1661,6 @@ void guiMainLoop(void)
 
     //// debug
     //int delayFrameCount = 0;
-    int langID = 0;
 
     while (!gTerminate) {
         // 各种弹窗提示
@@ -1669,14 +1668,12 @@ void guiMainLoop(void)
             // 如果txt被创建，则弹出提示框
             if (txtFileCreated) {
                 txtFileCreated = 0; // 防止重复弹窗
-                //diaGetInt(diaUIConfig, UICFG_LANG, &langID);
                 if (lngGetValue()[0] == 'E')
                     guiMsgBox("The txt file has been created!", 0, NULL);
                 else
                     guiMsgBox("txt文件已创建，可通过txt映射中文名！", 0, NULL);
             } else if (txtFileRebuilded) {
                 txtFileRebuilded = 0; // 防止重复弹窗
-                // diaGetInt(diaUIConfig, UICFG_LANG, &langID);
                 if (lngGetValue()[0] == 'E')
                     guiMsgBox("The txt file has been rebuilt!", 0, NULL);
                 else
@@ -1684,7 +1681,6 @@ void guiMainLoop(void)
             }
             if (bdmTimeOut) {
                 bdmTimeOut = 0; // 防止重复弹窗
-                // diaGetInt(diaUIConfig, UICFG_LANG, &langID);
                 if (lngGetValue()[0] == 'E')
                     guiMsgBox("Please close non-existent block devices!", 0, NULL);
                 else
