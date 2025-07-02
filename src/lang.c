@@ -197,7 +197,7 @@ int lngSetGuiValue(int langID)
             bgmMute();
             if (langID != 0) {
                 // 目标lng不是SChinese才需要变更lng内容
-                if (strncmp("SChinese", lngGetValue(), 8) != 0) {
+                if (strncmp("SChinese", guiLangNames[langID], 8) != 0) {
                     language_t *currLang = &languages[langID - 1];
                     if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                         guiLangID = langID;
