@@ -10,6 +10,7 @@ GSTEXTURE *prevCacheCOV = NULL; // 上一张封面图缓存
 GSTEXTURE *prevCacheICO = NULL; // 上一张光碟图缓存
 GSTEXTURE *prevCache = NULL; // 上一张图缓存
 int ForceRefreshPrevTexCache = 0;
+int TexLoadDalay = 5;
 
 typedef struct
 {
@@ -184,7 +185,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if (guiInactiveFrames < list->delay)
+    if (guiInactiveFrames < TexLoadDalay)
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
