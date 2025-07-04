@@ -11,7 +11,6 @@ GSTEXTURE *prevCacheICO = NULL; // 上一张光碟图缓存
 GSTEXTURE *prevCache = NULL; // 上一张图缓存
 int ForceRefreshPrevTexCache = 0;
 int TexLoadDalay = 4; // 原来是8,响应间隔太长
-int CovIsLoaded = 0; // 光碟图需要等封面加载好了再一起显示
 
 typedef struct
 {
@@ -141,7 +140,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         prevCacheCOV = NULL;
         prevCacheICO = NULL;
         prevCache = NULL;
-        CovIsLoaded = 0;
     }
 
     // -2代表无图像，-1代表正在查找图像，0-9代表缓存编号
@@ -149,8 +147,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         if (!strncmp("COV", cache->suffix, 3)) {
             if (prevCacheCOV != NULL)
                 prevCacheCOV = NULL;
-            if (!CovIsLoaded)
-                CovIsLoaded = 1;
         } else if (!strncmp("ICO", cache->suffix, 3)) {
             if (prevCacheICO != NULL)
                 prevCacheICO = NULL;
@@ -166,25 +162,17 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 if (!strncmp("COV", cache->suffix, 3)) {
                     if (prevCacheCOV != NULL)
                         prevCacheCOV = NULL;
-                    if (!CovIsLoaded)
-                        CovIsLoaded = 1;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
                     if (prevCacheICO != NULL)
                         prevCacheICO = NULL;
                 }
                 return NULL;
             } else {
-                // 光盘图要等封面加载好了，再一起显示
-                if (!strncmp("ICO", cache->suffix, 3) && !CovIsLoaded)
-                    return prevCache;
-
                 entry->lastUsed = guiFrameId;
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 if (!strncmp("COV", cache->suffix, 3)) {
                     if (prevCacheCOV != &entry->texture)
                         prevCacheCOV = &entry->texture;
-                    if (!CovIsLoaded)
-                        CovIsLoaded = 1;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
                     if (prevCacheICO != &entry->texture)
                         prevCacheICO = &entry->texture;
@@ -228,10 +216,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *UID = cache->nextUID++;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
-
-        // 重置封面图的loaded状态
-        if (!strncmp("COV", cache->suffix, 3))
-            CovIsLoaded = 0;
     }
 
     return prevCache;
