@@ -17,6 +17,7 @@
 #include "include/system.h"
 #include "include/ioman.h"
 #include "include/sound.h"
+#include "include/texcache.h"
 #include <assert.h>
 
 //#define NEWLIB_PORT_AWARE
@@ -616,6 +617,7 @@ static void menuNextH()
     if (next != NULL) {
         selected_item = next;
         itemConfigId = -1;
+        ForceRefreshPrevTexCache = 1; // 刷新上一次图像缓存
         sfxPlay(SFX_CURSOR);
     }
 }
@@ -629,6 +631,7 @@ static void menuPrevH()
     if (prev != NULL) {
         selected_item = prev;
         itemConfigId = -1;
+        ForceRefreshPrevTexCache = 1; // 刷新上一次图像缓存
         sfxPlay(SFX_CURSOR);
     }
 }

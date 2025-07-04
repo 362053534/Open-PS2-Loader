@@ -57,4 +57,6 @@ void cacheDestroyCache(image_cache_t *cache);
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value);
 
+extern int ForceRefreshPrevTexCache;
+
 #endif

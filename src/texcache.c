@@ -6,9 +6,10 @@
 #include "include/util.h"
 #include "include/renderman.h"
 
-GSTEXTURE *privCacheCOV = NULL; // 上一张封面图缓存
-GSTEXTURE *privCacheICO = NULL; // 上一张光碟图缓存
-GSTEXTURE *privCache = NULL; // 上一张图缓存
+GSTEXTURE *prevCacheCOV = NULL; // 上一张封面图缓存
+GSTEXTURE *prevCacheICO = NULL; // 上一张光碟图缓存
+GSTEXTURE *prevCache = NULL; // 上一张图缓存
+int ForceRefreshPrevTexCache = 0;
 
 typedef struct
 {
@@ -124,48 +125,56 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 {
     // 根据图像类型，赋值上一次的缓存
     if (!strncmp("COV", cache->suffix, 3)) {
-        if (privCache != privCacheCOV)
-            privCache = privCacheCOV;
+        if (prevCache != prevCacheCOV)
+            prevCache = prevCacheCOV;
     } else if (!strncmp("ICO", cache->suffix, 3)) {
-        if (privCache != privCacheICO)
-            privCache = privCacheICO;
+        if (prevCache != prevCacheICO)
+            prevCache = prevCacheICO;
     } else
-        privCache = NULL;
+        prevCache = NULL;
+
+    // 切换设备页签时，上次图缓存需要清掉
+    if (ForceRefreshPrevTexCache) {
+        ForceRefreshPrevTexCache = 0;
+        prevCacheCOV = NULL;
+        prevCacheICO = NULL;
+        prevCache = NULL;
+    }
 
     // -2代表无图像，-1代表正在查找图像，0-9代表缓存编号
     if (*cacheId == -2) {
         if (!strncmp("COV", cache->suffix, 3)) {
-            if (privCacheCOV != NULL)
-                privCacheCOV = NULL;
+            if (prevCacheCOV != NULL)
+                prevCacheCOV = NULL;
         } else if (!strncmp("ICO", cache->suffix, 3)) {
-            if (privCacheICO != NULL)
-                privCacheICO = NULL;
+            if (prevCacheICO != NULL)
+                prevCacheICO = NULL;
         }
         return NULL;
     } else if (*cacheId != -1) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
             if (entry->qr)
-                return privCache;
+                return prevCache;
             else if (entry->lastUsed == 0) {
                 *cacheId = -2;
                 if (!strncmp("COV", cache->suffix, 3)) {
-                    if (privCacheCOV != NULL)
-                        privCacheCOV = NULL;
+                    if (prevCacheCOV != NULL)
+                        prevCacheCOV = NULL;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    if (privCacheICO != NULL)
-                        privCacheICO = NULL;
+                    if (prevCacheICO != NULL)
+                        prevCacheICO = NULL;
                 }
                 return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 if (!strncmp("COV", cache->suffix, 3)) {
-                    if (privCacheCOV != &entry->texture)
-                        privCacheCOV = &entry->texture;
+                    if (prevCacheCOV != &entry->texture)
+                        prevCacheCOV = &entry->texture;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    if (privCacheICO != &entry->texture)
-                        privCacheICO = &entry->texture;
+                    if (prevCacheICO != &entry->texture)
+                        prevCacheICO = &entry->texture;
                 }
                 return &entry->texture;
             }
@@ -176,7 +185,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (guiInactiveFrames < list->delay)
-        return privCache;
+        return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
     int i, rtime = guiFrameId;
@@ -208,5 +217,5 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         ioPutRequest(IO_CACHE_LOAD_ART, req);
     }
 
-    return privCache;
+    return prevCache;
 }
