@@ -40,8 +40,8 @@ enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_MENU_ICON,
     ELEM_TYPE_MENU_TEXT,
     ELEM_TYPE_ITEMS_LIST,
-    ELEM_TYPE_ITEM_COVER,
     ELEM_TYPE_ITEM_ICON,
+    ELEM_TYPE_ITEM_COVER,
     ELEM_TYPE_ITEM_TEXT,
     ELEM_TYPE_HINT_TEXT,
     ELEM_TYPE_INFO_HINT_TEXT,
@@ -69,8 +69,8 @@ static const char *elementsType[ELEM_TYPE_COUNT] = {
     "MenuIcon",
     "MenuText",
     "ItemsList",
-    "ItemCover",
     "ItemIcon",
+    "ItemCover",
     "ItemText",
     "HintText",
     "InfoHintText",
@@ -1059,12 +1059,12 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                     initItemsList(themePath, themeConfig, theme, elem, name, NULL);
                     theme->appsItemsList = elem;
                 }
-            } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_COVER], type)) {
-                elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
-                initGameImage(themePath, themeConfig, theme, elem, name, "COV", 10, NULL, NULL);
             } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_ICON], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, 0, 0, ALIGN_CENTER, 64, 64, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
                 initGameImage(themePath, themeConfig, theme, elem, name, "ICO", 10, NULL, NULL);
+            } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_COVER], type)) {
+                elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
+                initGameImage(themePath, themeConfig, theme, elem, name, "COV", 10, NULL, NULL);
             } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_TEXT], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_ITEM_TEXT, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, theme->textColor, theme->fonts[0]);
                 elem->drawElem = &drawItemText;
