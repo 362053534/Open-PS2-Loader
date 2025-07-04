@@ -10,7 +10,7 @@ GSTEXTURE *prevCacheCOV = NULL; // 上一张封面图缓存
 GSTEXTURE *prevCacheICO = NULL; // 上一张光碟图缓存
 GSTEXTURE *prevCache = NULL; // 上一张图缓存
 int ForceRefreshPrevTexCache = 0;
-int TexLoadDalay = 5;
+int TexLoadDalay = 6; // 6帧=0.1秒
 
 typedef struct
 {
