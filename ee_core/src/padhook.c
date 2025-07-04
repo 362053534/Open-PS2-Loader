@@ -297,7 +297,7 @@ static int IGR_Intc_Handler(int cause)
             }
 
             // Combo R1 + L1 + R2 + L2
-            if (pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) {
+            //if (pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) {
                 // Combo Start + Select, R3 + L3 or UP
                 if ((pad_pos_combo2 == IGR_COMBO_START_SELECT) || // Start + Select combo, so reset
                     (pad_pos_combo2 == IGR_COMBO_R3_L3)           // R3 + L3 combo, so poweroff
@@ -319,10 +319,10 @@ static int IGR_Intc_Handler(int cause)
                     if (IGRResetComboFrameCount)
                         IGRResetComboFrameCount = 0;
                 }
-            } else {
-                if (IGRResetComboFrameCount)
-                    IGRResetComboFrameCount = 0;
-            }
+            //} else {
+            //    if (IGRResetComboFrameCount)
+            //        IGRResetComboFrameCount = 0;
+            //}
         }
     } else {
         if (IGRResetComboFrameCount)
@@ -331,7 +331,7 @@ static int IGR_Intc_Handler(int cause)
 
     // 按下重启组合键后，给定时间内再次输入一次组合键，才重启
     if (IGRResetComboTrigger)
-        if (IGRResetComboTrigger++ >= 60)
+        if (IGRResetComboTrigger++ >= 30)
             IGRResetComboTrigger = 0;
 
     ee_kmode_enter();
