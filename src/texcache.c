@@ -216,6 +216,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *UID = cache->nextUID++;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
+        // debug  打印debug信息
+        char debugFileDir[64];
+        strcpy(debugFileDir, "smb:debug-Cover-TexCache.txt");
+        FILE *debugFile = fopen(debugFileDir, "ab+");
+        if (debugFile != NULL) {
+            fprintf(debugFile, "按键delay:%d\r\n\r\n", list->delay);
+            fclose(debugFile);
+        }
     }
 
     return prevCache;
