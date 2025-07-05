@@ -445,7 +445,7 @@ gui_strings:
 - label: HINT_PS2LOGO
   string: 只显示与控制台区域匹配的有效碟片标识
 - label: PADEMUCONFIG
-  string: 配置PADEMU
+  string: 配置手柄模拟器
 - label: PADEMU_SETTINGS
   string: 手柄模拟器设置
 - label: PADEMU_ENABLE
@@ -607,11 +607,11 @@ gui_strings:
 - label: MX4SIO_GAMES
   string: MX4SIO游戏
 - label: PADMACROCONFIG
-  string: Configure PADMACRO
+  string: 配置手柄宏
 - label: PADMACRO_SETTINGS
-  string: Pad Macro Settings
+  string: 手柄宏设置
 - label: PADMACRO_ENABLE
-  string: Pad macros
+  string: 开启手柄宏
 - label: PADMACRO_SLOWDOWN
   string: 'Analog Slow-Down:'
 - label: HINT_PADMACRO_SLOWDOWN_AXIS
