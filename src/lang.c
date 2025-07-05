@@ -22,6 +22,10 @@ char *_l(unsigned int id)
 
 static void lngFreeFromFile(char **lang_strs)
 {
+    // 解决加载游戏时卡住的问题
+    if (!strncmp("SChinese", guiLangNames[guiLangID], 8))
+        guiLangID = 0;
+
     if (guiLangID == 0)
         return;
 
@@ -55,6 +59,15 @@ static int lngLoadFont(const char *dir, const char *name)
 static int lngLoadFromFile(char *path, char *name)
 {
     char dir[128];
+
+    // 目标是SChinese时，只变更字体
+    if (strncmp("SChinese", name, 8) == 0) {
+        int len = strlen(path) - strlen(name) - 9; // -4 for extension,  -5 for prefix
+        memcpy(dir, path, len);
+        dir[len] = '\0';
+        lngLoadFont(dir, name);
+        return 1;
+    }
 
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
     if (fileBuffer) {
@@ -196,21 +209,16 @@ int lngSetGuiValue(int langID)
         if (guiLangID != langID) {
             bgmMute();
             if (langID != 0) {
-                if (strncmp("SChinese", guiLangNames[langID], 8) != 0) {
-                    language_t *currLang = &languages[langID - 1];
-                    if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                        guiLangID = langID;
-                        thmSetGuiValue(thmGetGuiValue(), 1);
-                        bgmUnMute();
-                        return 1;
-                    }
-                } else {
-                    if (lang_strs != internalEnglish)
-                        lang_strs = internalEnglish;
+                language_t *currLang = &languages[langID - 1];
+                if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                     guiLangID = langID;
-                    thmSetGuiValue(thmGetGuiValue(), 0);
+                    if (!strncmp("SChinese", guiLangNames[langID], 8)) {
+                        if (lang_strs != internalEnglish)
+                            lang_strs = internalEnglish;
+                    }
+                    thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
-                    return 0;
+                    return 1;
                 }
             }
             if (lang_strs != internalEnglish)
