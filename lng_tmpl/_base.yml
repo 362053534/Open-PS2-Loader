@@ -121,7 +121,7 @@ gui_strings:
 - label: GAMES_LIST
   string: 游戏列表
 - label: COMPAT_SETTINGS
-  string: 游戏设置
+  string: 模式设置
 - label: REMOVE_ALL_SETTINGS
   string: 删除设置
 - label: SCROLLING
@@ -445,7 +445,7 @@ gui_strings:
 - label: HINT_PS2LOGO
   string: 只显示与控制台区域匹配的有效碟片标识
 - label: PADEMUCONFIG
-  string: 配置PADEMU
+  string: 配置手柄模拟器
 - label: PADEMU_SETTINGS
   string: 手柄模拟器设置
 - label: PADEMU_ENABLE
@@ -563,7 +563,7 @@ gui_strings:
 - label: PARTITION_NOTIFICATION
   string: 已挂载%s分区。
 - label: OPTIONS
-  string: 设置
+  string: 游戏设置
 - label: GAME_SETTINGS_SAVED
   string: 已保存游戏设置。
 - label: GAME_SETTINGS_REMOVED
@@ -607,11 +607,11 @@ gui_strings:
 - label: MX4SIO_GAMES
   string: MX4SIO游戏
 - label: PADMACROCONFIG
-  string: Configure PADMACRO
+  string: 配置手柄宏
 - label: PADMACRO_SETTINGS
-  string: Pad Macro Settings
+  string: 手柄宏设置
 - label: PADMACRO_ENABLE
-  string: Pad macros
+  string: 开启手柄宏
 - label: PADMACRO_SLOWDOWN
   string: 'Analog Slow-Down:'
 - label: HINT_PADMACRO_SLOWDOWN_AXIS
