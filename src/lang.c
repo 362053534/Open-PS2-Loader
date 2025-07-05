@@ -199,8 +199,13 @@ void lngEnd(void)
     fntEnd();
 }
 
+int ScId = 0;
 int lngSetGuiValue(int langID)
 {
+    // 如果是SChinese，则把当前ID变为SC的ID，防止重复初始化主题
+    if (ScId)
+        guiLangID = ScId;
+
     if (langID != -1) {
         if (guiLangID != langID) {
             bgmMute();
@@ -209,29 +214,17 @@ int lngSetGuiValue(int langID)
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                     // 目标是SChinese时，使用内置语言文本
                     if (strncmp("SChinese", currLang->name, 8) == 0) {
-                        if (guiLangID != 0) {
-                            guiLangID = 0;
-                            if (lang_strs != internalEnglish) {
-                                lang_strs = internalEnglish;
-                                thmSetGuiValue(thmGetGuiValue(), 1);
-                                bgmUnMute();
-                            } else {
-                                thmSetGuiValue(thmGetGuiValue(), 0);
-                                bgmUnMute();
-                            }
-                            return 1;
-                        } else {
-                            guiLangID = 0;
-                            //thmSetGuiValue(thmGetGuiValue(), 0);
-                            bgmUnMute();
-                            return 1;
-                        }
+                        if (lang_strs != internalEnglish)
+                            lang_strs = internalEnglish;
+                        ScId = langID;
+                        guiLangID = 0;
                     } else {
+                        ScId = 0;
                         guiLangID = langID;
-                        thmSetGuiValue(thmGetGuiValue(), 1);
-                        bgmUnMute();
-                        return 1;
                     }
+                    thmSetGuiValue(thmGetGuiValue(), 1);
+                    bgmUnMute();
+                    return 1;
                 }
             }
             lang_strs = internalEnglish;
