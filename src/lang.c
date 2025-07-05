@@ -56,15 +56,6 @@ static int lngLoadFromFile(char *path, char *name)
 {
     char dir[128];
 
-    // 目标是SChinese时，只变更字体
-    if (strncmp("SChinese", name, 8) == 0) {
-        int len = strlen(path) - strlen(name) - 9; // -4 for extension,  -5 for prefix
-        memcpy(dir, path, len);
-        dir[len] = '\0';
-        lngLoadFont(dir, name);
-        return 1;
-    }
-
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
     if (fileBuffer) {
         // file exists, try to read it and load the custom lang
@@ -201,32 +192,16 @@ void lngEnd(void)
 
 int lngSetGuiValue(int langID)
 {
+    if (guiLangID == 0 && !strncmp("SChinese", guiLangNames[langID], 8)) {
+        return 0;
+    }
     if (langID != -1) {
         if (guiLangID != langID) {
             bgmMute();
             if (langID != 0) {
-                language_t *currLang = &languages[langID - 1];
-                if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                    // 目标是SChinese时，使用内置语言文本
-                    if (strncmp("SChinese", currLang->name, 8) == 0) {
-                        if (guiLangID != 0) {
-                            guiLangID = 0;
-                            if (lang_strs != internalEnglish) {
-                                lang_strs = internalEnglish;
-                                thmSetGuiValue(thmGetGuiValue(), 1);
-                                bgmUnMute();
-                            } else {
-                                thmSetGuiValue(thmGetGuiValue(), 0);
-                                bgmUnMute();
-                            }
-                            return 1;
-                        } else {
-                            guiLangID = 0;
-                            //thmSetGuiValue(thmGetGuiValue(), 0);
-                            bgmUnMute();
-                            return 1;
-                        }
-                    } else {
+                if (strncmp("SChinese", guiLangNames[langID], 8) != 0) {
+                    language_t *currLang = &languages[langID - 1];
+                    if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                         guiLangID = langID;
                         thmSetGuiValue(thmGetGuiValue(), 1);
                         bgmUnMute();
