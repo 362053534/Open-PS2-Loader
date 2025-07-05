@@ -208,8 +208,6 @@ int lngSetGuiValue(int langID)
                     if (lang_strs != internalEnglish)
                         lang_strs = internalEnglish;
                     guiLangID = langID;
-                    // lang switched back to internalEnglish, reload default font
-                    fntLoadDefault(NULL);
                     thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
                     return 0;
