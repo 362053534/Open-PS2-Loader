@@ -222,9 +222,9 @@ int lngSetGuiValue(int langID)
                             return 1;
                         } else {
                             guiLangID = langID;
-                            thmSetGuiValue(thmGetGuiValue(), 1);
+                            thmSetGuiValue(thmGetGuiValue(), 0);
                             bgmUnMute();
-                            return 0;
+                            return 1;
                         }
                     } else {
                         guiLangID = langID;
