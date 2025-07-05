@@ -10,9 +10,6 @@ extern char *internalEnglish[LANG_STR_COUNT];
 // getter for a localised string version
 extern char *_l(unsigned int id);
 
-// 识别到SChinese后记住它的ID
-extern int ScId;
-
 typedef struct
 {
     char *filePath;
