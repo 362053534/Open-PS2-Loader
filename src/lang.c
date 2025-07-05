@@ -209,13 +209,28 @@ int lngSetGuiValue(int langID)
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                     // 目标是SChinese时，使用内置语言文本
                     if (strncmp("SChinese", currLang->name, 8) == 0) {
-                        lang_strs = internalEnglish;
-                        guiLangID = 0;
-                    } else
+                        if (guiLangID != 0) {
+                            guiLangID = 0;
+                            if (lang_strs != internalEnglish) {
+                                lang_strs = internalEnglish;
+                                thmSetGuiValue(thmGetGuiValue(), 1);
+                                bgmUnMute();
+                            } else {
+                                thmSetGuiValue(thmGetGuiValue(), 0);
+                                bgmUnMute();
+                            }
+                            return 1;
+                        } else {
+                            thmSetGuiValue(thmGetGuiValue(), 0);
+                            bgmUnMute();
+                            return 0;
+                        }
+                    } else {
                         guiLangID = langID;
-                    thmSetGuiValue(thmGetGuiValue(), 1);
-                    bgmUnMute();
-                    return 1;
+                        thmSetGuiValue(thmGetGuiValue(), 1);
+                        bgmUnMute();
+                        return 1;
+                    }
                 }
             }
             lang_strs = internalEnglish;
