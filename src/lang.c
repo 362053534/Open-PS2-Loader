@@ -208,7 +208,7 @@ int lngSetGuiValue(int langID)
                 language_t *currLang = &languages[langID - 1];
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                     // 目标是SChinese时，使用内置语言文本
-                    if (strncmp("SChinese", name, 8) == 0) {
+                    if (strncmp("SChinese", currLang->name, 8) == 0) {
                         lang_strs = internalEnglish;
                         guiLangID = 0;
                     } else
