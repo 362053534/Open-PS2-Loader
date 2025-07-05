@@ -62,7 +62,7 @@ static int lngLoadFromFile(char *path, char *name)
         memcpy(dir, path, len);
         dir[len] = '\0';
         lngLoadFont(dir, name);
-        return 0;
+        return 1;
     }
 
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
@@ -207,7 +207,12 @@ int lngSetGuiValue(int langID)
             if (langID != 0) {
                 language_t *currLang = &languages[langID - 1];
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                    guiLangID = langID;
+                    // 目标是SChinese时，使用内置语言文本
+                    if (strncmp("SChinese", name, 8) == 0) {
+                        lang_strs = internalEnglish;
+                        guiLangID = 0;
+                    } else
+                        guiLangID = langID;
                     thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
                     return 1;
