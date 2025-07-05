@@ -211,11 +211,11 @@ int lngSetGuiValue(int langID)
             if (langID != 0) {
                 language_t *currLang = &languages[langID - 1];
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                    guiLangID = langID;
                     if (!strncmp("SChinese", guiLangNames[langID], 8)) {
                         if (lang_strs != internalEnglish)
                             lang_strs = internalEnglish;
                     }
+                    guiLangID = langID;
                     thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
                     return 1;
