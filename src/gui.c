@@ -731,7 +731,8 @@ reselect_video_mode:
         if (previousTheme != themeID && isBgmPlaying())
             bgmStop();
 
-        applyConfig(themeID, langID, 1);
+
+        applyConfig(themeID, ScId ? 0 : langID, 1);
         sfxInit(0);
 
         if (gEnableBGM && !isBgmPlaying())
