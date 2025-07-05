@@ -204,9 +204,19 @@ int lngSetGuiValue(int langID)
                         bgmUnMute();
                         return 1;
                     }
+                } else {
+                    if (lang_strs != internalEnglish)
+                        lang_strs = internalEnglish;
+                    guiLangID = langID;
+                    // lang switched back to internalEnglish, reload default font
+                    fntLoadDefault(NULL);
+                    thmSetGuiValue(thmGetGuiValue(), 1);
+                    bgmUnMute();
+                    return 0;
                 }
             }
-            lang_strs = internalEnglish;
+            if (lang_strs != internalEnglish)
+                lang_strs = internalEnglish;
             guiLangID = 0;
             // lang switched back to internalEnglish, reload default font
             fntLoadDefault(NULL);
