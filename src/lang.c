@@ -62,7 +62,7 @@ static int lngLoadFromFile(char *path, char *name)
         memcpy(dir, path, len);
         dir[len] = '\0';
         lngLoadFont(dir, name);
-        return 1;
+        return 0;
     }
 
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
