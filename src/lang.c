@@ -210,7 +210,7 @@ int lngSetGuiValue(int langID)
                     guiLangID = langID;
                     thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
-                    return 0;
+                    return 1;
                 }
             }
             if (lang_strs != internalEnglish)
