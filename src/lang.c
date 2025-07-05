@@ -54,43 +54,39 @@ static int lngLoadFont(const char *dir, const char *name)
 
 static int lngLoadFromFile(char *path, char *name)
 {
+    char dir[128];
+
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
     if (fileBuffer) {
         // file exists, try to read it and load the custom lang
         char **curL = lang_strs;
         char **newL = (char **)calloc(LANG_STR_COUNT, sizeof(char *));
 
-        // 目标是SChinese时，只变更字体
-        if (strncmp("SChinese", name, 8) == 0) {
-            closeFileBuffer(fileBuffer);
-            lang_strs = internalEnglish;
-            lngFreeFromFile(newL);
-        } else {
-            int strId = 0;
-            while (strId < LANG_STR_COUNT && readFileBuffer(fileBuffer, &newL[strId])) {
-                strId++;
-            }
-            closeFileBuffer(fileBuffer);
-
-            LOG("LANG Loaded %d entries\n", strId);
-
-            int newEntries = strId;
-            // if necessary complete lang with default internal
-            while (strId < LANG_STR_COUNT) {
-                LOG("LANG Default entry added: %s\n", internalEnglish[strId]);
-                newL[strId] = internalEnglish[strId];
-                strId++;
-            }
-            if (curL != internalEnglish && curL != NULL && nValidEntries > 0)
-                lngFreeFromFile(curL);
-            lang_strs = newL;
-            // remember how many entries were read from the file (for the free later)
-            nValidEntries = newEntries;
+        int strId = 0;
+        while (strId < LANG_STR_COUNT && readFileBuffer(fileBuffer, &newL[strId])) {
+            strId++;
         }
-        char dir[128];
+        closeFileBuffer(fileBuffer);
+
+        LOG("LANG Loaded %d entries\n", strId);
+
+        int newEntries = strId;
+        // if necessary complete lang with default internal
+        while (strId < LANG_STR_COUNT) {
+            LOG("LANG Default entry added: %s\n", internalEnglish[strId]);
+            newL[strId] = internalEnglish[strId];
+            strId++;
+        }
+        lang_strs = newL;
+        lngFreeFromFile(curL);
+
+        // remember how many entries were read from the file (for the free later)
+        nValidEntries = newEntries;
+
         int len = strlen(path) - strlen(name) - 9; // -4 for extension,  -5 for prefix
         memcpy(dir, path, len);
         dir[len] = '\0';
+
         lngLoadFont(dir, name);
 
         return 1;
