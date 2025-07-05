@@ -56,6 +56,15 @@ static int lngLoadFromFile(char *path, char *name)
 {
     char dir[128];
 
+    // 目标是SChinese时，只变更字体
+    if (strncmp("SChinese", name, 8) == 0) {
+        int len = strlen(path) - strlen(name) - 9; // -4 for extension,  -5 for prefix
+        memcpy(dir, path, len);
+        dir[len] = '\0';
+        lngLoadFont(dir, name);
+        return 1;
+    }
+
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
     if (fileBuffer) {
         // file exists, try to read it and load the custom lang
