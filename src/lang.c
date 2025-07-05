@@ -192,9 +192,6 @@ void lngEnd(void)
 
 int lngSetGuiValue(int langID)
 {
-    if (guiLangID == 0 && !strncmp("SChinese", guiLangNames[langID], 8)) {
-        return 0;
-    }
     if (langID != -1) {
         if (guiLangID != langID) {
             bgmMute();
