@@ -27,7 +27,7 @@ extern int size_poeveticanew_raw;
 /// Atlas height in pixels
 #define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 0 // 需要根据DPI进行动态变化
+#define GLYPH_CACHE_PAGE_SIZE 1 // 需要根据DPI进行动态变化
 
 // freetype vars
 static FT_Library font_library;
@@ -97,7 +97,7 @@ static FT_Bool use_kerning;
 static FT_UInt glyph_index, previous;
 static FT_Vector delta;
 
-#define GLYPH_PAGE_OK(font, page) ((pageid <= font->cacheMaxPageID) && (font->glyphCache[page]))
+#define GLYPH_PAGE_OK(font, pageid) ((pageid <= font->cacheMaxPageID) && (font->glyphCache[pageid]))
 
 static void fntCacheFlushPage(fnt_glyph_cache_entry_t *page)
 {
