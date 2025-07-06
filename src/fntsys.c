@@ -25,7 +25,7 @@ extern int size_poeveticanew_raw;
 /// Atlas width in pixels
 #define ATLAS_WIDTH  256 // WIDTH * HEIGHT = 16384 才不会让1080i闪屏，不能改
 /// Atlas height in pixels
-#define ATLAS_HEIGHT 64
+#define ATLAS_HEIGHT 256
 
 #define GLYPH_CACHE_PAGE_SIZE 1 // 设多少都无效，有BUG?
 
