@@ -618,6 +618,7 @@ static void menuNextH()
         selected_item = next;
         itemConfigId = -1;
         ForceRefreshPrevTexCache = 1; // 刷新上一次图像缓存
+        fntUpdateAspectRatio();       // 刷新字模缓存
         sfxPlay(SFX_CURSOR);
     }
 }
@@ -632,6 +633,7 @@ static void menuPrevH()
         selected_item = prev;
         itemConfigId = -1;
         ForceRefreshPrevTexCache = 1; // 刷新上一次图像缓存
+        fntUpdateAspectRatio();       // 刷新字模缓存
         sfxPlay(SFX_CURSOR);
     }
 }
@@ -642,6 +644,7 @@ static void menuFirstPage()
     if (cur) {
         if (cur->prev) {
             sfxPlay(SFX_CURSOR);
+            fntUpdateAspectRatio(); // 刷新字模缓存
         }
 
         selected_item->item->current = selected_item->item->submenu;
@@ -655,6 +658,7 @@ static void menuLastPage()
     if (cur) {
         if (cur->next) {
             sfxPlay(SFX_CURSOR);
+            fntUpdateAspectRatio(); // 刷新字模缓存
         }
         while (cur->next)
             cur = cur->next; // go to end
@@ -687,6 +691,7 @@ static void menuNextV()
                 cur = cur->next;
 
         selected_item->item->pagestart = selected_item->item->current;
+        fntUpdateAspectRatio(); // 刷新字模缓存
     } else { // wrap to start
         menuFirstPage();
     }
@@ -705,6 +710,7 @@ static void menuPrevV()
             int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1; // +1 because the selection will move as well
             while (--itms && selected_item->item->pagestart->prev)
                 selected_item->item->pagestart = selected_item->item->pagestart->prev;
+            fntUpdateAspectRatio(); // 刷新字模缓存
         }
     } else { // wrap to end
         menuLastPage();
@@ -718,6 +724,7 @@ static void menuNextPage()
     if (cur && cur->next) {
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
         sfxPlay(SFX_CURSOR);
+        fntUpdateAspectRatio(); // 刷新字模缓存
 
         while (--itms && cur->next)
             cur = cur->next;
@@ -736,6 +743,7 @@ static void menuPrevPage()
     if (cur && cur->prev) {
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
         sfxPlay(SFX_CURSOR);
+        fntUpdateAspectRatio(); // 刷新字模缓存
 
         while (--itms && cur->prev)
             cur = cur->prev;

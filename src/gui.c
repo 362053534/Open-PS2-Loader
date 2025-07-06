@@ -1800,6 +1800,9 @@ void guiSetFrameHook(gui_callback_t cback)
 
 void guiSwitchScreen(int target)
 {
+    if (target == GUI_SCREEN_MENU || target == GUI_SCREEN_MAIN)
+        fntUpdateAspectRatio(); // 刷新字模缓存
+
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
         return;
