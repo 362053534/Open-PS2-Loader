@@ -25,9 +25,9 @@ extern int size_poeveticanew_raw;
 /// Atlas width in pixels
 #define ATLAS_WIDTH  256
 /// Atlas height in pixels
-#define ATLAS_HEIGHT 128
+#define ATLAS_HEIGHT 64
 
-#define GLYPH_CACHE_PAGE_SIZE 128
+#define GLYPH_CACHE_PAGE_SIZE 64
 
 // freetype vars
 static FT_Library font_library;
