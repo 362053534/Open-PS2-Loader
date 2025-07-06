@@ -618,7 +618,8 @@ static void menuNextH()
         selected_item = next;
         itemConfigId = -1;
         ForceRefreshPrevTexCache = 1; // 刷新上一次图像缓存
-        fntUpdateAspectRatio();       // 刷新字模缓存
+        if (gVMode == 10 || gVMode == 11)
+            fntUpdateAspectRatio(); // 刷新字模缓存
         sfxPlay(SFX_CURSOR);
     }
 }
@@ -633,7 +634,8 @@ static void menuPrevH()
         selected_item = prev;
         itemConfigId = -1;
         ForceRefreshPrevTexCache = 1; // 刷新上一次图像缓存
-        fntUpdateAspectRatio();       // 刷新字模缓存
+        if (gVMode == 10 || gVMode == 11)
+            fntUpdateAspectRatio(); // 刷新字模缓存
         sfxPlay(SFX_CURSOR);
     }
 }
@@ -643,8 +645,9 @@ static void menuFirstPage()
     submenu_list_t *cur = selected_item->item->current;
     if (cur) {
         if (cur->prev) {
+            if (gVMode == 10 || gVMode == 11)
+                fntUpdateAspectRatio(); // 刷新字模缓存
             sfxPlay(SFX_CURSOR);
-            fntUpdateAspectRatio(); // 刷新字模缓存
         }
 
         selected_item->item->current = selected_item->item->submenu;
@@ -657,8 +660,9 @@ static void menuLastPage()
     submenu_list_t *cur = selected_item->item->current;
     if (cur) {
         if (cur->next) {
+            if (gVMode == 10 || gVMode == 11)
+                fntUpdateAspectRatio(); // 刷新字模缓存
             sfxPlay(SFX_CURSOR);
-            fntUpdateAspectRatio(); // 刷新字模缓存
         }
         while (cur->next)
             cur = cur->next; // go to end
@@ -679,7 +683,6 @@ static void menuNextV()
 
     if (cur && cur->next) {
         selected_item->item->current = cur->next;
-        sfxPlay(SFX_CURSOR);
 
         // if the current item is beyond the page start, move the page start one page down
         cur = selected_item->item->pagestart;
@@ -690,8 +693,10 @@ static void menuNextV()
             else
                 cur = cur->next;
 
+        if (gVMode == 10 || gVMode == 11)
+            fntUpdateAspectRatio(); // 刷新字模缓存
+        sfxPlay(SFX_CURSOR);
         selected_item->item->pagestart = selected_item->item->current;
-        fntUpdateAspectRatio(); // 刷新字模缓存
     } else { // wrap to start
         menuFirstPage();
     }
@@ -703,14 +708,17 @@ static void menuPrevV()
 
     if (cur && cur->prev) {
         selected_item->item->current = cur->prev;
-        sfxPlay(SFX_CURSOR);
 
         // if the current item is on the page start, move the page start one page up
         if (selected_item->item->pagestart == cur) {
             int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1; // +1 because the selection will move as well
             while (--itms && selected_item->item->pagestart->prev)
                 selected_item->item->pagestart = selected_item->item->pagestart->prev;
-            fntUpdateAspectRatio(); // 刷新字模缓存
+            if (selected_item->item->pagestart != cur) {
+                if (gVMode == 10 || gVMode == 11)
+                    fntUpdateAspectRatio(); // 刷新字模缓存
+            }
+            sfxPlay(SFX_CURSOR);
         }
     } else { // wrap to end
         menuLastPage();
@@ -723,8 +731,9 @@ static void menuNextPage()
 
     if (cur && cur->next) {
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
+        if (gVMode == 10 || gVMode == 11)
+            fntUpdateAspectRatio(); // 刷新字模缓存
         sfxPlay(SFX_CURSOR);
-        fntUpdateAspectRatio(); // 刷新字模缓存
 
         while (--itms && cur->next)
             cur = cur->next;
@@ -742,8 +751,9 @@ static void menuPrevPage()
 
     if (cur && cur->prev) {
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
+        if (gVMode == 10 || gVMode == 11)
+            fntUpdateAspectRatio(); // 刷新字模缓存
         sfxPlay(SFX_CURSOR);
-        fntUpdateAspectRatio(); // 刷新字模缓存
 
         while (--itms && cur->prev)
             cur = cur->prev;
