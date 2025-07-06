@@ -23,11 +23,11 @@ extern int size_poeveticanew_raw;
 /// Maximal count of atlases per font
 #define ATLAS_MAX    20
 /// Atlas width in pixels
-#define ATLAS_WIDTH  160
+#define ATLAS_WIDTH  128
 /// Atlas height in pixels
-#define ATLAS_HEIGHT 160
+#define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 100 // ATLAS_MAX为16时，121可能是最佳pageSize
+#define GLYPH_CACHE_PAGE_SIZE 64 // ATLAS_MAX为16时，121可能是最佳pageSize
 
 // freetype vars
 static FT_Library font_library;
