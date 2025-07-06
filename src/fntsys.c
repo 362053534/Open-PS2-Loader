@@ -95,7 +95,7 @@ static FT_Bool use_kerning;
 static FT_UInt glyph_index, previous;
 static FT_Vector delta;
 
-#define GLYPH_CACHE_PAGE_SIZE 512
+#define GLYPH_CACHE_PAGE_SIZE 256
 
 #define GLYPH_PAGE_OK(font, page) ((pageid <= font->cacheMaxPageID) && (font->glyphCache[page]))
 
