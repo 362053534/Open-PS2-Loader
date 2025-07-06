@@ -23,9 +23,9 @@ extern int size_poeveticanew_raw;
 /// Maximal count of atlases per font
 #define ATLAS_MAX    42 // 调大，可以增加字体显示数量，每个显示10个汉字？
 /// Atlas width in pixels
-#define ATLAS_WIDTH  32 // WIDTH * HEIGHT = 16384 才不会让1080i闪屏，不能改
+#define ATLAS_WIDTH  512 // WIDTH * HEIGHT = 16384 才不会让1080i闪屏，不能改
 /// Atlas height in pixels
-#define ATLAS_HEIGHT 512
+#define ATLAS_HEIGHT 32
 
 #define GLYPH_CACHE_PAGE_SIZE 1 // 设多少都无效，有BUG?
 
