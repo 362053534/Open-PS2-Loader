@@ -6,7 +6,7 @@
 /// Value returned on errors
 #define FNT_ERROR   (-1)
 
-#define FNTSYS_DEFAULT_SIZE 16
+#define FNTSYS_DEFAULT_SIZE 32
 
 /** Initializes the font subsystem */
 void fntInit();
