@@ -554,7 +554,8 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
                 //WaitSema(gFontSemaId);
                 fntCacheFlush(font);
                 //SignalSema(gFontSemaId);
-                glyph = fntCacheGlyph(font, codepoint);
+                //glyph = fntCacheGlyph(font, codepoint);
+                continue;
             } else
                 continue;
         }
