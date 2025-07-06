@@ -21,13 +21,13 @@ extern void *poeveticanew_raw;
 extern int size_poeveticanew_raw;
 
 /// Maximal count of atlases per font
-#define ATLAS_MAX    17 // 调大，可以增加字体显示数量
+#define ATLAS_MAX    40 // 调大，可以增加字体显示数量，每个显示10个汉字？
 /// Atlas width in pixels
 #define ATLAS_WIDTH  128 // WIDTH * HEIGHT = 16384 才不会让1080i闪屏，不能改
 /// Atlas height in pixels
 #define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 32 // 貌似设置无效，有BUG?
+#define GLYPH_CACHE_PAGE_SIZE 1 // 貌似设置无效，有BUG?
 
 // freetype vars
 static FT_Library font_library;
