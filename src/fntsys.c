@@ -21,13 +21,13 @@ extern void *poeveticanew_raw;
 extern int size_poeveticanew_raw;
 
 /// Maximal count of atlases per font
-#define ATLAS_MAX    4
+#define ATLAS_MAX    16
 /// Atlas width in pixels
-#define ATLAS_WIDTH  320
+#define ATLAS_WIDTH  256
 /// Atlas height in pixels
-#define ATLAS_HEIGHT 320
+#define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 400
+#define GLYPH_CACHE_PAGE_SIZE 128
 
 // freetype vars
 static FT_Library font_library;
