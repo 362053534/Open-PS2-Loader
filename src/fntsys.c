@@ -11,6 +11,7 @@
 #include "include/utf8.h"
 #include "include/util.h"
 #include "include/atlas.h"
+#include "include/lang.h"
 
 #include <sys/types.h>
 #include <ft2build.h>
@@ -21,7 +22,7 @@ extern void *poeveticanew_raw;
 extern int size_poeveticanew_raw;
 
 /// Maximal count of atlases per font
-#define ATLAS_MAX    14 // 调大，可以增加字体显示数量，每个显示10个汉字？
+#define ATLAS_MAX    42 // 调大，可以增加字体显示数量，每个显示10个汉字？
 /// Atlas width in pixels
 #define ATLAS_WIDTH  128 // WIDTH * HEIGHT = 16384 才不会让1080i闪屏，不能改
 /// Atlas height in pixels
@@ -497,6 +498,16 @@ static void fntRenderGlyph(fnt_glyph_cache_entry_t *glyph, int pen_x, int pen_y)
     }
 }
 
+// 手动刷新字体缓存
+void fntRefreshCache()
+{
+    if (gVMode == 10 || gVMode == 11)
+        if (fonts[lngGetGuiValue()].isValid) {
+            // WaitSema(gFontSemaId);
+            fntCacheFlush(&fonts[lngGetGuiValue()]);
+            // SignalSema(gFontSemaId);
+        }
+}
 
 #ifndef __RTL
 int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t height, const char *string, u64 colour)
@@ -549,16 +560,8 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
             continue;
 
         glyph = fntCacheGlyph(font, codepoint);
-        if (!glyph) {
-            if (gVMode == 10 || gVMode == 11) {
-                //WaitSema(gFontSemaId);
-                fntCacheFlush(font);
-                //SignalSema(gFontSemaId);
-                //glyph = fntCacheGlyph(font, codepoint);
-                continue;
-            } else
-                continue;
-        }
+        if (!glyph)
+            continue;
 
         // kerning
         if (use_kerning && previous) {

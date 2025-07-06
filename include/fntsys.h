@@ -41,4 +41,7 @@ void fntFitString(int id, char *string, size_t width);
  * We can't use the height for alignment, as the horizontal center would depends of the contained text itself */
 int fntCalcDimensions(int id, const char *str);
 
+// 手动刷新字体缓存
+void fntRefreshCache();
+
 #endif

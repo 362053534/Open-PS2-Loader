@@ -327,8 +327,7 @@ static void itemExecSelect(struct menu_item *curMenu)
                     // Normal initialization.
                     itemInitSupport(support);
                 }
-                if (gVMode == 10 || gVMode == 11)
-                    guiUpdateScreenScale(); // 刷新字模缓存
+                //fntRefreshCache(); // 刷新字模缓存
             }
         } else
             guiMsgBox("NULL Support object. Please report", 0, NULL);
