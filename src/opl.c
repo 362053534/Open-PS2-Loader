@@ -1296,7 +1296,7 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
     changed = thmSetGuiValue(themeID, changed);
     int langChanged = lngSetGuiValue(langID);
 
-    guiUpdateScreenScale();
+    //guiUpdateScreenScale();
 
     // Check if we should refresh device support as well.
     if (skipDeviceRefresh == 0) {
