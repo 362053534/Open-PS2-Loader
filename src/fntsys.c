@@ -550,12 +550,12 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
 
         glyph = fntCacheGlyph(font, codepoint);
         if (!glyph) {
-            //if (gVMode == 10 || gVMode == 11) {
-            //    WaitSema(gFontSemaId);
-            //    fntCacheFlush(font);
-            //    SignalSema(gFontSemaId);
-            //    glyph = fntCacheGlyph(font, codepoint);
-            //} else
+            if (gVMode == 10 || gVMode == 11) {
+                //WaitSema(gFontSemaId);
+                fntCacheFlush(font);
+                //SignalSema(gFontSemaId);
+                glyph = fntCacheGlyph(font, codepoint);
+            } else
                 continue;
         }
 
