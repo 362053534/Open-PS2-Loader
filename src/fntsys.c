@@ -27,7 +27,7 @@ extern int size_poeveticanew_raw;
 /// Atlas height in pixels
 #define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 256 // 64不会导致1080i闪屏，与ATLAS_MAX相乘=1024才不会缺字
+#define GLYPH_CACHE_PAGE_SIZE 4 // 64不会导致1080i闪屏，与ATLAS_MAX相乘=1024才不会缺字
 
 // freetype vars
 static FT_Library font_library;
