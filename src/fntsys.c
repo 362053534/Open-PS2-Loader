@@ -549,8 +549,18 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
             continue;
 
         glyph = fntCacheGlyph(font, codepoint);
-        if (!glyph)
-            continue;
+        //if (!glyph)
+        //    continue;
+
+        if (!glyph) {
+            if (gVMode == 10 || gVMode == 11) {
+                WaitSema(gFontSemaId);
+                fntCacheFlush(font);
+                SignalSema(gFontSemaId);
+                glyph = fntCacheGlyph(font, codepoint);
+            } else
+                continue;
+        }
 
         // kerning
         if (use_kerning && previous) {
