@@ -27,7 +27,7 @@ extern int size_poeveticanew_raw;
 /// Atlas height in pixels
 #define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 64 // 64不会导致1080i闪屏，与ATLAS_MAX相乘=1024才不会缺字
+#define GLYPH_CACHE_PAGE_SIZE 256 // 64不会导致1080i闪屏，与ATLAS_MAX相乘=1024才不会缺字
 
 // freetype vars
 static FT_Library font_library;
@@ -549,16 +549,13 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
             continue;
 
         glyph = fntCacheGlyph(font, codepoint);
-        //if (!glyph)
-        //    continue;
-
         if (!glyph) {
-            if (gVMode == 10 || gVMode == 11) {
-                WaitSema(gFontSemaId);
-                fntCacheFlush(font);
-                SignalSema(gFontSemaId);
-                glyph = fntCacheGlyph(font, codepoint);
-            } else
+            //if (gVMode == 10 || gVMode == 11) {
+            //    WaitSema(gFontSemaId);
+            //    fntCacheFlush(font);
+            //    SignalSema(gFontSemaId);
+            //    glyph = fntCacheGlyph(font, codepoint);
+            //} else
                 continue;
         }
 
