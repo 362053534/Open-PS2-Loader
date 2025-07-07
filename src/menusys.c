@@ -764,6 +764,15 @@ static void menuPrevPage()
 {
     submenu_list_t *cur = selected_item->item->pagestart;
 
+    // 如果处于首页，就把光标先移动到顶部
+    if (cur && (cur == selected_item->item->submenu)) {
+        if (selected_item->item->current != cur) {
+            selected_item->item->current = cur;
+            sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
+            return;
+        }
+    }
+
     if (cur && cur->prev) {
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
         int moveCount = 0;
