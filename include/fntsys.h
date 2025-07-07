@@ -6,7 +6,7 @@
 /// Value returned on errors
 #define FNT_ERROR   (-1)
 
-#define FNTSYS_DEFAULT_SIZE 16 // 需要与ATLAS参数形成倍数关系
+#define FNTSYS_DEFAULT_SIZE 17 // 最好与ATLAS参数形成倍数关系(官方默认设为17)
 
 /** Initializes the font subsystem */
 void fntInit();
