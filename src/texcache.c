@@ -10,7 +10,8 @@ GSTEXTURE *prevCacheCOV = NULL; // 上一张封面图缓存
 GSTEXTURE *prevCacheICO = NULL; // 上一张光碟图缓存
 GSTEXTURE *prevCache = NULL; // 上一张图缓存
 int ForceRefreshPrevTexCache = 0;
-int TexLoadDalay = 4; // 原来是8,响应间隔太长
+int TexStopLoadDalay = 30; // 按住按键超过这个帧数才停止加载ART
+int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
 
 typedef struct
 {
@@ -185,8 +186,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if (guiInactiveFrames < TexLoadDalay)
-        return prevCache;
+    if (guiInactiveFrames == 0) {
+        if (ButtonFrames++ >= TexStopLoadDalay) // 按住按键一定时间，停止加载ART
+            return prevCache;
+    }
+    else {
+        if (ButtonFrames)
+            ButtonFrames = 0;
+    }
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
     int i, rtime = guiFrameId;
