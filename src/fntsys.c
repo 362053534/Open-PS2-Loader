@@ -503,9 +503,9 @@ void fntRefreshCache()
 {
     if (gVMode == 10 || gVMode == 11)
         if (fonts[lngGetGuiValue()].isValid) {
-            // WaitSema(gFontSemaId);
+            WaitSema(gFontSemaId);
             fntCacheFlush(&fonts[lngGetGuiValue()]);
-            // SignalSema(gFontSemaId);
+            SignalSema(gFontSemaId);
         }
 }
 
