@@ -327,7 +327,6 @@ static void itemExecSelect(struct menu_item *curMenu)
                     // Normal initialization.
                     itemInitSupport(support);
                 }
-                //fntRefreshCache(); // 刷新字模缓存
             }
         } else
             guiMsgBox("NULL Support object. Please report", 0, NULL);

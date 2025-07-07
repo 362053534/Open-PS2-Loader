@@ -784,11 +784,13 @@ static void menuPrevPage()
 
         selected_item->item->current = cur;
 
-        // 翻页了才刷新，不翻页不刷新
-        if (moveCount == 16) { // 一页16个游戏
-            fntRefreshCache(); // 刷新字模缓存
-            selected_item->item->pagestart = selected_item->item->current;
-        }
+        // 翻页了才刷新，不翻页不刷新(往前翻页一定会刷新，除非本来就在首页)
+        fntRefreshCache(); // 刷新字模缓存
+        if (moveCount == 16) // 一页16个游戏
+            selected_item->item->pagestart = selected_item->item->current;  
+        else
+            selected_item->item->pagestart = cur;
+
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
         menuLastPage();
