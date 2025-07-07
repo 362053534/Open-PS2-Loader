@@ -1800,14 +1800,13 @@ void guiSetFrameHook(gui_callback_t cback)
 
 void guiSwitchScreen(int target)
 {
-    fntRefreshCache(); // 刷新字模缓存
-
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
         return;
     }
     transIndex = 0;
     screenHandlerTarget = &screenHandlers[target];
+    fntRefreshCache();       // 刷新字模缓存
     sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
