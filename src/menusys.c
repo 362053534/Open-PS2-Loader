@@ -642,13 +642,17 @@ static void menuFirstPage()
 {
     submenu_list_t *cur = selected_item->item->current;
     if (cur) {
-        if (cur->prev) {
+        if (!cur->prev)
+            return;
+
+        // 翻页了才刷新，不翻页不刷新
+        if (selected_item->item->pagestart != selected_item->item->submenu)
             fntRefreshCache(); // 刷新字模缓存
-            sfxPlay(SFX_CURSOR);
-        }
 
         selected_item->item->current = selected_item->item->submenu;
         selected_item->item->pagestart = selected_item->item->current;
+
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     }
 }
 
@@ -656,10 +660,9 @@ static void menuLastPage()
 {
     submenu_list_t *cur = selected_item->item->current;
     if (cur) {
-        if (cur->next) {
-            fntRefreshCache(); // 刷新字模缓存
-            sfxPlay(SFX_CURSOR);
-        }
+        if (!cur->next)
+            return;
+
         while (cur->next)
             cur = cur->next; // go to end
 
@@ -669,7 +672,13 @@ static void menuLastPage()
         while (--itms && cur->prev) // and move back to have a full page
             cur = cur->prev;
 
-        selected_item->item->pagestart = cur;
+        // 翻页了才刷新，不翻页不刷新
+        if (selected_item->item->pagestart != cur) {
+            fntRefreshCache(); // 刷新字模缓存
+            selected_item->item->pagestart = cur;
+        }
+
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     }
 }
 
@@ -691,9 +700,15 @@ static void menuNextV()
             else
                 cur = cur->next;
 
+        // 如果翻到最后一页了，要保证是完整的一页
+        cur = selected_item->item->current;
+        itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems;
+        while (--itms && cur->prev) // and move back to have a full page
+            cur = cur->prev;
+
         fntRefreshCache(); // 刷新字模缓存
-        selected_item->item->pagestart = selected_item->item->current;
-        sfxPlay(SFX_CURSOR);
+        selected_item->item->pagestart = cur;
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to start
         menuFirstPage();
     }
@@ -714,7 +729,7 @@ static void menuPrevV()
             if (selected_item->item->pagestart != cur)
                 fntRefreshCache(); // 刷新字模缓存
         }
-        sfxPlay(SFX_CURSOR);
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
         menuLastPage();
     }
@@ -725,15 +740,35 @@ static void menuNextPage()
     submenu_list_t *cur = selected_item->item->pagestart;
 
     if (cur && cur->next) {
+        if (cur == cur->next) { // 只有1页的时候的处理
+            submenu_list_t *curItem = selected_item->item->current;
+            while (curItem->next)
+                curItem = curItem->next; // go to end
+            if (selected_item->item->current != curItem) {
+                selected_item->item->current = curItem;
+                sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
+            }
+            return;
+        }
+
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
-        fntRefreshCache(); // 刷新字模缓存
-        sfxPlay(SFX_CURSOR);
 
         while (--itms && cur->next)
             cur = cur->next;
 
         selected_item->item->current = cur;
-        selected_item->item->pagestart = selected_item->item->current;
+
+        // 翻页了才刷新，不翻页不刷新
+        if (cur != selected_item->item->pagestart) {
+            // 如果翻到最后一页了，要保证是完整的一页
+            itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems;
+            while (--itms && cur->prev) // and move back to have a full page
+                cur = cur->prev;
+
+            fntRefreshCache(); // 刷新字模缓存
+            selected_item->item->pagestart = cur;
+        }
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to start
         menuFirstPage();
     }
@@ -744,15 +779,29 @@ static void menuPrevPage()
     submenu_list_t *cur = selected_item->item->pagestart;
 
     if (cur && cur->prev) {
+        if (cur == cur->prev) { // 只有1页的时候的处理
+            submenu_list_t *curItem = selected_item->item->current;
+            while (curItem->prev)
+                curItem = curItem->prev; // go to first
+            if (selected_item->item->current != curItem) {
+                selected_item->item->current = curItem;
+                sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
+            }
+            return;
+        }
+
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
-        fntRefreshCache(); // 刷新字模缓存
-        sfxPlay(SFX_CURSOR);
 
         while (--itms && cur->prev)
             cur = cur->prev;
 
+        // 翻页了才刷新，不翻页不刷新
+        if (cur != selected_item->item->pagestart)
+            fntRefreshCache(); // 刷新字模缓存
+
         selected_item->item->current = cur;
         selected_item->item->pagestart = selected_item->item->current;
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
         menuLastPage();
     }

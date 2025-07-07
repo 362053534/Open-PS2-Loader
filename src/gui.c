@@ -1800,17 +1800,15 @@ void guiSetFrameHook(gui_callback_t cback)
 
 void guiSwitchScreen(int target)
 {
-    if (target == GUI_SCREEN_MENU || target == GUI_SCREEN_MAIN)
-        fntRefreshCache(); // 刷新字模缓存
-
+    fntRefreshCache(); // 刷新字模缓存
 
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
         return;
     }
-    sfxPlay(SFX_TRANSITION);
     transIndex = 0;
     screenHandlerTarget = &screenHandlers[target];
+    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
 void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
@@ -1819,12 +1817,11 @@ void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
     if (screenHandlerTarget != NULL) {
         return;
     }
-    // 跳过音效播放，会导致bdm菜单修正失效？不知道什么鬼
-    if (_soundOn != 0) {
-        sfxPlay(SFX_TRANSITION);
-    }
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
+    // 跳过音效播放，会导致bdm菜单修正失效？不知道什么鬼
+    if (_soundOn != 0)
+        sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
 struct gui_update_t *guiOpCreate(gui_op_type_t type)
