@@ -28,7 +28,7 @@ extern int size_poeveticanew_raw;
 /// Atlas height in pixels
 #define ATLAS_HEIGHT 128
 
-#define GLYPH_CACHE_PAGE_SIZE 1 // 设多少都无效，有BUG?
+#define GLYPH_CACHE_PAGE_SIZE 64 // 设多少都没区别，有BUG?
 
 // freetype vars
 static FT_Library font_library;
