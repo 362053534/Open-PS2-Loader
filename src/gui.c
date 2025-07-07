@@ -1501,6 +1501,9 @@ static void guiReadPads()
 // screen handlers. Fade transition code written by Maximus32
 static void guiShow()
 {
+    if (transIndex == 13)
+        fntRefreshCache(); // 刷新字模缓存
+
     // is there a transmission effect going on or are
     // we in a normal rendering state?
     if (screenHandlerTarget) {
@@ -1806,7 +1809,6 @@ void guiSwitchScreen(int target)
     }
     transIndex = 0;
     screenHandlerTarget = &screenHandlers[target];
-    fntRefreshCache();       // 刷新字模缓存
     sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
