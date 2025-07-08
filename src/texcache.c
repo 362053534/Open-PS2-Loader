@@ -234,7 +234,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     } else if (*cacheId != -1) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
-            if (entry->qr)
+            if (entry->qr) {
                 //  根据图像类型，赋值上一次的缓存
                 if (!strncmp("COV", cache->suffix, 3)) {
                     if (PrevCacheID_COV >= 0)
@@ -249,7 +249,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     prevCache = NULL;
                 }
                 return prevCache;
-            else if (entry->lastUsed == 0) {
+            } else if (entry->lastUsed == 0) {
                 *cacheId = -2;
                 //// 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 //if (!strncmp("COV", cache->suffix, 3)) {
