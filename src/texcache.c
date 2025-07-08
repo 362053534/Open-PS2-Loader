@@ -17,7 +17,7 @@ int LoadFrames_BG = 0;
 int LoadFrames = 0; // 加载超过一定时间，则一直跳过加载
 
 int RestartLoadTexFrames = 0;
-int RestartLoadTexDelay = 12;
+int RestartLoadTexDelay = 15;
 
 int TexStopLoadDelay = 28; // 按住按键超过这个帧数才停止加载ART
 int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
