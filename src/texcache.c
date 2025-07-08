@@ -279,8 +279,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     PrevCacheID_ICO = *cacheId;
                     prevCache = &entry->texture;
                 } else if (!strncmp("BG", cache->suffix, 2)) {
-                    PrevCacheID_BG = *cacheId;
-                    prevCache = &entry->texture;
+                    if (&entry->texture == NULL) {
+                        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
+                    } else {
+                        PrevCacheID_BG = *cacheId;
+                        prevCache = &entry->texture;
+                    }
                 }
                 return &entry->texture;
             }
