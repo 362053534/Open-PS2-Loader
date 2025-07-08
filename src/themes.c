@@ -562,7 +562,7 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
                 texture = &gameImage->defaultTexture->source;
             else {
                 if (elem->type == ELEM_TYPE_BACKGROUND)
-                    //guiDrawBGPlasma();
+                    guiDrawBGPlasma();
                 return;
             }
         }
@@ -571,15 +571,15 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
             rmDrawOverlayPixmap(&gameImage->overlayTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,
                                 texture, gameImage->overlayTexture->upperLeft_x, gameImage->overlayTexture->upperLeft_y, gameImage->overlayTexture->upperRight_x, gameImage->overlayTexture->upperRight_y,
                                 gameImage->overlayTexture->lowerLeft_x, gameImage->overlayTexture->lowerLeft_y, gameImage->overlayTexture->lowerRight_x, gameImage->overlayTexture->lowerRight_y);
-        } /*else
-            rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);*/
+        } else
+            rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
-    } /*else if (elem->type == ELEM_TYPE_BACKGROUND) {
+    } else if (elem->type == ELEM_TYPE_BACKGROUND) {
         if (gameImage->defaultTexture)
             rmDrawPixmap(&gameImage->defaultTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
         else
             guiDrawBGPlasma();
-    }*/
+    }
 }
 
 static void initGameImage(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, const char *pattern, int count, const char *texture, const char *overlay)
@@ -1041,7 +1041,7 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
             } else if (!strcmp(elementsType[ELEM_TYPE_BACKGROUND], type)) {
                 if (!elems->first) { // Background elem can only be the first one
                     elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_BACKGROUND, 0, 0, ALIGN_NONE, screenWidth, screenHeight, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 1, NULL);
+                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 2, NULL);
                 }
             } else if (!strcmp(elementsType[ELEM_TYPE_MENU_ICON], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_MENU_ICON, screenWidth >> 1, 400, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
@@ -1491,7 +1491,7 @@ int thmSetGuiValue(int themeID, int reload)
 
             guiThemeID = themeID;
 
-            ForceRefreshPrevTexCache = 1; // 释放ART图像缓存，防止死机
+            ForceRefreshPrevTexCache = 1; // 刷新ART缓存，防止死机
             return 1;
         } else if (guiThemeID == 0)
             thmSetColors(gTheme);
