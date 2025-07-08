@@ -245,8 +245,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 } else if (!strncmp("BG", cache->suffix, 2)) {
                     if (PrevCacheID_BG >= 0)
                         prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-                } else {
-                    prevCache = NULL;
                 }
                 return prevCache;
             } else if (entry->lastUsed == 0) {
@@ -259,19 +257,17 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 //} else if (!strncmp("BG", cache->suffix, 2)) {
                 //    PrevCacheID_BG = *cacheId;
                 //}
-                ////  根据图像类型，赋值上一次的缓存
-                //if (!strncmp("COV", cache->suffix, 3)) {
-                //    if (PrevCacheID_COV >= 0)
-                //        prevCache = &(&cache->content[PrevCacheID_COV])->texture;
-                //} else if (!strncmp("ICO", cache->suffix, 3)) {
-                //    if (PrevCacheID_ICO >= 0)
-                //        prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
-                //} else if (!strncmp("BG", cache->suffix, 2)) {
-                //    if (PrevCacheID_BG >= 0)
-                //        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-                //} else {
-                //    prevCache = NULL;
-                //}
+                //   根据图像类型，赋值上一次的缓存
+                if (!strncmp("COV", cache->suffix, 3)) {
+                    if (PrevCacheID_COV >= 0)
+                        prevCache = &(&cache->content[PrevCacheID_COV])->texture;
+                } else if (!strncmp("ICO", cache->suffix, 3)) {
+                    if (PrevCacheID_ICO >= 0)
+                        prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
+                } else if (!strncmp("BG", cache->suffix, 2)) {
+                    if (PrevCacheID_BG >= 0)
+                        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
+                }
                 return prevCache;
             } else {
                 entry->lastUsed = guiFrameId;
