@@ -562,7 +562,7 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
                 texture = &gameImage->defaultTexture->source;
             else {
                 if (elem->type == ELEM_TYPE_BACKGROUND)
-                    guiDrawBGPlasma();
+                    //guiDrawBGPlasma();
                 return;
             }
         }
