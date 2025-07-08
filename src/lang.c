@@ -58,50 +58,47 @@ static int lngLoadFont(const char *dir, const char *name)
 
 static int lngLoadFromFile(char *path, char *name)
 {
-    char dir[128];
-
-    // 目标是SChinese时，只变更字体
-    if (strncmp("SChinese", name, 8) == 0) {
-        int len = strlen(path) - strlen(name) - 9; // -4 for extension,  -5 for prefix
-        memcpy(dir, path, len);
-        dir[len] = '\0';
-        lngLoadFont(dir, name);
-        return 1;
-    }
-
     file_buffer_t *fileBuffer = openFileBuffer(path, O_RDONLY, 1, 1024);
     if (fileBuffer) {
-        // file exists, try to read it and load the custom lang
-        char **curL = lang_strs;
-        char **newL = (char **)calloc(LANG_STR_COUNT, sizeof(char *));
+        // 目标是SChinese时，文本变回默认
+        if (strncmp("SChinese", name, 8) == 0) {
+            closeFileBuffer(fileBuffer);
+            if (lang_strs != internalEnglish) {
+                lngFreeFromFile(lang_strs);
+                lang_strs = internalEnglish;
+                nValidEntries = LANG_STR_COUNT;
+            }
+        } else {
+            // file exists, try to read it and load the custom lang
+            char **curL = lang_strs;
+            char **newL = (char **)calloc(LANG_STR_COUNT, sizeof(char *));
 
-        int strId = 0;
-        while (strId < LANG_STR_COUNT && readFileBuffer(fileBuffer, &newL[strId])) {
-            strId++;
+            int strId = 0;
+            while (strId < LANG_STR_COUNT && readFileBuffer(fileBuffer, &newL[strId])) {
+                strId++;
+            }
+            closeFileBuffer(fileBuffer);
+
+            LOG("LANG Loaded %d entries\n", strId);
+
+            int newEntries = strId;
+            // if necessary complete lang with default internal
+            while (strId < LANG_STR_COUNT) {
+                LOG("LANG Default entry added: %s\n", internalEnglish[strId]);
+                newL[strId] = internalEnglish[strId];
+                strId++;
+            }
+            lang_strs = newL;
+            lngFreeFromFile(curL);
+
+            // remember how many entries were read from the file (for the free later)
+            nValidEntries = newEntries;
         }
-        closeFileBuffer(fileBuffer);
-
-        LOG("LANG Loaded %d entries\n", strId);
-
-        int newEntries = strId;
-        // if necessary complete lang with default internal
-        while (strId < LANG_STR_COUNT) {
-            LOG("LANG Default entry added: %s\n", internalEnglish[strId]);
-            newL[strId] = internalEnglish[strId];
-            strId++;
-        }
-        lang_strs = newL;
-        lngFreeFromFile(curL);
-
-        // remember how many entries were read from the file (for the free later)
-        nValidEntries = newEntries;
-
+        char dir[128];
         int len = strlen(path) - strlen(name) - 9; // -4 for extension,  -5 for prefix
         memcpy(dir, path, len);
         dir[len] = '\0';
-
         lngLoadFont(dir, name);
-
         return 1;
     }
     return 0;
@@ -211,10 +208,6 @@ int lngSetGuiValue(int langID)
             if (langID != 0) {
                 language_t *currLang = &languages[langID - 1];
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
-                    if (!strncmp("SChinese", guiLangNames[langID], 8)) {
-                        if (lang_strs != internalEnglish)
-                            lang_strs = internalEnglish;
-                    }
                     guiLangID = langID;
                     thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
