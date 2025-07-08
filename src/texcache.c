@@ -176,7 +176,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
          strcpy(debugFileDir, "smb:debug-TexCache.txt");
          FILE *debugFile = fopen(debugFileDir, "ab+");
          if (debugFile != NULL) {
-             fprintf(debugFile, "BG cacheId:%s  LoadFrames_BG:%d\r\n", *cacheId, LoadFrames_BG);
+             fprintf(debugFile, "BG cacheId:%d  LoadFrames_BG:%d\r\n", *cacheId, LoadFrames_BG);
              fclose(debugFile);
          }
         if (*cacheId == -1)
