@@ -207,6 +207,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         } else if (!strncmp("BG", cache->suffix, 2)) {
             if (PrevCacheID_BG >= 0)
                 prevCache = &(&cache->content[PrevCacheID_BG])->texture;
+                // debug  打印debug信息
+                 char debugFileDir[64];
+                 strcpy(debugFileDir, "smb:debug-TexCache.txt");
+                 FILE *debugFile = fopen(debugFileDir, "ab+");
+                 if (debugFile != NULL) {
+                     fprintf(debugFile, prevCache ? "&(&cache->content[PrevCacheID_BG])->texture:有图" : "&(&cache->content[PrevCacheID_BG])->texture:NULL");
+                     fclose(debugFile);
+                 }
         } /*else {
             prevCache = NULL;
         }*/
