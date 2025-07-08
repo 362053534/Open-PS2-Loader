@@ -148,9 +148,9 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         ForceRefreshPrevTexCache = 0;
         //texFree(prevCacheCOV);
         //texFree(prevCacheICO);
-        //texFree(prevCache);
-        prevCacheCOV = NULL;
-        prevCacheICO = NULL;
+        texFree(prevCache);
+        //prevCacheCOV = NULL;
+        //prevCacheICO = NULL;
         prevCache = NULL;
     }
 
