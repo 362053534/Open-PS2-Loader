@@ -11,13 +11,12 @@ int PrevCacheID_COV = -2;
 int PrevCacheID_ICO = -2;
 int PrevCacheID_BG = -2;
 
-int LoadFrames_COV = 0;
-int LoadFrames_ICO = 0;
-int LoadFrames_BG = 0;
-int LoadFrames = 0; // 加载超过一定时间，则一直跳过加载
-
-int RestartLoadTexFrames = 0;
-int RestartLoadTexDelay = 15;
+//int LoadFrames_COV = 0;
+//int LoadFrames_ICO = 0;
+//int LoadFrames_BG = 0;
+//int LoadFrames = 0; // 加载超过一定时间，则一直跳过加载
+//int RestartLoadTexFrames = 0;
+//int RestartLoadTexDelay = 15;
 
 int TexStopLoadDelay = 28; // 按住按键超过这个帧数才停止加载ART
 int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
@@ -142,54 +141,53 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     } else {
         if (ButtonFrames)
             ButtonFrames = 0;
-
-        // 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
-        if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
-            RestartLoadTexFrames = RestartLoadTexDelay;
-            LoadFrames_COV = 0;
-            LoadFrames_ICO = 0;
-            LoadFrames_BG = 0;
-            LoadFrames = 0;
-        }
+        //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
+        //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
+        //    RestartLoadTexFrames = RestartLoadTexDelay;
+        //    LoadFrames_COV = 0;
+        //    LoadFrames_ICO = 0;
+        //    LoadFrames_BG = 0;
+        //    LoadFrames = 0;
+        //}
     }
 
-    // 根据图像类型，记录加载时间
-    if (!strncmp("COV", cache->suffix, 3)) {
-        if (*cacheId == -1)
-            LoadFrames_COV++;
-        else {
-            if (LoadFrames_COV)
-                LoadFrames_COV = 0;
-        }
-        LoadFrames = LoadFrames_COV;
-    } else if (!strncmp("ICO", cache->suffix, 3)) {
-        if (*cacheId == -1)
-            LoadFrames_ICO++;
-        else {
-            if (LoadFrames_ICO)
-                LoadFrames_ICO = 0;
-        }
-        LoadFrames = LoadFrames_ICO;
-    } else if (!strncmp("BG", cache->suffix, 2)) {
-        // debug  打印debug信息
-         char debugFileDir[64];
-         strcpy(debugFileDir, "smb:debug-TexCache.txt");
-         FILE *debugFile = fopen(debugFileDir, "ab+");
-         if (debugFile != NULL) {
-             fprintf(debugFile, "BG cacheId:%d  LoadFrames_BG:%d\r\n", *cacheId, LoadFrames_BG);
-             fclose(debugFile);
-         }
-        if (*cacheId == -1)
-            LoadFrames_BG++;
-        else {
-            if (LoadFrames_BG)
-                LoadFrames_BG = 0;
-        }
-        LoadFrames = LoadFrames_BG;
-    } else {
-        if (LoadFrames)
-            LoadFrames = 0;
-    }
+    //// 根据图像类型，记录加载时间
+    //if (!strncmp("COV", cache->suffix, 3)) {
+    //    if (*cacheId == -1)
+    //        LoadFrames_COV++;
+    //    else {
+    //        if (LoadFrames_COV)
+    //            LoadFrames_COV = 0;
+    //    }
+    //    LoadFrames = LoadFrames_COV;
+    //} else if (!strncmp("ICO", cache->suffix, 3)) {
+    //    if (*cacheId == -1)
+    //        LoadFrames_ICO++;
+    //    else {
+    //        if (LoadFrames_ICO)
+    //            LoadFrames_ICO = 0;
+    //    }
+    //    LoadFrames = LoadFrames_ICO;
+    //} else if (!strncmp("BG", cache->suffix, 2)) {
+    //    //// debug  打印debug信息
+    //    // char debugFileDir[64];
+    //    // strcpy(debugFileDir, "smb:debug-TexCache.txt");
+    //    // FILE *debugFile = fopen(debugFileDir, "ab+");
+    //    // if (debugFile != NULL) {
+    //    //     fprintf(debugFile, "BG cacheId:%d  LoadFrames_BG:%d\r\n", *cacheId, LoadFrames_BG);
+    //    //     fclose(debugFile);
+    //    // }
+    //    if (*cacheId == -1)
+    //        LoadFrames_BG++;
+    //    else {
+    //        if (LoadFrames_BG)
+    //            LoadFrames_BG = 0;
+    //    }
+    //    LoadFrames = LoadFrames_BG;
+    //} else {
+    //    if (LoadFrames)
+    //        LoadFrames = 0;
+    //}
 
     GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
@@ -229,16 +227,16 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             if (entry->qr)
                 return prevCache;
             else if (entry->lastUsed == 0) {
-                *cacheId = -2;
-                // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
-                if (!strncmp("COV", cache->suffix, 3)) {
-                    PrevCacheID_COV = *cacheId;
-                } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    PrevCacheID_ICO = *cacheId;
-                } else if (!strncmp("BG", cache->suffix, 2)) {
-                    PrevCacheID_BG = *cacheId;
-                }
-                return NULL;
+                *cacheId = -1;
+                //// 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
+                //if (!strncmp("COV", cache->suffix, 3)) {
+                //    PrevCacheID_COV = *cacheId;
+                //} else if (!strncmp("ICO", cache->suffix, 3)) {
+                //    PrevCacheID_ICO = *cacheId;
+                //} else if (!strncmp("BG", cache->suffix, 2)) {
+                //    PrevCacheID_BG = *cacheId;
+                //}
+                return prevCache;
             } else {
                 entry->lastUsed = guiFrameId;
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
@@ -257,7 +255,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if ((ButtonFrames >= TexStopLoadDelay) || (LoadFrames >= TexStopLoadDelay)) // 按住按键超时，或加载超时，则停止加载ART
+    if ((ButtonFrames >= TexStopLoadDelay)/* || (LoadFrames >= TexStopLoadDelay)*/) // 按住按键超时，或加载超时，则停止加载ART
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
