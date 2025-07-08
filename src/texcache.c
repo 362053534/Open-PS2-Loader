@@ -332,5 +332,5 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         //}
     }
 
-    return prevCache;
+    return NULL;
 }
