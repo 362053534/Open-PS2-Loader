@@ -127,7 +127,7 @@ void cacheDestroyCache(image_cache_t *cache)
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if (guiInactiveFrames == 0) {
+    if (!guiInactiveFrames) {
         ButtonFrames++; // 按住按键的时间
     } else {
         if (ButtonFrames)
@@ -200,7 +200,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if (ButtonFrames >= TexStopLoadDalay) // 按住按键一定时间，停止加载ART
+    if ((ButtonFrames >= TexStopLoadDalay) || (*cacheId == -1 && !guiInactiveFrames)) // 按住按键一定时间，停止加载ART；或正在查找的时候继续按键
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
