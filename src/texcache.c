@@ -171,6 +171,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         }
         LoadFrames = LoadFrames_ICO;
     } else if (!strncmp("BG", cache->suffix, 2)) {
+        // debug  打印debug信息
+         char debugFileDir[64];
+         strcpy(debugFileDir, "smb:debug-TexCache.txt");
+         FILE *debugFile = fopen(debugFileDir, "ab+");
+         if (debugFile != NULL) {
+             fprintf(debugFile, "BG cacheId:%s  LoadFrames_BG:%d\r\n", *cacheId, LoadFrames_BG);
+             fclose(debugFile);
+         }
         if (*cacheId == -1)
             LoadFrames_BG++;
         else {
