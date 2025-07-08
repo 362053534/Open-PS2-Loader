@@ -283,13 +283,15 @@ static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
 
 void texFree(GSTEXTURE *texture)
 {
-    if (texture->Mem) {
-        free(texture->Mem);
-        texture->Mem = NULL;
-    }
-    if (texture->Clut) {
-        free(texture->Clut);
-        texture->Clut = NULL;
+    if (texture) {
+        if (texture->Mem) {
+            free(texture->Mem);
+            texture->Mem = NULL;
+        }
+        if (texture->Clut) {
+            free(texture->Clut);
+            texture->Clut = NULL;
+        }
     }
 }
 

@@ -1490,6 +1490,8 @@ int thmSetGuiValue(int themeID, int reload)
             thmLoad(themeID != 0 ? themes[themeID - 1].filePath : NULL);
 
             guiThemeID = themeID;
+
+            ForceRefreshPrevTexCache = 1; // 释放ART图像缓存，防止死机
             return 1;
         } else if (guiThemeID == 0)
             thmSetColors(gTheme);
