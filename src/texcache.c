@@ -145,13 +145,13 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         // 根据图像类型，赋值上一次的缓存
         if (!strncmp("COV", cache->suffix, 3)) {
             if (PrevCacheID_COV >= 0)
-                prevCache = &cache->content[PrevCacheID_COV]->texture;
+                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
         } else if (!strncmp("ICO", cache->suffix, 3)) {
             if (PrevCacheID_ICO >= 0)
-                prevCache = &cache->content[PrevCacheID_ICO]->texture;
+                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
         } else if (!strncmp("BG", cache->suffix, 3)) {
             if (PrevCacheID_BG >= 0)
-                prevCache = &cache->content[PrevCacheID_BG]->texture;
+                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
         } 
     }
 
