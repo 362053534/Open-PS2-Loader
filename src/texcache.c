@@ -6,6 +6,7 @@
 #include "include/util.h"
 #include "include/renderman.h"
 
+GSTEXTURE *prevCache = NULL;
 int PrevCacheID_COV = -2;
 int PrevCacheID_ICO = -2;
 int PrevCacheID_BG = -2;
@@ -134,7 +135,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             ButtonFrames = 0;
     }
 
-    GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
         ForceRefreshPrevTexCache = 0;
