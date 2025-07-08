@@ -289,7 +289,7 @@ void sysReset(int modload_mask)
 
 static void poweroffHandler(void *arg)
 {
-    sysPowerOff();
+    //sysPowerOff();
 }
 
 void sysPowerOff(void)
