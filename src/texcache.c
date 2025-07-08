@@ -6,6 +6,7 @@
 #include "include/util.h"
 #include "include/renderman.h"
 
+int ForceRefreshPrevTexCache = 0;
 int PrevCacheID_COV = -2;
 int PrevCacheID_ICO = -2;
 int PrevCacheID_BG = -2;
@@ -14,10 +15,11 @@ int LoadFrames_COV = 0;
 int LoadFrames_ICO = 0;
 int LoadFrames_BG = 0;
 int LoadFrames = 0; // 加载超过一定时间，则一直跳过加载
-int RestartLoadTexFrames = 0;
 
-int ForceRefreshPrevTexCache = 0;
-int TexStopLoadDalay = 28; // 按住按键超过这个帧数才停止加载ART
+int RestartLoadTexFrames = 0;
+int RestartLoadTexDelay = 12;
+
+int TexStopLoadDelay = 28; // 按住按键超过这个帧数才停止加载ART
 int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
 
 typedef struct
@@ -142,8 +144,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             ButtonFrames = 0;
 
         // 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
-        if (RestartLoadTexFrames++ >= 10) {
-            RestartLoadTexFrames = 10;
+        if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
+            RestartLoadTexFrames = RestartLoadTexDelay;
             LoadFrames_COV = 0;
             LoadFrames_ICO = 0;
             LoadFrames_BG = 0;
@@ -246,7 +248,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             LoadFrames = 0;
     }
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if ((ButtonFrames >= TexStopLoadDalay) || (LoadFrames >= TexStopLoadDalay)) // 按住按键超时，或加载超时，则停止加载ART
+    if ((ButtonFrames >= TexStopLoadDelay) || (LoadFrames >= TexStopLoadDelay)) // 按住按键超时，或加载超时，则停止加载ART
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
