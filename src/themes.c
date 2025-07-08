@@ -554,6 +554,7 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
 
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
+    return;
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
     if (item) {
         GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);
