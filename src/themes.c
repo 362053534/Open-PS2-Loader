@@ -574,12 +574,12 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         } else
             rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
-    } else if (elem->type == ELEM_TYPE_BACKGROUND) {
+    } /*else if (elem->type == ELEM_TYPE_BACKGROUND) {
         if (gameImage->defaultTexture)
             rmDrawPixmap(&gameImage->defaultTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
         else
             guiDrawBGPlasma();
-    }
+    }*/
 }
 
 static void initGameImage(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, const char *pattern, int count, const char *texture, const char *overlay)
