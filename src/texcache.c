@@ -6,9 +6,10 @@
 #include "include/util.h"
 #include "include/renderman.h"
 
-GSTEXTURE *prevCacheCOV = NULL; // 上一张封面图缓存
-GSTEXTURE *prevCacheICO = NULL; // 上一张光碟图缓存
-GSTEXTURE *prevCache = NULL; // 上一张图缓存
+int PrevCacheID_COV = -2;
+int PrevCacheID_ICO = -2;
+int PrevCacheID_BG = -2;
+
 int ForceRefreshPrevTexCache = 0;
 int TexStopLoadDalay = 30; // 按住按键超过这个帧数才停止加载ART
 int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
@@ -133,36 +134,29 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             ButtonFrames = 0;
     }
 
-    // 根据图像类型，赋值上一次的缓存
-    if (!strncmp("COV", cache->suffix, 3)) {
-        if (prevCache != prevCacheCOV)
-            prevCache = prevCacheCOV;
-    } else if (!strncmp("ICO", cache->suffix, 3)) {
-        if (prevCache != prevCacheICO)
-            prevCache = prevCacheICO;
-    } else
-        prevCache = NULL;
-
+    GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
         ForceRefreshPrevTexCache = 0;
-        //texFree(prevCacheCOV);
-        //texFree(prevCacheICO);
-        //texFree(prevCache);
-        //prevCacheCOV = NULL;
-        //prevCacheICO = NULL;
-        prevCache = NULL;
+        PrevCacheID_COV = -2;
+        PrevCacheID_ICO = -2;
+        PrevCacheID_BG = -2;
+    } else {
+        // 根据图像类型，赋值上一次的缓存
+        if (!strncmp("COV", cache->suffix, 3)) {
+            if (PrevCacheID_COV >= 0)
+                prevCache = &cache->content[PrevCacheID_COV];
+        } else if (!strncmp("ICO", cache->suffix, 3)) {
+            if (PrevCacheID_ICO >= 0)
+                prevCache = &cache->content[PrevCacheID_ICO];
+        } else if (!strncmp("BG", cache->suffix, 3)) {
+            if (PrevCacheID_BG >= 0)
+                prevCache = &cache->content[PrevCacheID_BG];
+        } 
     }
 
     // -2代表无图像，-1代表正在查找图像，0-9代表缓存编号
     if (*cacheId == -2) {
-        if (!strncmp("COV", cache->suffix, 3)) {
-            if (prevCacheCOV != NULL)
-                prevCacheCOV = NULL;
-        } else if (!strncmp("ICO", cache->suffix, 3)) {
-            if (prevCacheICO != NULL)
-                prevCacheICO = NULL;
-        }
         return NULL;
     } else if (*cacheId != -1) {
         cache_entry_t *entry = &cache->content[*cacheId];
@@ -171,29 +165,38 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 return prevCache;
             else if (entry->lastUsed == 0) {
                 *cacheId = -2;
+                // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 if (!strncmp("COV", cache->suffix, 3)) {
-                    if (prevCacheCOV != NULL)
-                        prevCacheCOV = NULL;
+                    PrevCacheID_COV = *cacheId;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    if (prevCacheICO != NULL)
-                        prevCacheICO = NULL;
+                    PrevCacheID_ICO = *cacheId;
+                } else if (!strncmp("BG", cache->suffix, 3)) {
+                    PrevCacheID_BG = *cacheId;
                 }
                 return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 if (!strncmp("COV", cache->suffix, 3)) {
-                    if (prevCacheCOV != &entry->texture)
-                        prevCacheCOV = &entry->texture;
+                    PrevCacheID_COV = *cacheId;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    if (prevCacheICO != &entry->texture)
-                        prevCacheICO = &entry->texture;
+                    PrevCacheID_ICO = *cacheId;
+                } else if (!strncmp("BG", cache->suffix, 3)) {
+                    PrevCacheID_BG = *cacheId;
                 }
                 return &entry->texture;
             }
         }
 
         *cacheId = -1;
+        // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
+        if (!strncmp("COV", cache->suffix, 3)) {
+            PrevCacheID_COV = *cacheId;
+        } else if (!strncmp("ICO", cache->suffix, 3)) {
+            PrevCacheID_ICO = *cacheId;
+        } else if (!strncmp("BG", cache->suffix, 3)) {
+            PrevCacheID_BG = *cacheId;
+        }
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
