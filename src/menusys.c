@@ -753,9 +753,8 @@ static void menuNextPage()
         if (itms == 0) {       // 判断是否翻页了
             fntRefreshCache(); // 刷新字模缓存
             selected_item->item->pagestart = selected_item->item->current;
-            sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
         }
-
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to start
         menuFirstPage();
     }
@@ -783,19 +782,12 @@ static void menuPrevPage()
             cur = cur->prev;
         }
 
-        selected_item->item->current = cur;
-
-        // 翻页了才刷新，不翻页不刷新(往前翻页一定会刷新，除非本来就在首页)
+        // 往前翻页一定会刷新，除非本来就在首页
         fntRefreshCache(); // 刷新字模缓存
-        if (itms == 0)    // 判断是否翻页了
-        {
-            selected_item->item->pagestart = selected_item->item->current;
-            sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
-        }
-        else
-            selected_item->item->pagestart = cur;
+        selected_item->item->current = cur;
+        selected_item->item->pagestart = selected_item->item->current;
 
-
+        sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
         menuLastPage();
     }

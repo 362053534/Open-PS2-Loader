@@ -149,7 +149,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         } else if (!strncmp("ICO", cache->suffix, 3)) {
             if (PrevCacheID_ICO >= 0)
                 prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
-        } else if (!strncmp("BG", cache->suffix, 3)) {
+        } else if (!strncmp("BG", cache->suffix, 2)) {
             if (PrevCacheID_BG >= 0)
                 prevCache = &(&cache->content[PrevCacheID_BG])->texture;
         } 
@@ -173,7 +173,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     PrevCacheID_COV = *cacheId;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
                     PrevCacheID_ICO = *cacheId;
-                } else if (!strncmp("BG", cache->suffix, 3)) {
+                } else if (!strncmp("BG", cache->suffix, 2)) {
                     PrevCacheID_BG = *cacheId;
                 }
                 return &entry->texture;
