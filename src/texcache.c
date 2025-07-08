@@ -165,6 +165,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 return prevCache;
             else if (entry->lastUsed == 0) {
                 *cacheId = -2;
+                // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
+                if (!strncmp("COV", cache->suffix, 3)) {
+                    PrevCacheID_COV = *cacheId;
+                } else if (!strncmp("ICO", cache->suffix, 3)) {
+                    PrevCacheID_ICO = *cacheId;
+                } else if (!strncmp("BG", cache->suffix, 2)) {
+                    PrevCacheID_BG = *cacheId;
+                }
                 return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
@@ -215,6 +223,15 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *UID = cache->nextUID++;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
+
+        // debug  打印debug信息
+        char debugFileDir[64];
+        strcpy(debugFileDir, "smb:debug-TexCache.txt");
+        FILE *debugFile = fopen(debugFileDir, "ab+");
+        if (debugFile != NULL) {
+            fprintf(debugFile, "suffix:%s\r\n\r\n", cache->suffix);
+            fclose(debugFile);
+        }
     }
 
     return prevCache;
