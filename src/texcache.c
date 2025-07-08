@@ -189,7 +189,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //        LoadFrames = 0;
     //}
 
-    GSTEXTURE *prevCache = NULL;
+    static GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
         ForceRefreshPrevTexCache = 0;
@@ -207,7 +207,9 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         } else if (!strncmp("BG", cache->suffix, 2)) {
             if (PrevCacheID_BG >= 0)
                 prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-        } 
+        } else {
+            prevCache = NULL;
+        }
     }
 
     // -2代表无图像，-1代表正在查找图像，0-9代表缓存编号
