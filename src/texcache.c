@@ -148,10 +148,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 prevCache = &(&cache->content[PrevCacheID_COV])->texture;
         } else if (!strncmp("ICO", cache->suffix, 3)) {
             if (PrevCacheID_ICO >= 0)
-                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
+                prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
         } else if (!strncmp("BG", cache->suffix, 3)) {
             if (PrevCacheID_BG >= 0)
-                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
+                prevCache = &(&cache->content[PrevCacheID_BG])->texture;
         } 
     }
 
@@ -165,14 +165,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 return prevCache;
             else if (entry->lastUsed == 0) {
                 *cacheId = -2;
-                // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
-                if (!strncmp("COV", cache->suffix, 3)) {
-                    PrevCacheID_COV = *cacheId;
-                } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    PrevCacheID_ICO = *cacheId;
-                } else if (!strncmp("BG", cache->suffix, 3)) {
-                    PrevCacheID_BG = *cacheId;
-                }
                 return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
@@ -189,14 +181,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         }
 
         *cacheId = -1;
-        // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
-        if (!strncmp("COV", cache->suffix, 3)) {
-            PrevCacheID_COV = *cacheId;
-        } else if (!strncmp("ICO", cache->suffix, 3)) {
-            PrevCacheID_ICO = *cacheId;
-        } else if (!strncmp("BG", cache->suffix, 3)) {
-            PrevCacheID_BG = *cacheId;
-        }
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
