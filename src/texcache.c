@@ -10,6 +10,12 @@ int PrevCacheID_COV = -2;
 int PrevCacheID_ICO = -2;
 int PrevCacheID_BG = -2;
 
+int LoadFrames_COV = 0;
+int LoadFrames_ICO = 0;
+int LoadFrames_BG = 0;
+int LoadFrames = 0; // 加载超过一定时间，则一直跳过加载
+int RestartLoadTexFrames = 0;
+
 int ForceRefreshPrevTexCache = 0;
 int TexStopLoadDalay = 30; // 按住按键超过这个帧数才停止加载ART
 int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
@@ -129,9 +135,17 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         ButtonFrames++; // 按住按键的时间
+        if (RestartLoadTexFrames)
+            RestartLoadTexFrames = 0;
     } else {
         if (ButtonFrames)
             ButtonFrames = 0;
+
+        // 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
+        if (RestartLoadTexFrames++ >= 10) {
+            RestartLoadTexFrames = 10;
+            LoadFrames = 0;
+        }
     }
 
     GSTEXTURE *prevCache = NULL;
@@ -199,8 +213,37 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
+    // 根据图像类型，记录加载时间
+    if (!strncmp("COV", cache->suffix, 3)) {
+        if (*cacheId == -1)
+            LoadFrames_COV++;
+        else {
+            if (LoadFrames_COV)
+                LoadFrames_COV = 0;
+        }
+        LoadFrames = LoadFrames_COV;
+    } else if (!strncmp("ICO", cache->suffix, 3)) {
+        if (*cacheId == -1)
+            LoadFrames_ICO++;
+        else {
+            if (LoadFrames_ICO)
+                LoadFrames_ICO = 0;
+        }
+        LoadFrames = LoadFrames_ICO;
+    } else if (!strncmp("BG", cache->suffix, 2)) {
+        if (*cacheId == -1)
+            LoadFrames_BG++;
+        else {
+            if (LoadFrames_BG)
+                LoadFrames_BG = 0;
+        }
+        LoadFrames = LoadFrames_BG;
+    } else {
+        if (LoadFrames)
+            LoadFrames = 0;
+    }
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if ((ButtonFrames >= TexStopLoadDalay) || (*cacheId == -1 && !guiInactiveFrames)) // 按住按键一定时间，停止加载ART；或正在查找的时候继续按键
+    if ((ButtonFrames >= TexStopLoadDalay) || (LoadFrames >= 30)) // 按住按键一定时间，或连续按键，有图一直没加载出来，则停止加载ART
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
