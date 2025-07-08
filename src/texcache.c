@@ -136,8 +136,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         ButtonFrames++; // 按住按键的时间
-        if (RestartLoadTexFrames)
-            RestartLoadTexFrames = 0;
+        //if (RestartLoadTexFrames)
+        //    RestartLoadTexFrames = 0;
     } else {
         if (ButtonFrames)
             ButtonFrames = 0;
