@@ -153,6 +153,36 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         }
     }
 
+    // 根据图像类型，记录加载时间
+    if (!strncmp("COV", cache->suffix, 3)) {
+        if (*cacheId == -1)
+            LoadFrames_COV++;
+        else {
+            if (LoadFrames_COV)
+                LoadFrames_COV = 0;
+        }
+        LoadFrames = LoadFrames_COV;
+    } else if (!strncmp("ICO", cache->suffix, 3)) {
+        if (*cacheId == -1)
+            LoadFrames_ICO++;
+        else {
+            if (LoadFrames_ICO)
+                LoadFrames_ICO = 0;
+        }
+        LoadFrames = LoadFrames_ICO;
+    } else if (!strncmp("BG", cache->suffix, 2)) {
+        if (*cacheId == -1)
+            LoadFrames_BG++;
+        else {
+            if (LoadFrames_BG)
+                LoadFrames_BG = 0;
+        }
+        LoadFrames = LoadFrames_BG;
+    } else {
+        if (LoadFrames)
+            LoadFrames = 0;
+    }
+
     GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
@@ -218,35 +248,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    // 根据图像类型，记录加载时间
-    if (!strncmp("COV", cache->suffix, 3)) {
-        if (*cacheId == -1)
-            LoadFrames_COV++;
-        else {
-            if (LoadFrames_COV)
-                LoadFrames_COV = 0;
-        }
-        LoadFrames = LoadFrames_COV;
-    } else if (!strncmp("ICO", cache->suffix, 3)) {
-        if (*cacheId == -1)
-            LoadFrames_ICO++;
-        else {
-            if (LoadFrames_ICO)
-                LoadFrames_ICO = 0;
-        }
-        LoadFrames = LoadFrames_ICO;
-    } else if (!strncmp("BG", cache->suffix, 2)) {
-        if (*cacheId == -1)
-            LoadFrames_BG++;
-        else {
-            if (LoadFrames_BG)
-                LoadFrames_BG = 0;
-        }
-        LoadFrames = LoadFrames_BG;
-    } else {
-        if (LoadFrames)
-            LoadFrames = 0;
-    }
     // under the cache pre-delay (to avoid filling cache while moving around)
     if ((ButtonFrames >= TexStopLoadDelay) || (LoadFrames >= TexStopLoadDelay)) // 按住按键超时，或加载超时，则停止加载ART
         return prevCache;
