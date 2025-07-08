@@ -706,8 +706,8 @@ static int ata_device_standby_immediate(int device)
 
 static void ata_shutdown_cb(void)
 {
-    //if (atad_devinfo.exists)
-    //    ata_device_standby_immediate(0);
+    if (atad_devinfo.exists)
+        ata_device_standby_immediate(0);
 }
 
 #ifdef USE_BDM_ATA
