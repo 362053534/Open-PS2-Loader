@@ -257,8 +257,10 @@ char **lngGetGuiList(void)
 
 char *lngGetFilePath(int langID)
 {
-    language_t *currLang = &languages[langID - 1];
-    char *path = currLang->filePath;
-
-    return path;
+    if (langID != 0) {
+        language_t *currLang = &languages[langID - 1];
+        char *path = currLang->filePath;
+        return path;
+    } else
+        return NULL;
 }
