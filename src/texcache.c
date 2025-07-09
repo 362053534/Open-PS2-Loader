@@ -189,7 +189,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //        LoadFrames = 0;
     //}
 
-    static GSTEXTURE *prevCache = NULL;
+    GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
         ForceRefreshPrevTexCache = 0;
@@ -197,76 +197,44 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         PrevCacheID_ICO = -2;
         PrevCacheID_BG = -2;
     } else {
-        //// 根据图像类型，赋值上一次的缓存
-        //if (!strncmp("COV", cache->suffix, 3)) {
-        //    if (PrevCacheID_COV >= 0)
-        //        prevCache = &(&cache->content[PrevCacheID_COV])->texture;
-        //} else if (!strncmp("ICO", cache->suffix, 3)) {
-        //    if (PrevCacheID_ICO >= 0)
-        //        prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
-        //} else if (!strncmp("BG", cache->suffix, 2)) {
-        //    if (PrevCacheID_BG >= 0)
-        //        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-        //        // debug  打印debug信息
-        //         char debugFileDir[64];
-        //         strcpy(debugFileDir, "smb:debug-TexCache.txt");
-        //         FILE *debugFile = fopen(debugFileDir, "ab+");
-        //         if (debugFile != NULL) {
-        //             fprintf(debugFile, prevCache ? "&(&cache->content[PrevCacheID_BG])->texture:有图\r\n" : "&(&cache->content[PrevCacheID_BG])->texture:NULL\r\n");
-        //             fclose(debugFile);
-        //         }
-        //} /*else {
-        //    prevCache = NULL;
-        //}*/
+        // 根据图像类型，赋值上一次的缓存
+        if (!strncmp("COV", cache->suffix, 3)) {
+            if (PrevCacheID_COV >= 0)
+                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
+        } else if (!strncmp("ICO", cache->suffix, 3)) {
+            if (PrevCacheID_ICO >= 0)
+                prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
+        } else if (!strncmp("BG", cache->suffix, 2)) {
+            if (PrevCacheID_BG >= 0)
+                prevCache = &(&cache->content[PrevCacheID_BG])->texture; // 缓存队列满了后，会返回NULL
+        }
     }
 
     // -2代表无图像，-1代表正在查找图像，0-9代表缓存编号
     if (*cacheId == -2) {
-        //// 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
-        //if (!strncmp("COV", cache->suffix, 3)) {
-        //    PrevCacheID_COV = *cacheId;
-        //} else if (!strncmp("ICO", cache->suffix, 3)) {
-        //    PrevCacheID_ICO = *cacheId;
-        //} else if (!strncmp("BG", cache->suffix, 2)) {
-        //    PrevCacheID_BG = *cacheId;
-        //}
+        // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
+        if (!strncmp("COV", cache->suffix, 3)) {
+            PrevCacheID_COV = *cacheId;
+        } else if (!strncmp("ICO", cache->suffix, 3)) {
+            PrevCacheID_ICO = *cacheId;
+        } else if (!strncmp("BG", cache->suffix, 2)) {
+            PrevCacheID_BG = *cacheId;
+        }
         return prevCache;
     } else if (*cacheId != -1) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
             if (entry->qr) {
-                //  根据图像类型，赋值上一次的缓存
-                if (!strncmp("COV", cache->suffix, 3)) {
-                    if (PrevCacheID_COV >= 0)
-                        prevCache = &(&cache->content[PrevCacheID_COV])->texture;
-                } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    if (PrevCacheID_ICO >= 0)
-                        prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
-                } else if (!strncmp("BG", cache->suffix, 2)) {
-                    if (PrevCacheID_BG >= 0)
-                        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-                }
                 return prevCache;
             } else if (entry->lastUsed == 0) {
                 *cacheId = -2;
-                //// 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
-                //if (!strncmp("COV", cache->suffix, 3)) {
-                //    PrevCacheID_COV = *cacheId;
-                //} else if (!strncmp("ICO", cache->suffix, 3)) {
-                //    PrevCacheID_ICO = *cacheId;
-                //} else if (!strncmp("BG", cache->suffix, 2)) {
-                //    PrevCacheID_BG = *cacheId;
-                //}
-                //   根据图像类型，赋值上一次的缓存
+                // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 if (!strncmp("COV", cache->suffix, 3)) {
-                    if (PrevCacheID_COV >= 0)
-                        prevCache = &(&cache->content[PrevCacheID_COV])->texture;
+                    PrevCacheID_COV = *cacheId;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
-                    if (PrevCacheID_ICO >= 0)
-                        prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
+                    PrevCacheID_ICO = *cacheId;
                 } else if (!strncmp("BG", cache->suffix, 2)) {
-                    if (PrevCacheID_BG >= 0)
-                        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
+                    PrevCacheID_BG = *cacheId;
                 }
                 return prevCache;
             } else {
@@ -274,17 +242,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
                 if (!strncmp("COV", cache->suffix, 3)) {
                     PrevCacheID_COV = *cacheId;
-                    prevCache = &entry->texture;
                 } else if (!strncmp("ICO", cache->suffix, 3)) {
                     PrevCacheID_ICO = *cacheId;
-                    prevCache = &entry->texture;
                 } else if (!strncmp("BG", cache->suffix, 2)) {
-                    if (&entry->texture == NULL) {
-                        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-                    } else {
-                        PrevCacheID_BG = *cacheId;
-                        prevCache = &entry->texture;
-                    }
+                    PrevCacheID_BG = *cacheId;
                 }
                 return &entry->texture;
             }
@@ -297,12 +258,46 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     if ((ButtonFrames >= TexStopLoadDelay)/* || (LoadFrames >= TexStopLoadDelay)*/) // 按住按键超时，或加载超时，则停止加载ART
         return prevCache;
 
-    cache_entry_t *currEntry, *oldestEntry = NULL;
-    int i, rtime = guiFrameId;
+    //cache_entry_t *currEntry, *oldestEntry = NULL;
+    //int i, rtime = guiFrameId;
 
-    for (i = 0; i < cache->count; i++) {
+    //for (i = 0; i < cache->count; i++) {
+    //    currEntry = &cache->content[i];
+    //    if ((!currEntry->qr) && (currEntry->lastUsed < rtime)) {
+    //        oldestEntry = currEntry;
+    //        rtime = currEntry->lastUsed;
+    //        *cacheId = i;
+    //    }
+    //}
+    cache_entry_t *currEntry, *oldestEntry = NULL;
+    int count = cache->count;
+    int i, rtime = guiFrameId;
+    // 统计生效缓存
+    int alive_count = 0;
+    cache_entry_t *last_alive = NULL;
+
+    for (i = 0; i < count; i++) {
         currEntry = &cache->content[i];
-        if ((!currEntry->qr) && (currEntry->lastUsed < rtime)) {
+        if ((!currEntry->qr) && (currEntry->lastUsed >= 0)) {
+            alive_count++;
+            last_alive = currEntry;
+        }
+    }
+
+    // 寻找可替换的槽
+    for (i = 0; i < count; i++) {
+        currEntry = &cache->content[i];
+
+        // (1) 空闲的/未生效的可直接用
+        if ((!currEntry->qr) && (currEntry->lastUsed < 0)) {
+            oldestEntry = currEntry;
+            *cacheId = i;
+            break; // 找到就马上用
+        }
+
+        // (2) 可用槽，但需保护最后一个生效的
+        if ((!currEntry->qr) && (currEntry->lastUsed < rtime) &&
+            !((alive_count == 1) && (currEntry == last_alive))) {
             oldestEntry = currEntry;
             rtime = currEntry->lastUsed;
             *cacheId = i;
@@ -325,15 +320,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *UID = cache->nextUID++;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
-
-        //// debug  打印debug信息
-        //char debugFileDir[64];
-        //strcpy(debugFileDir, "smb:debug-TexCache.txt");
-        //FILE *debugFile = fopen(debugFileDir, "ab+");
-        //if (debugFile != NULL) {
-        //    fprintf(debugFile, "suffix:%s\r\n\r\n", cache->suffix);
-        //    fclose(debugFile);
-        //}
     }
     ////   根据图像类型，赋值上一次的缓存
     //if (!strncmp("COV", cache->suffix, 3)) {
