@@ -277,14 +277,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     for (i = 0; i < count; i++) {
         currEntry = &cache->content[i];
 
-        // (1) 空闲的/未生效的可直接用
+        // 空闲的/未生效的可直接用
         if ((!currEntry->qr) && (currEntry->lastUsed < 0)) {
             oldestEntry = currEntry;
             *cacheId = i;
             break; // 找到就马上用
         }
 
-        // (2) 可用槽，但需保护正在使用的
+        // 可用槽，但需保护正在使用的
         if ((!currEntry->qr) && (currEntry->lastUsed < rtime) &&
             !(prevCache && (&currEntry->texture == prevCache))) {
             oldestEntry = currEntry;
