@@ -272,17 +272,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     cache_entry_t *currEntry, *oldestEntry = NULL;
     int count = cache->count;
     int i, rtime = guiFrameId;
-    // 统计生效缓存
-    int alive_count = 0;
-    cache_entry_t *last_alive = NULL;
-
-    for (i = 0; i < count; i++) {
-        currEntry = &cache->content[i];
-        if ((!currEntry->qr) && (currEntry->lastUsed >= 0)) {
-            alive_count++;
-            last_alive = currEntry;
-        }
-    }
 
     // 寻找可替换的槽
     for (i = 0; i < count; i++) {
@@ -295,9 +284,9 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             break; // 找到就马上用
         }
 
-        // (2) 可用槽，但需保护最后一个生效的
+        // (2) 可用槽，但需保护正在使用的
         if ((!currEntry->qr) && (currEntry->lastUsed < rtime) &&
-            !(prevCache && (&currEntry->texture == prevCache)) {
+            !(prevCache && (&currEntry->texture == prevCache))) {
             oldestEntry = currEntry;
             rtime = currEntry->lastUsed;
             *cacheId = i;
