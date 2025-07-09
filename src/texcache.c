@@ -220,7 +220,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         } else if (!strncmp("BG", cache->suffix, 2)) {
             PrevCacheID_BG = *cacheId;
         }
-        return prevCache;
+        return NULL;
     } else if (*cacheId != -1) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
@@ -236,7 +236,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 } else if (!strncmp("BG", cache->suffix, 2)) {
                     PrevCacheID_BG = *cacheId;
                 }
-                return prevCache;
+                return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
@@ -258,32 +258,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     if ((ButtonFrames >= TexStopLoadDelay)/* || (LoadFrames >= TexStopLoadDelay)*/) // 按住按键超时，或加载超时，则停止加载ART
         return prevCache;
 
-    //cache_entry_t *currEntry, *oldestEntry = NULL;
-    //int i, rtime = guiFrameId;
-
-    //for (i = 0; i < cache->count; i++) {
-    //    currEntry = &cache->content[i];
-    //    if ((!currEntry->qr) && (currEntry->lastUsed < rtime)) {
-    //        oldestEntry = currEntry;
-    //        rtime = currEntry->lastUsed;
-    //        *cacheId = i;
-    //    }
-    //}
     cache_entry_t *currEntry, *oldestEntry = NULL;
-    int count = cache->count;
     int i, rtime = guiFrameId;
 
     // 寻找可替换的槽
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < cache->count; i++) {
         currEntry = &cache->content[i];
-
-        // 空闲的/未生效的可直接用
-        if ((!currEntry->qr) && (currEntry->lastUsed < 0)) {
-            oldestEntry = currEntry;
-            *cacheId = i;
-            break; // 找到就马上用
-        }
-
         // 可用槽，但需保护正在使用的
         if ((!currEntry->qr) && (currEntry->lastUsed < rtime) &&
             !(prevCache && (&currEntry->texture == prevCache))) {
@@ -310,16 +290,5 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
     }
-    ////   根据图像类型，赋值上一次的缓存
-    //if (!strncmp("COV", cache->suffix, 3)) {
-    //    if (PrevCacheID_COV >= 0)
-    //        prevCache = &(&cache->content[PrevCacheID_COV])->texture;
-    //} else if (!strncmp("ICO", cache->suffix, 3)) {
-    //    if (PrevCacheID_ICO >= 0)
-    //        prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
-    //} else if (!strncmp("BG", cache->suffix, 2)) {
-    //    if (PrevCacheID_BG >= 0)
-    //        prevCache = &(&cache->content[PrevCacheID_BG])->texture;
-    //}
     return prevCache;
 }
