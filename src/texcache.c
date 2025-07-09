@@ -297,7 +297,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         // (2) 可用槽，但需保护最后一个生效的
         if ((!currEntry->qr) && (currEntry->lastUsed < rtime) &&
-            !((alive_count == 1) && (currEntry == last_alive))) {
+            !(prevCache && (&currEntry->texture == prevCache)) {
             oldestEntry = currEntry;
             rtime = currEntry->lastUsed;
             *cacheId = i;
