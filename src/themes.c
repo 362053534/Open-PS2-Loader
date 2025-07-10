@@ -1230,13 +1230,13 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         int fntHandle = FNT_DEFAULT;
         if (lngGetGuiValue() != 0) {
             snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
-            fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
+            fntHandle = fntLoadFile(fullPath, 5); // 使用外挂字体
             if (fntHandle == FNT_ERROR) {
                 snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
-                fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
+                fntHandle = fntLoadFile(fullPath, 5); // 使用外挂字体
             }
         } else
-            fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
+            fntHandle = fntLoadFile(NULL, 5); // 使用默认字体
 
         // Do we have a valid font? Assign the font handle to the theme font slot
         if (fntHandle != FNT_ERROR)
