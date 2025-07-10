@@ -1208,7 +1208,6 @@ static void thmSetColors(theme_t *theme)
 static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme_t *theme)
 {
     int fntID = 0; // theme side font id, not the fntSys handle
-    char fullPath[128];
     for (fntID = 0; fntID < THM_MAX_FONTS; ++fntID) {
         int fontSize = 0;
         char sizeKey[64];
@@ -1229,11 +1228,17 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         // 不要使用主题里的字体，否则出问题，只改变当前字体的文字大小
         int fntHandle = FNT_DEFAULT;
         if (lngGetGuiValue() != 0) {
-
-            snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
+            char fullPath[128];
+            language_t *currLang = &languages[langID - 1];
+            int len = strlen(currLang->filePath) - strlen(currLang->name) - 9; // -4 for extension,  -5 for prefix
+            memcpy(fullPath, currLang->filePath, len);
+            fullPath[len] = '\0';
+            snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", fullPath, currLang->name);
             fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             if (fntHandle == FNT_ERROR) {
-                snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
+                memcpy(fullPath, currLang->filePath, len);
+                fullPath[len] = '\0';
+                snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", fullPath, currLang->name);
                 fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             }
             // debug  打印debug信息
