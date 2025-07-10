@@ -1207,51 +1207,41 @@ static void thmSetColors(theme_t *theme)
 
 static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme_t *theme)
 {
-    return;
-    int fntID; // theme side font id, not the fntSys handle
+    int fntID = 0; // theme side font id, not the fntSys handle
+    char fullPath[128];
     for (fntID = 0; fntID < THM_MAX_FONTS; ++fntID) {
-        // does the font by the key exist?
-        char fntKey[16];
-
+        int fontSize = 0;
+        char sizeKey[64];
         if (fntID == 0) {
-            snprintf(fntKey, sizeof(fntKey), "default_font");
+            snprintf(sizeKey, sizeof(sizeKey), "default_font_size");
             theme->fonts[0] = FNT_DEFAULT;
-        } else {
-            snprintf(fntKey, sizeof(fntKey), "font%d", fntID);
+        }
+        else {
+            snprintf(sizeKey, sizeof(sizeKey), "font%d_size", fntID);
             theme->fonts[fntID] = theme->fonts[0];
         }
 
-        char fullPath[128];
-        const char *fntFile;
-        if (configGetStr(themeConfig, fntKey, &fntFile)) {
-            //snprintf(fullPath, sizeof(fullPath), "%s%s", themePath, fntFile);
-
-            int fontSize;
-            char sizeKey[64];
-            if (fntID == 0)
-                snprintf(sizeKey, sizeof(sizeKey), "default_font_size");
-            else
-                snprintf(sizeKey, sizeof(sizeKey), "font%d_size", fntID);
-
-            if (!configGetInt(themeConfig, sizeKey, &fontSize) || fontSize <= 0)
-                fontSize = FNTSYS_DEFAULT_SIZE;
-
-            // 不要使用主题里的字体，否则出问题
-            int fntHandle = FNT_DEFAULT;
-            if (lngGetGuiValue() != 0) {
-                snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
-                fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
-                if (fntHandle == FNT_ERROR) {
-                    snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
-                    fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
-                }
-                //// Do we have a valid font? Assign the font handle to the theme font slot
-                //if (fntHandle != FNT_ERROR)
-                //    theme->fonts[fntID] = fntHandle;
-            }
-            else
-                fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
+        if (!configGetInt(themeConfig, sizeKey, &fontSize) || fontSize <= 0) {
+            fontSize = FNTSYS_DEFAULT_SIZE;
+            continue; // 如果字体大小没变化，就跳过
         }
+
+        // 不要使用主题里的字体，否则出问题，只改变当前字体的文字大小
+        int fntHandle = FNT_DEFAULT;
+        if (lngGetGuiValue() != 0) {
+            snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
+            fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
+            if (fntHandle == FNT_ERROR) {
+                snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
+                fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
+            }
+        } else
+            fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
+
+        //// Do we have a valid font? Assign the font handle to the theme font slot
+        //if (fntHandle != FNT_ERROR)
+        //    theme->fonts[fntID] = fntHandle;
+        
     }
 }
 
