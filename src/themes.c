@@ -1236,7 +1236,7 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
                 fontSize = FNTSYS_DEFAULT_SIZE;
 
             // 不要使用主题里的字体，否则出问题
-            int fntHandle = FNT_ERROR;
+            int fntHandle = FNT_DEFAULT;
             if (lngGetGuiValue() != 0) {
                 snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
                 fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
@@ -1244,13 +1244,12 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
                     snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
                     fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
                 }
+                // Do we have a valid font? Assign the font handle to the theme font slot
+                if (fntHandle != FNT_ERROR)
+                    theme->fonts[fntID] = fntHandle;
             }
             else
                 fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
-
-            // Do we have a valid font? Assign the font handle to the theme font slot
-            if (fntHandle != FNT_ERROR)
-                theme->fonts[fntID] = fntHandle;
         }
     }
 }
