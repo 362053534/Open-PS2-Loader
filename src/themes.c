@@ -1229,14 +1229,23 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         // 不要使用主题里的字体，否则出问题，只改变当前字体的文字大小
         int fntHandle = FNT_DEFAULT;
         if (lngGetGuiValue() != 0) {
+
             snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
-            fntHandle = fntLoadFile(fullPath, 5); // 使用外挂字体
+            fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             if (fntHandle == FNT_ERROR) {
                 snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", lngGetFilePath(lngGetGuiValue()), lngGetValue());
-                fntHandle = fntLoadFile(fullPath, 5); // 使用外挂字体
+                fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             }
+            // debug  打印debug信息
+             char debugFileDir[64];
+             strcpy(debugFileDir, "smb:debug-themes.txt");
+             FILE *debugFile = fopen(debugFileDir, "ab+");
+             if (debugFile != NULL) {
+                 fprintf(debugFile, "fntHandle:%d\r\nfullPath:%s\r\n\r\n", fntHandle, fullPath);
+                 fclose(debugFile);
+             }
         } else
-            fntHandle = fntLoadFile(fullPath, fontSize); // 使用默认字体
+            fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
 
         // Do we have a valid font? Assign the font handle to the theme font slot
         if (fntHandle != FNT_ERROR)
