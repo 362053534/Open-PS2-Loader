@@ -1238,10 +1238,9 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         } else
             fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
 
-        //// Do we have a valid font? Assign the font handle to the theme font slot
-        //if (fntHandle != FNT_ERROR)
-        //    theme->fonts[fntID] = fntHandle;
-        
+        // Do we have a valid font? Assign the font handle to the theme font slot
+        if (fntHandle != FNT_ERROR)
+            theme->fonts[fntID] = fntHandle;   
     }
 }
 
