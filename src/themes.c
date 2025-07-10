@@ -1236,7 +1236,7 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
                 fntHandle = fntLoadFile(fullPath, 5); // 使用外挂字体
             }
         } else
-            fntHandle = fntLoadFile(NULL, 5); // 使用默认字体
+            fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
 
         // Do we have a valid font? Assign the font handle to the theme font slot
         if (fntHandle != FNT_ERROR)
