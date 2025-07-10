@@ -1207,6 +1207,7 @@ static void thmSetColors(theme_t *theme)
 
 static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme_t *theme)
 {
+    return;
     int fntID; // theme side font id, not the fntSys handle
     for (fntID = 0; fntID < THM_MAX_FONTS; ++fntID) {
         // does the font by the key exist?
