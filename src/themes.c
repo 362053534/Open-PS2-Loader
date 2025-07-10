@@ -1229,16 +1229,15 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         int fntHandle = FNT_DEFAULT;
         if (lngGetGuiValue() != 0) {
             char fullPath[128];
-            language_t *currLang = &languages[langID - 1];
-            int len = strlen(currLang->filePath) - strlen(currLang->name) - 9; // -4 for extension,  -5 for prefix
-            memcpy(fullPath, currLang->filePath, len);
+            char *fontPath = lngGetFilePath(lngGetGuiValue());
+            int len = strlen(fontPath) - strlen(lngGetValue()) - 9; // -4 for extension,  -5 for prefix
+            memcpy(fullPath, fontPath, len);
             fullPath[len] = '\0';
-            snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", fullPath, currLang->name);
+            snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", fullPath, lngGetValue());
             fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             if (fntHandle == FNT_ERROR) {
-                memcpy(fullPath, currLang->filePath, len);
                 fullPath[len] = '\0';
-                snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", fullPath, currLang->name);
+                snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", fullPath, lngGetValue());
                 fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             }
             // debug  打印debug信息
