@@ -1243,14 +1243,14 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         } else
             fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
 
-        //// debug  打印debug信息
-        //char debugFileDir[64];
-        //strcpy(debugFileDir, "smb:debug-themes.txt");
-        //FILE *debugFile = fopen(debugFileDir, "ab+");
-        //if (debugFile != NULL) {
-        //    fprintf(debugFile, "fntHandle:%d\r\nfullPath:%s\r\n\r\n", fntHandle, fullPath);
-        //    fclose(debugFile);
-        //}
+        // debug  打印debug信息
+        char debugFileDir[64];
+        strcpy(debugFileDir, "smb:debug-themes.txt");
+        FILE *debugFile = fopen(debugFileDir, "ab+");
+        if (debugFile != NULL) {
+            fprintf(debugFile, "fntHandle:%d\r\nfullPath:%s\r\n\r\n", fntHandle, fullPath);
+            fclose(debugFile);
+        }
 
         // Do we have a valid font? Assign the font handle to the theme font slot
         if (fntHandle != FNT_ERROR)
