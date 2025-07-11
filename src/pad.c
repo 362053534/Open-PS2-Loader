@@ -344,7 +344,7 @@ int readPads()
     for (i = 0; i < 16; ++i) {
         if (getKeyPressed(i + 1)) {
             delaycnt[i] -= time_since_last;
-            if(delaycnt[i] > 0)
+            if (delaycnt[i] > getKeyDelay(i + 1, 0))
                 delaycnt[i] = 0;
         } else
             delaycnt[i] = getKeyDelay(i + 1, 0);
