@@ -334,6 +334,8 @@ int readPads()
     u32 newtime = cpu_ticks() / CLOCKS_PER_MILISEC;
     time_since_last = newtime - curtime;
     curtime = newtime;
+    if (time_since_last > 10000000) // 异常处理
+        time_since_last = 0xFFFFFFFF - time_since_last;
 
     int rslt = 0;
 
@@ -349,7 +351,7 @@ int readPads()
                 strcpy(debugFileDir, "smb:debug-pad.txt");
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\ncpu_ticks:%u\r\n\r\n", time_since_last, delaycnt[i], cpu_ticks());
+                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\n\r\n", time_since_last, delaycnt[i]);
                     fclose(debugFile);
                 }
                 delaycnt[i] -= time_since_last;
