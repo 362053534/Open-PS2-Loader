@@ -19,10 +19,11 @@
 #define MAX_PADS 4
 
 // Cpu ticks per one milisecond
-#define CLOCKS_PER_MILISEC 147456
+//#define CLOCKS_PER_MILISEC 147456
+#define CLOCKS_PER_MILISEC 73728
 
-// 300 ms per repeat
-#define DEFAULT_PAD_DELAY 300
+// 200 ms per repeat
+#define DEFAULT_PAD_DELAY 200
 
 struct pad_data_t
 {
@@ -41,7 +42,7 @@ struct pad_data_t
 };
 
 /// current time in miliseconds (last update time)
-static u64 curtime = 0;
+static u64 curtime = GetTimerSystemTime();
 static u64 time_since_last = 0;
 
 static unsigned short pad_count;
@@ -339,7 +340,7 @@ int readPads()
     paddata = 0;
 
     // in ms.
-    u64 newtime = GetTimerSystemTime();
+    u64 newtime = GetTimerSystemTime() / CLOCKS_PER_MILISEC;
     time_since_last = newtime - curtime;
     curtime = newtime;
     //if (time_since_last > 10000000) // 异常处理
@@ -358,7 +359,7 @@ int readPads()
             strcpy(debugFileDir, "smb:debug-pad.txt");
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nGetTimerSystemTime:%llu\r\n\r\n", time_since_last, delaycnt[i], GetTimerSystemTime());
+                fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nGetTimerSystemTime:%llu\r\n\r\n", time_since_last, delaycnt[i], newtime);
                 fclose(debugFile);
             }
             delaycnt[i] -= time_since_last;
