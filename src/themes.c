@@ -1207,6 +1207,11 @@ static void thmSetColors(theme_t *theme)
 
 static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme_t *theme)
 {
+    char fullPath[128];
+    char *fontPath = lngGetFilePath(lngGetGuiValue());
+    int len = strlen(fontPath) - strlen(lngGetValue()) - 9; // -4 for extension,  -5 for prefix
+    memcpy(fullPath, fontPath, len);
+    fullPath[len] = '\0';
     int fntID = 0; // theme side font id, not the fntSys handle
     for (fntID = 0; fntID < THM_MAX_FONTS; ++fntID) {
         int fontSize = 0;
@@ -1228,11 +1233,6 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
         // 不要使用主题里的字体，否则出问题，只改变当前字体的文字大小
         int fntHandle = FNT_DEFAULT;
         if (lngGetGuiValue() != 0) {
-            char fullPath[128];
-            char *fontPath = lngGetFilePath(lngGetGuiValue());
-            int len = strlen(fontPath) - strlen(lngGetValue()) - 9; // -4 for extension,  -5 for prefix
-            memcpy(fullPath, fontPath, len);
-            fullPath[len] = '\0';
             snprintf(fullPath, sizeof(fullPath), "%sfont_%s.ttf", fullPath, lngGetValue());
             fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             if (fntHandle == FNT_ERROR) {
@@ -1240,14 +1240,14 @@ static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme
                 snprintf(fullPath, sizeof(fullPath), "%sfont_%s.otf", fullPath, lngGetValue());
                 fntHandle = fntLoadFile(fullPath, fontSize); // 使用外挂字体
             }
-            //// debug  打印debug信息
-            // char debugFileDir[64];
-            // strcpy(debugFileDir, "smb:debug-themes.txt");
-            // FILE *debugFile = fopen(debugFileDir, "ab+");
-            // if (debugFile != NULL) {
-            //     fprintf(debugFile, "fntHandle:%d\r\nfullPath:%s\r\n\r\n", fntHandle, fullPath);
-            //     fclose(debugFile);
-            // }
+            // debug  打印debug信息
+             char debugFileDir[64];
+             strcpy(debugFileDir, "smb:debug-themes.txt");
+             FILE *debugFile = fopen(debugFileDir, "ab+");
+             if (debugFile != NULL) {
+                 fprintf(debugFile, "fntHandle:%d\r\nfullPath:%s\r\n\r\n", fntHandle, fullPath);
+                 fclose(debugFile);
+             }
         } else
             fntHandle = fntLoadFile(NULL, fontSize); // 使用默认字体
 
