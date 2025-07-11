@@ -342,12 +342,13 @@ int readPads()
     }
 
     for (i = 0; i < 16; ++i) {
-        if (getKeyPressed(i + 1))
+        if (getKeyPressed(i + 1)) {
             delaycnt[i] -= time_since_last;
-        else
+            if(delaycnt[i] > 0)
+                delaycnt[i] = 0;
+        } else
             delaycnt[i] = getKeyDelay(i + 1, 0);
     }
-
     return rslt;
 }
 
