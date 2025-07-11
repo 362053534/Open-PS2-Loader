@@ -358,7 +358,7 @@ int readPads()
             strcpy(debugFileDir, "smb:debug-pad.txt");
             FILE *debugFile = fopen(debugFileDir, "ab+");
             if (debugFile != NULL) {
-                fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nGetTimerSystemTime:%lu\r\n\r\n", time_since_last, delaycnt[i], GetTimerSystemTime());
+                fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nGetTimerSystemTime:%llu\r\n\r\n", time_since_last, delaycnt[i], GetTimerSystemTime());
                 fclose(debugFile);
             }
             delaycnt[i] -= time_since_last;
