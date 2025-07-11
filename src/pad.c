@@ -42,7 +42,7 @@ struct pad_data_t
 };
 
 /// current time in miliseconds (last update time)
-static u64 curtime = GetTimerSystemTime();
+static u64 curtime = 0;
 static u64 time_since_last = 0;
 
 static unsigned short pad_count;
@@ -92,6 +92,7 @@ static int waitPadReady(struct pad_data_t *pad)
 
 static int initializePad(struct pad_data_t *pad)
 {
+    curtime = GetTimerSystemTime() / CLOCKS_PER_MILISEC; // 初始化当前时间
     int tmp;
     int modes;
     int i;
