@@ -41,8 +41,8 @@ struct pad_data_t
 };
 
 /// current time in miliseconds (last update time)
-static u32 curtime = 0;
-static u32 time_since_last = 0;
+static double curtime = 0;
+static double time_since_last = 0;
 
 static unsigned short pad_count;
 static struct pad_data_t pad_data[MAX_PADS];
@@ -331,7 +331,7 @@ int readPads()
     paddata = 0;
 
     // in ms.
-    u32 newtime = cpu_ticks() / CLOCKS_PER_MILISEC;
+    double newtime = (double)cpu_ticks() / CLOCKS_PER_MILISEC;
     time_since_last = newtime - curtime;
     curtime = newtime;
 
@@ -349,10 +349,10 @@ int readPads()
                 strcpy(debugFileDir, "smb:debug-pad.txt");
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\n\r\n", time_since_last, delaycnt[i]);
+                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\n\r\n", (int)time_since_last, delaycnt[i]);
                     fclose(debugFile);
                 }
-                delaycnt[i] -= time_since_last;
+                delaycnt[i] -= (int)time_since_last;
             }
         } else
             delaycnt[i] = getKeyDelay(i + 1, 0);
