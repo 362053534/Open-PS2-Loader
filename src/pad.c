@@ -351,7 +351,7 @@ int readPads()
                 strcpy(debugFileDir, "smb:debug-pad.txt");
                 FILE *debugFile = fopen(debugFileDir, "ab+");
                 if (debugFile != NULL) {
-                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\n\r\n", time_since_last, delaycnt[i]);
+                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nnewtime:%u\r\n\r\n", time_since_last, delaycnt[i], newtime);
                     fclose(debugFile);
                 }
                 delaycnt[i] -= time_since_last;
