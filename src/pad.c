@@ -339,7 +339,7 @@ int readPads()
     paddata = 0;
 
     // in ms.
-    u64 newtime = GetTimerSystemTime() / (u64)CLOCKS_PER_MILISEC;
+    u64 newtime = GetTimerSystemTime();
     time_since_last = newtime - curtime;
     curtime = newtime;
     //if (time_since_last > 10000000) // 异常处理
