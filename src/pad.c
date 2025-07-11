@@ -343,8 +343,17 @@ int readPads()
 
     for (i = 0; i < 16; ++i) {
         if (getKeyPressed(i + 1)) {
-            if (delaycnt[i] >= 0)
+            if (delaycnt[i] >= 0) {
+                // debug  打印debug信息
+                char debugFileDir[64];
+                strcpy(debugFileDir, "smb:debug-pad.txt");
+                FILE *debugFile = fopen(debugFileDir, "ab+");
+                if (debugFile != NULL) {
+                    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\n\r\n", time_since_last, delaycnt[i]);
+                    fclose(debugFile);
+                }
                 delaycnt[i] -= time_since_last;
+            }
         } else
             delaycnt[i] = getKeyDelay(i + 1, 0);
     }
