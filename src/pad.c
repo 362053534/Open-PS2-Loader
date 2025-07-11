@@ -92,7 +92,6 @@ static int waitPadReady(struct pad_data_t *pad)
 
 static int initializePad(struct pad_data_t *pad)
 {
-    curtime = GetTimerSystemTime() / CLOCKS_PER_MILISEC; // 初始化当前时间
     int tmp;
     int modes;
     int i;
@@ -325,14 +324,6 @@ static int getKeyDelay(int id, int repeat)
     return delay;
 }
 
-u64 cpu_ticks_custem(void)
-{
-    u64 out;
-
-    asm("mfc0\t%0, $9\n"
-        : "=r"(out));
-    return out;
-}
 /** polling method. Call every frame. */
 int readPads()
 {
@@ -344,8 +335,6 @@ int readPads()
     u64 newtime = GetTimerSystemTime() / CLOCKS_PER_MILISEC;
     time_since_last = newtime - curtime;
     curtime = newtime;
-    //if (time_since_last > 10000000) // 异常处理
-    //    time_since_last = 0xFFFFFFFF - time_since_last;
 
     int rslt = 0;
 
@@ -355,14 +344,14 @@ int readPads()
 
     for (i = 0; i < 16; ++i) {
         if (getKeyPressed(i + 1)) {
-            // debug  打印debug信息
-            char debugFileDir[64];
-            strcpy(debugFileDir, "smb:debug-pad.txt");
-            FILE *debugFile = fopen(debugFileDir, "ab+");
-            if (debugFile != NULL) {
-                fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nGetTimerSystemTime:%llu\r\n\r\n", time_since_last, delaycnt[i], newtime);
-                fclose(debugFile);
-            }
+            //// debug  打印debug信息
+            //char debugFileDir[64];
+            //strcpy(debugFileDir, "smb:debug-pad.txt");
+            //FILE *debugFile = fopen(debugFileDir, "ab+");
+            //if (debugFile != NULL) {
+            //    fprintf(debugFile, "time_since_last:%d\r\delaycnt:%d\r\nGetTimerSystemTime:%llu\r\n\r\n", time_since_last, delaycnt[i], newtime);
+            //    fclose(debugFile);
+            //}
             delaycnt[i] -= time_since_last;
         } else
             delaycnt[i] = getKeyDelay(i + 1, 0);
