@@ -1841,11 +1841,11 @@ void guiUpdateScrollSpeed(void)
 
     // update the pad delays for KEY_UP and KEY_DOWN
     // default delay is 7
-    // fast - 100 ms
-    // medium - 200 ms
+    // fast - 80 ms
+    // medium - 160 ms
     // slow - 400 ms
-    setButtonDelay(KEY_UP, !gScrollSpeed ? 400 : (200 / gScrollSpeed)); // 0,1,2 -> 400, 200, 100
-    setButtonDelay(KEY_DOWN, !gScrollSpeed ? 400 : (200 / gScrollSpeed));
+    setButtonDelay(KEY_UP, !gScrollSpeed ? 400 : (160 / gScrollSpeed)); // 0,1,2 -> 400, 160, 80
+    setButtonDelay(KEY_DOWN, !gScrollSpeed ? 400 : (160 / gScrollSpeed));
 }
 
 void guiUpdateScreenScale(void)
