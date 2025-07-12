@@ -255,7 +255,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if ((ButtonFrames >= TexStopLoadDelay)/* || (LoadFrames >= TexStopLoadDelay)*/) // 按住按键超时，或加载超时，则停止加载ART
+    if ((ButtonFrames >= TexStopLoadDelay) && (gScrollSpeed >= 2)) // 按住按键时，滚动速度太快，则停止加载ART
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
