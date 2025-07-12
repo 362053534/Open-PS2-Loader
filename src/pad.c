@@ -18,11 +18,8 @@
 
 #define MAX_PADS 4
 
-// Cpu ticks per one milisecond
-//#define CLOCKS_PER_MILISEC 147456
-
 // gettimer给出的时间除以这个，换算成毫秒
-#define CLOCKS_PER_MILISEC 36864
+#define CLOCKS_PER_MILISEC 147456
 
 // 300 ms per repeat
 #define DEFAULT_PAD_DELAY 300
