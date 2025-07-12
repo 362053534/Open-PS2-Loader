@@ -20,7 +20,9 @@
 
 // Cpu ticks per one milisecond
 //#define CLOCKS_PER_MILISEC 147456
-#define CLOCKS_PER_MILISEC 73728
+
+// gettimer给出的时间除以这个，换算成毫秒
+#define CLOCKS_PER_Frame 36864
 
 // 200 ms per repeat
 #define DEFAULT_PAD_DELAY 200
