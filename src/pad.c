@@ -21,11 +21,11 @@
 // gettimer给出的时间除以这个，换算成毫秒
 #define CLOCKS_PER_MILISEC 147456
 
-// 300 ms per repeat
-#define DEFAULT_PAD_DELAY 300
+// 200 ms per repeat
+#define DEFAULT_PAD_DELAY 200
 
 // 触发按键滚动前的延迟时间
-#define DEFAULT_PAD_PRE_DELAY 1000
+#define DEFAULT_PAD_PRE_DELAY 600
 
 struct pad_data_t
 {
