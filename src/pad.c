@@ -25,6 +25,9 @@
 // 200 ms per repeat
 #define DEFAULT_PAD_DELAY 200
 
+// 触发按键滚动前的延迟时间
+#define DEFAULT_PAD_PRE_DELAY 1000
+
 struct pad_data_t
 {
     int port, slot;
@@ -319,7 +322,7 @@ static int getKeyDelay(int id, int repeat)
 
     // if not in repeat, the delay is enlarged
     if (!repeat)
-        delay *= 3;
+        delay = DEFAULT_PAD_PRE_DELAY;
 
     return delay;
 }
