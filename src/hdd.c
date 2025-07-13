@@ -155,8 +155,6 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
         strncpy(ginfo->name, hdl_header->gamename, HDL_GAME_NAME_MAX);
         ginfo->indexName[0] = '\0';
         ginfo->transName[0] = '\0';
-        strcpy(ginfo->indexName, ginfo->name);
-
 
         //if (gHDDPrefix[5] != '+')
         //    gHDDPrefix = "pfs0:OPL/";
@@ -215,6 +213,10 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                 }
             }
         }
+
+        // 防止txt无法写入时，出现的白屏问题
+        if (ginfo->indexName[0] == '\0')
+            strcpy(ginfo->indexName, ginfo->name);
         strncpy(ginfo->startup, hdl_header->startup, sizeof(ginfo->startup) - 1);
         ginfo->startup[sizeof(ginfo->startup) - 1] = '\0';
         ginfo->hdl_compat_flags = hdl_header->hdl_compat_flags;
