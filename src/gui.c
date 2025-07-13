@@ -694,6 +694,7 @@ reselect_video_mode:
     diaSetEnum(diaUIConfig, UICFG_VMODE, vmodeNames);
     diaSetInt(diaUIConfig, UICFG_THEME, thmGetGuiValue());
     diaSetInt(diaUIConfig, UICFG_LANG, lngGetGuiValue());
+    diaSetInt(diaUIConfig, UICFG_TXTRENAME, gTxtRename);
     diaSetInt(diaUIConfig, UICFG_AUTOSORT, gAutosort);
     diaSetInt(diaUIConfig, UICFG_AUTOREFRESH, gAutoRefresh);
     diaSetInt(diaUIConfig, UICFG_NOTIFICATIONS, gEnableNotifications);
@@ -715,6 +716,7 @@ reselect_video_mode:
             diaGetColor(diaUIConfig, UICFG_TXTCOL, gDefaultTextColor);
             diaGetColor(diaUIConfig, UICFG_SELCOL, gDefaultSelTextColor);
         }
+        diaGetInt(diaUIConfig, UICFG_TXTRENAME, &gTxtRename);
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
         diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);

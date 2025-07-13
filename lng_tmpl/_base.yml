@@ -694,3 +694,5 @@ gui_strings:
   string: Cheat Selection
 - label: HDD_HINT
   string: 只能开启一种HDD模式，APA(HDL)或GPT(BDMHDD)。
+- label: TXTRENAME
+  string: txt映射功能

@@ -140,6 +140,7 @@ int gEnableUSB;
 int gEnableILK;
 int gEnableMX4SIO;
 int gEnableBdmHDD;
+int gTxtRename;
 int gAutosort;
 int gAutoRefresh;
 int gEnableNotifications;
@@ -1038,6 +1039,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_PS2LOGO, &gPS2Logo);
             configGetInt(configOPL, CONFIG_OPL_HDD_GAME_LIST_CACHE, &gHDDGameListCache);
             configGetStrCopy(configOPL, CONFIG_OPL_EXIT_PATH, gExitPath, sizeof(gExitPath));
+            configGetInt(configOPL, CONFIG_OPL_TXT_RENAME, &gTxtRename);
             configGetInt(configOPL, CONFIG_OPL_AUTO_SORT, &gAutosort);
             configGetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, &gAutoRefresh);
             configGetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, &gDefaultDevice);
@@ -1201,6 +1203,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_PS2LOGO, gPS2Logo);
         configSetInt(configOPL, CONFIG_OPL_HDD_GAME_LIST_CACHE, gHDDGameListCache);
         configSetStr(configOPL, CONFIG_OPL_EXIT_PATH, gExitPath);
+        configSetInt(configOPL, CONFIG_OPL_TXT_RENAME, gTxtRename);
         configSetInt(configOPL, CONFIG_OPL_AUTO_SORT, gAutosort);
         configSetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, gAutoRefresh);
         configSetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, gDefaultDevice);
@@ -1834,6 +1837,7 @@ static void setDefaults(void)
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
+    gTxtRename = 1;
     gAutosort = 1;
     gAutoRefresh = 0;
     gEnableDebug = 0;

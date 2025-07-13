@@ -128,6 +128,7 @@ extern int gEnableILK;
 extern int gEnableMX4SIO;
 extern int gEnableBdmHDD;
 
+extern int gTxtRename;
 extern int gAutosort;
 extern int gAutoRefresh;
 extern int gEnableNotifications;
