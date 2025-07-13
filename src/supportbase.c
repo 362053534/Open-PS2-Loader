@@ -339,27 +339,72 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             base_game_info_t *game = &next->gameinfo;
             memset(game, 0, sizeof(base_game_info_t));
 
+            game->indexName[0] = '\0';
+            game->transName[0] = '\0';
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
                 strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
+                strcpy(game->indexName, game->name); // 防止txt无法写入时，加载游戏会出现白屏
                 strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                ;
-                // 查询缓存里的旧格式的游戏名
-                char fileName[160];
-                sprintf(fileName, "%s%s", game->name, game->extension);
-                if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
+                if (gTxtRename) {
+                    // 查询缓存里的旧格式的游戏名
+                    char fileName[160];
+                    sprintf(fileName, "%s%s", game->name, game->extension);
+                    if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
+                        // debug
+                        // fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
+
+                        // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
+                        if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
+                            skipTxtScan = 1;
+                            strcpy(game->indexName, (&cachedGInfo)->indexName);
+                            strcpy(game->transName, (&cachedGInfo)->transName);
+                            if (game->transName[0] != '\0') {
+                                strcpy(game->name, game->transName);
+                            }
+                        } else {
+                            skipTxtScan = 0;
+                        }
+
+                        // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
+                        if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
+                            _txtFileRebuilded = 1; // 弹窗用
+                            skipTxtScan = 1;
+                            strcpy(game->indexName, (&cachedGInfo)->indexName);
+                            strcpy(game->transName, (&cachedGInfo)->transName);
+                            if (game->transName[0] != '\0') {
+                                strcpy(game->name, game->transName);
+                                sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
+                            } else {
+                                sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+                            }
+                            if (file != NULL) {
+                                fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                            }
+                        }
+                    }
+                }
+            } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
+                // use cached entry
+                memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
+                // 显示名字要改回索引名字，以免TXT的索引变成了映射名。
+                if (game->indexName[0] != '\0') {
+                    strcpy(game->name, game->indexName);
+                }
+
+                if (gTxtRename) {
                     // debug
-                    //fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
+                    // fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
 
                     // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                     if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
                         skipTxtScan = 1;
-                        strcpy(game->indexName, (&cachedGInfo)->indexName);
-                        strcpy(game->transName, (&cachedGInfo)->transName);
+                        //strcpy(game->indexName, (&cachedGInfo)->indexName);
+                        //strcpy(game->transName, (&cachedGInfo)->transName);
                         if (game->transName[0] != '\0') {
                             strcpy(game->name, game->transName);
                         }
@@ -371,8 +416,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
                         _txtFileRebuilded = 1; // 弹窗用
                         skipTxtScan = 1;
-                        strcpy(game->indexName, (&cachedGInfo)->indexName);
-                        strcpy(game->transName, (&cachedGInfo)->transName);
+                        //strcpy(game->indexName, (&cachedGInfo)->indexName);
+                        //strcpy(game->transName, (&cachedGInfo)->transName);
                         if (game->transName[0] != '\0') {
                             strcpy(game->name, game->transName);
                             sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
@@ -382,46 +427,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                         if (file != NULL) {
                             fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
                         }
-                    }
-                }
-            } else if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, dirent->d_name) == 0) {
-                // use cached entry
-                memcpy(game, &cachedGInfo, sizeof(base_game_info_t));
-
-                // 名字要改回英文名字，以免索引变成了中文。
-                if (game->indexName[0] != '\0') {
-                    strcpy(game->name, game->indexName);
-                }
-
-                // debug
-                //fprintf(debugFile, "new查到缓存；文件名：%s；索引名：%s\r\n", dirent->d_name, game->indexName);
-
-                // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
-                if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
-                    skipTxtScan = 1;
-                    strcpy(game->indexName, (&cachedGInfo)->indexName);
-                    strcpy(game->transName, (&cachedGInfo)->transName);
-                    if (game->transName[0] != '\0') {
-                        strcpy(game->name, game->transName);
-                    }
-                } else {
-                    skipTxtScan = 0;
-                }
-
-                // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
-                if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
-                    _txtFileRebuilded = 1; // 弹窗用
-                    skipTxtScan = 1;
-                    strcpy(game->indexName, (&cachedGInfo)->indexName);
-                    strcpy(game->transName, (&cachedGInfo)->transName);
-                    if (game->transName[0] != '\0') {
-                        strcpy(game->name, game->transName);
-                        sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
-                    } else {
-                        sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
-                    }
-                    if (file != NULL) {
-                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
                     }
                 }
             } else {
@@ -453,51 +458,51 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             game->format = format;
             game->sizeMB = 0;
 
-            //// count and process games in txt
-            if (file != NULL && !skipTxtScan) {
-                game->indexName[0] = '\0';
-                game->transName[0] = '\0';
-                rewind(file);
-                int noLineBreaks = 0;
-                while (fgets(fullName, sizeof(fullName), file) != NULL) {
-                    if (fullName[strlen(fullName) - strlen("\r\n")] == '\r') // 检查是不是CRLF
-                        fullName[strlen(fullName) - strlen("\r\n")] = '\0';  // 避免transName的换行符被显示出来。
-                    else if (fullName[strlen(fullName) - strlen("\n")] == '\n')
-                        fullName[strlen(fullName) - strlen("\n")] = '\0';
-                    else if (fullName[strlen(fullName) - strlen("\r")] == '\r')
-                        fullName[strlen(fullName) - strlen("\r")] = '\0';
-                    else
-                        noLineBreaks = 1;         
+            if (gTxtRename) {
+                //// count and process games in txt
+                if (file != NULL && !skipTxtScan) {
+                    rewind(file);
+                    int noLineBreaks = 0;
+                    while (fgets(fullName, sizeof(fullName), file) != NULL) {
+                        if (fullName[strlen(fullName) - strlen("\r\n")] == '\r') // 检查是不是CRLF
+                            fullName[strlen(fullName) - strlen("\r\n")] = '\0';  // 避免transName的换行符被显示出来。
+                        else if (fullName[strlen(fullName) - strlen("\n")] == '\n')
+                            fullName[strlen(fullName) - strlen("\n")] = '\0';
+                        else if (fullName[strlen(fullName) - strlen("\r")] == '\r')
+                            fullName[strlen(fullName) - strlen("\r")] = '\0';
+                        else
+                            noLineBreaks = 1;
 
-                    // 寻找iso名字  是否存在于txt内作为索引名
-                    if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) {
-                        // memcpy(game->name, indexName, strlen(indexName));
-                        // game->name[strlen(indexName)] = '\0';
-                        strcpy(game->indexName, game->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
-                        if (fullName[strlen(game->indexName) + 1] == '\r' || fullName[strlen(game->indexName) + 1] == '\n' || fullName[strlen(game->indexName) + 1] == '\0') { // 判断索引的译名是否为空
-                            game->transName[0] = '\0';
+                        // 寻找iso名字  是否存在于txt内作为索引名
+                        if (strncmp(fullName, game->name, strlen(game->name)) == 0 && (fullName[strlen(game->name)] == '.')) {
+                            // memcpy(game->name, indexName, strlen(indexName));
+                            // game->name[strlen(indexName)] = '\0';
+                            strcpy(game->indexName, game->name);                                                                                                                   // 存在，就赋值给索引数组                                                                                     // 将真正的游戏名变成index索引名
+                            if (fullName[strlen(game->indexName) + 1] == '\r' || fullName[strlen(game->indexName) + 1] == '\n' || fullName[strlen(game->indexName) + 1] == '\0') { // 判断索引的译名是否为空
+                                game->transName[0] = '\0';
+                                break;
+                            }
+                            strcpy(game->transName, &fullName[strlen(game->indexName) + 1]); // 赋值给翻译文本数组
+                            strcpy(game->name, game->transName);
                             break;
                         }
-                        strcpy(game->transName, &fullName[strlen(game->indexName) + 1]); // 赋值给翻译文本数组
-                        strcpy(game->name, game->transName);
-                        break;
                     }
-                }
-                // 如果txt里没有此游戏的英文名索引，则添加到txt里
-                if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
-                    // 添加索引之前，判断txt最后有没有换行符，没有则手动添加一个换行符。
-                    if (noLineBreaks)
-                        fwrite("\r\n", sizeof(char), 2, file);
+                    // 如果txt里没有此游戏的英文名索引，则添加到txt里
+                    if (game->indexName[0] == '\0' && game->transName[0] == '\0') {
+                        // 添加索引之前，判断txt最后有没有换行符，没有则手动添加一个换行符。
+                        if (noLineBreaks)
+                            fwrite("\r\n", sizeof(char), 2, file);
 
-                    strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
-                    // fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
-                    sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
-                    fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                        strcpy(game->indexName, game->name); // 将真正的游戏名变成index索引名
+                        // fprintf(file, "%s.\r\n", game->indexName);   // <----这里是否需要追加\0，解决txt内还有隐藏文字的问题？
+                        sprintf(indexNameBuffer, "%s.\r\n", game->indexName);
+                        fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
+                    }
+                    forceUpdateCache = 1; // 只要扫描了txt，一定会刷新缓存
                 }
-                forceUpdateCache = 1; // 只要扫描了txt，一定会刷新缓存
+                // debug
+                // fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
             }
-            // debug
-            //fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
 
             count++;
         }
@@ -537,53 +542,96 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     } else
         closedir(isoDir);
 
-    // 将bdm hdd的txt优先在U盘进行读写
+    // TXT相关变量
     int forceUpdateCache = 0;
     char bdmHddTxtPath[256];
-    bdmHddTxtPath[0] = '0';
-    if (strncmp(prefix, "mass", 4) == 0) {
-        if (prefix[4] == '0') {
-            // 如果找到usb，且usb开关为关闭，则跳过扫描，不生成任何东西
-            if (usbFound && !gEnableUSB) {
-                free(*list);
-                *list = NULL;
-                *fsize = -1;
-                *gamecount = 0;
-                return 0;
-            }
-        } else if (usbFound && prefix[4] != '0') {
-            // 如果插了U盘，那么寻找bdm hdd硬盘
-            char bdmType[32];
-            sprintf(bdmType, "%s/", prefix);
-            int massDir = fileXioDopen(bdmType);
-            if (massDir >= 0) {
-                fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
-                // 找到bdmhdd后的处理。
-                if (strncmp(bdmType, "ata", 3) == 0) {
-                    strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");                
-                    char curTxtPath[256];
-                    sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
-                    FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
-                    FILE *curTxt = fopen(curTxtPath, "rb");
-                    // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
-                    if ((bdmTxt == NULL) && (curTxt != NULL)) {
-                        bdmTxt = fopen(bdmHddTxtPath, "wb");
-                        if ((bdmTxt != NULL) && (curTxt != NULL)) {
+
+    if (gTxtRename) {
+        // 将bdm hdd的txt优先在U盘进行读写
+        bdmHddTxtPath[0] = '0';
+        if (strncmp(prefix, "mass", 4) == 0) {
+            if (prefix[4] == '0') {
+                // 如果找到usb，且usb开关为关闭，则跳过扫描，不生成任何东西
+                if (usbFound && !gEnableUSB) {
+                    free(*list);
+                    *list = NULL;
+                    *fsize = -1;
+                    *gamecount = 0;
+                    return 0;
+                }
+            } else if (usbFound && prefix[4] != '0') {
+                // 如果插了U盘，那么寻找bdm hdd硬盘
+                char bdmType[32];
+                sprintf(bdmType, "%s/", prefix);
+                int massDir = fileXioDopen(bdmType);
+                if (massDir >= 0) {
+                    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
+                    // 找到bdmhdd后的处理。
+                    if (strncmp(bdmType, "ata", 3) == 0) {
+                        strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
+                        char curTxtPath[256];
+                        sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
+                        FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
+                        FILE *curTxt = fopen(curTxtPath, "rb");
+                        // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
+                        if ((bdmTxt == NULL) && (curTxt != NULL)) {
+                            bdmTxt = fopen(bdmHddTxtPath, "wb");
+                            if ((bdmTxt != NULL) && (curTxt != NULL)) {
+                                fseek(curTxt, 0, SEEK_END);
+                                u32 curTxtFileSize = ftell(curTxt);
+                                rewind(curTxt);
+                                char *buf = malloc(curTxtFileSize * sizeof(char));
+                                if (buf != NULL) {
+                                    fread(buf, curTxtFileSize, 1, curTxt);
+                                    fwrite(buf, curTxtFileSize, 1, bdmTxt);
+                                    // 删除硬盘txt之前备份一个，以防万一。
+                                    char BackupTxtPath[256];
+                                    sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                                    FILE *bakTxt = fopen(BackupTxtPath, "wb");
+                                    if (bakTxt != NULL) {
+                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                        fclose(bakTxt);
+                                    }
+                                    free(buf);
+                                }
+                                fclose(bdmTxt);
+                                fclose(curTxt);
+                                remove(curTxtPath);
+                                forceUpdateCache = 1;
+                            } else {
+                                fclose(curTxt);
+                            }
+                            // 检测是否同时存在两个txt，把较大的txt保留在U盘，并删除硬盘里的txt
+                        } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
+                            fseek(bdmTxt, 0, SEEK_END);
                             fseek(curTxt, 0, SEEK_END);
+                            u32 bdmTxtFileSize = ftell(bdmTxt);
                             u32 curTxtFileSize = ftell(curTxt);
+                            rewind(bdmTxt);
                             rewind(curTxt);
                             char *buf = malloc(curTxtFileSize * sizeof(char));
                             if (buf != NULL) {
-                                fread(buf, curTxtFileSize, 1, curTxt);
-                                fwrite(buf, curTxtFileSize, 1, bdmTxt);
-                                // 删除硬盘txt之前备份一个，以防万一。
                                 char BackupTxtPath[256];
                                 sprintf(BackupTxtPath, "%sBackup.txt", prefix);
                                 FILE *bakTxt = fopen(BackupTxtPath, "wb");
-                                if (bakTxt != NULL) {
-                                    fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                    fclose(bakTxt);
-                                }    
+                                fread(buf, curTxtFileSize, 1, curTxt);
+                                // 比较两个txt文件的大小
+                                if (bdmTxtFileSize < curTxtFileSize) {
+                                    fclose(bdmTxt);
+                                    bdmTxt = fopen(bdmHddTxtPath, "wb");
+                                    fwrite(buf, curTxtFileSize, 1, bdmTxt);
+                                    // 删除硬盘txt之前备份一个，以防万一。
+                                    if (bakTxt != NULL) {
+                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                        fclose(bakTxt);
+                                    }
+                                } else {
+                                    // 删除硬盘txt之前备份一个，以防万一。
+                                    if (bakTxt != NULL) {
+                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                        fclose(bakTxt);
+                                    }
+                                }
                                 free(buf);
                             }
                             fclose(bdmTxt);
@@ -591,52 +639,13 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
                             remove(curTxtPath);
                             forceUpdateCache = 1;
                         } else {
-                            fclose(curTxt);
-                        }
-                    // 检测是否同时存在两个txt，把较大的txt保留在U盘，并删除硬盘里的txt
-                    } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
-                        fseek(bdmTxt, 0, SEEK_END);
-                        fseek(curTxt, 0, SEEK_END);
-                        u32 bdmTxtFileSize = ftell(bdmTxt);
-                        u32 curTxtFileSize = ftell(curTxt);
-                        rewind(bdmTxt);
-                        rewind(curTxt);
-                        char *buf = malloc(curTxtFileSize * sizeof(char));                        
-                        if (buf != NULL) {                           
-                            char BackupTxtPath[256];
-                            sprintf(BackupTxtPath, "%sBackup.txt", prefix);
-                            FILE *bakTxt = fopen(BackupTxtPath, "wb");
-                            fread(buf, curTxtFileSize, 1, curTxt);
-                            // 比较两个txt文件的大小
-                            if (bdmTxtFileSize < curTxtFileSize) {
+                            if (bdmTxt != NULL) {
                                 fclose(bdmTxt);
-                                bdmTxt = fopen(bdmHddTxtPath, "wb");                             
-                                fwrite(buf, curTxtFileSize, 1, bdmTxt);
-                                // 删除硬盘txt之前备份一个，以防万一。
-                                if (bakTxt != NULL) {
-                                    fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                    fclose(bakTxt);
-                                }                                
-                            } else {
-                                // 删除硬盘txt之前备份一个，以防万一。
-                                if (bakTxt != NULL) {
-                                    fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                    fclose(bakTxt);                                  
-                                }
                             }
-                            free(buf);
-                        }                       
-                        fclose(bdmTxt);
-                        fclose(curTxt);
-                        remove(curTxtPath);
-                        forceUpdateCache = 1;
-                    } else {
-                        if (bdmTxt != NULL) {
-                            fclose(bdmTxt);
                         }
                     }
+                    fileXioDclose(massDir);
                 }
-                fileXioDclose(massDir);
             }
         }
     }
@@ -672,97 +681,104 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     int count;
     char path[256];
 
-    // 创建txt文件
-    int txtFileChanged = 1;
-    char txtPath[256];
-    char binPath[256];
-    if (bdmHddTxtPath[0] != '0') {
-        strcpy(txtPath, bdmHddTxtPath);
-    } else {
-        sprintf(txtPath, "%sGameListTranslator.txt", prefix);
-    }
-
-    // debug  打印txt路径
-    //char debugFileDir[64];
-    //strcpy(debugFileDir, "mass0:debug.txt");
-    //FILE *debugFile = fopen(debugFileDir, "at+");
-    //fprintf(debugFile, "%s\r\n\r\n", txtPath);
-    //fclose(debugFile);
-
-    sprintf(binPath, "%stxtInfo.bin", prefix);
+    // TXT相关变量
     FILE *file;
     FILE *binFile;
-    binFile = fopen(binPath, "rb");
-    file = fopen(txtPath, "ab+, ccs=UTF-8");
-
-    // 比对txt上次的修改时间与大小
+    char txtPath[256];
+    char binPath[256];
+    int txtFileChanged = 0;
+    u32 curTxtFileSize = 1;
+    u32 preTxtFileSize = 1;
     char curModiTime[6];
     char preModiTime[6];
-    u32 curTxtFileSize;
-    u32 preTxtFileSize;
-    if (file != NULL) {
-        fseek(file, 0, SEEK_END);
-        curTxtFileSize = ftell(file);
-    } else {
-        curTxtFileSize = 0;
-    }
-
-    iox_stat_t fileStat;
     struct txt_info txtInfo = {{0}, 0};
-    if (binFile != NULL) {
-        fread(&txtInfo, sizeof(txtInfo), 1, binFile);
-        memcpy(preModiTime, (&txtInfo)->preModiTime, sizeof(preModiTime));
-        preTxtFileSize = (&txtInfo)->preTxtFileSize;
-        fclose(binFile);
-    } else {
-        strncpy(preModiTime, "000000", 6);
-        preTxtFileSize = 0;
-    }
+    iox_stat_t fileStat;
 
-    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-        // 通过文件修改时间判断txt是否改动
-        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
-        // curModiTime[6] = '\0';
-        // 修改时间和修改大小都没变，说明文件没改动
-        if ((strcmp(curModiTime, preModiTime) == 0) && (curTxtFileSize == preTxtFileSize)) {
-            txtFileChanged = 0;
+    if (gTxtRename) {
+        // 创建txt文件
+        txtFileChanged = 1;
+
+        if (bdmHddTxtPath[0] != '0') {
+            strcpy(txtPath, bdmHddTxtPath);
+        } else {
+            sprintf(txtPath, "%sGameListTranslator.txt", prefix);
         }
-    } else {
-        strncpy(curModiTime, "000000", 6);
-        // sprintf(curModiTime, "000000");
-        // curModiTime[6] = '\0';
+        // debug  打印txt路径
+        // char debugFileDir[64];
+        // strcpy(debugFileDir, "mass0:debug.txt");
+        // FILE *debugFile = fopen(debugFileDir, "at+");
+        // fprintf(debugFile, "%s\r\n\r\n", txtPath);
+        // fclose(debugFile);
+
+        sprintf(binPath, "%stxtInfo.bin", prefix);
+        binFile = fopen(binPath, "rb");
+        file = fopen(txtPath, "ab+, ccs=UTF-8");
+
+        // 比对txt上次的修改时间与大小
+        curTxtFileSize = 0;
+        preTxtFileSize = 0;
+        if (file != NULL) {
+            fseek(file, 0, SEEK_END);
+            curTxtFileSize = ftell(file);
+        } else {
+            curTxtFileSize = 0;
+        }
+
+        if (binFile != NULL) {
+            fread(&txtInfo, sizeof(txtInfo), 1, binFile);
+            memcpy(preModiTime, (&txtInfo)->preModiTime, sizeof(preModiTime));
+            preTxtFileSize = (&txtInfo)->preTxtFileSize;
+            fclose(binFile);
+        } else {
+            strncpy(preModiTime, "000000", 6);
+            preTxtFileSize = 0;
+        }
+
+        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+            // 通过文件修改时间判断txt是否改动
+            sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
+            // curModiTime[6] = '\0';
+            // 修改时间和修改大小都没变，说明文件没改动
+            if ((strcmp(curModiTime, preModiTime) == 0) && (curTxtFileSize == preTxtFileSize)) {
+                txtFileChanged = 0;
+            }
+        } else {
+            strncpy(curModiTime, "000000", 6);
+            // sprintf(curModiTime, "000000");
+            // curModiTime[6] = '\0';
+        }
+
+        // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
+        if (file != NULL && (curTxtFileSize == 0)) {
+            unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+            fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+            fprintf(file, "注意事项：\r\n// 此OPL已支持将iso直接改为中文名！！！此功能仅作为备选方案。\r\n// 本txt主要用来把英文名映射成中文，避免因iso改成中文名后与其他OPL不兼容！\r\n--------------在“.”后面填写映射名称即可！-------------\r\n");
+            txtFileChanged = 1;
+        }
+
+        // 如果需要强制更新缓存，则让缓存认为txt已更新
+        if (forceUpdateCache)
+            txtFileChanged = 1;
+
+        //// debug 测试复制功能
+        // if (file != NULL) {
+        //     rewind(file);
+        //     char *buf = malloc(curTxtFileSize * sizeof(char));
+        //     if (buf != NULL) {
+        //         FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
+        //         if (copyFile != NULL) {
+        //             fread(buf, curTxtFileSize, 1, file);
+        //             fwrite(buf, curTxtFileSize, 1, copyFile);
+        //             free(buf);
+        //             fclose(copyFile);
+        //         }
+        //     }
+        // }
+
+        // debug
+        // fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
+        // fprintf(debugFile, "curTxtFileSize:%d   preTxtFileSize:%d\r\n", curTxtFileSize, preTxtFileSize);
     }
-
-    // 如果文件是第一次被创建，则初始化内容，并强制扫描txt
-    if (file != NULL && (curTxtFileSize == 0)) {
-        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-        fprintf(file, "注意事项：\r\n// 此OPL已支持将iso直接改为中文名！！！此功能仅作为备选方案。\r\n// 本txt主要用来把英文名映射成中文，避免因iso改成中文名后与其他OPL不兼容！\r\n--------------在“.”后面填写映射名称即可！-------------\r\n");
-        txtFileChanged = 1;
-    }
-
-    // 如果需要强制更新缓存，则让缓存认为txt已更新
-    if (forceUpdateCache)
-        txtFileChanged = 1;
-    
-    //// debug 测试复制功能
-    //if (file != NULL) {
-    //    rewind(file);
-    //    char *buf = malloc(curTxtFileSize * sizeof(char));
-    //    if (buf != NULL) {
-    //        FILE *copyFile = fopen("smb0:copyFile.txt", "wb");
-    //        if (copyFile != NULL) {
-    //            fread(buf, curTxtFileSize, 1, file);
-    //            fwrite(buf, curTxtFileSize, 1, copyFile);
-    //            free(buf);
-    //            fclose(copyFile);
-    //        }
-    //    }
-    //}
-
-    // debug
-    //fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
-    //fprintf(debugFile, "curTxtFileSize:%d   preTxtFileSize:%d\r\n", curTxtFileSize, preTxtFileSize);
 
     // temporary storage for the game names
     struct game_list_t *dlist_head = NULL;
@@ -873,39 +889,41 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     if (count > 0)
         *gamecount = count;
 
-    // txt操作完毕后，将大小保存起来。
-    if (file != NULL) {
-        fseek(file, 0, SEEK_END);
-        (&txtInfo)->preTxtFileSize = ftell(file);
-        fclose(file);
-        // txt文件操作完了再改变txt弹窗变量
-        if (!curTxtFileSize) {
-            txtFileCreated = 1;
-            if (_txtFileRebuilded) {
-                txtFileRebuilded = _txtFileRebuilded;
-                txtFileCreated = 0;
-                _txtFileRebuilded = 0;
+    if (gTxtRename) {
+        // txt操作完毕后，将大小保存起来。
+        if (file != NULL) {
+            fseek(file, 0, SEEK_END);
+            (&txtInfo)->preTxtFileSize = ftell(file);
+            fclose(file);
+            // txt文件操作完了再改变txt弹窗变量
+            if (!curTxtFileSize) {
+                txtFileCreated = 1;
+                if (_txtFileRebuilded) {
+                    txtFileRebuilded = _txtFileRebuilded;
+                    txtFileCreated = 0;
+                    _txtFileRebuilded = 0;
+                }
             }
+        } else {
+            (&txtInfo)->preTxtFileSize = 0;
         }
-    } else {
-        (&txtInfo)->preTxtFileSize = 0;
-    }
 
-    // txt操作完毕后，将时间保存起来。
-    if (fileXioGetStat(txtPath, &fileStat) >= 0) {
-        // 通过文件修改时间判断txt是否改动
-        sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
-        memcpy((&txtInfo)->preModiTime, curModiTime, sizeof(curModiTime));
-    }
+        // txt操作完毕后，将时间保存起来。
+        if (fileXioGetStat(txtPath, &fileStat) >= 0) {
+            // 通过文件修改时间判断txt是否改动
+            sprintf(curModiTime, "%02u%02u%02u", fileStat.mtime[3], fileStat.mtime[2], fileStat.mtime[1]);
+            memcpy((&txtInfo)->preModiTime, curModiTime, sizeof(curModiTime));
+        }
 
-    // debug
-    //fprintf(debugFile, "closeTxtTime:%s\r\n\r\n", curModiTime);
-    //fclose(debugFile);
+        // debug
+        // fprintf(debugFile, "closeTxtTime:%s\r\n\r\n", curModiTime);
+        // fclose(debugFile);
 
-    binFile = fopen(binPath, "wb");
-    if (binFile != NULL) {
-        fwrite(&txtInfo, sizeof(txtInfo), 1, binFile);
-        fclose(binFile);
+        binFile = fopen(binPath, "wb");
+        if (binFile != NULL) {
+            fwrite(&txtInfo, sizeof(txtInfo), 1, binFile);
+            fclose(binFile);
+        }
     }
 
     return count;
