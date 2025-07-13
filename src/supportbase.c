@@ -441,6 +441,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 strncpy(game->name, dirent->d_name, NameLen);
                 // sprintf(game->name, "%s", newpath);
                 game->name[NameLen] = '\0';
+                strcpy(game->indexName, game->name); // 防止txt无法写入时，加载游戏会出现白屏
                 strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
                 // newpath[base_path_len] = '/';
