@@ -734,10 +734,11 @@ reselect_video_mode:
             bgmStop();
 
         applyConfig(themeID, langID, 1);
-        sfxInit(0);
 
-        if (gEnableBGM && !isBgmPlaying())
+        if (gEnableBGM && !isBgmPlaying()) {
+            sfxInit(0);
             bgmStart();
+        }
     }
 
     if (previousVMode != gVMode) {
