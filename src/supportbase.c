@@ -777,6 +777,13 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // debug
         // fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
         // fprintf(debugFile, "curTxtFileSize:%d   preTxtFileSize:%d\r\n", curTxtFileSize, preTxtFileSize);
+
+    } else { // 关闭了txt映射时，需要删除txtinfo，下次开启时需要重新扫描txt
+        sprintf(binPath, "%stxtInfo.bin", prefix);
+        if (binFile = fopen(binPath, "rb")) {
+            fclose(binFile);
+            remove(binPath);
+        }
     }
 
     // temporary storage for the game names
