@@ -153,8 +153,6 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
         strncpy(ginfo->partition_name, game->id, APA_IDMAX);
         ginfo->partition_name[APA_IDMAX] = '\0';
         strncpy(ginfo->name, hdl_header->gamename, HDL_GAME_NAME_MAX);
-        ginfo->indexName[0] = '\0';
-        ginfo->transName[0] = '\0';
 
         //if (gHDDPrefix[5] != '+')
         //    gHDDPrefix = "pfs0:OPL/";
@@ -162,6 +160,8 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
         //    gHDDPrefix = "pfs0:+OPL/";
 
         if (gTxtRename) {
+            ginfo->indexName[0] = '\0';
+            ginfo->transName[0] = '\0';
             //  把获取的名字作为索引名，替换成txt中对应的中文名
             char fullName[256];
             char indexNameBuffer[256];
@@ -212,11 +212,11 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                     fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
                 }
             }
+            // 防止txt无法写入时，出现的白屏问题
+            if (ginfo->indexName[0] == '\0')
+                strcpy(ginfo->indexName, ginfo->name);
         }
 
-        // 防止txt无法写入时，出现的白屏问题
-        if (ginfo->indexName[0] == '\0')
-            strcpy(ginfo->indexName, ginfo->name);
         strncpy(ginfo->startup, hdl_header->startup, sizeof(ginfo->startup) - 1);
         ginfo->startup[sizeof(ginfo->startup) - 1] = '\0';
         ginfo->hdl_compat_flags = hdl_header->hdl_compat_flags;
