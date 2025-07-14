@@ -343,18 +343,24 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             game->transName[0] = '\0';
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
-                memcpy(game, &cachedGInfo, sizeof(base_game_info_t)); // 缓存的内容还是得拷过来一份，否则会出问题
                 strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
                 strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
                 strncpy(game->extension, &dirent->d_name[GAME_STARTUP_MAX + NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                if (gTxtRename) {
-                    // 查询缓存里的旧格式的游戏名
-                    char fileName[160];
-                    sprintf(fileName, "%s%s", game->name, game->extension);
-                    if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
+
+                // 查询缓存里的旧格式的游戏名
+                char fileName[160];
+                sprintf(fileName, "%s%s", game->name, game->extension);
+                if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
+                    memcpy(game, &cachedGInfo, sizeof(base_game_info_t)); // 缓存的内容还是得拷过来一份，否则会出问题
+                    // 显示名字要改回索引名字，以免TXT的索引变成了映射名。
+                    if (game->indexName[0] != '\0')
+                        strcpy(game->name, game->indexName);
+
+                    if (gTxtRename) {
+
                         // debug
                         // fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
 
