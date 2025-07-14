@@ -938,15 +938,16 @@ int diaExecuteDialog(struct UIItem *ui, int uiId, short inMenu, int (*updater)(i
             // see what key events we have
             if (getKeyOn(gSelectButton)) {
                 haveFocus = 1;
-                sfxPlay(SFX_CONFIRM);
 
                 if (cur->type == UI_BUTTON) {
                     diaRestoreScrollSpeed();
+                    sfxPlay(SFX_CONFIRM);
                     return cur->id;
                 }
 
                 if (cur->type == UI_OK) {
                     diaRestoreScrollSpeed();
+                    sfxPlay(SFX_CONFIRM);
                     return UIID_BTN_OK;
                 }
             }
