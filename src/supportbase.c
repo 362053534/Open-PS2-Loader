@@ -343,6 +343,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             game->transName[0] = '\0';
             // old iso format can't be cached
             if (format == GAME_FORMAT_OLD_ISO) {
+                memcpy(game, &cachedGInfo, sizeof(base_game_info_t)); // 缓存的内容还是得拷过来一份，否则会出问题
                 strncpy(game->name, &dirent->d_name[GAME_STARTUP_MAX], NameLen);
                 game->name[NameLen] = '\0';
                 strncpy(game->startup, dirent->d_name, GAME_STARTUP_MAX - 1);
@@ -360,8 +361,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                         // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                         if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
                             skipTxtScan = 1;
-                            strcpy(game->indexName, (&cachedGInfo)->indexName);
-                            strcpy(game->transName, (&cachedGInfo)->transName);
                             if (game->transName[0] != '\0') {
                                 strcpy(game->name, game->transName);
                             }
@@ -373,8 +372,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                         if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
                             _txtFileRebuilded = 1; // 弹窗用
                             skipTxtScan = 1;
-                            strcpy(game->indexName, (&cachedGInfo)->indexName);
-                            strcpy(game->transName, (&cachedGInfo)->transName);
                             if (game->transName[0] != '\0') {
                                 strcpy(game->name, game->transName);
                                 sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
