@@ -300,14 +300,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         prevGuiFrameId = guiFrameId;
         artCount++;
-        buttonDelay = 0;
-        startMoveCurse = 1;
+        if (!guiInactiveFrames)
+            startMoveCurse = 1;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
         FILE *debugFile = fopen(debugFileDir, "ab+");
         if (debugFile != NULL) {
-            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artCount);
+            fprintf(debugFile, "suffix:%s   guiFrameId:%d  ArtCount:%d\r\n", cache->suffix, guiFrameId, artCount);
             fclose(debugFile);
         }
     }
