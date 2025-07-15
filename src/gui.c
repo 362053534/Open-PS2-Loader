@@ -118,7 +118,7 @@ void guiReloadScreenExtents()
 void guiInit(void)
 {
     guiFrameId = 0;
-    guiInactiveFrames = 0;
+    guiInactiveFrames = 1;
 
     gFrameHook = NULL;
     gTerminate = 0;
