@@ -135,7 +135,7 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
-    if (buttonDelay++ >= 10)
+    if (buttonDelay++ >= 30)
         if (startMoveCurse)
             startMoveCurse = 0;
     // under the cache pre-delay (to avoid filling cache while moving around)
@@ -263,7 +263,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
     // under the cache pre-delay (to avoid filling cache while moving around)
     // 按住按键时且滚动速度快，或快速单击按键，则停止加载ART
-    if ((((prevGuiFrameId != guiFrameId) && (artCount > 0)) && (gScrollSpeed > 0)) || ((prevGuiFrameId != guiFrameId) && (buttonDelay < 10)))
+    if ((((prevGuiFrameId != guiFrameId) && (artCount > 0)) && (gScrollSpeed > 0)) || ((prevGuiFrameId != guiFrameId) && (buttonDelay < 30)))
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
@@ -302,14 +302,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         artCount++;
         buttonDelay = 0;
         startMoveCurse = 1;
-        // debug  打印debug信息
-        char debugFileDir[64];
-        strcpy(debugFileDir, "smb:debug-TexCache.txt");
-        FILE *debugFile = fopen(debugFileDir, "ab+");
-        if (debugFile != NULL) {
-            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artCount);
-            fclose(debugFile);
-        }
+        //// debug  打印debug信息
+        //char debugFileDir[64];
+        //strcpy(debugFileDir, "smb:debug-TexCache.txt");
+        //FILE *debugFile = fopen(debugFileDir, "ab+");
+        //if (debugFile != NULL) {
+        //    fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artCount);
+        //    fclose(debugFile);
+        //}
     }
     return prevCache;
 }
