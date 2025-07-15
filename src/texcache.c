@@ -18,8 +18,9 @@ int PrevCacheID_BG = -2;
 //int RestartLoadTexFrames = 0;
 //int RestartLoadTexDelay = 15;
 
-int TexStopLoadDelay = 28; // 按住按键超过这个帧数才停止加载ART
-int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
+u32 buttonDelay = 100; // 记录两次按键的间隔时间
+int startMoveCurse = 0; // 开始移动光标，与buttonDelay配合使用，防止快速单击方向键时，加载卡顿问题
+int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动光标时不会连续加载ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
 
 typedef struct
@@ -134,14 +135,19 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
+    if (buttonDelay++ >= 10)
+        if (startMoveCurse)
+            startMoveCurse = 0;
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
+        if ((prevGuiFrameId != guiFrameId) && startMoveCurse)
+            buttonDelay = 0;
         //ButtonFrames++; // 按住按键的时间
         //if (RestartLoadTexFrames)
         //    RestartLoadTexFrames = 0;
     } else {
-        if (ButtonFrames)
-            ButtonFrames = 0;
+        if (artCount)
+            artCount = 0;
         //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
         //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
         //    RestartLoadTexFrames = RestartLoadTexDelay;
@@ -256,7 +262,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if (((prevGuiFrameId != guiFrameId) && (ButtonFrames > 0)) && (gScrollSpeed > 0)) // 按住按键时，滚动速度快，则停止加载ART
+    // 按住按键时且滚动速度快，或快速单击按键，则停止加载ART
+    if ((((prevGuiFrameId != guiFrameId) && (artCount > 0)) && (gScrollSpeed > 0)) || (buttonDelay < 10))
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
@@ -292,13 +299,15 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         ioPutRequest(IO_CACHE_LOAD_ART, req);
 
         prevGuiFrameId = guiFrameId;
-        ButtonFrames++;
+        artCount++;
+        buttonDelay = 0;
+        startMoveCurse = 1;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
         FILE *debugFile = fopen(debugFileDir, "ab+");
         if (debugFile != NULL) {
-            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, ButtonFrames);
+            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artCount);
             fclose(debugFile);
         }
     }
