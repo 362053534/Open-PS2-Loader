@@ -138,16 +138,19 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     if (buttonDelay++ >= 30)
         if (startMoveCurse)
             startMoveCurse = 0;
+
+    if (artCount && (prevGuiFrameId != guiFrameId))
+        startMoveCurse = 1;
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
+        if (startMoveCurse && (prevGuiFrameId != guiFrameId))
+            buttonDelay = 0;
         //ButtonFrames++; // 按住按键的时间
         //if (RestartLoadTexFrames)
         //    RestartLoadTexFrames = 0;
     } else {
         if (artCount)
             artCount = 0;
-        if (startMoveCurse)
-            buttonDelay = 0;
         //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
         //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
         //    RestartLoadTexFrames = RestartLoadTexDelay;
@@ -300,10 +303,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         prevGuiFrameId = guiFrameId;
         artCount++;
-        if (!guiInactiveFrames) {
-            startMoveCurse = 1;
-            buttonDelay = 0;
-        }
+        buttonDelay = 0;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
