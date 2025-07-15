@@ -302,14 +302,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         artCount++;
         buttonDelay = 0;
         startMoveCurse = 1;
-        //// debug  打印debug信息
-        //char debugFileDir[64];
-        //strcpy(debugFileDir, "smb:debug-TexCache.txt");
-        //FILE *debugFile = fopen(debugFileDir, "ab+");
-        //if (debugFile != NULL) {
-        //    fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artCount);
-        //    fclose(debugFile);
-        //}
+        // debug  打印debug信息
+        char debugFileDir[64];
+        strcpy(debugFileDir, "smb:debug-TexCache.txt");
+        FILE *debugFile = fopen(debugFileDir, "ab+");
+        if (debugFile != NULL) {
+            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artCount);
+            fclose(debugFile);
+        }
     }
     return prevCache;
 }
