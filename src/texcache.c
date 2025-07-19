@@ -281,11 +281,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
     // 触发加载CD
     if ((prevGuiFrameId != guiFrameId) && artCount) {
+        artLoadedCount = artCount;
         if (!buttonDelay) // CD不存在时，才会重置artCount，连续按按键时不重置。
             artCount = 0;
-        if (artCount)
-            artLoadedCount = artCount;
-        buttonDelay = 30;
+        buttonDelay = 100;
         prevGuiFrameId = guiFrameId;
     }
     //  触发CD，且已加载全部art时，跳过缓存ART
