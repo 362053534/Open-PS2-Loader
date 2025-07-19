@@ -18,7 +18,7 @@ int PrevCacheID_BG = -2;
 //int RestartLoadTexFrames = 0;
 //int RestartLoadTexDelay = 15;
 
-u32 buttonDelay = 100; // 记录两次按键的间隔时间
+int buttonDelay = 0; // 记录两次按键的间隔时间
 int startMoveCurse = 0; // 开始移动光标，与buttonDelay配合使用，防止快速单击方向键时，加载卡顿问题
 int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动光标时不会连续加载ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
@@ -135,22 +135,22 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
-    if (buttonDelay++ >= 30)
-        if (startMoveCurse)
-            startMoveCurse = 0;
-
-    if (artCount && (prevGuiFrameId != guiFrameId))
-        startMoveCurse = 1;
+    // 大于0才开始触发CD
+    if (buttonDelay)
+        buttonDelay--;
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
-        //if (startMoveCurse && (prevGuiFrameId != guiFrameId))
-            buttonDelay = 0;
         //ButtonFrames++; // 按住按键的时间
         //if (RestartLoadTexFrames)
         //    RestartLoadTexFrames = 0;
     } else {
-        if (artCount)
-            artCount = 0;
+        //if (artCount) {
+        //    if (prevGuiFrameId != guiFrameId) {
+        //        buttonDelay = 0;
+        //    }
+        //    else
+        //        buttonDelay = 100;
+        //}
         //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
         //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
         //    RestartLoadTexFrames = RestartLoadTexDelay;
@@ -264,21 +264,45 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    // debug  打印debug信息
-    char debugFileDir[64];
-    strcpy(debugFileDir, "smb:debug-TexCache.txt");
-    FILE *debugFile = fopen(debugFileDir, "ab+");
-    if (debugFile != NULL) {
-        fprintf(debugFile, "jump:  guiFrameId:%d  suffix:%s\r\n", guiFrameId, cache->suffix);
-        fclose(debugFile);
+    //// debug  打印debug信息
+    //char debugFileDir[64];
+    //strcpy(debugFileDir, "smb:debug-TexCache.txt");
+    //FILE *debugFile = fopen(debugFileDir, "ab+");
+    //if (debugFile != NULL) {
+    //    fprintf(debugFile, "jump:  guiFrameId:%d  suffix:%s\r\n", guiFrameId, cache->suffix);
+    //    fclose(debugFile);
+    //}
+
+    //// 按住按键，且加载了一次ART，之后必定跳过ART缓存
+    //if (!guiInactiveFrames && artCount && (prevGuiFrameId != guiFrameId)) {
+    //    return prevCache;
+    //}
+
+    // 触发加载CD
+    if ((prevGuiFrameId != guiFrameId) && artCount) {
+        if (!buttonDelay) // CD不存在时，才会重置artCount，连续按按键时不重置。
+            artCount = 0;
+        buttonDelay = 30;
+        prevGuiFrameId = guiFrameId;
     }
 
-    if (!guiInactiveFrames && (prevGuiFrameId != guiFrameId))
+    //  触发CD，且已加载了art时，跳过缓存ART
+    if (artCount && buttonDelay)
         return prevCache;
 
 
-    if (!guiInactiveFrames && (prevGuiFrameId == guiFrameId) && (buttonDelay < 30))
-        return prevCache;
+    //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
+    //    prevGuiFrameId = guiFrameId;
+    //    return prevCache;
+    //} else
+    //    artCount = 0;
+
+    //if (!guiInactiveFrames && (prevGuiFrameId != guiFrameId))
+    //    return prevCache;
+
+
+    //if (!guiInactiveFrames && (prevGuiFrameId == guiFrameId) && (buttonDelay < 30))
+    //    return prevCache;
 
     //// under the cache pre-delay (to avoid filling cache while moving around)
     //// 按住按键时且滚动速度快，或快速单击按键，则停止加载ART
@@ -319,7 +343,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         prevGuiFrameId = guiFrameId;
         artCount++;
-        buttonDelay = 0;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
