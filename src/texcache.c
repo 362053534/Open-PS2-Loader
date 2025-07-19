@@ -137,6 +137,11 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
+    // 上一轮ART图已全部进入qr队列
+    if (artCount && (prevGuiFrameId != guiFrameId)) {
+        allArtQr = 1;
+        artCount = 0;
+    }
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         //ButtonFrames++; // 按住按键的时间
@@ -277,11 +282,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //    return prevCache;
     //}
 
-    // 上一轮ART图已全部进入qr队列
-    if (artCount && (prevGuiFrameId != guiFrameId)) {
-        allArtQr = 1;
-        artCount = 0;
-    }
     //  触发CD，且已加载全部art时，跳过缓存ART
     if (allArtQr && (guiInactiveFrames < 60))
         return prevCache;
