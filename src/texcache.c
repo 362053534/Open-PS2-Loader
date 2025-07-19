@@ -141,6 +141,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         buttonDelay--;
         if (!buttonDelay) {
             artCount = 0;
+            prevGuiFrameId = guiFrameId;
         }
     }
 
