@@ -21,7 +21,7 @@ int PrevCacheID_BG = -2;
 int buttonDelay = 0; // 记录两次按键的间隔时间
 int startMoveCurse = 0; // 开始移动光标，与buttonDelay配合使用，防止快速单击方向键时，加载卡顿问题
 int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动光标时不会连续加载ART图
-int artLoadedCount = 0; // 与artCount配合使用，记录加载了几种ART图
+int artQrCount = 0; // 与artCount配合使用，记录加载了几种ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
 int allArtQr = 0;
 int allArtDisplayed = 0;
@@ -141,7 +141,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     // 上一轮ART图已全部进入qr队列
     if (artCount && (prevGuiFrameId != guiFrameId)) {
         allArtQr = 1;
-        allArtDisplayed = 0;
+        artQrCount = artCount;
+        artCount = 0;
     }
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
@@ -235,6 +236,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         } else if (!strncmp("BG", cache->suffix, 2)) {
             PrevCacheID_BG = *cacheId;
         }
+        if (allArtQr) {
+            if (--artQrCount <= 0) {
+                artQrCount = 0;
+                allArtDisplayed = 1;
+            }
+        }
         return NULL;
     } else if (*cacheId != -1) {
         if (allArtQr)
@@ -244,6 +251,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
             if (entry->qr) {
+                if (allArtQr) {
+                    if (--artQrCount <= 0) {
+                        artQrCount = 0;
+                        allArtDisplayed = 1;
+                    }
+                }
                 return prevCache;
             } else if (entry->lastUsed == 0) {
                 *cacheId = -2;
@@ -255,6 +268,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 } else if (!strncmp("BG", cache->suffix, 2)) {
                     PrevCacheID_BG = *cacheId;
                 }
+                if (allArtQr) {
+                    if (--artQrCount <= 0) {
+                        artQrCount = 0;
+                        allArtDisplayed = 1;
+                    }
+                }
                 return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
@@ -265,6 +284,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     PrevCacheID_ICO = *cacheId;
                 } else if (!strncmp("BG", cache->suffix, 2)) {
                     PrevCacheID_BG = *cacheId;
+                }
+                if (allArtQr) {
+                    if (--artQrCount <= 0) {
+                        artQrCount = 0;
+                        allArtDisplayed = 1;
+                    }
                 }
                 return &entry->texture;
             }
@@ -343,6 +368,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             prevGuiFrameId = guiFrameId;
         artCount++;
         allArtQr = 0;
+        allArtDisplayed = 0;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
 
