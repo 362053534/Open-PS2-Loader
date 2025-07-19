@@ -136,13 +136,13 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
-    // 大于0才开始触发CD
-    if (buttonDelay) {
-        buttonDelay--;
-        if (!buttonDelay) {
-            artCount = 0;
-            prevGuiFrameId = guiFrameId;
-        }
+    // debug  打印debug信息
+    char debugFileDir[64];
+    strcpy(debugFileDir, "smb:debug-TexCache.txt");
+    FILE *debugFile = fopen(debugFileDir, "ab+");
+    if (debugFile != NULL) {
+        fprintf(debugFile, "开头：guiFrameId:%d  ArtCount:%d   suffix:%s\r\n", guiFrameId, artCount, cache->suffix);
+        fclose(debugFile);
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
@@ -287,20 +287,16 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
     // 触发加载CD
     if (prevGuiFrameId != guiFrameId) {
-        if (!buttonDelay) // CD不存在时，才会重置artCount，连续按按键时不重置。
-        {
+        if (guiInactiveFrames > 0) {
             if (artCount) {
                 artLoadedCount = artCount;
                 artCount = 0;
-                buttonDelay = 100;
             }
-        } else {
-            buttonDelay = 100;
         }
-        prevGuiFrameId = guiFrameId;
+        //prevGuiFrameId = guiFrameId;
     }
     //  触发CD，且已加载全部art时，跳过缓存ART
-    if (buttonDelay && (artCount >= artLoadedCount))
+    if (guiInactiveFrames < 60 && (artCount >= artLoadedCount))
         return prevCache;
 
     //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
@@ -360,7 +356,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
         FILE *debugFile = fopen(debugFileDir, "ab+");
         if (debugFile != NULL) {
-            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d   suffix:%s\r\n", guiFrameId, artCount, cache->suffix);
+            fprintf(debugFile, "结尾：guiFrameId:%d  ArtCount:%d   suffix:%s\r\n\r\n", guiFrameId, artCount, cache->suffix);
             fclose(debugFile);
         }
     }
