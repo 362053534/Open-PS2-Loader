@@ -23,6 +23,7 @@ int startMoveCurse = 0; // 开始移动光标，与buttonDelay配合使用，防
 int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动光标时不会连续加载ART图
 int artLoadedCount = 0; // 与artCount配合使用，记录加载了几种ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
+int allArtQr = 0;
 
 typedef struct
 {
@@ -136,15 +137,6 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
-    // 大于0才开始触发CD
-    if (buttonDelay) {
-        buttonDelay--;
-        if (!buttonDelay) {
-            artCount = 0;
-            prevGuiFrameId = guiFrameId;
-        }
-    }
-
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         //ButtonFrames++; // 按住按键的时间
@@ -285,22 +277,13 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //    return prevCache;
     //}
 
-    // 触发加载CD
-    if (prevGuiFrameId != guiFrameId) {
-        if (!buttonDelay) // CD不存在时，才会重置artCount，连续按按键时不重置。
-        {
-            if (artCount) {
-                artLoadedCount = artCount;
-                artCount = 0;
-                buttonDelay = 100;
-            }
-        } else {
-            buttonDelay = 100;
-        }
-        prevGuiFrameId = guiFrameId;
+    // 上一轮ART图已全部进入qr队列
+    if (artCount && (prevGuiFrameId != guiFrameId)) {
+        allArtQr = 1;
+        artCount = 0;
     }
     //  触发CD，且已加载全部art时，跳过缓存ART
-    if (buttonDelay && (artCount >= artLoadedCount))
+    if (allArtQr && (guiInactiveFrames < 60))
         return prevCache;
 
     //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
@@ -355,6 +338,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         prevGuiFrameId = guiFrameId;
         artCount++;
+        allArtQr = 0;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
