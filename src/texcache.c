@@ -24,7 +24,7 @@ int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动�
 int artQrCount = 0; // 与artCount配合使用，记录加载了几种ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
 int allArtQr = 0;
-int allArtDisplayed = 0;
+int allQrDisplayed = 0;
 
 typedef struct
 {
@@ -236,27 +236,11 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         } else if (!strncmp("BG", cache->suffix, 2)) {
             PrevCacheID_BG = *cacheId;
         }
-        if (allArtQr) {
-            if (--artQrCount <= 0) {
-                artQrCount = 0;
-                allArtDisplayed = 1;
-            }
-        }
         return NULL;
     } else if (*cacheId != -1) {
-        if (allArtQr)
-            artCount--;
-        if (!artCount)
-            allArtDisplayed = 1;
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
             if (entry->qr) {
-                if (allArtQr) {
-                    if (--artQrCount <= 0) {
-                        artQrCount = 0;
-                        allArtDisplayed = 1;
-                    }
-                }
                 return prevCache;
             } else if (entry->lastUsed == 0) {
                 *cacheId = -2;
@@ -271,7 +255,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 if (allArtQr) {
                     if (--artQrCount <= 0) {
                         artQrCount = 0;
-                        allArtDisplayed = 1;
+                        allQrDisplayed = 1;
                     }
                 }
                 return NULL;
@@ -288,7 +272,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 if (allArtQr) {
                     if (--artQrCount <= 0) {
                         artQrCount = 0;
-                        allArtDisplayed = 1;
+                        allQrDisplayed = 1;
                     }
                 }
                 return &entry->texture;
@@ -313,7 +297,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //}
 
     //  触发CD，且已加载全部art时，跳过缓存ART
-    if (allArtDisplayed && (guiInactiveFrames < 60))
+    if (allQrDisplayed && (guiInactiveFrames < 60))
         return prevCache;
 
     //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
@@ -368,7 +352,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             prevGuiFrameId = guiFrameId;
         artCount++;
         allArtQr = 0;
-        allArtDisplayed = 0;
+        allQrDisplayed = 0;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
 
