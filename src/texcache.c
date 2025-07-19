@@ -137,8 +137,13 @@ void cacheDestroyCache(image_cache_t *cache)
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
     // 大于0才开始触发CD
-    if (buttonDelay)
+    if (buttonDelay) {
         buttonDelay--;
+        if (!buttonDelay) {
+            artCount = 0;
+        }
+    }
+
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         //ButtonFrames++; // 按住按键的时间
