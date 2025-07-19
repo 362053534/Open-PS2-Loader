@@ -284,12 +284,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             artCount = 0;
         buttonDelay = 30;
         prevGuiFrameId = guiFrameId;
+        //  触发CD，且已加载了art时，跳过缓存ART
+        if (artCount)
+            return prevCache;
     }
-
-    //  触发CD，且已加载了art时，跳过缓存ART
-    if ((prevGuiFrameId != guiFrameId) && artCount && buttonDelay)
-        return prevCache;
-
 
     //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
     //    prevGuiFrameId = guiFrameId;
