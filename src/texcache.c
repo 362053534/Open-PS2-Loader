@@ -21,6 +21,7 @@ int PrevCacheID_BG = -2;
 int buttonDelay = 0; // 记录两次按键的间隔时间
 int startMoveCurse = 0; // 开始移动光标，与buttonDelay配合使用，防止快速单击方向键时，加载卡顿问题
 int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动光标时不会连续加载ART图
+int artLoadedCount = 0; // 与artCount配合使用，记录加载了几种ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
 
 typedef struct
@@ -282,12 +283,14 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     if ((prevGuiFrameId != guiFrameId) && artCount) {
         if (!buttonDelay) // CD不存在时，才会重置artCount，连续按按键时不重置。
             artCount = 0;
+        if (artCount)
+            artLoadedCount = artCount;
         buttonDelay = 30;
         prevGuiFrameId = guiFrameId;
-        //  触发CD，且已加载了art时，跳过缓存ART
-        if (artCount)
-            return prevCache;
     }
+    //  触发CD，且已加载全部art时，跳过缓存ART
+    if (buttonDelay && (artCount >= artLoadedCount))
+        return prevCache;
 
     //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
     //    prevGuiFrameId = guiFrameId;
