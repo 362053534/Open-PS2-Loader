@@ -18,13 +18,9 @@ int PrevCacheID_BG = -2;
 //int RestartLoadTexFrames = 0;
 //int RestartLoadTexDelay = 15;
 
-int buttonDelay = 0; // 记录两次按键的间隔时间
-int startMoveCurse = 0; // 开始移动光标，与buttonDelay配合使用，防止快速单击方向键时，加载卡顿问题
-int artCount = 0; // 与prevGuiFrameId和guiFrameId配合使用，快速移动光标时不会连续加载ART图
-int artQrCount = 0; // 与artCount配合使用，记录加载了几种ART图
+int TexStopLoadDelay = 28; // 按住按键超过这个帧数才停止加载ART
+int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
-int allArtQr = 0;
-int allQrDisplayed = 0;
 
 typedef struct
 {
@@ -138,23 +134,14 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
-    // 上一轮ART图已全部进入qr队列
-    if (!allArtQr && artCount && (prevGuiFrameId != guiFrameId)) {
-        allArtQr = 1;
-    }
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         //ButtonFrames++; // 按住按键的时间
         //if (RestartLoadTexFrames)
         //    RestartLoadTexFrames = 0;
     } else {
-        //if (artCount) {
-        //    if (prevGuiFrameId != guiFrameId) {
-        //        buttonDelay = 0;
-        //    }
-        //    else
-        //        buttonDelay = 100;
-        //}
+        if (ButtonFrames)
+            ButtonFrames = 0;
         //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
         //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
         //    RestartLoadTexFrames = RestartLoadTexDelay;
@@ -250,12 +237,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 } else if (!strncmp("BG", cache->suffix, 2)) {
                     PrevCacheID_BG = *cacheId;
                 }
-                if (allArtQr) {
-                    if (--artCount <= 0) {
-                        artCount = 0;
-                        allQrDisplayed = 1;
-                    }
-                }
                 return NULL;
             } else {
                 entry->lastUsed = guiFrameId;
@@ -267,12 +248,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 } else if (!strncmp("BG", cache->suffix, 2)) {
                     PrevCacheID_BG = *cacheId;
                 }
-                if (allArtQr) {
-                    if (--artCount <= 0) {
-                        artCount = 0;
-                        allQrDisplayed = 1;
-                    }
-                }
                 return &entry->texture;
             }
         }
@@ -280,41 +255,9 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    //// debug  打印debug信息
-    //char debugFileDir[64];
-    //strcpy(debugFileDir, "smb:debug-TexCache.txt");
-    //FILE *debugFile = fopen(debugFileDir, "ab+");
-    //if (debugFile != NULL) {
-    //    fprintf(debugFile, "jump:  guiFrameId:%d  suffix:%s\r\n", guiFrameId, cache->suffix);
-    //    fclose(debugFile);
-    //}
-
-    //// 按住按键，且加载了一次ART，之后必定跳过ART缓存
-    //if (!guiInactiveFrames && artCount && (prevGuiFrameId != guiFrameId)) {
-    //    return prevCache;
-    //}
-
-    //  触发CD，且已显示全部art时，跳过缓存
-    if (allArtQr && allQrDisplayed && (guiInactiveFrames < 60))
+    // under the cache pre-delay (to avoid filling cache while moving around)
+    if (((prevGuiFrameId != guiFrameId) && !guiInactiveFrames && (gScrollSpeed > 0)) // 按住按键时，滚动速度快，则停止加载ART
         return prevCache;
-
-    //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
-    //    prevGuiFrameId = guiFrameId;
-    //    return prevCache;
-    //} else
-    //    artCount = 0;
-
-    //if (!guiInactiveFrames && (prevGuiFrameId != guiFrameId))
-    //    return prevCache;
-
-
-    //if (!guiInactiveFrames && (prevGuiFrameId == guiFrameId) && (buttonDelay < 30))
-    //    return prevCache;
-
-    //// under the cache pre-delay (to avoid filling cache while moving around)
-    //// 按住按键时且滚动速度快，或快速单击按键，则停止加载ART
-    //if ((((prevGuiFrameId != guiFrameId) && (artCount > 0)) && (gScrollSpeed > 0)) || ((prevGuiFrameId != guiFrameId) && (buttonDelay < 30)))
-    //    return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
     int i, rtime = guiFrameId;
@@ -346,20 +289,16 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         *UID = cache->nextUID++;
 
-        if (!artCount)
-            prevGuiFrameId = guiFrameId;
-        artCount++;
-        allQrDisplayed = 0;
-        allArtQr = 0;
-
         ioPutRequest(IO_CACHE_LOAD_ART, req);
 
+        prevGuiFrameId = guiFrameId;
+        ButtonFrames++;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
         FILE *debugFile = fopen(debugFileDir, "ab+");
         if (debugFile != NULL) {
-            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d   suffix:%s\r\n", guiFrameId, artCount, cache->suffix);
+            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, ButtonFrames);
             fclose(debugFile);
         }
     }
