@@ -254,7 +254,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     if (--artCount <= 0) {
                         artCount = 0;
                         allQrDisplayed = 1;
-                        allArtQr = 0;
                     }
                 }
                 return NULL;
@@ -272,7 +271,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     if (--artCount <= 0) {
                         artCount = 0;
                         allQrDisplayed = 1;
-                        allArtQr = 0;
                     }
                 }
                 return &entry->texture;
@@ -297,7 +295,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //}
 
     //  触发CD，且已显示全部art时，跳过缓存
-    if (allQrDisplayed && (guiInactiveFrames < 60))
+    if (allArtQr && allQrDisplayed && (guiInactiveFrames < 60))
         return prevCache;
 
     //if (artCount && (prevGuiFrameId != guiFrameId) && buttonDelay < 30) {
@@ -352,6 +350,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             prevGuiFrameId = guiFrameId;
         artCount++;
         allQrDisplayed = 0;
+        allArtQr = 0;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
 
