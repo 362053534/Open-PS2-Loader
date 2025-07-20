@@ -18,9 +18,8 @@ int PrevCacheID_BG = -2;
 //int RestartLoadTexFrames = 0;
 //int RestartLoadTexDelay = 15;
 
-int TexStopLoadDelay = 28; // 按住按键超过这个帧数才停止加载ART
-int ButtonFrames = 0; // 与TexLoadDalay配合使用，快速移动光标时不会连续加载ART图
-int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断光标是否移动了
+int artQrCount = 0; // 给加入Qr缓存队列的Art图计数
+int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
 
 typedef struct
 {
@@ -140,8 +139,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         //if (RestartLoadTexFrames)
         //    RestartLoadTexFrames = 0;
     } else {
-        if (ButtonFrames)
-            ButtonFrames = 0;
+        if (artQrCount)
+            artQrCount = 0;
         //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
         //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
         //    RestartLoadTexFrames = RestartLoadTexDelay;
@@ -256,7 +255,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     // under the cache pre-delay (to avoid filling cache while moving around)
-    if (((prevGuiFrameId != guiFrameId) && !guiInactiveFrames && (gScrollSpeed > 0)) // 按住按键时，滚动速度快，则停止加载ART
+    if (((prevGuiFrameId != guiFrameId) && artQrCount) && (gScrollSpeed > 0)) // 按住按键时，滚动速度快，则停止加载ART
         return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
@@ -292,13 +291,13 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         ioPutRequest(IO_CACHE_LOAD_ART, req);
 
         prevGuiFrameId = guiFrameId;
-        ButtonFrames++;
+        artQrCount++;
         // debug  打印debug信息
         char debugFileDir[64];
         strcpy(debugFileDir, "smb:debug-TexCache.txt");
         FILE *debugFile = fopen(debugFileDir, "ab+");
         if (debugFile != NULL) {
-            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, ButtonFrames);
+            fprintf(debugFile, "guiFrameId:%d  ArtCount:%d\r\n", guiFrameId, artQrCount);
             fclose(debugFile);
         }
     }
