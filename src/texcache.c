@@ -139,6 +139,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         //if (RestartLoadTexFrames)
         //    RestartLoadTexFrames = 0;
     } else {
+        if (artQrCount)
+            artQrCount = 0;
         //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
         //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
         //    RestartLoadTexFrames = RestartLoadTexDelay;
@@ -252,12 +254,9 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    if (guiInactiveFrames < 60) {
-        // under the cache pre-delay (to avoid filling cache while moving around)
-        if (((prevGuiFrameId != guiFrameId) && artQrCount) && (gScrollSpeed > 0)) // 按住按键时，滚动速度快，则停止加载ART
-            return prevCache;
-    } else
-        artQrCount = 0;
+    // under the cache pre-delay (to avoid filling cache while moving around)
+    if (((prevGuiFrameId != guiFrameId) && artQrCount) && (gScrollSpeed > 0)) // 按住按键时，滚动速度快，则停止加载ART
+        return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
     int i, rtime = guiFrameId;
