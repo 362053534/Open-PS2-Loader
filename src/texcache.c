@@ -139,10 +139,8 @@ void cacheDestroyCache(image_cache_t *cache)
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
     // 上一轮ART图已全部进入qr队列
-    if (artCount && (prevGuiFrameId != guiFrameId)) {
+    if (!allArtQr && artCount && (prevGuiFrameId != guiFrameId)) {
         allArtQr = 1;
-        artQrCount = artCount;
-        artCount = 0;
     }
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
@@ -253,9 +251,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     PrevCacheID_BG = *cacheId;
                 }
                 if (allArtQr) {
-                    if (--artQrCount <= 0) {
-                        artQrCount = 0;
+                    if (--artCount <= 0) {
+                        artCount = 0;
                         allQrDisplayed = 1;
+                        allArtQr = 0;
                     }
                 }
                 return NULL;
@@ -270,9 +269,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     PrevCacheID_BG = *cacheId;
                 }
                 if (allArtQr) {
-                    if (--artQrCount <= 0) {
-                        artQrCount = 0;
+                    if (--artCount <= 0) {
+                        artCount = 0;
                         allQrDisplayed = 1;
+                        allArtQr = 0;
                     }
                 }
                 return &entry->texture;
@@ -296,7 +296,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     //    return prevCache;
     //}
 
-    //  触发CD，且已加载全部art时，跳过缓存ART
+    //  触发CD，且已显示全部art时，跳过缓存
     if (allQrDisplayed && (guiInactiveFrames < 60))
         return prevCache;
 
@@ -351,7 +351,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         if (!artCount)
             prevGuiFrameId = guiFrameId;
         artCount++;
-        allArtQr = 0;
         allQrDisplayed = 0;
 
         ioPutRequest(IO_CACHE_LOAD_ART, req);
