@@ -159,7 +159,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 // CD的时候再次按键，会重新计算CD
                 if (!guiInactiveFrames) {
                     prevGuiFrameId = guiFrameId;
-                    if (buttonFrames++ > cdFrames)
+                    if (++buttonFrames > cdFrames)
                         skipQr = 0;
                     else
                         skipQr = 1;
