@@ -23,6 +23,7 @@ int artQrDone = 0; // 代表一轮Art图已全部进入Qr队列
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
 int cdFrames = 30; // 一轮Art图Qr后的CD时间
 int buttonFrames = 0; // 按住按键的帧数，用来跳过cdFrames
+int skipQr = 0; // 判断是否可以跳过请求Qr队列
 
 typedef struct
 {
@@ -136,6 +137,37 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
+    // 已经完成一轮Qr
+    if (artQrCount && (prevGuiFrameId != guiFrameId))
+        artQrDone = 1;
+
+    if (artQrDone) {
+        // Qr之后会CD一段时间，才能再次Qr
+        if ((guiFrameId - prevGuiFrameId < cdFrames) && (gScrollSpeed > 0)) {
+            // CD的时候再次按键，会重新计算CD
+            if (!guiInactiveFrames) {
+                prevGuiFrameId = guiFrameId;
+                buttonFrames++;
+                skipQr = 1;
+            } else {
+                // 按住按键超过CD时间，再次松开，直接结束CD
+                if (buttonFrames > cdFrames) {
+                    buttonFrames = 0;
+                    artQrCount = 0; // CD结束后，重置QrCount
+                    artQrDone = 0;
+                    skipQr = 0;
+                } else {
+                    buttonFrames = 0;
+                    skipQr = 1;
+                }
+            }
+        } else {
+            artQrCount = 0; // CD结束后，重置QrCount
+            artQrDone = 0;
+            skipQr = 0;
+        }
+    }
+
     // under the cache pre-delay (to avoid filling cache while moving around)
     if (!guiInactiveFrames) {
         //ButtonFrames++; // 按住按键的时间
@@ -255,34 +287,32 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    // 已经完成一轮Qr
-    if (artQrCount && (prevGuiFrameId != guiFrameId))
-        artQrDone = 1;
-
-    if (artQrDone) {
-        // Qr之后会CD一段时间，才能再次Qr
-        if ((guiFrameId - prevGuiFrameId < cdFrames) && (gScrollSpeed > 0)) {
-            // CD的时候再次按键，会重新计算CD
-            if (!guiInactiveFrames) {
-                prevGuiFrameId = guiFrameId;
-                buttonFrames++;
-                return prevCache;
-            } else {
-                // 按住按键超过CD时间，再次松开，直接结束CD
-                if (buttonFrames > cdFrames) {
-                    buttonFrames = 0;
-                    artQrCount = 0; // CD结束后，重置QrCount
-                    artQrDone = 0;
-                } else {
-                    buttonFrames = 0;
-                    return prevCache;
-                }
-            }
-        } else {
-            artQrCount = 0; // CD结束后，重置QrCount
-            artQrDone = 0;
-        }
-    }
+    //if (artQrDone) {
+    //    // Qr之后会CD一段时间，才能再次Qr
+    //    if ((guiFrameId - prevGuiFrameId < cdFrames) && (gScrollSpeed > 0)) {
+    //        // CD的时候再次按键，会重新计算CD
+    //        if (!guiInactiveFrames) {
+    //            prevGuiFrameId = guiFrameId;
+    //            buttonFrames++;
+    //            return prevCache;
+    //        } else {
+    //            // 按住按键超过CD时间，再次松开，直接结束CD
+    //            if (buttonFrames > cdFrames) {
+    //                buttonFrames = 0;
+    //                artQrCount = 0; // CD结束后，重置QrCount
+    //                artQrDone = 0;
+    //            } else {
+    //                buttonFrames = 0;
+    //                return prevCache;
+    //            }
+    //        }
+    //    } else {
+    //        artQrCount = 0; // CD结束后，重置QrCount
+    //        artQrDone = 0;
+    //    }
+    //}
+    if (skipQr)
+        return prevCache;
 
     cache_entry_t *currEntry, *oldestEntry = NULL;
     int i, rtime = guiFrameId;
