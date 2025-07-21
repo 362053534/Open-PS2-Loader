@@ -283,10 +283,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
         *UID = cache->nextUID++;
 
-        ioPutRequest(IO_CACHE_LOAD_ART, req);
-
         prevGuiFrameId = guiFrameId;
         artQrCount++;
+
+        ioPutRequest(IO_CACHE_LOAD_ART, req);
         //// debug  打印debug信息
         //char debugFileDir[64];
         //strcpy(debugFileDir, "smb:debug-TexCache.txt");
