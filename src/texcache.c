@@ -19,6 +19,7 @@ int PrevCacheID_BG = -2;
 //int RestartLoadTexDelay = 15;
 
 int artQrCount = 0; // 给加入Qr缓存队列的Art图计数
+int artQrDone = 0;
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
 
 typedef struct
@@ -252,17 +253,20 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    if (prevGuiFrameId) {
-        // 已经完成一轮Qr
-        if (artQrCount && (prevGuiFrameId != guiFrameId)) {
-            // Qr之后会CD一段时间，才能再次Qr
-            if ((guiFrameId - prevGuiFrameId < 60) && (gScrollSpeed > 0)) {
-                // CD的时候再次按键，会重新计算CD
-                if (!guiInactiveFrames)
-                    prevGuiFrameId = guiFrameId;
-                return prevCache;
-            } else
-                artQrCount = 0; // CD结束后，重置QrCount
+    // 已经完成一轮Qr
+    if (artQrCount && (prevGuiFrameId != guiFrameId))
+        artQrDone = 1;
+
+    if (prevGuiFrameId && artQrDone) {
+        // Qr之后会CD一段时间，才能再次Qr
+        if ((guiFrameId - prevGuiFrameId < 60) && (gScrollSpeed > 0)) {
+            // CD的时候再次按键，会重新计算CD
+            if (!guiInactiveFrames)
+                prevGuiFrameId = guiFrameId;
+            return prevCache;
+        } else {
+            artQrCount = 0; // CD结束后，重置QrCount
+            artQrDone = 0;
         }
     }
 
