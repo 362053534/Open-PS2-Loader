@@ -136,7 +136,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
     if (artQrDone) {
         // Qr之后会CD一段时间，才能再次Qr
-        if (guiFrameId - prevGuiFrameId <= cdFrames) {
+        if (guiFrameId - prevGuiFrameId - 1 <= cdFrames) {
             if (gScrollSpeed > 0) {
                 // CD的时候再次按键，会重新计算CD
                 if (!guiInactiveFrames) {
