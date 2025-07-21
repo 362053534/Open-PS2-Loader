@@ -11,17 +11,10 @@ int PrevCacheID_COV = -2;
 int PrevCacheID_ICO = -2;
 int PrevCacheID_BG = -2;
 
-//int LoadFrames_COV = 0;
-//int LoadFrames_ICO = 0;
-//int LoadFrames_BG = 0;
-//int LoadFrames = 0; // 加载超过一定时间，则一直跳过加载
-//int RestartLoadTexFrames = 0;
-//int RestartLoadTexDelay = 15;
-
 int artQrCount = 0; // 给加入Qr缓存队列的Art图计数
 int artQrDone = 0; // 代表一轮Art图已全部进入Qr队列
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
-int cdFrames = 30; // 一轮Art图Qr后的CD时间
+int cdFrames = 12; // 一轮Art图Qr后的CD时间(帧数)
 int buttonFrames = 0; // 按住按键的帧数，用来跳过cdFrames
 int skipQr = 0; // 判断是否可以跳过请求Qr队列
 
@@ -162,65 +155,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 }
             }
         } else {
+            buttonFrames = 0;
             artQrCount = 0; // CD结束后，重置QrCount
             artQrDone = 0;
             skipQr = 0;
         }
     }
-
-    // under the cache pre-delay (to avoid filling cache while moving around)
-    if (!guiInactiveFrames) {
-        //ButtonFrames++; // 按住按键的时间
-        //if (RestartLoadTexFrames)
-        //    RestartLoadTexFrames = 0;
-    } else {
-        //// 连续按按键触发跳过加载后，停下一段时间，才会重新开始加载ART图
-        //if (RestartLoadTexFrames++ >= RestartLoadTexDelay) {
-        //    RestartLoadTexFrames = RestartLoadTexDelay;
-        //    LoadFrames_COV = 0;
-        //    LoadFrames_ICO = 0;
-        //    LoadFrames_BG = 0;
-        //    LoadFrames = 0;
-        //}
-    }
-
-    //// 根据图像类型，记录加载时间
-    //if (!strncmp("COV", cache->suffix, 3)) {
-    //    if (*cacheId == -1)
-    //        LoadFrames_COV++;
-    //    else {
-    //        if (LoadFrames_COV)
-    //            LoadFrames_COV = 0;
-    //    }
-    //    LoadFrames = LoadFrames_COV;
-    //} else if (!strncmp("ICO", cache->suffix, 3)) {
-    //    if (*cacheId == -1)
-    //        LoadFrames_ICO++;
-    //    else {
-    //        if (LoadFrames_ICO)
-    //            LoadFrames_ICO = 0;
-    //    }
-    //    LoadFrames = LoadFrames_ICO;
-    //} else if (!strncmp("BG", cache->suffix, 2)) {
-    //    //// debug  打印debug信息
-    //    // char debugFileDir[64];
-    //    // strcpy(debugFileDir, "smb:debug-TexCache.txt");
-    //    // FILE *debugFile = fopen(debugFileDir, "ab+");
-    //    // if (debugFile != NULL) {
-    //    //     fprintf(debugFile, "BG cacheId:%d  LoadFrames_BG:%d\r\n", *cacheId, LoadFrames_BG);
-    //    //     fclose(debugFile);
-    //    // }
-    //    if (*cacheId == -1)
-    //        LoadFrames_BG++;
-    //    else {
-    //        if (LoadFrames_BG)
-    //            LoadFrames_BG = 0;
-    //    }
-    //    LoadFrames = LoadFrames_BG;
-    //} else {
-    //    if (LoadFrames)
-    //        LoadFrames = 0;
-    //}
 
     GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
@@ -233,13 +173,13 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         // 根据图像类型，赋值上一次的缓存
         if (!strncmp("COV", cache->suffix, 3)) {
             if (PrevCacheID_COV >= 0)
-                prevCache = &(&cache->content[PrevCacheID_COV])->texture;
+                prevCache = &cache->content[PrevCacheID_COV].texture;
         } else if (!strncmp("ICO", cache->suffix, 3)) {
             if (PrevCacheID_ICO >= 0)
-                prevCache = &(&cache->content[PrevCacheID_ICO])->texture;
+                prevCache = &cache->content[PrevCacheID_ICO].texture;
         } else if (!strncmp("BG", cache->suffix, 2)) {
             if (PrevCacheID_BG >= 0)
-                prevCache = &(&cache->content[PrevCacheID_BG])->texture; // 缓存队列满了后，会返回NULL
+                prevCache = &cache->content[PrevCacheID_BG].texture; // 缓存队列满了后，会返回NULL
         }
     }
 
@@ -287,30 +227,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         *cacheId = -1;
     }
 
-    //if (artQrDone) {
-    //    // Qr之后会CD一段时间，才能再次Qr
-    //    if ((guiFrameId - prevGuiFrameId < cdFrames) && (gScrollSpeed > 0)) {
-    //        // CD的时候再次按键，会重新计算CD
-    //        if (!guiInactiveFrames) {
-    //            prevGuiFrameId = guiFrameId;
-    //            buttonFrames++;
-    //            return prevCache;
-    //        } else {
-    //            // 按住按键超过CD时间，再次松开，直接结束CD
-    //            if (buttonFrames > cdFrames) {
-    //                buttonFrames = 0;
-    //                artQrCount = 0; // CD结束后，重置QrCount
-    //                artQrDone = 0;
-    //            } else {
-    //                buttonFrames = 0;
-    //                return prevCache;
-    //            }
-    //        }
-    //    } else {
-    //        artQrCount = 0; // CD结束后，重置QrCount
-    //        artQrDone = 0;
-    //    }
-    //}
     if (skipQr)
         return prevCache;
 
