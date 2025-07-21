@@ -357,17 +357,15 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                     char fileName[160];
                     sprintf(fileName, "%s%s", game->name, game->extension);
                     if (cacheLoaded && queryISOGameListCache(&cache, &cachedGInfo, fileName) == 0) {
-                        memcpy(game, &cachedGInfo, sizeof(base_game_info_t)); // 缓存的内容还是得拷过来一份，否则会出问题
                         // debug
                         // fprintf(debugFile, "old查到缓存；文件名：%s；索引名：%s\r\n", fileName, (&cachedGInfo)->indexName);
-                        // 显示名字要改回索引名字，以免TXT的索引变成了映射名。
-                        if (game->indexName[0] != '\0' && strcmp(game->name, game->indexName))
-                            strcpy(game->name, game->indexName);
 
                         // 如果缓存中已有索引条目，且txt未更新，则跳过txt扫描，加快游戏列表生成速度
                         if ((&cachedGInfo)->indexName[0] != '\0' && !txtFileChanged) {
+                            strcpy(game->indexName, (&cachedGInfo)->indexName);
                             skipTxtScan = 1;
-                            if (game->transName[0] != '\0') {
+                            if ((&cachedGInfo)->transName[0] != '\0') {
+                                strcpy(game->transName, (&cachedGInfo)->transName);
                                 strcpy(game->name, game->transName);
                             }
                         } else {
@@ -376,9 +374,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
 
                         // 如果缓存已有索引条目，且txt为新创建，则直接显示缓存中的索引和中文名，并写入txt
                         if ((&cachedGInfo)->indexName[0] != '\0' && (txtFileSize == 0)) {
+                            strcpy(game->indexName, (&cachedGInfo)->indexName);
                             _txtFileRebuilded = 1; // 弹窗用
                             skipTxtScan = 1;
-                            if (game->transName[0] != '\0') {
+                            if ((&cachedGInfo)->transName[0] != '\0') {
+                                strcpy(game->transName, (&cachedGInfo)->transName);
                                 strcpy(game->name, game->transName);
                                 sprintf(indexNameBuffer, "%s.%s\r\n", game->indexName, game->transName);
                             } else {
