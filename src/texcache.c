@@ -14,7 +14,7 @@ int PrevCacheID_BG = -2;
 int artQrCount = 0; // 给加入Qr缓存队列的Art图计数
 int artQrDone = 0; // 代表一轮Art图已全部进入Qr队列
 int prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
-int cdFrames = 16; // 一轮Art图Qr后的CD时间(帧数)
+int cdFrames = 20; // 一轮Art图Qr后的CD时间(帧数)
 int buttonFrames = 0; // 按住按键的帧数，用来跳过cdFrames
 int skipQr = 0; // 判断是否可以跳过请求Qr队列
 
@@ -136,22 +136,35 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 
     if (artQrDone) {
         // Qr之后会CD一段时间，才能再次Qr
-        if ((guiFrameId - prevGuiFrameId < cdFrames) && (gScrollSpeed > 0)) {
-            // CD的时候再次按键，会重新计算CD
-            if (!guiInactiveFrames) {
-                prevGuiFrameId = guiFrameId;
-                buttonFrames++;
-                skipQr = 1;
-            } else {
-                // 按住按键超过CD时间，再次松开，直接结束CD
-                if (buttonFrames > cdFrames) {
-                    buttonFrames = 0;
+        if (guiFrameId - prevGuiFrameId < cdFrames) {
+            if (gScrollSpeed > 0) {
+                // CD的时候再次按键，会重新计算CD
+                if (!guiInactiveFrames) {
+                    prevGuiFrameId = guiFrameId;
+                    buttonFrames++;
+                    skipQr = 1;
+                } else {
+                    // 按住按键超过CD时间，再次松开，直接结束CD
+                    if (buttonFrames > cdFrames) {
+                        buttonFrames = 0;
+                        artQrCount = 0; // CD结束后，重置QrCount
+                        artQrDone = 0;
+                        skipQr = 0;
+                    } else {
+                        buttonFrames = 0;
+                        skipQr = 1;
+                    }
+                }
+            } else { // 慢速光标的Qr处理方式
+                // CD的时候松开按键，会重新计算CD
+                if (guiInactiveFrames) {
+                    prevGuiFrameId = guiFrameId;
+                    skipQr = 1;
+                } else {
+                    // 按住按键，永不跳过Qr
                     artQrCount = 0; // CD结束后，重置QrCount
                     artQrDone = 0;
                     skipQr = 0;
-                } else {
-                    buttonFrames = 0;
-                    skipQr = 1;
                 }
             }
         } else {
