@@ -81,7 +81,6 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_PS2LOGO              "ps2logo"
 #define CONFIG_OPL_HDD_GAME_LIST_CACHE  "hdd_game_list_cache"
 #define CONFIG_OPL_EXIT_PATH            "exit_path"
-#define CONFIG_OPL_TXT_RENAME           "txt_rename"
 #define CONFIG_OPL_AUTO_SORT            "autosort"
 #define CONFIG_OPL_AUTO_REFRESH         "autorefresh"
 #define CONFIG_OPL_DEFAULT_DEVICE       "default_device"
