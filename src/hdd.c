@@ -211,9 +211,6 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                 fwrite(indexNameBuffer, sizeof(char), strlen(indexNameBuffer), file);
             }
         }
-        // 防止txt无法写入时，出现的白屏问题
-        if (ginfo->indexName[0] == '\0')
-            strcpy(ginfo->indexName, ginfo->name);
 
         strncpy(ginfo->startup, hdl_header->startup, sizeof(ginfo->startup) - 1);
         ginfo->startup[sizeof(ginfo->startup) - 1] = '\0';

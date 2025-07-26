@@ -488,9 +488,6 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             }
             // debug
             // fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
-            // 防止txt无法写入时，出现的白屏问题
-            if (game->indexName[0] == '\0')
-                strcpy(game->indexName, game->name);
         }
         // debug 确认txt跳过扫描是否生效
         //fprintf(debugFile, "路径：%s\r\n\r\n", fullpath);
