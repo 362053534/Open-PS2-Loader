@@ -300,7 +300,7 @@ static int IGR_Intc_Handler(int cause)
             //if (pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) {
                 // Combo Start + Select, R3 + L3 or UP
                 if ((pad_pos_combo2 == IGR_COMBO_START_SELECT) || // Start + Select combo, so reset
-                    (pad_pos_combo2 == IGR_COMBO_R3_L3)           // R3 + L3 combo, so poweroff
+                ((pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) && (pad_pos_combo2 == IGR_COMBO_R3_L3)) // R3 + L3 combo, so poweroff
 #ifdef IGS
                     || ((pad_pos_combo2 == IGR_COMBO_UP) && (config->EnableGSMOp)) // UP combo, so take IGS
 #endif
