@@ -16,7 +16,7 @@
 #include <libds34usb.h>
 #endif
 
-#define MAX_PADS 1
+#define MAX_PADS 4
 
 // gettimer给出的时间除以这个，换算成毫秒
 #define CLOCKS_PER_MILISEC 147456
