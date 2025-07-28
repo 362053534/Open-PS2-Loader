@@ -115,6 +115,7 @@ extern char gPCPassword[32];
 extern int gNetworkStartup;
 extern int gHDDSpindown;
 /// Refer to enum START_MODE within iosupport.h
+extern int gRefreshAllModes;
 extern int gBDMStartMode;
 extern int gHDDStartMode;
 extern int gETHStartMode;

@@ -1036,6 +1036,7 @@ void menuHandleInputMain()
         guiSwitchScreen(GUI_SCREEN_MENU);
     } else if (getKeyOn(KEY_SELECT)) {
         selected_item->item->refresh(selected_item->item);
+        gRefreshAllModes = 1;
     } else if (getKey(KEY_L1)) {
         menuPrevPage();
     } else if (getKey(KEY_R1)) {

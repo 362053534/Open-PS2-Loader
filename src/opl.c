@@ -129,6 +129,7 @@ char gPCUserName[32];
 char gPCPassword[32];
 int gNetworkStartup;
 int gHDDSpindown;
+int gRefreshAllModes = 0;
 int gBDMStartMode;
 int gHDDStartMode;
 int gETHStartMode;
@@ -850,7 +851,9 @@ static void menuUpdateHook()
     //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     //    }
     //} else
-    if ((frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) || !mainScreenInitDone) {
+    //if ((frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) || !mainScreenInitDone) {
+    if (gRefreshAllModes || !mainScreenInitDone) {
+        gRefreshAllModes = 0;
         for (i = 0; i < MODE_COUNT; i++) {
             if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == 0))
                 ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
