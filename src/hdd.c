@@ -153,6 +153,7 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
         strncpy(ginfo->partition_name, game->id, APA_IDMAX);
         ginfo->partition_name[APA_IDMAX] = '\0';
         strncpy(ginfo->name, hdl_header->gamename, HDL_GAME_NAME_MAX);
+        ginfo->name[HDL_GAME_NAME_MAX] = '\0';
 
         //if (gHDDPrefix[5] != '+')
         //    gHDDPrefix = "pfs0:OPL/";
@@ -213,8 +214,10 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
                 }
             }
             // 防止txt无法写入时，出现的白屏问题
-            if (ginfo->indexName[0] == '\0')
-                strcpy(ginfo->indexName, ginfo->name);
+            if (ginfo->indexName[0] == '\0') {
+                strncpy(ginfo->indexName, hdl_header->gamename, HDL_GAME_NAME_MAX);
+                ginfo->indexName[HDL_GAME_NAME_MAX] = '\0';
+            }
         }
 
         strncpy(ginfo->startup, hdl_header->startup, sizeof(ginfo->startup) - 1);

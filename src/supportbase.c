@@ -498,8 +498,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 // debug
                 // fprintf(debugFile, "有没有跳过txt扫描：%s：%d\r\n", game->name, skipTxtScan);
                 // 防止txt无法写入时，出现的白屏问题
-                if (game->indexName[0] == '\0')
-                    strcpy(game->indexName, game->name);
+                if (game->indexName[0] == '\0') {
+                    strncpy(game->indexName, game->name, NameLen);
+                    game->indexName[NameLen] = '\0'; // 也许可以防止部分机型出现卡死问题
+                }
             }
         }
         // debug 确认txt跳过扫描是否生效
@@ -775,13 +777,14 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // fprintf(debugFile, "curModiTime:%s   preModiTime:%s\r\n", curModiTime, preModiTime);
         // fprintf(debugFile, "curTxtFileSize:%d   preTxtFileSize:%d\r\n", curTxtFileSize, preTxtFileSize);
 
-    } else { // 关闭了txt映射时，需要删除txtinfo，下次开启时需要重新扫描txt
-        sprintf(binPath, "%stxtInfo.bin", prefix);
-        if (binFile = fopen(binPath, "rb")) {
-            fclose(binFile);
-            remove(binPath);
-        }
     }
+    //else { // 关闭了txt映射时，需要删除txtinfo，下次开启时需要重新扫描txt
+    //    sprintf(binPath, "%stxtInfo.bin", prefix);
+    //    if (binFile = fopen(binPath, "rb")) {
+    //        fclose(binFile);
+    //        remove(binPath);
+    //    }
+    //}
 
     // temporary storage for the game names
     struct game_list_t *dlist_head = NULL;
