@@ -582,7 +582,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     unsigned short int layer1_part;
 
     if (!gPCShareName[0]) {
-        memcpy(gPCShareName, gTxtRename ? game->indexName : game->name, sizeof(gPCShareName));
+        memcpy(gPCShareName, game->name, sizeof(gPCShareName));
         ethULSizePrev = -2;
         ethGameCount = 0;
         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &ethGameList.mode); // clear the share list
