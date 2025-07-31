@@ -398,7 +398,7 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             DPRINTF("cbrpc_cdvdNcmds GetToc eeaddr=%08x\n", (int)eeaddr);
             char toc[2064];
             memset(toc, 0, 2064);
-            int result = sceCdGetToc((u8 *)toc);
+            int result = sceCdGetToc((u8 *)(*(u32 *)buf));
             *(int *)buf = 1;
             //*(int *)buf = sceCdGetToc((u8 *)(*(u32 *)buf));
             //if (result)
