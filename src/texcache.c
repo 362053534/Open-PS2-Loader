@@ -192,6 +192,11 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         PrevCacheID_COV = -2;
         PrevCacheID_ICO = -2;
         PrevCacheID_BG = -2;
+
+        // 清除所有缓存图像，并重新请求Qr，避免切换页签时死机
+        for (i = 0; i < cache->count; i++)
+            cacheClearItem(&cache->content[i], 1);
+        *cacheId = -1;
     } else {
         // 根据图像类型，赋值上一次的缓存
         if (!strncmp("COV", cache->suffix, 3)) {
