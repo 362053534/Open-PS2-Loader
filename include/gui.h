@@ -68,7 +68,7 @@ extern int txtFileRebuilded;
 #define GUI_SCREEN_APP_MENU  4
 
 void guiSwitchScreen(int target);
-void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn);
+void guiSwitchScreenFadeIn(int target, int _transIndex);
 
 void guiReloadScreenExtents();
 

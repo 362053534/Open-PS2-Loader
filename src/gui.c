@@ -1504,12 +1504,12 @@ static void guiReadPads()
 // screen handlers. Fade transition code written by Maximus32
 static void guiShow()
 {
-    if (transIndex == 13)
-        fntRefreshCache(); // 刷新字模缓存
-
     // is there a transmission effect going on or are
     // we in a normal rendering state?
     if (screenHandlerTarget) {
+        if (transIndex == 13)
+            fntRefreshCache(); // 刷新字模缓存
+
         u8 alpha;
         const u8 transition_frames = 26;
         if (transIndex < (transition_frames / 2)) {
@@ -1536,6 +1536,11 @@ static void guiShow()
         //    // Advance the effect
         //    transIndex++;
         //}
+
+        // 声音放最后播，不容易死机
+        if (transIndex == 13)
+            sfxPlay(SFX_TRANSITION);
+
         // Advance the effect
         transIndex++;
 
@@ -1740,7 +1745,7 @@ void guiMainLoop(void)
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     // 第一次启动，或手动启动BDM时，从全黑开始过度
                     if (greetingAlpha >= 0x00 || bdmManualTrigger) {
-                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13, 1);
+                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                         refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                     }
                 }
@@ -1812,10 +1817,9 @@ void guiSwitchScreen(int target)
     }
     transIndex = 0;
     screenHandlerTarget = &screenHandlers[target];
-    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
-void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
+void guiSwitchScreenFadeIn(int target, int _transIndex)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
     if (screenHandlerTarget != NULL) {
@@ -1823,9 +1827,6 @@ void guiSwitchScreenFadeIn(int target, int _transIndex, int _soundOn)
     }
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
-    // 跳过音效播放，会导致bdm菜单修正失效？不知道什么鬼
-    if (_soundOn != 0)
-        sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
 struct gui_update_t *guiOpCreate(gui_op_type_t type)
