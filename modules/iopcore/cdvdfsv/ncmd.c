@@ -399,6 +399,14 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             char toc[2064];
             memset(toc, 0, 2064);
             int result = sceCdGetToc((u8 *)(*(u32 *)buf));
+            // debug  打印debug信息
+             char debugFileDir[64];
+             strcpy(debugFileDir, "mass0:debug-ncmd.txt");
+             FILE *debugFile = fopen(debugFileDir, "ab+");
+             if (debugFile != NULL) {
+                 fprintf(debugFile, "result:%d\r\n", result);
+                 fclose(debugFile);
+             }
             *(int *)buf = result;
             if (result)
                 sysmemSendEE(toc, (void *)eeaddr, 2064);
