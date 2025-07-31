@@ -3,9 +3,8 @@
   Licenced under Academic Free License version 3.0
   Review open-ps2-loader README & LICENSE files for further details.
 */
-
-#include "cdvdfsv-internal.h"
 #include <stdio.h>
+#include "cdvdfsv-internal.h"
 
 typedef struct
 {
