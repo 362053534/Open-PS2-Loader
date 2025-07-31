@@ -399,10 +399,11 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             char toc[2064];
             memset(toc, 0, 2064);
             int result = sceCdGetToc((u8 *)toc);
-            //*(int *)buf = result;
-            *(int *)buf = sceCdGetToc((u8 *)(*(u32 *)buf));
+            *(int *)buf = result;
             if (result)
                 sysmemSendEE(toc, (void *)eeaddr, 2064);
+            else
+                *(int *)buf = sceCdGetToc((u8 *)(*(u32 *)buf));
             break;
         case CD_NCMD_SEEK:
             *(int *)buf = sceCdSeek(*(u32 *)buf);
