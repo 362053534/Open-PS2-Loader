@@ -3,7 +3,6 @@
   Licenced under Academic Free License version 3.0
   Review open-ps2-loader README & LICENSE files for further details.
 */
-#include <stdio.h>
 #include "cdvdfsv-internal.h"
 
 typedef struct
@@ -398,17 +397,8 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             DPRINTF("cbrpc_cdvdNcmds GetToc eeaddr=%08x\n", (int)eeaddr);
             char toc[2064];
             memset(toc, 0, 2064);
-            int result = sceCdGetToc((u8 *)(*(u32 *)buf));
-            // debug  打印debug信息
-             char debugFileDir[64];
-             strcpy(debugFileDir, "mass0:debug-ncmd.txt");
-             FILE *debugFile = fopen(debugFileDir, "ab+");
-             if (debugFile != NULL) {
-                 fprintf(debugFile, "result:%d\r\n", result);
-                 fclose(debugFile);
-             }
-            *(int *)buf = result;
-            if (result)
+            *(int *)buf = sceCdGetToc((u8 *)(*(u32 *)buf));
+            if (*(int *)buf)
                 sysmemSendEE(toc, (void *)eeaddr, 2064);
             break;
         case CD_NCMD_SEEK:
