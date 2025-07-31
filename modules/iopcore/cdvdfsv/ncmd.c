@@ -399,7 +399,8 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             char toc[2064];
             memset(toc, 0, 2064);
             int result = sceCdGetToc((u8 *)toc);
-            *(int *)buf = result;
+            *(int *)buf = 1;
+            //*(int *)buf = sceCdGetToc((u8 *)(*(u32 *)buf));
             //if (result)
             //    sysmemSendEE(toc, (void *)eeaddr, 2064);
             break;
