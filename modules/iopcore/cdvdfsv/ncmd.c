@@ -394,7 +394,7 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             cdvd_readee(buf);
             break;
         case CD_NCMD_GETTOC:
-            *(int *)buf = 0;
+            *(int *)buf = 1;
             //if (sceCdGetToc((u8 *)(*(u32 *)buf))) {
             //    u32 eeaddr = *(u32 *)buf;
             //    DPRINTF("cbrpc_cdvdNcmds GetToc eeaddr=%08x\n", (int)eeaddr);
