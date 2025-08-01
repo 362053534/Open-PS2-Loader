@@ -1493,7 +1493,7 @@ int thmSetGuiValue(int themeID, int reload)
 
             guiThemeID = themeID;
 
-            ForceRefreshPrevTexCache = 1; // 刷新ART缓存，防止死机
+            //ForceRefreshPrevTexCache = 1; // 刷新ART缓存，防止死机
             return 1;
         } else if (guiThemeID == 0)
             thmSetColors(gTheme);
