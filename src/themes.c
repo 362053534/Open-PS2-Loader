@@ -1041,7 +1041,7 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
             } else if (!strcmp(elementsType[ELEM_TYPE_BACKGROUND], type)) {
                 if (!elems->first) { // Background elem can only be the first one
                     elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_BACKGROUND, 0, 0, ALIGN_NONE, screenWidth, screenHeight, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 2, NULL);
+                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 1, NULL);
                 }
             } else if (!strcmp(elementsType[ELEM_TYPE_MENU_ICON], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_MENU_ICON, screenWidth >> 1, 400, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
@@ -1061,10 +1061,10 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 }
             } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_ICON], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, 0, 0, ALIGN_CENTER, 64, 64, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
-                initGameImage(themePath, themeConfig, theme, elem, name, "ICO", 2, NULL, NULL);
+                initGameImage(themePath, themeConfig, theme, elem, name, "ICO", 1, NULL, NULL);
             } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_COVER], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
-                initGameImage(themePath, themeConfig, theme, elem, name, "COV", 2, NULL, NULL);
+                initGameImage(themePath, themeConfig, theme, elem, name, "COV", 1, NULL, NULL);
             } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_TEXT], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_ITEM_TEXT, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, theme->textColor, theme->fonts[0]);
                 elem->drawElem = &drawItemText;
