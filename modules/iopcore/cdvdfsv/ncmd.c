@@ -394,15 +394,16 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             cdvd_readee(buf);
             break;
         case CD_NCMD_GETTOC:
-            if (sceCdGetToc((u8 *)(*(u32 *)buf))) {
-                u32 eeaddr = *(u32 *)buf;
-                DPRINTF("cbrpc_cdvdNcmds GetToc eeaddr=%08x\n", (int)eeaddr);
-                char toc[2064];
-                memset(toc, 0, 2064);
-                if (*(int *)buf = sceCdGetToc((u8 *)toc))
-                    sysmemSendEE(toc, (void *)eeaddr, 2064);
-            } else
-                *(int *)buf = 0;
+            *(int *)buf = 0;
+            //if (sceCdGetToc((u8 *)(*(u32 *)buf))) {
+            //    u32 eeaddr = *(u32 *)buf;
+            //    DPRINTF("cbrpc_cdvdNcmds GetToc eeaddr=%08x\n", (int)eeaddr);
+            //    char toc[2064];
+            //    memset(toc, 0, 2064);
+            //    if (*(int *)buf = sceCdGetToc((u8 *)toc))
+            //        sysmemSendEE(toc, (void *)eeaddr, 2064);
+            //} else
+            //    *(int *)buf = 0;
             break;
         case CD_NCMD_SEEK:
             *(int *)buf = sceCdSeek(*(u32 *)buf);
