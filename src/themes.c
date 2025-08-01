@@ -1034,7 +1034,7 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 initAttributeImage(themePath, themeConfig, theme, elem, name);
             } else if (!strcmp(elementsType[ELEM_TYPE_GAME_IMAGE], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
-                initGameImage(themePath, themeConfig, theme, elem, name, NULL, 1, NULL, NULL);
+                initGameImage(themePath, themeConfig, theme, elem, name, NULL, 3, NULL, NULL);
             } else if (!strcmp(elementsType[ELEM_TYPE_STATIC_IMAGE], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_STATIC_IMAGE, 0, 0, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
                 initStaticImage(themePath, themeConfig, theme, elem, name, NULL);
