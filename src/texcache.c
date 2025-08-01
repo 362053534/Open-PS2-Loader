@@ -195,7 +195,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         if (ForceRefreshPrevTexCache == 1)
             prevGuiFrameId = guiFrameId;
         ForceRefreshPrevTexCache++;
-        *cacheId = -2;
+        *cacheId = -1;
     } else {
         // 根据图像类型，赋值上一次的缓存
         if (!strncmp("COV", cache->suffix, 3)) {
