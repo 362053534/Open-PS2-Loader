@@ -192,10 +192,21 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
+        *cacheId = -1;
         if (ForceRefreshPrevTexCache == 1)
             prevGuiFrameId = guiFrameId;
+        // 根据图像类型，赋值上一次的缓存
+        if (!strncmp("COV", cache->suffix, 3)) {
+            if (PrevCacheID_COV >= 0)
+                PrevCacheID_COV = *cacheId;
+        } else if (!strncmp("ICO", cache->suffix, 3)) {
+            if (PrevCacheID_ICO >= 0)
+                PrevCacheID_ICO = *cacheId;
+        } else if (!strncmp("BG", cache->suffix, 2)) {
+            if (PrevCacheID_BG >= 0)
+                PrevCacheID_BG = *cacheId;
+        }
         ForceRefreshPrevTexCache++;
-        *cacheId = -1;
     } else {
         // 根据图像类型，赋值上一次的缓存
         if (!strncmp("COV", cache->suffix, 3)) {
