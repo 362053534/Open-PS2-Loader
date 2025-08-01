@@ -402,7 +402,7 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             *(int *)buf = result;
             if (result)
                 sysmemSendEE(toc, (void *)eeaddr, 2064);*/
-            *(int *)buf = 0;
+            *(int *)buf = 1;
             break;
         case CD_NCMD_SEEK:
             *(int *)buf = sceCdSeek(*(u32 *)buf);
