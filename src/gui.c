@@ -1774,19 +1774,16 @@ void guiMainLoop(void)
         }
 
         if (mainScreenInitDone) {
+            //  handle inputs and render screen
+            guiShow();
             if (artLoadDelayTime > 0) {
                 artLoadDelayTime--;
-                if (artLoadDelayTime <= 0) {
-                    guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
-                } else
-                    guiShow();
                 // 启动画面的延迟期间，预加载art图片
                 if (greetingAlpha >= 0x00)
                     guiRenderGreeting(greetingAlpha);
+                if (artLoadDelayTime <= 0)
+                    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
             } else {
-                //  handle inputs and render screen
-                guiShow();
                 // Read the pad states to prepare for input processing in the screen handler
                 guiReadPads();
                 // 把intro界面淡出移到mainloop里，提升加载体验。
