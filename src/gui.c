@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 60;
+int artLoadDelayTime = 30;
 
 void reFindBDM()
 {
@@ -1677,9 +1677,9 @@ void guiMainLoop(void)
     //int delayFrameCount = 0;
 
     if (gEnableUSB)
-        artLoadDelayTime *= 3;
-    else if (gEnableMX4SIO)
         artLoadDelayTime *= 2;
+    else if (gEnableMX4SIO)
+        artLoadDelayTime *= 1.5f;
 
     while (!gTerminate) {
         // 各种弹窗提示
@@ -1748,9 +1748,10 @@ void guiMainLoop(void)
                 //}
             }              
         } else {
-            if (artLoadDelayTime > 0)
+            if (artLoadDelayTime > 0) {
                 artLoadDelayTime--;
-            else {
+                guiShow(); // guiShow才能加载art图片
+            } else {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
                     if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
@@ -1771,7 +1772,7 @@ void guiMainLoop(void)
                     if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
                         BdmStarted = 1;
                 }
-            }  
+            }
         }
 
         if (mainScreenInitDone) {
