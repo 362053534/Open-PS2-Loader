@@ -1607,6 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
+int artLoadDelayTime = 30;
 
 void reFindBDM()
 {
@@ -1659,9 +1660,9 @@ void guiMainLoop(void)
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就给最低启动延迟，为了预加载背景图和封面
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
-        endIntroDelayFrame = 30;
+        endIntroDelayFrame = 0;
     if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !BdmStarted))
-        endIntroDelayFrame = 30;
+        endIntroDelayFrame = 0;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1742,26 +1743,30 @@ void guiMainLoop(void)
                 //}
             }              
         } else {
-            // 一切就绪后，改变mainScreenInitDone变量
-            if (!mainScreenInitDone) {
-                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                    // 第一次启动，或手动启动BDM时，从全黑开始过度
-                    if (greetingAlpha >= 0x00 || bdmManualTrigger) {
-                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                        refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+            if (artLoadDelayTime > 0)
+                artLoadDelayTime--;
+            else {
+                // 一切就绪后，改变mainScreenInitDone变量
+                if (!mainScreenInitDone) {
+                    if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
+                        // 第一次启动，或手动启动BDM时，从全黑开始过度
+                        if (greetingAlpha >= 0x00 || bdmManualTrigger) {
+                            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                            refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
+                        }
                     }
-                }
-                mainScreenInitDone = 1;
+                    mainScreenInitDone = 1;
 
-                // 手动启动BDM后的变量处理
-                if (bdmManualTrigger) {
-                    bdmManualTrigger = 0;
-                    BdmStarted = 1;
+                    // 手动启动BDM后的变量处理
+                    if (bdmManualTrigger) {
+                        bdmManualTrigger = 0;
+                        BdmStarted = 1;
+                    }
+                    // BDM自动模式时，启动变量直接改为1
+                    if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
+                        BdmStarted = 1;
                 }
-                // BDM自动模式时，启动变量直接改为1
-                if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
-                    BdmStarted = 1;
-            }
+            }  
         }
 
         if (mainScreenInitDone) {
