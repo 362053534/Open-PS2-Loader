@@ -1711,7 +1711,7 @@ void guiMainLoop(void)
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
             // 启动画面的延迟期间，就要guiShow预加载art图片了
-            if (greetingAlpha >= 0x00)
+            if (greetingAlpha >= 0x00 && (gBDMStartMode || gHDDStartMode || gETHStartMode))
                 guiShow();
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
