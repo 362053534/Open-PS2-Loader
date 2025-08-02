@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 30;
+int artLoadDelayTime = 40;
 
 void reFindBDM()
 {
@@ -1677,7 +1677,7 @@ void guiMainLoop(void)
     //int delayFrameCount = 0;
 
     if (gEnableUSB)
-        artLoadDelayTime *= 2;
+        artLoadDelayTime *= 1.5f;
     else if (gEnableMX4SIO)
         artLoadDelayTime *= 1.5f;
 
