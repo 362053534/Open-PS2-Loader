@@ -1755,7 +1755,8 @@ void guiMainLoop(void)
                 if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                     // 第一次启动，或手动启动BDM时，从全黑开始过度
                     if (greetingAlpha >= 0x00 || bdmManualTrigger) {
-                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                        if (bdmManualTrigger)
+                            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
                         refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                     }
                 }
@@ -1780,6 +1781,8 @@ void guiMainLoop(void)
                 // 启动画面的延迟期间，预加载art图片
                 if (greetingAlpha >= 0x00)
                     guiRenderGreeting(greetingAlpha);
+                if (artLoadDelayTime <= 0)
+                    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
             } else {
                 // Read the pad states to prepare for input processing in the screen handler
                 guiReadPads();
@@ -1844,7 +1847,6 @@ void guiSwitchScreenFadeIn(int target, int _transIndex)
     }
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
-    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
 struct gui_update_t *guiOpCreate(gui_op_type_t type)
