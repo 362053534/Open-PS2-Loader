@@ -1575,10 +1575,17 @@ void guiIntroLoop(void)
             tFadeDelayEnd = clock() + (sfxGetSoundDuration(SFX_BOOT) - fadeDuration) * (CLOCKS_PER_SEC / 1000);
         }
 
-        if (gInitComplete && (clock() >= tFadeDelayEnd))
+        if (gInitComplete)
         {
             // 初始化结束时，退出循环
-            endIntro = 1;
+            if (gEnableBootSND) {
+                // 防止clock()异常时导致无限加载
+                if (clock() >= tFadeDelayEnd)
+                    endIntro = 1;
+                else if (clock() <= 0)
+                    endIntro = 1;
+            }else
+                endIntro = 1;
         }
 
         guiDrawOverlays();
