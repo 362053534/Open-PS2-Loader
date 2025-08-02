@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 60;
+int artLoadDelayTime = 30;
 
 void reFindBDM()
 {
@@ -1676,9 +1676,9 @@ void guiMainLoop(void)
     //// debug
     //int delayFrameCount = 0;
 
-    // Usb打开时，会更早预加载Art图，所以artLoadDelayTime可以减小
-    if (gEnableUSB)
-        artLoadDelayTime /= 2;
+    // Usb关闭时，默认选单为BDM，则artLoadDelayTime需要延长
+    if (!gEnableUSB && (gDefaultDevice == BDM_MODE && gBDMStartMode == START_MODE_AUTO))
+        artLoadDelayTime *= 2;
 
     while (!gTerminate) {
         // 各种弹窗提示
@@ -1711,7 +1711,7 @@ void guiMainLoop(void)
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
             // 启动画面的延迟期间，就要guiShow预加载art图片了
-            if (greetingAlpha >= 0x00 && (gBDMStartMode || gHDDStartMode || gETHStartMode))
+            if (greetingAlpha >= 0x00 && ((gDefaultDevice == BDM_MODE && gBDMStartMode == START_MODE_AUTO) || (gDefaultDevice == HDD_MODE && gHDDStartMode == START_MODE_AUTO) || (gDefaultDevice == ETH_MODE && gETHStartMode == START_MODE_AUTO) || (gDefaultDevice == APP_MODE && gAPPStartMode == START_MODE_AUTO)))
                 guiShow();
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
