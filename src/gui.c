@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 60;
+int artLoadDelayTime = 30;
 
 void reFindBDM()
 {
@@ -1676,11 +1676,9 @@ void guiMainLoop(void)
     //// debug
     //int delayFrameCount = 0;
 
-    //// 根据开启的设备，调整预加载Art的时间
-    //if (gEnableUSB)
+    //// 没开USB时，默认停留页面还是USB，无法预加载Art图，所以时间要延长
+    //if (!gEnableUSB)
     //    artLoadDelayTime *= 1.5f;
-    //else if (gEnableMX4SIO)
-    //    artLoadDelayTime *= 1.2f;
 
     while (!gTerminate) {
         // 各种弹窗提示
@@ -1712,6 +1710,9 @@ void guiMainLoop(void)
 
         // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
         if (endIntroDelayFrame > 0) {
+            // 启动画面的延迟期间，就要guiShow预加载art图片了
+            if (greetingAlpha >= 0x00)
+                guiShow();
             // 所有设备准备就绪，才可以结束延迟
             if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
                 //// debug  打印debug信息
@@ -1749,43 +1750,45 @@ void guiMainLoop(void)
                 //}
             }              
         } else {
-            if (artLoadDelayTime > 0) {
-                artLoadDelayTime--;
-                guiShow(); // guiShow才能加载art图片
-            } else {
-                // 一切就绪后，改变mainScreenInitDone变量
-                if (!mainScreenInitDone) {
-                    if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
-                        // 第一次启动，或手动启动BDM时，从全黑开始过度
-                        if (greetingAlpha >= 0x00 || bdmManualTrigger) {
-                            guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
-                            refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
-                        }
+            // 一切就绪后，改变mainScreenInitDone变量
+            if (!mainScreenInitDone) {
+                if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
+                    // 第一次启动，或手动启动BDM时，从全黑开始过度
+                    if (greetingAlpha >= 0x00 || bdmManualTrigger) {
+                        guiSwitchScreenFadeIn(GUI_SCREEN_MAIN, 13);
+                        refreshMenuPosition(); // 先切换screen，再刷新BDM菜单的停留位置才有效
                     }
-                    mainScreenInitDone = 1;
-
-                    // 手动启动BDM后的变量处理
-                    if (bdmManualTrigger) {
-                        bdmManualTrigger = 0;
-                        BdmStarted = 1;
-                    }
-                    // BDM自动模式时，启动变量直接改为1
-                    if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
-                        BdmStarted = 1;
                 }
+                mainScreenInitDone = 1;
+
+                // 手动启动BDM后的变量处理
+                if (bdmManualTrigger) {
+                    bdmManualTrigger = 0;
+                    BdmStarted = 1;
+                }
+                // BDM自动模式时，启动变量直接改为1
+                if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
+                    BdmStarted = 1;
             }
         }
 
         if (mainScreenInitDone) {
-            //  handle inputs and render screen
-            guiShow();
+            if (artLoadDelayTime > 0) {
+                artLoadDelayTime--;
+                // 启动画面的延迟期间，就要guiShow预加载art图片了
+                if (greetingAlpha >= 0x00)
+                    guiShow();
+            } else {
+                //  handle inputs and render screen
+                guiShow();
 
-            // Read the pad states to prepare for input processing in the screen handler
-            guiReadPads();
-            // 把intro界面淡出移到mainloop里，提升加载体验。
-            if (greetingAlpha >= 0x00) {
-                guiRenderGreeting(greetingAlpha);
-                greetingAlpha -= 0x04;
+                // Read the pad states to prepare for input processing in the screen handler
+                guiReadPads();
+                // 把intro界面淡出移到mainloop里，提升加载体验。
+                if (greetingAlpha >= 0x00) {
+                    guiRenderGreeting(greetingAlpha);
+                    greetingAlpha -= 0x04;
+                }
             }
         } else {
             if (greetingAlpha >= 0x00) {
