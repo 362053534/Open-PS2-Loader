@@ -1678,6 +1678,8 @@ void guiMainLoop(void)
 
     if (gEnableUSB)
         artLoadDelayTime *= 2;
+    else if (gEnableMX4SIO)
+        artLoadDelayTime *= 1.5f;
 
     while (!gTerminate) {
         // 各种弹窗提示
