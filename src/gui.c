@@ -1773,15 +1773,14 @@ void guiMainLoop(void)
         }
 
         if (mainScreenInitDone) {
+            //  handle inputs and render screen
+            guiShow();
             if (artLoadDelayTime > 0) {
                 artLoadDelayTime--;
-                // 启动画面的延迟期间，就要guiShow预加载art图片了
+                // 启动画面的延迟期间，预加载art图片
                 if (greetingAlpha >= 0x00)
-                    guiShow();
+                    guiRenderGreeting(greetingAlpha);
             } else {
-                //  handle inputs and render screen
-                guiShow();
-
                 // Read the pad states to prepare for input processing in the screen handler
                 guiReadPads();
                 // 把intro界面淡出移到mainloop里，提升加载体验。
