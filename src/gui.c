@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 30;
+int artLoadDelayTime = 60;
 
 void reFindBDM()
 {
@@ -1676,9 +1676,9 @@ void guiMainLoop(void)
     //// debug
     //int delayFrameCount = 0;
 
-    //// 没开USB时，默认停留页面还是USB，无法预加载Art图，所以时间要延长
-    //if (!gEnableUSB)
-    //    artLoadDelayTime *= 1.5f;
+    // Usb打开时，会更早预加载Art图，所以artLoadDelayTime可以减小
+    if (gEnableUSB)
+        artLoadDelayTime /= 2;
 
     while (!gTerminate) {
         // 各种弹窗提示
