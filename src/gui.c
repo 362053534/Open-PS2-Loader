@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 40;
+int artLoadDelayTime = 60;
 
 void reFindBDM()
 {
