@@ -130,10 +130,9 @@ void cacheDestroyCache(image_cache_t *cache)
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
 {
-    if ((ForceRefreshPrevTexCache > 1) && (prevGuiFrameId != guiFrameId)) {
+    if ((ForceRefreshPrevTexCache > 1) && (prevGuiFrameId != guiFrameId))
         ForceRefreshPrevTexCache = 0;
-        *cacheId = -1;
-    }
+
     // 已经完成一轮Qr
     if (artQrCount && (prevGuiFrameId != guiFrameId))
         artQrDone = 1;
@@ -192,19 +191,18 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     GSTEXTURE *prevCache = NULL;
     // 切换设备页签时，上次图缓存需要清掉
     if (ForceRefreshPrevTexCache) {
-        *cacheId = -1;
         if (ForceRefreshPrevTexCache == 1)
             prevGuiFrameId = guiFrameId;
         // 根据图像类型，赋值上一次的缓存
         if (!strncmp("COV", cache->suffix, 3)) {
             if (PrevCacheID_COV >= 0)
-                PrevCacheID_COV = *cacheId;
+                PrevCacheID_COV = -1;
         } else if (!strncmp("ICO", cache->suffix, 3)) {
             if (PrevCacheID_ICO >= 0)
-                PrevCacheID_ICO = *cacheId;
+                PrevCacheID_ICO = -1;
         } else if (!strncmp("BG", cache->suffix, 2)) {
             if (PrevCacheID_BG >= 0)
-                PrevCacheID_BG = *cacheId;
+                PrevCacheID_BG = -1;
         }
         ForceRefreshPrevTexCache++;
     } else {
