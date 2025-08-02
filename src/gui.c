@@ -1676,7 +1676,8 @@ void guiMainLoop(void)
     //// debug
     //int delayFrameCount = 0;
 
-    gEnableUSB ? (artLoadDelayTime *= 1.5f);
+    if (gEnableUSB)
+        artLoadDelayTime *= 1.5f;
 
     while (!gTerminate) {
         // 各种弹窗提示
