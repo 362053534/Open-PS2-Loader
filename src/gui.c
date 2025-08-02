@@ -1537,10 +1537,6 @@ static void guiShow()
         //    transIndex++;
         //}
 
-        // 声音放最后播，不容易死机
-        if (transIndex == 13)
-            sfxPlay(SFX_TRANSITION);
-
         // Advance the effect
         transIndex++;
 
@@ -1555,7 +1551,6 @@ static void guiShow()
 
 void guiIntroLoop(void)
 {
-    int greetingAlpha = 0x80;
     const int fadeFrameCount = 0x80 / 2;
     const int fadeDuration = (fadeFrameCount * 1000) / 55; // Average between 50 and 60 fps
     clock_t tFadeDelayEnd = 0;
@@ -1565,7 +1560,7 @@ void guiIntroLoop(void)
 
         //guiShow();
 
-        guiRenderGreeting(greetingAlpha);
+        guiRenderGreeting(0x80);
 
         // Initialize boot sound
         if (gInitComplete && !tFadeDelayEnd && gEnableBootSND) {
@@ -1662,11 +1657,11 @@ void guiMainLoop(void)
     int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
 
-    // 所有设备准备就绪，或BDM关闭或手动模式，就没有启动延迟
+    // 所有设备准备就绪，或BDM关闭或手动模式，就给最低启动延迟，为了预加载背景图和封面
     if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
-        endIntroDelayFrame = 0;
+        endIntroDelayFrame = 30;
     if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !BdmStarted))
-        endIntroDelayFrame = 0;
+        endIntroDelayFrame = 30;
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1824,6 +1819,7 @@ void guiSwitchScreen(int target)
     }
     transIndex = 0;
     screenHandlerTarget = &screenHandlers[target];
+    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
 void guiSwitchScreenFadeIn(int target, int _transIndex)
@@ -1834,6 +1830,7 @@ void guiSwitchScreenFadeIn(int target, int _transIndex)
     }
     transIndex = _transIndex;
     screenHandlerTarget = &screenHandlers[target];
+    sfxPlay(SFX_TRANSITION); // 声音放最后播，不容易死机
 }
 
 struct gui_update_t *guiOpCreate(gui_op_type_t type)
