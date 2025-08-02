@@ -1607,7 +1607,7 @@ int endIntroDelayFrame = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 int bdmTimeOut = 0;
-int artLoadDelayTime = 40;
+int artLoadDelayTime = 60;
 
 void reFindBDM()
 {
@@ -1676,10 +1676,11 @@ void guiMainLoop(void)
     //// debug
     //int delayFrameCount = 0;
 
-    if (gEnableUSB)
-        artLoadDelayTime *= 1.5f;
-    else if (gEnableMX4SIO)
-        artLoadDelayTime *= 1.5f;
+    //// 根据开启的设备，调整预加载Art的时间
+    //if (gEnableUSB)
+    //    artLoadDelayTime *= 1.5f;
+    //else if (gEnableMX4SIO)
+    //    artLoadDelayTime *= 1.2f;
 
     while (!gTerminate) {
         // 各种弹窗提示
