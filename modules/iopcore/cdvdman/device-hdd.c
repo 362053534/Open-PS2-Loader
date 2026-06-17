@@ -113,9 +113,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     u32 offset = 0;
     while (sectors) {
         if (!((lsn >= cdvdman_partspecs[CurrentPart].part_offset) && (lsn < (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048)))))
-            if (cdvdman_get_part_specs(lsn) != 0)
-                return SCECdErTRMOPN;
-
+            cdvdman_get_part_specs(lsn);
+            //if (cdvdman_get_part_specs(lsn) != 0)
+            //    return SCECdErTRMOPN;
         u32 nsectors = (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048)) - lsn;
         if (sectors < nsectors)
             nsectors = sectors;
