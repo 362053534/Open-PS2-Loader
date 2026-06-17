@@ -87,8 +87,12 @@ void DeviceDeinit(void)
 int DeviceReady(void)
 {
     // 尝试调整风扇转速
-    u8 fan_speed = 0;
-    sceCdApplySCmd(0x1A, &fan_speed, 1, NULL);
+    u32 fan_result;
+    int support_api = I_sceCdSetFanProfile(0, &fan_result);
+    if (!support_api || !fan_result) {
+        u8 fan_speed = 0;
+        sceCdApplySCmd(0x1A, &fan_speed, 1, NULL);
+    }
     return SCECdComplete;
 }
 
