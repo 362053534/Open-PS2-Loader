@@ -3,7 +3,7 @@
   Licenced under Academic Free License version 3.0
   Review Open PS2 Loader README & LICENSE files for further details.
 */
-
+#include <libcdvd-common.h>
 #include "internal.h"
 
 #include "device.h"
@@ -87,8 +87,8 @@ void DeviceDeinit(void)
 int DeviceReady(void)
 {
     // 尝试调整风扇转速
-    u8 fan_speed = 0;
-    cdvdman_sendSCmd(0x1A, &fan_speed, 1, NULL, 16);
+    u32 fan_result;
+    sceCdSetFanProfile(0x00, &fan_result);
     return SCECdComplete;
 }
 
