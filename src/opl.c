@@ -3,7 +3,8 @@
   Licenced under Academic Free License version 3.0
   Review OpenUsbLd README & LICENSE files for further details.
 */
-#include "modules/iopcore/cdvdman/internal.h"
+#include <internal.h>
+#include <cdvdman.h>
 #include "include/opl.h"
 #include "include/ioman.h"
 #include "include/gui.h"
