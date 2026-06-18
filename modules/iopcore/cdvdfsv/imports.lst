@@ -36,7 +36,6 @@ I_sceCdSetTimeout
 I_sceCdReadModelID
 I_sceCdReadDvdDualInfo
 I_sceCdLayerSearchFile
-I_sceCdSetFanProfile
 cdvdman_IMPORTS_end
 
 intrman_IMPORTS_start
