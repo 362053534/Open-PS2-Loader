@@ -86,9 +86,6 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
-    // 尝试调整风扇转速
-    u8 fan_speed = 0;
-    cdvdman_sendSCmd(0x1A, &fan_speed, 1, NULL, 16);
     return SCECdComplete;
 }
 
