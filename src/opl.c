@@ -2294,9 +2294,6 @@ int main(int argc, char *argv[])
     //LOG_ENABLE();
 
     guiIntroLoop();
-    // 尝试调整风扇转速
-    u8 fan_speed = 0x00;
-    cdvdman_sendSCmd(0x28, &fan_speed, 1, NULL, 1);
     guiMainLoop();
 
     return 0;
