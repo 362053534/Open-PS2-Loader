@@ -3,7 +3,7 @@
   Licenced under Academic Free License version 3.0
   Review Open PS2 Loader README & LICENSE files for further details.
 */
-#include <libcdvd-common.h>
+
 #include "internal.h"
 
 #include "device.h"
