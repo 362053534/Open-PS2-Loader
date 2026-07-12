@@ -116,7 +116,7 @@ SECTIONS {
 	 * GIF packet buffer while the game is running. Keep those explicitly
 	 * marked objects out of the small EE Core ram84 region.
 	 */
-	.aspectfix ALIGN(64) : {
+	.aspectfix ORIGIN(ramD0) : ALIGN(64) {
 		*(.aspectfix)
 		*aspectfix.o(.sbss .sbss.* .bss .bss.*)
 		*libdraw.a:*(.sbss .sbss.* .bss .bss.*)
