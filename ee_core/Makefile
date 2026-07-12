@@ -17,11 +17,13 @@ GSMCORE_EE_OBJS = gsm_engine.o gsm_api.o dve_reg.o
 IGSCORE_EE_OBJS = igs_api.o
 CHEATCORE_EE_OBJS = cheat_engine.o cheat_api.o
 
-EE_OBJS = main.o syshook.o iopmgr.o modmgr.o util.o patches.o patches_asm.o \
+EE_OBJS = main.o syshook.o iopmgr.o modmgr.o util.o patches.o patches_asm.o aspectfix.o \
 	  padhook.o cd_igr_rpc.o tlb.o asm.o crt0.o $(GSMCORE_EE_OBJS) $(CHEATCORE_EE_OBJS)
 MAPFILE = ee_core.map
 
-EE_INCS := -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(PS2SDK)/ports/include -Iinclude -I.
+EE_INCS := -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(PS2SDK)/ports/include \
+           -I$(PS2SDK)/ee/draw/include -I$(PS2SDK)/ee/dma/include -I$(PS2SDK)/ee/packet/include \
+           -I$(PS2SDK)/ee/math/include -I$(PS2SDK)/ee/math3d/include -Iinclude -I.
 EE_CFLAGS = -D_EE -Os -G0 -Wall $(EE_INCS)
 
 ifeq ($(EESIO_DEBUG),1)
@@ -58,7 +60,7 @@ ifeq ($(PADEMU),1)
 EE_CFLAGS += -DPADEMU
 endif
 
-EE_LIBS += -lkernel -lgcc
+EE_LIBS += -ldraw -ldma -lkernel -lgcc
 
 $(EE_OBJS_DIR)%.o : $(EE_SRC_DIR)%.c
 	@mkdir -p $(EE_OBJS_DIR)

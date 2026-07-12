@@ -24,6 +24,8 @@ struct GsmConfig_t
     int k576P_fix;
     int kGsDxDyOffsetSupported;
     int FIELD_fix;
+    /* Enable the experimental 14:15 texture-composition aspect correction. */
+    int AspectFix14_15;
 };
 
 
