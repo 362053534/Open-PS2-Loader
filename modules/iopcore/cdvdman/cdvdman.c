@@ -821,15 +821,15 @@ static inline void InstallIntrHandler(void)
         CDVDreg_PWOFF = CDL_DATA_RDY;
 }
 
-int FanSpeedChange(u8 fan_speed)
+static int FanSpeedChange(u8 fan_speed)
 {
-    // 尝试调整风扇转速
-    cdvdman_sendSCmd(0x28, &fan_speed, 1, NULL, 1);
+    u8 result[16];
+
+    return cdvdman_sendSCmd(0x28, &fan_speed, 1, result, sizeof(result));
 }
 
 int _start(int argc, char **argv)
 {
-    FanSpeedChange(0x00);
     // register exports
     RegisterLibraryEntries(&_exp_cdvdman);
     RegisterLibraryEntries(&_exp_cdvdstm);
