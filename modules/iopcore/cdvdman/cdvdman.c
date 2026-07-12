@@ -828,6 +828,18 @@ static int FanSpeedChange(u8 fan_speed)
     return cdvdman_sendSCmd(0x28, &fan_speed, 1, result, sizeof(result));
 }
 
+/* SCMD 0x03, Mechacon subcommand 0x28: one input and one output byte. */
+static int FanSpeedChange_2(u8 fan_speed)
+{
+    u8 rdbuf[1];
+    u8 wrbuf[2];
+
+    wrbuf[0] = 0x28;
+    wrbuf[1] = fan_speed;
+
+    return cdvdman_sendSCmd(0x03, wrbuf, 2, rdbuf, 1);
+}
+
 int _start(int argc, char **argv)
 {
     // register exports
@@ -863,7 +875,7 @@ int _start(int argc, char **argv)
     // init disk type stuff
     cdvdman_initDiskType();
 
-    FanSpeedChange(0x00);
+    FanSpeedChange_2(0x00);
     return MODULE_RESIDENT_END;
 }
 
