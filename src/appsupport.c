@@ -30,6 +30,10 @@ static item_list_t appItemList;
 
 static void appFreeList(void);
 
+#define POPS_LOADER_ELF "POPSTARTER.ELF"
+#define POPS_ELF_PREFIX "XX."
+#define POPS_COPY_BUFFER_SIZE 1024
+
 static struct config_value_t *appGetConfigValue(int id)
 {
     struct config_value_t *cur = configApps->head;
@@ -186,6 +190,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
         }
 
         app->app.legacy = 1;
+        app->app.pops = 0;
         count++;
         cur = cur->next;
     }
@@ -229,6 +234,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         } else
             app->app.argv1[0] = '\0';
         app->app.legacy = 0;
+        app->app.pops = 0;
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -236,6 +242,119 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     }
 
     return -1;
+}
+
+static int appFileExists(const char *path)
+{
+    int fd = open(path, O_RDONLY);
+
+    if (fd < 0)
+        return 0;
+
+    close(fd);
+    return 1;
+}
+
+static int appCopyFile(const char *sourcePath, const char *targetPath)
+{
+    char buffer[POPS_COPY_BUFFER_SIZE];
+    int sourceFd, targetFd, readSize, writeSize, written, result;
+
+    sourceFd = open(sourcePath, O_RDONLY);
+    if (sourceFd < 0)
+        return -1;
+
+    targetFd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (targetFd < 0) {
+        close(sourceFd);
+        return -1;
+    }
+
+    result = 0;
+    while ((readSize = read(sourceFd, buffer, sizeof(buffer))) > 0) {
+        written = 0;
+        while (written < readSize) {
+            writeSize = write(targetFd, &buffer[written], readSize - written);
+            if (writeSize <= 0) {
+                result = -1;
+                break;
+            }
+            written += writeSize;
+        }
+
+        if (result < 0)
+            break;
+    }
+
+    if (readSize < 0)
+        result = -1;
+
+    close(targetFd);
+    close(sourceFd);
+
+    if (result < 0)
+        unlink(targetPath);
+
+    return result;
+}
+
+static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
+{
+    struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
+    struct app_info_linked *app;
+    char title[APP_TITLE_MAX + 1];
+    char boot[APP_BOOT_MAX + 1];
+    char sourcePath[APP_PATH_MAX + sizeof(POPS_LOADER_ELF) + 2];
+    char targetPath[APP_PATH_MAX + APP_BOOT_MAX + 2];
+    int nameLength, titleLength;
+
+    nameLength = strlen(vcdName);
+    titleLength = nameLength - 4; // Remove the .VCD extension.
+    if (titleLength <= 0 || titleLength > APP_TITLE_MAX) {
+        LOG("APPSUPPORT POPS VCD filename is too long: %s\n", vcdName);
+        return 1;
+    }
+
+    memcpy(title, vcdName, titleLength);
+    title[titleLength] = '\0';
+
+    if (snprintf(boot, sizeof(boot), "%s%s.ELF", POPS_ELF_PREFIX, title) >= sizeof(boot)) {
+        LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
+        return 1;
+    }
+
+    snprintf(sourcePath, sizeof(sourcePath), "%s/%s", path, POPS_LOADER_ELF);
+    snprintf(targetPath, sizeof(targetPath), "%s/%s", path, boot);
+    if (!appFileExists(targetPath) && appCopyFile(sourcePath, targetPath) < 0) {
+        LOG("APPSUPPORT failed to create POPS ELF %s\n", targetPath);
+        return 1;
+    }
+
+    if (*appsLinkedList == NULL) {
+        *appsLinkedList = malloc(sizeof(struct app_info_linked));
+        app = *appsLinkedList;
+        app->next = NULL;
+    } else {
+        app = malloc(sizeof(struct app_info_linked));
+        if (app != NULL) {
+            app->next = *appsLinkedList;
+            *appsLinkedList = app;
+        }
+    }
+
+    if (app == NULL) {
+        LOG("APPSUPPORT unable to allocate memory.\n");
+        return -1;
+    }
+
+    strcpy(app->app.title, title);
+    strcpy(app->app.boot, boot);
+    strcpy(app->app.path, path);
+    app->app.argv1[0] = '\0';
+    app->app.legacy = 0;
+    app->app.pops = 1;
+
+    return 0;
 }
 
 static int appUpdateItemList(item_list_t *itemList)
@@ -251,6 +370,9 @@ static int appUpdateItemList(item_list_t *itemList)
 
     // Scan devices for apps.
     appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
+
+    // Add a POPSTARTER entry for every VCD found on BDM devices.
+    appItemCount += oplScanPOPS(&appScanPOPSCallback, &appsLinkedList);
 
     // Generate apps list
     if (appItemCount > 0) {
@@ -315,6 +437,9 @@ static char *appGetItemStartup(item_list_t *itemList, int id)
 
 static void appDeleteItem(item_list_t *itemList, int id)
 {
+    if (appsList[id].pops)
+        return;
+
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
         unlink(cur->val);
@@ -331,6 +456,9 @@ static void appDeleteItem(item_list_t *itemList, int id)
 static void appRenameItem(item_list_t *itemList, int id, char *newName)
 {
     char value[256];
+
+    if (appsList[id].pops)
+        return;
 
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);

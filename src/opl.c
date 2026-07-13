@@ -670,6 +670,35 @@ static int scanApps(int (*callback)(const char *path, config_set_t *appConfig, v
     return count;
 }
 
+static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg, const char *popsPath)
+{
+    struct dirent *pdirent;
+    DIR *pdir;
+    int count, ret, nameLength;
+
+    count = 0;
+    if ((pdir = opendir(popsPath)) != NULL) {
+        while ((pdirent = readdir(pdir)) != NULL) {
+            if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
+                continue;
+
+            nameLength = strlen(pdirent->d_name);
+            if (nameLength <= 4 || strcasecmp(&pdirent->d_name[nameLength - 4], ".VCD") != 0)
+                continue;
+
+            ret = callback(popsPath, pdirent->d_name, arg);
+            if (ret == 0)
+                count++;
+            else if (ret < 0) // Stopped because of unrecoverable error.
+                break;
+        }
+
+        closedir(pdir);
+    }
+
+    return count;
+}
+
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
 {
     int i, count;
@@ -679,7 +708,7 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
     count = 0;
     for (i = 0; i < MODE_COUNT; i++) {
         listSupport = list_support[i].support;
-        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
+        if ((i == HDD_MODE) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
             snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
             count += scanApps(callback, arg, appsPath, 0);
@@ -689,6 +718,30 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
     for (i = 0; i < 2; i++) {
         snprintf(appsPath, sizeof(appsPath), "mc%d:", i);
         count += scanApps(callback, arg, appsPath, 1);
+    }
+
+    return count;
+}
+
+int oplScanPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+{
+    int i, count;
+    item_list_t *listSupport;
+    char popsPath[128];
+
+    count = 0;
+    for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+        listSupport = list_support[i].support;
+        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
+            char *prefix = listSupport->itemGetPrefix(listSupport);
+
+            if (prefix[0] == '\0')
+                continue;
+
+            int prefixLength = strlen(prefix);
+            snprintf(popsPath, sizeof(popsPath), "%s%sPOPS", prefix, prefixLength > 0 && prefix[prefixLength - 1] == '/' ? "" : "/");
+            count += scanPOPS(callback, arg, popsPath);
+        }
     }
 
     return count;
