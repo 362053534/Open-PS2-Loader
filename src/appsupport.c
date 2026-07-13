@@ -279,9 +279,11 @@ static int appUpdateItemList(item_list_t *itemList)
 static void appFreeList(void)
 {
     if (appsList != NULL) {
+        free(appsList);
         appsList = NULL;
-        appItemCount = 0;
     }
+
+    appItemCount = 0;
 }
 
 static int appGetItemCount(item_list_t *itemList)
