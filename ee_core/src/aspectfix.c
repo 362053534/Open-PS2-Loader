@@ -54,8 +54,8 @@ extern volatile struct AspectGSRegs GSMDestGSRegs;
 static int sAspectRunning;
 static int sAspectSema = -1;
 static int sAspectVBlankHandler = -1;
-static u8 sAspectStack[ASPECT_STACK_SIZE] __attribute__((section(".aspectfix"), aligned(16)));
-static qword_t sAspectPacket[ASPECT_PACKET_QWORDS] __attribute__((section(".aspectfix"), aligned(64)));
+static u8 sAspectStack[ASPECT_STACK_SIZE] __attribute__((aligned(16)));
+static qword_t sAspectPacket[ASPECT_PACKET_QWORDS] __attribute__((aligned(64)));
 
 static int AspectFrameWords(int psm, int pixels)
 {

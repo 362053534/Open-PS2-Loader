@@ -89,19 +89,19 @@ SECTIONS {
 	/* Uninitialized data.  */
 	.sbss ALIGN(128) : {
 		_fbss = . ;
-		*(EXCLUDE_FILE (*aspectfix.o *libdraw.a:* *libdma.a:*) .sbss)
-		*(EXCLUDE_FILE (*aspectfix.o *libdraw.a:* *libdma.a:*) .sbss.*)
+		*(.sbss)
+		*(.sbss.*)
 		*(.gnu.linkonce.sb*)
 		*(.scommon)
 	} >ram84
+
 	.bss ALIGN(128) : {
-		*(EXCLUDE_FILE (*aspectfix.o *libdraw.a:* *libdma.a:*) .bss)
-		*(EXCLUDE_FILE (*aspectfix.o *libdraw.a:* *libdma.a:*) .bss.*)
+		*(.bss)
+		*(.bss.*)
 		*(.gnu.linkonce.b*)
 		*(COMMON)
 	} >ram84
 	_end_bss = .;
-
 
 	/* Symbols needed by crt0.s.  */
 	PROVIDE(_heap_size = -1);
@@ -110,16 +110,4 @@ SECTIONS {
 
 	_end = _stack + _stack_size ;
 	PROVIDE(end = _end);
-
-	/*
-	 * The experimental aspect compositor needs a resident worker stack and
-	 * GIF packet buffer while the game is running. Keep those explicitly
-	 * marked objects out of the small EE Core ram84 region.
-	 */
-	.aspectfix ALIGN(64) : {
-		*(.aspectfix)
-		*aspectfix.o(.sbss .sbss.* .bss .bss.*)
-		*libdraw.a:*(.sbss .sbss.* .bss .bss.*)
-		*libdma.a:*(.sbss .sbss.* .bss .bss.*)
-	} >ramD0
 }
