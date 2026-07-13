@@ -191,6 +191,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
 
         app->app.legacy = 1;
         app->app.generated = 0;
+        app->app.popstarter = 0;
         count++;
         cur = cur->next;
     }
@@ -235,6 +236,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
             app->app.argv1[0] = '\0';
         app->app.legacy = 0;
         app->app.generated = 0;
+        app->app.popstarter = 0;
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -304,8 +306,6 @@ static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
     struct app_info_linked *app;
     char title[APP_TITLE_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
-    char sourcePath[APP_PATH_MAX + sizeof(POPS_LOADER_ELF) + 2];
-    char targetPath[APP_PATH_MAX + APP_BOOT_MAX + 2];
     int nameLength, titleLength;
 
     nameLength = strlen(vcdName);
@@ -320,13 +320,6 @@ static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
 
     if (snprintf(boot, sizeof(boot), "%s%s.ELF", POPS_ELF_PREFIX, title) >= sizeof(boot)) {
         LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
-        return 1;
-    }
-
-    snprintf(sourcePath, sizeof(sourcePath), "%s/%s", path, POPS_LOADER_ELF);
-    snprintf(targetPath, sizeof(targetPath), "%s/%s", path, boot);
-    if (!appFileExists(targetPath) && appCopyFile(sourcePath, targetPath) < 0) {
-        LOG("APPSUPPORT failed to create POPS ELF %s\n", targetPath);
         return 1;
     }
 
@@ -353,6 +346,7 @@ static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
     app->app.argv1[0] = '\0';
     app->app.legacy = 0;
     app->app.generated = 1;
+    app->app.popstarter = 1;
 
     return 0;
 }
@@ -395,6 +389,26 @@ static int appScanBDMAppsCallback(const char *path, const char *elfName, void *a
     app->app.argv1[0] = '\0';
     app->app.legacy = 0;
     app->app.generated = 1;
+    app->app.popstarter = 0;
+
+    return 0;
+}
+
+static int appCreatePOPSLauncher(const app_info_t *app)
+{
+    char sourcePath[APP_PATH_MAX + sizeof(POPS_LOADER_ELF) + 2];
+    char targetPath[APP_PATH_MAX + APP_BOOT_MAX + 2];
+
+    if (snprintf(sourcePath, sizeof(sourcePath), "%s/%s", app->path, POPS_LOADER_ELF) >= sizeof(sourcePath) ||
+        snprintf(targetPath, sizeof(targetPath), "%s/%s", app->path, app->boot) >= sizeof(targetPath)) {
+        LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
+        return -1;
+    }
+
+    if (!appFileExists(targetPath) && appCopyFile(sourcePath, targetPath) < 0) {
+        LOG("APPSUPPORT failed to create POPS ELF %s\n", targetPath);
+        return -1;
+    }
 
     return 0;
 }
@@ -536,6 +550,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     char filename[256];
     const char *argv1;
 
+    if (appsList[id].popstarter && appCreatePOPSLauncher(&appsList[id]) < 0) {
+        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+        return;
+    }
+
     // Retrieve configuration set by appGetConfig()
     configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
 
@@ -637,6 +656,8 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
         configSetStr(config, CONFIG_ITEM_MEDIA, "APP");
         configSetStr(config, CONFIG_ITEM_FORMAT, "ELF");
 
+        if (appsList[id].popstarter)
+            snprintf(path, sizeof(path), "%s/%s", appsList[id].path, POPS_LOADER_ELF);
         snprintf(tmp, sizeof(tmp), "%.2f", appGetELFSize(path));
         configSetStr(config, CONFIG_ITEM_SIZE, tmp);
     }

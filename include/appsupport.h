@@ -24,6 +24,7 @@ typedef struct
     char argv1[APP_ARGV1_MAX + 1];
     u8 legacy;
     u8 generated;
+    u8 popstarter;
 } app_info_t;
 
 void appInit(item_list_t *itemList);
