@@ -23,7 +23,7 @@ typedef struct
     char boot[APP_BOOT_MAX + 1];
     char argv1[APP_ARGV1_MAX + 1];
     u8 legacy;
-    u8 pops;
+    u8 generated;
 } app_info_t;
 
 void appInit(item_list_t *itemList);

@@ -699,6 +699,35 @@ static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void 
     return count;
 }
 
+static int scanAppELFs(int (*callback)(const char *path, const char *elfName, void *arg), void *arg, const char *appsPath)
+{
+    struct dirent *pdirent;
+    DIR *pdir;
+    int count, ret, nameLength;
+
+    count = 0;
+    if ((pdir = opendir(appsPath)) != NULL) {
+        while ((pdirent = readdir(pdir)) != NULL) {
+            if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
+                continue;
+
+            nameLength = strlen(pdirent->d_name);
+            if (nameLength <= 4 || strcasecmp(&pdirent->d_name[nameLength - 4], ".ELF") != 0)
+                continue;
+
+            ret = callback(appsPath, pdirent->d_name, arg);
+            if (ret == 0)
+                count++;
+            else if (ret < 0) // Stopped because of unrecoverable error.
+                break;
+        }
+
+        closedir(pdir);
+    }
+
+    return count;
+}
+
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
 {
     int i, count;
@@ -741,6 +770,30 @@ int oplScanPOPS(int (*callback)(const char *path, const char *vcdName, void *arg
             int prefixLength = strlen(prefix);
             snprintf(popsPath, sizeof(popsPath), "%s%sPOPS", prefix, prefixLength > 0 && prefix[prefixLength - 1] == '/' ? "" : "/");
             count += scanPOPS(callback, arg, popsPath);
+        }
+    }
+
+    return count;
+}
+
+int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
+{
+    int i, count;
+    item_list_t *listSupport;
+    char appsPath[128];
+
+    count = 0;
+    for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+        listSupport = list_support[i].support;
+        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
+            char *prefix = listSupport->itemGetPrefix(listSupport);
+
+            if (prefix[0] == '\0')
+                continue;
+
+            int prefixLength = strlen(prefix);
+            snprintf(appsPath, sizeof(appsPath), "%s%sAPPS", prefix, prefixLength > 0 && prefix[prefixLength - 1] == '/' ? "" : "/");
+            count += scanAppELFs(callback, arg, appsPath);
         }
     }
 

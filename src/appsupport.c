@@ -190,7 +190,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
         }
 
         app->app.legacy = 1;
-        app->app.pops = 0;
+        app->app.generated = 0;
         count++;
         cur = cur->next;
     }
@@ -234,7 +234,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         } else
             app->app.argv1[0] = '\0';
         app->app.legacy = 0;
-        app->app.pops = 0;
+        app->app.generated = 0;
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -352,7 +352,49 @@ static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
     strcpy(app->app.path, path);
     app->app.argv1[0] = '\0';
     app->app.legacy = 0;
-    app->app.pops = 1;
+    app->app.generated = 1;
+
+    return 0;
+}
+
+static int appScanBDMAppsCallback(const char *path, const char *elfName, void *arg)
+{
+    struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
+    struct app_info_linked *app;
+    char title[APP_TITLE_MAX + 1];
+    int titleLength;
+
+    if (strlen(elfName) > APP_BOOT_MAX) {
+        LOG("APPSUPPORT BDM APP ELF filename is too long: %s\n", elfName);
+        return 1;
+    }
+
+    if (*appsLinkedList == NULL) {
+        *appsLinkedList = malloc(sizeof(struct app_info_linked));
+        app = *appsLinkedList;
+        app->next = NULL;
+    } else {
+        app = malloc(sizeof(struct app_info_linked));
+        if (app != NULL) {
+            app->next = *appsLinkedList;
+            *appsLinkedList = app;
+        }
+    }
+
+    if (app == NULL) {
+        LOG("APPSUPPORT unable to allocate memory.\n");
+        return -1;
+    }
+
+    titleLength = strlen(elfName) - 4; // Remove the .ELF extension.
+    memcpy(title, elfName, titleLength);
+    title[titleLength] = '\0';
+    strcpy(app->app.title, title);
+    strcpy(app->app.boot, elfName);
+    strcpy(app->app.path, path);
+    app->app.argv1[0] = '\0';
+    app->app.legacy = 0;
+    app->app.generated = 1;
 
     return 0;
 }
@@ -370,6 +412,9 @@ static int appUpdateItemList(item_list_t *itemList)
 
     // Scan devices for apps.
     appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
+
+    // Add ELF files found in APPS folders on BDM devices.
+    appItemCount += oplScanBDMApps(&appScanBDMAppsCallback, &appsLinkedList);
 
     // Add a POPSTARTER entry for every VCD found on BDM devices.
     appItemCount += oplScanPOPS(&appScanPOPSCallback, &appsLinkedList);
@@ -437,7 +482,7 @@ static char *appGetItemStartup(item_list_t *itemList, int id)
 
 static void appDeleteItem(item_list_t *itemList, int id)
 {
-    if (appsList[id].pops)
+    if (appsList[id].generated)
         return;
 
     if (appsList[id].legacy) {
@@ -457,7 +502,7 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
 {
     char value[256];
 
-    if (appsList[id].pops)
+    if (appsList[id].generated)
         return;
 
     if (appsList[id].legacy) {

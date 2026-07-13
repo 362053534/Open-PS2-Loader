@@ -66,6 +66,7 @@
 int oplPath2Mode(const char *path);
 int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg);
+int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplShouldAppsUpdate(void);
 config_set_t *oplGetLegacyAppsConfig(void);
