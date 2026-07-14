@@ -285,6 +285,10 @@ int hddLoadSupportModules(void)
                            "\0"
                            "20";
     static char pfsarg[] = "\0"
+                           "-m" // max mount points
+                           "\0"
+                           "2" // Default value: 1
+                           "\0"
                            "-o" // max open
                            "\0"
                            "10" // Default value: 2
