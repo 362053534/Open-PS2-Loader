@@ -106,7 +106,7 @@ GFX_OBJS = $(PNG_ASSETS:%=%_png.o) poeveticanew.o icon_sys.o icon_icn.o
 AUDIO_OBJS =	boot.o cancel.o confirm.o cursor.o message.o transition.o bd_connect.o bd_disconnect.o
 
 MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o \
-		popstarter_usbd.o popstarter_usbhdfsd.o popstarter_elf.o pops_iox_pak.o
+		popstarter_usbd.o popstarter_usbhdfsd.o popstarter_elf.o
 
 TRANSLATIONS = Albanian Arabic Bulgarian Cebuano Croatian Czech Danish Dutch Filipino French \
 	German Greek Hungarian Indonesian Italian Japanese Korean Laotian Persian Polish Portuguese \
@@ -126,7 +126,6 @@ PNG_ASSETS_DIR = gfx/
 
 MAPFILE = opl.map
 EE_LDFLAGS += -Wl,-Map,$(MAPFILE)
-EE_LDFLAGS += -Wl,--undefined=pops_iox_pak
 
 EE_LIBS = -L$(PS2SDK)/ports/lib -L$(GSKIT)/lib -L./lib -lgskit -ldmakit -lgskit_toolkit -lpoweroff -lfileXio -lpatches -ljpeg_ps2_addons -ljpeg -lpng -lz -lmc -lfreetype -lvux -lcdvd -lnetman -lps2ips -laudsrv -lvorbisfile -lvorbis -logg -lpadx -lelf-loader-nocolour
 EE_INCS += -I$(PS2SDK)/ports/include -I$(PS2SDK)/ports/include/freetype2 -I$(GSKIT)/include -I$(GSKIT)/ee/dma/include -I$(GSKIT)/ee/gs/include -I$(GSKIT)/ee/toolkit/include -Imodules/iopcore/common -Imodules/network/common -Imodules/hdd/common -Iinclude
@@ -415,9 +414,6 @@ $(EE_ASM_DIR)popstarter_usbhdfsd.c: modules/popstarter/usbhdfsd.irx | $(EE_ASM_D
 
 $(EE_ASM_DIR)popstarter_elf.c: modules/popstarter/POPSTARTER.ELF | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ popstarter_elf
-
-$(EE_ASM_DIR)pops_iox_pak.c: modules/popstarter/POPS_IOX.PAK | $(EE_ASM_DIR)
-	$(BIN2C) $< $@ pops_iox_pak
 
 modules/iopcore/cdvdman/bdm_cdvdman.irx: modules/iopcore/cdvdman
 	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) USE_BDM=1 -C $< all
