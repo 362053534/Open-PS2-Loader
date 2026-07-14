@@ -18,6 +18,7 @@
 // UI spacing of the dialogues (pixels between consecutive items)
 #define UI_SPACING_H      10
 #define UI_SPACING_V      2
+#define UI_SPLITTER_HEIGHT 2
 // spacer ui element width (simulates tab)
 #define UI_SPACER_WIDTH   50
 // minimal pixel width of spacer
@@ -443,6 +444,7 @@ static void diaRenderItem(int x, int y, struct UIItem *item, int selected, int h
         case UI_SPLITTER: {
             // a line. Thanks to the font rendering, we need to shift up by one font line
             *w = 0;                          // nothing to render at all
+            *h = UI_SPLITTER_HEIGHT;
             int ypos = y - UI_SPACING_V / 2; //  gsFont->CharHeight +
 
             // to ODD lines
