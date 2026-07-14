@@ -884,25 +884,19 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *
 {
     item_list_t *listSupport;
     int result;
-    char message[96];
 
     listSupport = list_support[HDD_MODE].support;
     if ((listSupport == NULL) || !listSupport->enabled)
         return 0;
 
     result = oplMountHDDPOPS();
-    if (result < 0) {
-        snprintf(message, sizeof(message), "无法挂载APA POPS分区（错误：%d）", result);
-        guiMsgBox(message, 0, NULL);
+    if (result < 0)
         return 0;
-    }
 
     result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT "/");
 
-    if (oplRestoreHDDOPLPartition() < 0) {
-        guiMsgBox("无法恢复+OPL分区", 0, NULL);
+    if (oplRestoreHDDOPLPartition() < 0)
         return 0;
-    }
 
     return result;
 }
