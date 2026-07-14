@@ -834,6 +834,20 @@ int oplScanSMBApps(int (*callback)(const char *path, const char *elfName, void *
     return scanAppELFs(callback, arg, appsPath);
 }
 
+int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char appsPath[128];
+
+    listSupport = list_support[HDD_MODE].support;
+    if ((listSupport == NULL) || !listSupport->enabled || (gHDDPrefix == NULL) || (gHDDPrefix[0] == '\0'))
+        return 0;
+
+    // hdd0:+OPL is mounted as pfs0:, which is the default gHDDPrefix.
+    snprintf(appsPath, sizeof(appsPath), "%sAPPS", gHDDPrefix);
+    return scanAppELFs(callback, arg, appsPath);
+}
+
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
     item_list_t *listSupport;

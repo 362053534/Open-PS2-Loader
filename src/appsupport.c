@@ -35,6 +35,11 @@ static void appFreeLegacyConfig(void);
 #define POPS_BDM_ELF_PREFIX "XX."
 #define POPS_SMB_ELF_PREFIX "SB."
 
+static int appIsPOPSLauncher(const app_info_t *app)
+{
+    return strstr(app->path, "POPS") != NULL;
+}
+
 static struct config_value_t *appGetConfigValue(int id)
 {
     struct config_value_t *cur = configApps->head;
@@ -313,7 +318,7 @@ static int appScanSMBPOPSCallback(const char *path, const char *vcdName, void *a
     return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX);
 }
 
-static int appScanBDMAppsCallback(const char *path, const char *elfName, void *arg)
+static int appScanELFCallback(const char *path, const char *elfName, void *arg)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
     struct app_info_linked *app;
@@ -321,7 +326,7 @@ static int appScanBDMAppsCallback(const char *path, const char *elfName, void *a
     int titleLength;
 
     if (strlen(elfName) > APP_BOOT_MAX) {
-        LOG("APPSUPPORT BDM APP ELF filename is too long: %s\n", elfName);
+        LOG("APPSUPPORT APP ELF filename is too long: %s\n", elfName);
         return 1;
     }
 
@@ -366,13 +371,16 @@ static int appUpdateItemList(item_list_t *itemList)
 
     if (gAutoDetectPS1Apps) {
         // Add ELF files found in APPS folders on memory cards.
-        appItemCount += oplScanMCApps(&appScanBDMAppsCallback, &appsLinkedList);
+        appItemCount += oplScanMCApps(&appScanELFCallback, &appsLinkedList);
 
         // Add ELF files found in APPS folders on BDM devices.
-        appItemCount += oplScanBDMApps(&appScanBDMAppsCallback, &appsLinkedList);
+        appItemCount += oplScanBDMApps(&appScanELFCallback, &appsLinkedList);
 
         // Add ELF files found in the SMB APPS folder.
-        appItemCount += oplScanSMBApps(&appScanBDMAppsCallback, &appsLinkedList);
+        appItemCount += oplScanSMBApps(&appScanELFCallback, &appsLinkedList);
+
+        // Add ELF files found in the APA HDD APPS folder.
+        appItemCount += oplScanHDDApps(&appScanELFCallback, &appsLinkedList);
 
         // Add a POPSTARTER entry for every VCD found on BDM devices.
         appItemCount += oplScanBDMPOPS(&appScanBDMPOPSCallback, &appsLinkedList);
@@ -554,8 +562,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     char filename[256];
     const char *argv1;
 
-    if (appsList[id].popstarter) {
-        if (installPopstarterDrivers() < 0)
+    if (appIsPOPSLauncher(&appsList[id])) {
+        if (gAutoDetectPS1Apps && installPopstarterDrivers() < 0)
             guiMsgBox("未检测到记忆卡，不支持中文名启动", 0, NULL);
         if (appCreateEmbeddedPOPSLauncher(&appsList[id]) < 0) {
             guiMsgBox("无法创建POPSTARTER启动文件", 0, NULL);
