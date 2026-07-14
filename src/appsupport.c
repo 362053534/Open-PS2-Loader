@@ -40,6 +40,11 @@ static int appIsPOPSLauncher(const app_info_t *app)
     return app->popstarter || strstr(app->path, "APPS") == NULL;
 }
 
+static int appIsHDDPOPSLauncher(const app_info_t *app)
+{
+    return app->popstarter && !strncmp(app->path, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
+}
+
 static struct config_value_t *appGetConfigValue(int id)
 {
     struct config_value_t *cur = configApps->head;
@@ -263,7 +268,7 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     struct app_info_linked *app;
     char title[APP_TITLE_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
-    int nameLength, titleLength;
+    int nameLength, titleLength, pathLength;
 
     nameLength = strlen(vcdName);
     titleLength = nameLength - 4; // Remove the .VCD extension.
@@ -300,6 +305,9 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     strcpy(app->app.title, title);
     strcpy(app->app.boot, boot);
     strcpy(app->app.path, path);
+    pathLength = strlen(app->app.path);
+    if (pathLength > 0 && app->app.path[pathLength - 1] == '/')
+        app->app.path[pathLength - 1] = '\0';
     app->app.argv1[0] = '\0';
     app->app.legacy = 0;
     app->app.generated = 1;
@@ -567,17 +575,27 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 {
     int fd;
     int isPFSPath;
+    int isHDDPOPSItem;
     int isHDDPOPSPath;
     char filename[256];
     const char *argv1;
 
     if (appIsPOPSLauncher(&appsList[id])) {
+        isHDDPOPSItem = appIsHDDPOPSLauncher(&appsList[id]);
+        if (isHDDPOPSItem && oplMountHDDPOPS() < 0) {
+            guiMsgBox("无法挂载APA POPS分区", 0, NULL);
+            return;
+        }
         if (gAutoDetectPS1Apps && installPopstarterDrivers() < 0)
             guiMsgBox("未检测到记忆卡，不支持中文名启动", 0, NULL);
         if (appCreateEmbeddedPOPSLauncher(&appsList[id]) < 0) {
+            if (isHDDPOPSItem)
+                oplRestoreHDDOPLPartition();
             guiMsgBox("无法创建POPSTARTER启动文件", 0, NULL);
             return;
         }
+    } else {
+        isHDDPOPSItem = 0;
     }
 
     // Retrieve configuration set by appGetConfig()
@@ -619,7 +637,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     //}
 
 
-    isHDDPOPSPath = !strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
+    isHDDPOPSPath = isHDDPOPSItem && !strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
     isPFSPath = !strncmp(filename, "pfs0:", 5) || isHDDPOPSPath || !strncmp(filename, "pfs:", 4);
 
     fd = open(filename, O_RDONLY);
@@ -651,6 +669,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
         LoadELFFromFileWithPartition(filename, partition, argc, argv);
     } else {
+        if (isHDDPOPSPath)
+            oplRestoreHDDOPLPartition();
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
     }
 }

@@ -868,6 +868,18 @@ int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *
     return scanPOPS(callback, arg, popsPath);
 }
 
+int oplMountHDDPOPS(void)
+{
+    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
+    return fileXioMount(OPL_HDD_POPS_MOUNTPOINT, OPL_HDD_POPS_PARTITION, FIO_MT_RDWR);
+}
+
+int oplRestoreHDDOPLPartition(void)
+{
+    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
+    return fileXioMount(OPL_HDD_POPS_MOUNTPOINT, gOPLPart, FIO_MT_RDWR);
+}
+
 int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
     item_list_t *listSupport;
@@ -878,8 +890,7 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *
     if ((listSupport == NULL) || !listSupport->enabled)
         return 0;
 
-    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-    result = fileXioMount(OPL_HDD_POPS_MOUNTPOINT, OPL_HDD_POPS_PARTITION, FIO_MT_RDWR);
+    result = oplMountHDDPOPS();
     if (result < 0) {
         snprintf(message, sizeof(message), "无法挂载APA POPS分区（错误：%d）", result);
         guiMsgBox(message, 0, NULL);
@@ -887,6 +898,11 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *
     }
 
     result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT "/");
+
+    if (oplRestoreHDDOPLPartition() < 0) {
+        guiMsgBox("无法恢复+OPL分区", 0, NULL);
+        return 0;
+    }
 
     return result;
 }

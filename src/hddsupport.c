@@ -285,10 +285,6 @@ int hddLoadSupportModules(void)
                            "\0"
                            "20";
     static char pfsarg[] = "\0"
-                           "-m" // max mount points
-                           "\0"
-                           "2" // Default value: 1
-                           "\0"
                            "-o" // max open
                            "\0"
                            "10" // Default value: 2
@@ -720,10 +716,8 @@ static void hddCleanUp(item_list_t *itemList, int exception)
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
 
-        if ((exception & UNMOUNT_EXCEPTION) == 0) {
+        if ((exception & UNMOUNT_EXCEPTION) == 0)
             fileXioUmount(hddPrefix);
-            fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-        }
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.
@@ -747,7 +741,6 @@ static void hddShutdown(item_list_t *itemList)
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
         fileXioUmount(hddPrefix);
-        fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.

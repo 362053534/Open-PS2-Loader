@@ -63,7 +63,7 @@
 
 #define OPL_VMODE_CHANGE_CONFIRMATION_TIMEOUT_MS 10000
 #define OPL_HDD_POPS_PARTITION                  "hdd0:__.POPS"
-#define OPL_HDD_POPS_MOUNTPOINT                 "pfs1:"
+#define OPL_HDD_POPS_MOUNTPOINT                 "pfs0:"
 
 int oplPath2Mode(const char *path);
 int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
@@ -75,6 +75,8 @@ int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *
 int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
+int oplMountHDDPOPS(void);
+int oplRestoreHDDOPLPartition(void);
 int oplShouldAppsUpdate(void);
 config_set_t *oplGetLegacyAppsConfig(void);
 config_set_t *oplGetLegacyAppsInfo(char *name);
