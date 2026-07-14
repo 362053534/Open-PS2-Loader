@@ -547,6 +547,7 @@ reConfig:
     diaSetInt(diaConfig, CFG_BDMCACHE, bdmCacheSize);
     diaSetInt(diaConfig, CFG_HDDCACHE, hddCacheSize);
     diaSetInt(diaConfig, CFG_SMBCACHE, smbCacheSize);
+    diaSetInt(diaConfig, CFG_AUTODETECTPS1APPS, gAutoDetectPS1Apps);
 
     diaSetInt(diaConfig, CFG_DEBUG, gEnableDebug);
     diaSetInt(diaConfig, CFG_PS2LOGO, gPS2Logo);
@@ -592,6 +593,7 @@ reConfig:
         diaGetInt(diaConfig, CFG_BDMCACHE, &bdmCacheSize);
         diaGetInt(diaConfig, CFG_HDDCACHE, &hddCacheSize);
         diaGetInt(diaConfig, CFG_SMBCACHE, &smbCacheSize);
+        diaGetInt(diaConfig, CFG_AUTODETECTPS1APPS, &gAutoDetectPS1Apps);
 
         if (ret == BLOCKDEVICE_BUTTON) {
             guiShowBlockDeviceConfig();

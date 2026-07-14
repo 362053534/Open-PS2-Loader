@@ -143,6 +143,7 @@ int gAPPStartMode;
 int bdmCacheSize;
 int hddCacheSize;
 int smbCacheSize;
+int gAutoDetectPS1Apps;
 int gEnableUSB;
 int gEnableILK;
 int gEnableMX4SIO;
@@ -1173,6 +1174,7 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_BDM_CACHE, &bdmCacheSize);
             configGetInt(configOPL, CONFIG_OPL_HDD_CACHE, &hddCacheSize);
             configGetInt(configOPL, CONFIG_OPL_SMB_CACHE, &smbCacheSize);
+            configGetInt(configOPL, CONFIG_OPL_AUTO_DETECT_PS1_APPS, &gAutoDetectPS1Apps);
 
             if (configGetStr(configOPL, CONFIG_OPL_THEME, &temp))
                 themeID = thmFindGuiID(temp);
@@ -1374,6 +1376,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_BDM_CACHE, bdmCacheSize);
         configSetInt(configOPL, CONFIG_OPL_HDD_CACHE, hddCacheSize);
         configSetInt(configOPL, CONFIG_OPL_SMB_CACHE, smbCacheSize);
+        configSetInt(configOPL, CONFIG_OPL_AUTO_DETECT_PS1_APPS, gAutoDetectPS1Apps);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_USB, gEnableUSB);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, gEnableILK);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, gEnableMX4SIO);
@@ -1995,6 +1998,7 @@ static void setDefaults(void)
     bdmCacheSize = 0;
     hddCacheSize = 8;
     smbCacheSize = 0;
+    gAutoDetectPS1Apps = 1;
 
     ps2_ip_use_dhcp = 1;
     gETHOpMode = ETH_OP_MODE_AUTO;

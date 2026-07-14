@@ -103,6 +103,7 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_BDM_CACHE            "bdm_cache"
 #define CONFIG_OPL_HDD_CACHE            "hdd_cache"
 #define CONFIG_OPL_SMB_CACHE            "smb_cache"
+#define CONFIG_OPL_AUTO_DETECT_PS1_APPS "auto_detect_ps1_apps"
 #define CONFIG_OPL_ENABLE_USB           "enable_usb"
 #define CONFIG_OPL_ENABLE_ILINK         "enable_ilink"
 #define CONFIG_OPL_ENABLE_MX4SIO        "enable_mx4sio"

@@ -125,6 +125,7 @@ extern int gAPPStartMode;
 extern int bdmCacheSize;
 extern int hddCacheSize;
 extern int smbCacheSize;
+extern int gAutoDetectPS1Apps;
 
 extern int gEnableUSB;
 extern int gEnableILK;

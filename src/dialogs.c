@@ -260,6 +260,10 @@ struct UIItem diaConfig[] = {
     {UI_SPACER},
     {UI_INT, CFG_SMBCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 4, 0, 32, NULL}}},
     {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动识别PS1 & APPS", -1}}},
+    {UI_SPACER},
+    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BREAK},
 
     // buttons
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
