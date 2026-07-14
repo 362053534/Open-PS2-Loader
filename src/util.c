@@ -8,6 +8,7 @@
 #include "include/util.h"
 #include "include/ioman.h"
 #include "include/system.h"
+#include "include/extern_irx.h"
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -27,6 +28,16 @@ extern void *icon_icn;
 extern int size_icon_icn;
 
 static int mcID = -1;
+
+#define POPSTARTER_DRIVER_DIR       "POPSTARTER"
+#define POPSTARTER_USBD_FILENAME    "usbd.irx"
+#define POPSTARTER_USBHDFSD_FILENAME "usbhdfsd.irx"
+
+enum {
+    POPSTARTER_DRIVERS_NONE,
+    POPSTARTER_DRIVERS_INCOMPLETE,
+    POPSTARTER_DRIVERS_CURRENT
+};
 
 void guiWarning(const char *text, int count);
 
@@ -133,6 +144,140 @@ void checkMCFolder(void)
         }
     } else {
         close(fd);
+    }
+}
+
+static int popstarterCheckDriver(const char *path, int expectedSize)
+{
+    int fd, size;
+
+    fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return 0;
+
+    size = getFileSize(fd);
+    close(fd);
+
+    return size == expectedSize ? 2 : 1;
+}
+
+static int popstarterGetDriverState(int slot)
+{
+    char path[64];
+    int driversFound, driversCurrent, state;
+
+    driversFound = 0;
+    driversCurrent = 0;
+
+    snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
+    state = popstarterCheckDriver(path, size_popstarter_usbd_irx);
+    if (state > 0) {
+        driversFound++;
+        if (state == 2)
+            driversCurrent++;
+    }
+
+    snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
+    state = popstarterCheckDriver(path, size_popstarter_usbhdfsd_irx);
+    if (state > 0) {
+        driversFound++;
+        if (state == 2)
+            driversCurrent++;
+    }
+
+    if (driversFound == 0)
+        return POPSTARTER_DRIVERS_NONE;
+
+    return driversCurrent == 2 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
+}
+
+static int popstarterWriteDriver(char *path, const void *buffer, int size)
+{
+    const char *data = buffer;
+    int fd, written, total;
+
+    fd = open(path, O_RDONLY);
+    if (fd >= 0) {
+        if (getFileSize(fd) == size) {
+            close(fd);
+            return 0;
+        }
+        close(fd);
+    }
+
+    fd = openFile(path, O_WRONLY | O_CREAT | O_TRUNC);
+    if (fd < 0) {
+        LOG("POPSTARTER: failed to open %s for writing\n", path);
+        return -1;
+    }
+
+    total = 0;
+    while (total < size) {
+        written = write(fd, &data[total], size - total);
+        if (written <= 0) {
+            LOG("POPSTARTER: failed to write %s\n", path);
+            close(fd);
+            return -1;
+        }
+        total += written;
+    }
+
+    close(fd);
+    return 0;
+}
+
+static int popstarterDeployDrivers(int slot)
+{
+    char path[64];
+    int result;
+
+    result = 0;
+
+    snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
+    if (popstarterWriteDriver(path, popstarter_usbd_irx, size_popstarter_usbd_irx) < 0)
+        result = -1;
+
+    snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
+    if (popstarterWriteDriver(path, popstarter_usbhdfsd_irx, size_popstarter_usbhdfsd_irx) < 0)
+        result = -1;
+
+    return result;
+}
+
+void installPopstarterDrivers(void)
+{
+    DIR *rootDir;
+    int slot, state, firstAvailableSlot;
+
+    firstAvailableSlot = -1;
+    for (slot = 0; slot < 2; slot++) {
+        char rootPath[8];
+
+        snprintf(rootPath, sizeof(rootPath), "mc%d:/", slot);
+        rootDir = opendir(rootPath);
+        if (rootDir == NULL)
+            continue;
+        closedir(rootDir);
+
+        if (firstAvailableSlot < 0)
+            firstAvailableSlot = slot;
+
+        state = popstarterGetDriverState(slot);
+        if (state == POPSTARTER_DRIVERS_CURRENT) {
+            LOG("POPSTARTER: drivers are current on mc%d\n", slot);
+            return;
+        }
+
+        if (state == POPSTARTER_DRIVERS_INCOMPLETE) {
+            LOG("POPSTARTER: repairing drivers on mc%d\n", slot);
+            popstarterDeployDrivers(slot);
+            return;
+        }
+    }
+
+    if (firstAvailableSlot >= 0) {
+        LOG("POPSTARTER: installing drivers on mc%d\n", firstAvailableSlot);
+        popstarterDeployDrivers(firstAvailableSlot);
     }
 }
 

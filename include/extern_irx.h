@@ -86,6 +86,10 @@ IMPORT_BIN2C(padman_irx);
 
 IMPORT_BIN2C(poweroff_irx);
 
+IMPORT_BIN2C(popstarter_usbd_irx);
+
+IMPORT_BIN2C(popstarter_usbhdfsd_irx);
+
 IMPORT_BIN2C(ppctty_irx);
 
 IMPORT_BIN2C(ps2atad_irx);

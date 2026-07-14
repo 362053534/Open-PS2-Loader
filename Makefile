@@ -105,7 +105,8 @@ GFX_OBJS = $(PNG_ASSETS:%=%_png.o) poeveticanew.o icon_sys.o icon_icn.o
 
 AUDIO_OBJS =	boot.o cancel.o confirm.o cursor.o message.o transition.o bd_connect.o bd_disconnect.o
 
-MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o
+MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o \
+		popstarter_usbd.o popstarter_usbhdfsd.o
 
 TRANSLATIONS = Albanian Arabic Bulgarian Cebuano Croatian Czech Danish Dutch Filipino French \
 	German Greek Hungarian Indonesian Italian Japanese Korean Laotian Persian Polish Portuguese \
@@ -404,6 +405,12 @@ $(EE_ASM_DIR)imgdrv.c: modules/iopcore/imgdrv/imgdrv.irx | $(EE_ASM_DIR)
 
 $(EE_ASM_DIR)eesync.c: $(PS2SDK)/iop/irx/eesync-nano.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
+
+$(EE_ASM_DIR)popstarter_usbd.c: modules/popstarter/usbd.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ popstarter_usbd_irx
+
+$(EE_ASM_DIR)popstarter_usbhdfsd.c: modules/popstarter/usbhdfsd.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ popstarter_usbhdfsd_irx
 
 modules/iopcore/cdvdman/bdm_cdvdman.irx: modules/iopcore/cdvdman
 	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) USE_BDM=1 -C $< all
