@@ -871,16 +871,24 @@ int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *
 int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
     item_list_t *listSupport;
+    int result;
+    char message[96];
 
     listSupport = list_support[HDD_MODE].support;
     if ((listSupport == NULL) || !listSupport->enabled)
         return 0;
 
     fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-    if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, OPL_HDD_POPS_PARTITION, FIO_MT_RDWR) < 0)
+    result = fileXioMount(OPL_HDD_POPS_MOUNTPOINT, OPL_HDD_POPS_PARTITION, FIO_MT_RDWR);
+    if (result < 0) {
+        snprintf(message, sizeof(message), "无法挂载APA POPS分区（错误：%d）", result);
+        guiMsgBox(message, 0, NULL);
         return 0;
+    }
 
-    return scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT);
+    result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT "/");
+
+    return result;
 }
 
 int oplShouldAppsUpdate(void)
