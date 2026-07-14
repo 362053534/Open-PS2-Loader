@@ -35,6 +35,7 @@ DETAILED_CHANGELOG
 !.clang-format-ignore
 !modules/debug/*.irx
 !modules/popstarter/*.irx
+!modules/popstarter/POPSTARTER.ELF
 
 #
 # Generated source files

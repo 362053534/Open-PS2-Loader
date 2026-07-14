@@ -6,6 +6,7 @@
 #include "include/system.h"
 #include "include/ioman.h"
 #include "include/util.h"
+#include "include/extern_irx.h"
 
 #include "include/bdmsupport.h"
 #include "include/ethsupport.h"
@@ -30,9 +31,7 @@ static item_list_t appItemList;
 
 static void appFreeList(void);
 
-#define POPS_LOADER_ELF "POPSTARTER.ELF"
 #define POPS_ELF_PREFIX "XX."
-#define POPS_COPY_BUFFER_SIZE 1024
 
 static struct config_value_t *appGetConfigValue(int id)
 {
@@ -246,60 +245,6 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     return -1;
 }
 
-static int appFileExists(const char *path)
-{
-    int fd = open(path, O_RDONLY);
-
-    if (fd < 0)
-        return 0;
-
-    close(fd);
-    return 1;
-}
-
-static int appCopyFile(const char *sourcePath, const char *targetPath)
-{
-    char buffer[POPS_COPY_BUFFER_SIZE];
-    int sourceFd, targetFd, readSize, writeSize, written, result;
-
-    sourceFd = open(sourcePath, O_RDONLY);
-    if (sourceFd < 0)
-        return -1;
-
-    targetFd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (targetFd < 0) {
-        close(sourceFd);
-        return -1;
-    }
-
-    result = 0;
-    while ((readSize = read(sourceFd, buffer, sizeof(buffer))) > 0) {
-        written = 0;
-        while (written < readSize) {
-            writeSize = write(targetFd, &buffer[written], readSize - written);
-            if (writeSize <= 0) {
-                result = -1;
-                break;
-            }
-            written += writeSize;
-        }
-
-        if (result < 0)
-            break;
-    }
-
-    if (readSize < 0)
-        result = -1;
-
-    close(targetFd);
-    close(sourceFd);
-
-    if (result < 0)
-        unlink(targetPath);
-
-    return result;
-}
-
 static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
@@ -390,25 +335,6 @@ static int appScanBDMAppsCallback(const char *path, const char *elfName, void *a
     app->app.legacy = 0;
     app->app.generated = 1;
     app->app.popstarter = 0;
-
-    return 0;
-}
-
-static int appCreatePOPSLauncher(const app_info_t *app)
-{
-    char sourcePath[APP_PATH_MAX + sizeof(POPS_LOADER_ELF) + 2];
-    char targetPath[APP_PATH_MAX + APP_BOOT_MAX + 2];
-
-    if (snprintf(sourcePath, sizeof(sourcePath), "%s/%s", app->path, POPS_LOADER_ELF) >= sizeof(sourcePath) ||
-        snprintf(targetPath, sizeof(targetPath), "%s/%s", app->path, app->boot) >= sizeof(targetPath)) {
-        LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
-        return -1;
-    }
-
-    if (!appFileExists(targetPath) && appCopyFile(sourcePath, targetPath) < 0) {
-        LOG("APPSUPPORT failed to create POPS ELF %s\n", targetPath);
-        return -1;
-    }
 
     return 0;
 }
@@ -544,6 +470,47 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
     appForceUpdate = 1;
 }
 
+static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
+{
+    char target[APP_PATH_MAX + APP_BOOT_MAX + 2];
+    unsigned int offset;
+    int fd, result, written;
+
+    if (snprintf(target, sizeof(target), "%s/%s", app->path, app->boot) >= sizeof(target)) {
+        LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
+        return -1;
+    }
+
+    fd = open(target, O_RDONLY);
+    if (fd >= 0) {
+        int size = getFileSize(fd);
+        close(fd);
+
+        if (size == size_popstarter_elf)
+            return 0;
+    }
+
+    fd = open(target, O_CREAT | O_TRUNC | O_WRONLY);
+    if (fd < 0)
+        return -1;
+
+    result = 0;
+    for (offset = 0; offset < size_popstarter_elf; offset += written) {
+        written = write(fd, &popstarter_elf[offset], size_popstarter_elf - offset);
+        if (written <= 0) {
+            result = -1;
+            break;
+        }
+    }
+
+    close(fd);
+
+    if (result < 0)
+        unlink(target);
+
+    return result;
+}
+
 static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int fd;
@@ -554,7 +521,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     if (appsList[id].popstarter) {
         if (installPopstarterDrivers() < 0)
             guiMsgBox("未检测到记忆卡，不支持中文名启动", 0, NULL);
-        if (appCreatePOPSLauncher(&appsList[id]) < 0) {
+        if (appCreateEmbeddedPOPSLauncher(&appsList[id]) < 0) {
             guiMsgBox("无法创建POPSTARTER启动文件", 0, NULL);
             return;
         }
@@ -668,8 +635,9 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
         configSetStr(config, CONFIG_ITEM_FORMAT, "ELF");
 
         if (appsList[id].popstarter)
-            snprintf(path, sizeof(path), "%s/%s", appsList[id].path, POPS_LOADER_ELF);
-        snprintf(tmp, sizeof(tmp), "%.2f", appGetELFSize(path));
+            snprintf(tmp, sizeof(tmp), "%.2f", size_popstarter_elf / 1048576.0f);
+        else
+            snprintf(tmp, sizeof(tmp), "%.2f", appGetELFSize(path));
         configSetStr(config, CONFIG_ITEM_SIZE, tmp);
     }
     return config;

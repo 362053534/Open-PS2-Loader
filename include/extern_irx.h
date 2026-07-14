@@ -85,6 +85,7 @@ IMPORT_BIN2C(f2techioppatch_irx);
 IMPORT_BIN2C(padman_irx);
 
 IMPORT_BIN2C(poweroff_irx);
+IMPORT_BIN2C(popstarter_elf);
 
 IMPORT_BIN2C(popstarter_usbd_irx);
 
