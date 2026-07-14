@@ -753,7 +753,7 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
     return count;
 }
 
-int oplScanPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
     int i, count;
     item_list_t *listSupport;
@@ -813,6 +813,44 @@ int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *a
     }
 
     return count;
+}
+
+int oplScanSMBApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char appsPath[128];
+    char *prefix;
+
+    listSupport = list_support[ETH_MODE].support;
+    if ((listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
+        return 0;
+
+    prefix = listSupport->itemGetPrefix(listSupport);
+    if (prefix[0] == '\0')
+        return 0;
+
+    // The SMB prefix already ends with a backslash.
+    snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+    return scanAppELFs(callback, arg, appsPath);
+}
+
+int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char popsPath[128];
+    char *prefix;
+
+    listSupport = list_support[ETH_MODE].support;
+    if ((listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
+        return 0;
+
+    prefix = listSupport->itemGetPrefix(listSupport);
+    if (prefix[0] == '\0')
+        return 0;
+
+    // The SMB prefix already ends with a backslash.
+    snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
+    return scanPOPS(callback, arg, popsPath);
 }
 
 int oplShouldAppsUpdate(void)

@@ -32,7 +32,8 @@ static item_list_t appItemList;
 static void appFreeList(void);
 static void appFreeLegacyConfig(void);
 
-#define POPS_ELF_PREFIX "XX."
+#define POPS_BDM_ELF_PREFIX "XX."
+#define POPS_SMB_ELF_PREFIX "SB."
 
 static struct config_value_t *appGetConfigValue(int id)
 {
@@ -251,7 +252,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     return -1;
 }
 
-static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
+static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
     struct app_info_linked *app;
@@ -269,7 +270,7 @@ static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
     memcpy(title, vcdName, titleLength);
     title[titleLength] = '\0';
 
-    if (snprintf(boot, sizeof(boot), "%s%s.ELF", POPS_ELF_PREFIX, title) >= sizeof(boot)) {
+    if (snprintf(boot, sizeof(boot), "%s%s.ELF", elfPrefix, title) >= sizeof(boot)) {
         LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
         return 1;
     }
@@ -300,6 +301,16 @@ static int appScanPOPSCallback(const char *path, const char *vcdName, void *arg)
     app->app.popstarter = 1;
 
     return 0;
+}
+
+static int appScanBDMPOPSCallback(const char *path, const char *vcdName, void *arg)
+{
+    return appAddPOPSItem(path, vcdName, arg, POPS_BDM_ELF_PREFIX);
+}
+
+static int appScanSMBPOPSCallback(const char *path, const char *vcdName, void *arg)
+{
+    return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX);
 }
 
 static int appScanBDMAppsCallback(const char *path, const char *elfName, void *arg)
@@ -360,8 +371,14 @@ static int appUpdateItemList(item_list_t *itemList)
         // Add ELF files found in APPS folders on BDM devices.
         appItemCount += oplScanBDMApps(&appScanBDMAppsCallback, &appsLinkedList);
 
+        // Add ELF files found in the SMB APPS folder.
+        appItemCount += oplScanSMBApps(&appScanBDMAppsCallback, &appsLinkedList);
+
         // Add a POPSTARTER entry for every VCD found on BDM devices.
-        appItemCount += oplScanPOPS(&appScanPOPSCallback, &appsLinkedList);
+        appItemCount += oplScanBDMPOPS(&appScanBDMPOPSCallback, &appsLinkedList);
+
+        // Add a POPSTARTER entry for every VCD found in the SMB POPS folder.
+        appItemCount += oplScanSMBPOPS(&appScanSMBPOPSCallback, &appsLinkedList);
     } else {
         // Get legacy apps list first, so it is possible to use appGetConfigValue(id).
         appItemCount += addAppsLegacyList(&appsLinkedList);
