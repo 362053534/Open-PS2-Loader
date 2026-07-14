@@ -801,6 +801,20 @@ int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *
     return count;
 }
 
+int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
+{
+    int i, count;
+    char appsPath[128];
+
+    count = 0;
+    for (i = 0; i < 2; i++) {
+        snprintf(appsPath, sizeof(appsPath), "mc%d:/APPS", i);
+        count += scanAppELFs(callback, arg, appsPath);
+    }
+
+    return count;
+}
+
 int oplShouldAppsUpdate(void)
 {
     int result;

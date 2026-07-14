@@ -354,6 +354,9 @@ static int appUpdateItemList(item_list_t *itemList)
     appsLinkedList = NULL;
 
     if (gAutoDetectPS1Apps) {
+        // Add ELF files found in APPS folders on memory cards.
+        appItemCount += oplScanMCApps(&appScanBDMAppsCallback, &appsLinkedList);
+
         // Add ELF files found in APPS folders on BDM devices.
         appItemCount += oplScanBDMApps(&appScanBDMAppsCallback, &appsLinkedList);
 
