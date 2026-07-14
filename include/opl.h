@@ -62,7 +62,7 @@
 #define OPL_COMPAT_UPDATE_STAT_ABORTED    -3
 
 #define OPL_VMODE_CHANGE_CONFIRMATION_TIMEOUT_MS 10000
-#define OPL_HDD_POPS_PARTITION                  "hdd0:__POPS"
+#define OPL_HDD_POPS_PARTITION                  "hdd0:__.POPS"
 #define OPL_HDD_POPS_MOUNTPOINT                 "pfs1:"
 
 int oplPath2Mode(const char *path);
