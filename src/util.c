@@ -244,7 +244,7 @@ static int popstarterDeployDrivers(int slot)
     return result;
 }
 
-void installPopstarterDrivers(void)
+int installPopstarterDrivers(void)
 {
     DIR *rootDir;
     int slot, state, firstAvailableSlot;
@@ -265,20 +265,21 @@ void installPopstarterDrivers(void)
         state = popstarterGetDriverState(slot);
         if (state == POPSTARTER_DRIVERS_CURRENT) {
             LOG("POPSTARTER: drivers are current on mc%d\n", slot);
-            return;
+            return 0;
         }
 
         if (state == POPSTARTER_DRIVERS_INCOMPLETE) {
             LOG("POPSTARTER: repairing drivers on mc%d\n", slot);
-            popstarterDeployDrivers(slot);
-            return;
+            return popstarterDeployDrivers(slot);
         }
     }
 
     if (firstAvailableSlot >= 0) {
         LOG("POPSTARTER: installing drivers on mc%d\n", firstAvailableSlot);
-        popstarterDeployDrivers(firstAvailableSlot);
+        return popstarterDeployDrivers(firstAvailableSlot);
     }
+
+    return -1;
 }
 
 static int checkFile(char *path, int mode)

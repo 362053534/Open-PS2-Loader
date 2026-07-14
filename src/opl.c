@@ -2122,8 +2122,6 @@ static void init(void)
         applyConfig(-1, -1, 0);
     }
 
-    installPopstarterDrivers();
-
     // 第一次启动时，用单线程初始化
     if (firstOpenOPL) {
         deferredAudioInit();

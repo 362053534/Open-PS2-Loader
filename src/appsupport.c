@@ -550,9 +550,13 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     char filename[256];
     const char *argv1;
 
-    if (appsList[id].popstarter && appCreatePOPSLauncher(&appsList[id]) < 0) {
-        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
-        return;
+    if (appsList[id].popstarter) {
+        if (installPopstarterDrivers() < 0)
+            guiMsgBox("未检测到记忆卡，不支持中文名启动", 0, NULL);
+        if (appCreatePOPSLauncher(&appsList[id]) < 0) {
+            guiMsgBox("无法创建POPSTARTER启动文件", 0, NULL);
+            return;
+        }
     }
 
     // Retrieve configuration set by appGetConfig()
