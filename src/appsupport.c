@@ -547,6 +547,7 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
 static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int fd;
+    int isPFSPath;
     char filename[256];
     const char *argv1;
 
@@ -598,6 +599,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     //}
 
 
+    isPFSPath = !strncmp(filename, "pfs0:", 5) || !strncmp(filename, "pfs:", 4);
+
     fd = open(filename, O_RDONLY);
     if (fd >= 0) {
         int mode, argc = 0;
@@ -608,9 +611,13 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         strcpy(partition, "");
 
         // To keep the necessary device accessible, we will assume the mode that owns the device which contains the file to boot.
-        mode = oplPath2Mode(filename);
+        mode = isPFSPath ? HDD_MODE : oplPath2Mode(filename);
         if (mode < 0)
             mode = APP_MODE; // Legacy apps mode on memory card (mc?:/*)
+
+        // ELF Loader uses the PFS driver name when constructing the launched ELF's working directory.
+        if (isPFSPath && !strncmp(filename, "pfs0:", 5))
+            memmove(filename + 3, filename + 4, strlen(filename + 4) + 1);
 
         if (mode == HDD_MODE)
             snprintf(partition, sizeof(partition), "%s:", gOPLPart);
