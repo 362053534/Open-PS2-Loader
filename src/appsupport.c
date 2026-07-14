@@ -37,7 +37,7 @@ static void appFreeLegacyConfig(void);
 
 static int appIsPOPSLauncher(const app_info_t *app)
 {
-    return strstr(app->path, "POPS") != NULL;
+    return app->popstarter || strstr(app->path, "APPS") == NULL;
 }
 
 static struct config_value_t *appGetConfigValue(int id)
@@ -318,6 +318,11 @@ static int appScanSMBPOPSCallback(const char *path, const char *vcdName, void *a
     return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX);
 }
 
+static int appScanHDDPOPSCallback(const char *path, const char *vcdName, void *arg)
+{
+    return appAddPOPSItem(path, vcdName, arg, "");
+}
+
 static int appScanELFCallback(const char *path, const char *elfName, void *arg)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
@@ -387,6 +392,9 @@ static int appUpdateItemList(item_list_t *itemList)
 
         // Add a POPSTARTER entry for every VCD found in the SMB POPS folder.
         appItemCount += oplScanSMBPOPS(&appScanSMBPOPSCallback, &appsLinkedList);
+
+        // Add a POPSTARTER entry for every VCD found in the APA HDD POPS partition.
+        appItemCount += oplScanHDDPOPS(&appScanHDDPOPSCallback, &appsLinkedList);
     } else {
         // Get legacy apps list first, so it is possible to use appGetConfigValue(id).
         appItemCount += addAppsLegacyList(&appsLinkedList);
@@ -559,6 +567,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 {
     int fd;
     int isPFSPath;
+    int isHDDPOPSPath;
     char filename[256];
     const char *argv1;
 
@@ -610,7 +619,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     //}
 
 
-    isPFSPath = !strncmp(filename, "pfs0:", 5) || !strncmp(filename, "pfs:", 4);
+    isHDDPOPSPath = !strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
+    isPFSPath = !strncmp(filename, "pfs0:", 5) || isHDDPOPSPath || !strncmp(filename, "pfs:", 4);
 
     fd = open(filename, O_RDONLY);
     if (fd >= 0) {
@@ -627,11 +637,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             mode = APP_MODE; // Legacy apps mode on memory card (mc?:/*)
 
         // ELF Loader uses the PFS driver name when constructing the launched ELF's working directory.
-        if (isPFSPath && !strncmp(filename, "pfs0:", 5))
+        if (isPFSPath && (!strncmp(filename, "pfs0:", 5) || isHDDPOPSPath))
             memmove(filename + 3, filename + 4, strlen(filename + 4) + 1);
 
         if (mode == HDD_MODE)
-            snprintf(partition, sizeof(partition), "%s:", gOPLPart);
+            snprintf(partition, sizeof(partition), "%s:", isHDDPOPSPath ? OPL_HDD_POPS_PARTITION : gOPLPart);
 
         if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
             argv[0] = (char *)argv1;

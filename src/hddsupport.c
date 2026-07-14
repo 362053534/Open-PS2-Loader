@@ -716,8 +716,10 @@ static void hddCleanUp(item_list_t *itemList, int exception)
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
 
-        if ((exception & UNMOUNT_EXCEPTION) == 0)
+        if ((exception & UNMOUNT_EXCEPTION) == 0) {
             fileXioUmount(hddPrefix);
+            fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
+        }
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.
@@ -741,6 +743,7 @@ static void hddShutdown(item_list_t *itemList)
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
         fileXioUmount(hddPrefix);
+        fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.

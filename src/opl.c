@@ -39,6 +39,7 @@
 //        Use newlib's 'stat' to get GMT time.
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // iox_stat_t
+#include <io_common.h>   // FIO_MT_RDWR
 int configGetStat(config_set_t *configSet, iox_stat_t *stat);
 
 #include <unistd.h>
@@ -865,6 +866,21 @@ int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *
     // The SMB prefix already ends with a backslash.
     snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
     return scanPOPS(callback, arg, popsPath);
+}
+
+int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+
+    listSupport = list_support[HDD_MODE].support;
+    if ((listSupport == NULL) || !listSupport->enabled)
+        return 0;
+
+    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
+    if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, OPL_HDD_POPS_PARTITION, FIO_MT_RDWR) < 0)
+        return 0;
+
+    return scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT);
 }
 
 int oplShouldAppsUpdate(void)
