@@ -828,7 +828,7 @@ config_set_t *oplGetLegacyAppsConfig(void)
 
     for (i = MODE_COUNT - 1; i >= 0; i--) {
         listSupport = list_support[i].support;
-        if ((i == HDD_MODE) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
+        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
             snprintf(appsPath, sizeof(appsPath), "%sconf_apps.cfg", prefix);
 

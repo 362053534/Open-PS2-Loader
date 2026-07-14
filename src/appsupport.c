@@ -30,6 +30,7 @@ struct app_info_linked
 static item_list_t appItemList;
 
 static void appFreeList(void);
+static void appFreeLegacyConfig(void);
 
 #define POPS_ELF_PREFIX "XX."
 
@@ -105,7 +106,9 @@ void appInit(item_list_t *itemList)
     LOG("APPSUPPORT Init\n");
     appForceUpdate = 1;
     configGetInt(configGetByType(CONFIG_OPL), "app_frames_delay", &appItemList.delay);
-    configApps = oplGetLegacyAppsConfig();
+    appFreeLegacyConfig();
+    if (!gAutoDetectPS1Apps)
+        configApps = oplGetLegacyAppsConfig();
     appsList = NULL;
     appItemList.enabled = 1;
 }
@@ -129,8 +132,11 @@ static int appNeedsUpdate(item_list_t *itemList)
     if (oplShouldAppsUpdate())
         update = 1;
 
-    if (update)
-        configApps = oplGetLegacyAppsConfig();
+    if (update) {
+        appFreeLegacyConfig();
+        if (!gAutoDetectPS1Apps)
+            configApps = oplGetLegacyAppsConfig();
+    }
 
     return update;
 }
@@ -347,17 +353,19 @@ static int appUpdateItemList(item_list_t *itemList)
 
     appsLinkedList = NULL;
 
-    // Get legacy apps list first, so it is possible to use appGetConfigValue(id).
-    appItemCount += addAppsLegacyList(&appsLinkedList);
+    if (gAutoDetectPS1Apps) {
+        // Add ELF files found in APPS folders on BDM devices.
+        appItemCount += oplScanBDMApps(&appScanBDMAppsCallback, &appsLinkedList);
 
-    // Scan devices for apps.
-    appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
+        // Add a POPSTARTER entry for every VCD found on BDM devices.
+        appItemCount += oplScanPOPS(&appScanPOPSCallback, &appsLinkedList);
+    } else {
+        // Get legacy apps list first, so it is possible to use appGetConfigValue(id).
+        appItemCount += addAppsLegacyList(&appsLinkedList);
 
-    // Add ELF files found in APPS folders on BDM devices.
-    appItemCount += oplScanBDMApps(&appScanBDMAppsCallback, &appsLinkedList);
-
-    // Add a POPSTARTER entry for every VCD found on BDM devices.
-    appItemCount += oplScanPOPS(&appScanPOPSCallback, &appsLinkedList);
+        // Scan title.cfg files on devices.
+        appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
+    }
 
     // Generate apps list
     if (appItemCount > 0) {
@@ -391,6 +399,14 @@ static void appFreeList(void)
     }
 
     appItemCount = 0;
+}
+
+static void appFreeLegacyConfig(void)
+{
+    if (configApps != NULL) {
+        configFree(configApps);
+        configApps = NULL;
+    }
 }
 
 static int appGetItemCount(item_list_t *itemList)
@@ -621,10 +637,13 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
         configSetStr(config, CONFIG_ITEM_SIZE, tmp);
     } else {
         char path[256];
-        snprintf(path, sizeof(path), "%s/%s", appsList[id].path, APP_TITLE_CONFIG_FILE);
-
-        config = configAlloc(0, NULL, path);
-        configRead(config); // Does not matter if the config file could be loaded or not.
+        if (appsList[id].generated) {
+            config = configAlloc(0, NULL, NULL);
+        } else {
+            snprintf(path, sizeof(path), "%s/%s", appsList[id].path, APP_TITLE_CONFIG_FILE);
+            config = configAlloc(0, NULL, path);
+            configRead(config); // Does not matter if the config file could be loaded or not.
+        }
 
         configSetStr(config, CONFIG_ITEM_NAME, appsList[id].boot);
         configSetStr(config, CONFIG_ITEM_LONGNAME, appsList[id].title);
@@ -672,6 +691,7 @@ static void appCleanUp(item_list_t *itemList, int exception)
         LOG("APPSUPPORT CleanUp\n");
 
         appFreeList();
+        appFreeLegacyConfig();
     }
 }
 
@@ -682,6 +702,7 @@ static void appShutdown(item_list_t *itemList)
         LOG("APPSUPPORT Shutdown\n");
 
         appFreeList();
+        appFreeLegacyConfig();
     }
 }
 
