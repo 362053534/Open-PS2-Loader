@@ -42,7 +42,7 @@ string_array_specifiers: ''
 gui_strings:
 - comment: Localized language name
   label: LOCALE
-  string: 中文列表强化版by峰哥
+  string: 内置中文字库(无缺字)
 - label: SAVE_CHANGES
   string: 保存设置
 - label: BACK

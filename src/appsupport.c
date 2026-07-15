@@ -611,15 +611,19 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
         if (appPOPSPrepareResult & APP_POPS_PREPARE_MOUNT_FAILED) {
-            guiMsgBox("无法挂载APA POPS分区", 0, NULL);
+            guiMsgBox("无法挂载__.POPS分区", 0, NULL);
             return;
         }
-        if (appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED)
-            guiMsgBox("未检测到记忆卡，不支持中文名启动", 0, NULL);
+        if ((appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
+            !guiMsgBox("未插记忆卡，中文名VCD会黑屏。继续启动？", 1, NULL)) {
+            if (isHDDPOPSItem)
+                oplRestoreHDDOPLPartition();
+            return;
+        }
         if (appPOPSPrepareResult & APP_POPS_PREPARE_LAUNCHER_FAILED) {
             if (isHDDPOPSItem)
                 oplRestoreHDDOPLPartition();
-            guiMsgBox("无法创建POPSTARTER启动文件", 0, NULL);
+            guiMsgBox("无法创建POPS启动文件，请检查写入权限", 0, NULL);
             return;
         }
     } else {
