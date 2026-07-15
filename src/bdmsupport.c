@@ -78,6 +78,21 @@ static void bdmEventHandler(void *packet, void *opt)
     BdmGeneration++;
 }
 
+int bdmHasDeviceEvent(item_list_t *itemList)
+{
+    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
+
+    return pDeviceData != NULL && pDeviceData->bdmDeviceTick != BdmGeneration;
+}
+
+void bdmRequestDeviceCheck(item_list_t *itemList)
+{
+    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
+
+    if (pDeviceData != NULL)
+        pDeviceData->bdmDeviceTick = -1;
+}
+
 static void bdmLoadBlockDeviceModules(void)
 {
     int modulesLoaded = 0;
@@ -160,6 +175,7 @@ void bdmInit(item_list_t *itemList)
     pDeviceData->bdmGames = NULL;
     pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
     pDeviceData->massDeviceIndex = -1;
+    pDeviceData->DeviceRemoved = 0;
     configGetInt(configGetByType(CONFIG_OPL), "usb_frames_delay", &itemList->delay);
     itemList->enabled = 1;
 }
@@ -277,6 +293,23 @@ static int bdmUpdateGameList(item_list_t *itemList)
 
     // 检查设备是否就绪，第一次没有开启设备时返回-1
     if (pDeviceData != NULL) {
+        if (pDeviceData->DeviceRemoved) {
+            free(pDeviceData->bdmGames);
+            pDeviceData->bdmGames = NULL;
+            pDeviceData->bdmGameCount = 0;
+            pDeviceData->bdmULSizePrev = -2;
+            pDeviceData->bdmModifiedCDPrev = 0;
+            pDeviceData->bdmModifiedDVDPrev = 0;
+            pDeviceData->bdmPrefix[0] = '\0';
+            pDeviceData->bdmDriver[0] = '\0';
+            pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
+            pDeviceData->massDeviceIndex = -1;
+            pDeviceData->ThemesLoaded = 0;
+            pDeviceData->LanguagesLoaded = 0;
+            pDeviceData->DeviceRemoved = 0;
+            return 0;
+        }
+
         int bdmDeviceOn = 0;
         if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
             usbFound = 1;
@@ -990,6 +1023,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         }
 
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
+        pDeviceData->DeviceRemoved = 1;
         return -1;
     }
     return 0;

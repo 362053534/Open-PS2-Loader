@@ -40,6 +40,7 @@ typedef struct
     unsigned char ThemesLoaded;
     unsigned char LanguagesLoaded;
     unsigned char ForceRefresh;
+    unsigned char DeviceRemoved;
 } bdm_device_data_t;
 
 void bdmInit(item_list_t *itemList);
@@ -53,5 +54,7 @@ void bdmEnumerateDevices();
 void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData);
 
 int bdmUpdateDeviceData(item_list_t *itemList);
+int bdmHasDeviceEvent(item_list_t *itemList);
+void bdmRequestDeviceCheck(item_list_t *itemList);
 
 #endif

@@ -1041,12 +1041,19 @@ void menuDeferredUpdate(void *data)
         updateMenuFromGameList(mod);
 
         // If other modes have been updated, then the apps list should be updated too.
-        if (mod->support->mode != APP_MODE)
+        if (mod->support->mode != APP_MODE) {
             shouldAppsUpdate = 1;
+
+            // Rebuild automatically detected APPS/POPS entries only after a BDM device
+            // has actually been added or removed.
+            if (gAutoRefresh && mod->support->mode >= BDM_MODE && mod->support->mode <= BDM_MODE4 &&
+                list_support[APP_MODE].support != NULL && list_support[APP_MODE].support->enabled)
+                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
+        }
     }
 }
 
-#define MENU_GENERAL_UPDATE_DELAY 60
+#define BDM_HOTPLUG_CHECK_DELAY 300
 
 void menuUpdateBDMSupport(void)
 {
@@ -1064,19 +1071,19 @@ static void menuUpdateHook()
     // if timer exceeds some threshold, schedule updates of the available input sources
     frameCounter++;
 
-    // schedule updates of all the list handlers
-    if (gAutoRefresh) {
-        // 自动刷新手动设置了updateDelay的设备，如SMB和APP
-        for (i = 0; i < MODE_COUNT; i++) {
-            if ((list_support[i].support && list_support[i].support->enabled) && ((list_support[i].support->updateDelay > 0) && (frameCounter % list_support[i].support->updateDelay == 0)))
-                ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
-        }
+    // Treat automatic refresh as BDM hotplug detection. BDM events are handled
+    // immediately, while a low-frequency probe catches any missed event. The probe
+    // only opens massN:/ for already connected devices; it does not rescan ISO files.
+    if (gAutoRefresh && mainScreenInitDone) {
+        const int fallbackCheck = frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0;
 
-        // 自动刷新MENU_UPD_DELAY_GENREFRESH的设备，如使BDM的热插拔正常生效
-        if ((frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) && mainScreenInitDone) {
-            for (i = 0; i < MODE_COUNT; i++) {
-                if ((list_support[i].support && list_support[i].support->enabled) && (list_support[i].support->updateDelay == MENU_UPD_DELAY_GENREFRESH))
-                    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+        for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+            item_list_t *support = list_support[i].support;
+
+            if (support != NULL && support->enabled && (bdmHasDeviceEvent(support) || fallbackCheck)) {
+                if (fallbackCheck)
+                    bdmRequestDeviceCheck(support);
+                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
             }
         }
     }
@@ -1096,7 +1103,7 @@ static void menuUpdateHook()
     //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     //    }
     //} else
-    //if ((frameCounter % MENU_GENERAL_UPDATE_DELAY == 0) || !mainScreenInitDone) {
+    //if ((frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0) || !mainScreenInitDone) {
 }
 
 static void clearErrorMessage(void)

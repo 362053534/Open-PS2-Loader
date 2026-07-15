@@ -28,6 +28,9 @@ int ioRegisterHandler(int type, io_request_handler_t handler);
  * @note The data are not freed! */
 int ioPutRequest(int type, void *data);
 
+/** schedules a request unless an identical type/data request is already pending */
+int ioPutRequestUnique(int type, void *data);
+
 /** removes all requests of a given type from the queue
  * @param type the type of the requests to remove
  * @return the count of the requests removed */

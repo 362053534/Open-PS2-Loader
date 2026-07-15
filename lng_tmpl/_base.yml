@@ -295,7 +295,7 @@ gui_strings:
 - label: ERR_VMC_CONTINUE
   string: 虚拟记忆卡%s出错，是否改为使用接口%d的物理记忆卡？
 - label: AUTOREFRESH
-  string: 自动刷新
+  string: 热插拔检测
 - label: ABOUT
   string: 关于
 - label: DEVS

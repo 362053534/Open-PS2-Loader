@@ -229,7 +229,7 @@ void ioInit(void)
     StartThread(gIOThreadId, NULL);
 }
 
-int ioPutRequest(int type, void *data)
+static int ioPutRequestInternal(int type, void *data, int unique)
 {
     if (isIOBlocked)
         return IO_ERR_IO_BLOCKED;
@@ -243,6 +243,17 @@ int ioPutRequest(int type, void *data)
     if (gIOTerminate) {
         SignalSema(gEndSemaId);
         return IO_ERR_IO_BLOCKED; // 自定义错误码
+    }
+
+    if (unique) {
+        struct io_request_t *req;
+
+        for (req = gReqList; req != NULL; req = req->next) {
+            if ((req->type == type) && (req->data == data)) {
+                SignalSema(gEndSemaId);
+                return IO_OK;
+            }
+        }
     }
 
     // We don't have to lock the tip of the queue...
@@ -272,6 +283,16 @@ int ioPutRequest(int type, void *data)
         WakeupThread(gIOThreadId);
 
     return IO_OK;
+}
+
+int ioPutRequest(int type, void *data)
+{
+    return ioPutRequestInternal(type, data, 0);
+}
+
+int ioPutRequestUnique(int type, void *data)
+{
+    return ioPutRequestInternal(type, data, 1);
 }
 
 int ioRemoveRequests(int type)

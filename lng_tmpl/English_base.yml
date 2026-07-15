@@ -295,7 +295,7 @@ gui_strings:
 - label: ERR_VMC_CONTINUE
   string: Error accessing VMC %s. Continue with the Memory Card in slot %d?
 - label: AUTOREFRESH
-  string: Automatic Refresh
+  string: Hotplug Detection
 - label: ABOUT
   string: About
 - label: DEVS
