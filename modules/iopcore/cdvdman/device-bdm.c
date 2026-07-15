@@ -141,56 +141,103 @@ void DeviceUnmount(void)
 
 static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sectors)
 {
-    u64 byte_offset;
-    u64 bytes_remaining;
     u8 *destination;
     u32 sector_size;
+    u32 iso_sectors_per_sector;
+    u32 iso_sectors_remaining;
+    u64 file_sector;
 
     if (g_bd == NULL)
         return SCECdErTRMOPN;
 
     sector_size = g_bd->sectorSize;
-    if (g_bd_generic_sector_buffer_size_2 != sector_size) {
-        if (g_bd_generic_sector_buffer_2 != NULL)
-            FreeSysMemory(g_bd_generic_sector_buffer_2);
-
-        g_bd_generic_sector_buffer_2 = AllocSysMemory(ALLOC_FIRST, sector_size, NULL);
-        if (g_bd_generic_sector_buffer_2 == NULL) {
-            g_bd_generic_sector_buffer_size_2 = 0;
-            return SCECdErREAD;
-        }
-
-        g_bd_generic_sector_buffer_size_2 = sector_size;
-    }
-
-    byte_offset = ((u64)lsn) * 2048;
-    bytes_remaining = ((u64)sectors) * 2048;
     destination = buffer;
 
     WaitSema(bdm_io_sema);
-    while (bytes_remaining > 0) {
-        u64 file_sector = byte_offset / sector_size;
-        u32 sector_offset = byte_offset % sector_size;
-        u32 bytes_to_copy;
+    if (g_bd_generic_sector_buffer_2 != NULL && g_bd_generic_sector_buffer_size_2 != sector_size) {
+        FreeSysMemory(g_bd_generic_sector_buffer_2);
+        g_bd_generic_sector_buffer_2 = NULL;
+        g_bd_generic_sector_buffer_size_2 = 0;
+    }
 
-        if (sector_offset == 0 && bytes_remaining >= sector_size) {
-            u32 sector_count = bytes_remaining / sector_size;
+    if (sector_size == 1024 || sector_size == 2048) {
+        u32 blocks_per_iso_sector = 2048 / sector_size;
 
-            if (sector_count > 0xffff)
-                sector_count = 0xffff;
+        file_sector = (u64)lsn * blocks_per_iso_sector;
+        iso_sectors_remaining = sectors;
+        while (iso_sectors_remaining > 0) {
+            u32 block_count;
+            u32 sectors_to_read;
+
+            sectors_to_read = iso_sectors_remaining;
+            if (sectors_to_read > (0xffff / blocks_per_iso_sector))
+                sectors_to_read = 0xffff / blocks_per_iso_sector;
+            block_count = sectors_to_read * blocks_per_iso_sector;
 
             if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
                           &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
-                          file_sector, destination, sector_count) != sector_count) {
+                          file_sector, destination, block_count) != block_count) {
                 SignalSema(bdm_io_sema);
                 return SCECdErREAD;
             }
 
-            bytes_to_copy = sector_count * sector_size;
+            destination += sectors_to_read * 2048;
+            file_sector += block_count;
+            iso_sectors_remaining -= sectors_to_read;
+        }
+
+        SignalSema(bdm_io_sema);
+        return SCECdErNO;
+    } else if (sector_size == 4096) {
+        file_sector = lsn / 2;
+        iso_sectors_per_sector = 2;
+    } else if (sector_size == 8192) {
+        file_sector = lsn / 4;
+        iso_sectors_per_sector = 4;
+    } else {
+        SignalSema(bdm_io_sema);
+        return SCECdErREAD;
+    }
+
+    iso_sectors_remaining = sectors;
+    while (iso_sectors_remaining > 0) {
+        u32 iso_sector_offset = lsn % iso_sectors_per_sector;
+        u32 sectors_to_read;
+
+        if (iso_sector_offset == 0 && iso_sectors_remaining >= iso_sectors_per_sector) {
+            u32 block_count = iso_sectors_remaining / iso_sectors_per_sector;
+
+            if (block_count > 0xffff)
+                block_count = 0xffff;
+
+            if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                          &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
+                          file_sector, destination, block_count) != block_count) {
+                SignalSema(bdm_io_sema);
+                return SCECdErREAD;
+            }
+
+            sectors_to_read = block_count * iso_sectors_per_sector;
+            destination += sectors_to_read * 2048;
+            file_sector += block_count;
         } else {
-            bytes_to_copy = sector_size - sector_offset;
-            if (bytes_to_copy > bytes_remaining)
-                bytes_to_copy = bytes_remaining;
+            if (g_bd_generic_sector_buffer_size_2 != sector_size) {
+                if (g_bd_generic_sector_buffer_2 != NULL)
+                    FreeSysMemory(g_bd_generic_sector_buffer_2);
+
+                g_bd_generic_sector_buffer_2 = AllocSysMemory(ALLOC_FIRST, sector_size, NULL);
+                if (g_bd_generic_sector_buffer_2 == NULL) {
+                    g_bd_generic_sector_buffer_size_2 = 0;
+                    SignalSema(bdm_io_sema);
+                    return SCECdErREAD;
+                }
+
+                g_bd_generic_sector_buffer_size_2 = sector_size;
+            }
+
+            sectors_to_read = iso_sectors_per_sector - iso_sector_offset;
+            if (sectors_to_read > iso_sectors_remaining)
+                sectors_to_read = iso_sectors_remaining;
 
             if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
                           &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
@@ -199,12 +246,13 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
                 return SCECdErREAD;
             }
 
-            memcpy(destination, g_bd_generic_sector_buffer_2 + sector_offset, bytes_to_copy);
+            memcpy(destination, g_bd_generic_sector_buffer_2 + iso_sector_offset * 2048, sectors_to_read * 2048);
+            destination += sectors_to_read * 2048;
+            file_sector++;
         }
 
-        byte_offset += bytes_to_copy;
-        bytes_remaining -= bytes_to_copy;
-        destination += bytes_to_copy;
+        lsn += sectors_to_read;
+        iso_sectors_remaining -= sectors_to_read;
     }
     SignalSema(bdm_io_sema);
 
