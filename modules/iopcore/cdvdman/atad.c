@@ -754,7 +754,6 @@ static unsigned int ata_get_logical_sector_size_2(int device)
     u32 logical_sector_words;
     u16 physical_logical_sector_size;
 
-    memset(identify_data, 0, sizeof(identify_data));
     if (ata_read_identify_data_2(device, identify_data) != 0)
         return 512;
 
