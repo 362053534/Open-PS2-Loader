@@ -115,6 +115,7 @@ volatile int theardInitDone = 0;
 
 // frame counter
 static unsigned int frameCounter;
+static unsigned char forcedMenuUpdates[MODE_COUNT];
 
 static char errorMessage[256];
 
@@ -1036,8 +1037,10 @@ void menuDeferredUpdate(void *data)
     if (!mod->support)
         return;
 
-    // see if we have to update
-    if (mod->support->itemNeedsUpdate(mod->support)) {
+    // A settings change can request one full rebuild even when no source files
+    // have changed. This is used by TXT mapping after the user presses Refresh.
+    if (forcedMenuUpdates[*mode] || mod->support->itemNeedsUpdate(mod->support)) {
+        forcedMenuUpdates[*mode] = 0;
         updateMenuFromGameList(mod);
 
         // If other modes have been updated, then the apps list should be updated too.
@@ -1054,6 +1057,16 @@ void menuDeferredUpdate(void *data)
 }
 
 #define BDM_HOTPLUG_CHECK_DELAY 300
+
+void menuMarkGameListsForRefresh(void)
+{
+    int i;
+
+    for (i = BDM_MODE; i <= HDD_MODE; i++) {
+        if (list_support[i].support != NULL && list_support[i].support->enabled)
+            forcedMenuUpdates[i] = 1;
+    }
+}
 
 void menuUpdateBDMSupport(void)
 {
@@ -2140,7 +2153,7 @@ static void setDefaults(void)
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
-    gTxtRename = 1;
+    gTxtRename = 0;
     gAutosort = 1;
     gAutoRefresh = 0;
     gEnableDebug = 0;

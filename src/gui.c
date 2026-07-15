@@ -714,12 +714,14 @@ void guiShowUIConfig(void)
     // clang-format on
     int previousVMode;
     int previousTheme;
+    int previousTxtRename;
 
     const char *coverArtMode[] = {"性能模式(仅支持PNG)", "兼容模式(JPG & PNG)", NULL};
 
 reselect_video_mode:
     previousVMode = gVMode;
     previousTheme = thmGetGuiValue();
+    previousTxtRename = gTxtRename;
     diaSetEnum(diaUIConfig, UICFG_THEME, (const char **)thmGetGuiList());
     diaSetEnum(diaUIConfig, UICFG_LANG, (const char **)lngGetGuiList());
     diaSetEnum(diaUIConfig, UICFG_VMODE, vmodeNames);
@@ -750,6 +752,8 @@ reselect_video_mode:
             diaGetColor(diaUIConfig, UICFG_SELCOL, gDefaultSelTextColor);
         }
         diaGetInt(diaUIConfig, UICFG_TXTRENAME, &gTxtRename);
+        if (previousTxtRename != gTxtRename)
+            menuMarkGameListsForRefresh();
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
         diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);

@@ -241,6 +241,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit);
 void setDefaultColors(void);
 
 void menuUpdateBDMSupport(void);
+void menuMarkGameListsForRefresh(void);
 
 #define MENU_ITEM_HEIGHT 19
 
