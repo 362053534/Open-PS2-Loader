@@ -137,7 +137,7 @@ gui_strings:
 - label: LOAD_FROM_DISC
   string: 从光盘中读取
 - label: PLEASE_WAIT
-  string: 请稍后
+  string: 处理中
 - label: ERROR_LOADING_ID
   string: 读取游戏ID时出错
 - label: AUTOSORT
@@ -163,13 +163,13 @@ gui_strings:
 - label: REFRESH
   string: 刷新
 - label: BDMMODE
-  string: BDM设备启动模式
+  string: BDM启动模式
 - label: HDDMODE
-  string: HDD(APA)设备启动模式
+  string: HDD(APA)启动模式
 - label: ETHMODE
-  string: SMB设备启动模式
+  string: SMB启动模式
 - label: APPMODE
-  string: 应用程序启动模式
+  string: APPS & PS1启动模式
 - label: AUTO
   string: 自动
 - label: MANUAL
@@ -309,7 +309,7 @@ gui_strings:
 - label: HINT_SPINDOWN
   string: 数值以分钟计，设为0则禁用降速
 - label: HDD_SPINDOWN
-  string: 自动HDD降速
+  string: HDD自动降速
 - label: VMODE
   string: 影片模式
 - label: UICOLOR
