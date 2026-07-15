@@ -16,9 +16,17 @@
 
 static int appForceUpdate = 1;
 static int appItemCount = 0;
+static int appPOPSPrepareStatus;
+static int appPOPSPrepareResult;
+static int appPOPSPrepareID;
+static int appPOPSPrepareHDD;
 
 static config_set_t *configApps;
 static app_info_t *appsList;
+
+#define APP_POPS_PREPARE_MOUNT_FAILED    0x01
+#define APP_POPS_PREPARE_DRIVERS_FAILED  0x02
+#define APP_POPS_PREPARE_LAUNCHER_FAILED 0x04
 
 struct app_info_linked
 {
@@ -571,6 +579,22 @@ static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
     return result;
 }
 
+static void appPreparePOPSLauncher(void)
+{
+    appPOPSPrepareResult = 0;
+
+    if (appPOPSPrepareHDD && oplMountHDDPOPS() < 0) {
+        appPOPSPrepareResult |= APP_POPS_PREPARE_MOUNT_FAILED;
+    } else {
+        if (gAutoDetectPS1Apps && installPopstarterDrivers() < 0)
+            appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
+        if (appCreateEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
+            appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
+    }
+
+    appPOPSPrepareStatus = 0;
+}
+
 static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int fd;
@@ -582,13 +606,18 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     if (appIsPOPSLauncher(&appsList[id])) {
         isHDDPOPSItem = appIsHDDPOPSLauncher(&appsList[id]);
-        if (isHDDPOPSItem && oplMountHDDPOPS() < 0) {
+        appPOPSPrepareStatus = 1;
+        appPOPSPrepareID = id;
+        appPOPSPrepareHDD = isHDDPOPSItem;
+        guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
+
+        if (appPOPSPrepareResult & APP_POPS_PREPARE_MOUNT_FAILED) {
             guiMsgBox("无法挂载APA POPS分区", 0, NULL);
             return;
         }
-        if (gAutoDetectPS1Apps && installPopstarterDrivers() < 0)
+        if (appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED)
             guiMsgBox("未检测到记忆卡，不支持中文名启动", 0, NULL);
-        if (appCreateEmbeddedPOPSLauncher(&appsList[id]) < 0) {
+        if (appPOPSPrepareResult & APP_POPS_PREPARE_LAUNCHER_FAILED) {
             if (isHDDPOPSItem)
                 oplRestoreHDDOPLPartition();
             guiMsgBox("无法创建POPSTARTER启动文件", 0, NULL);
