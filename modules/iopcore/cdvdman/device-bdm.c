@@ -21,6 +21,8 @@ extern struct cdvdman_settings_bdm cdvdman_settings;
 static struct block_device *g_bd = NULL;
 static u32 g_bd_sectors_per_sector = 4;
 static int bdm_io_sema;
+static u8 *g_bd_generic_sector_buffer_2 = NULL;
+static u32 g_bd_generic_sector_buffer_size_2 = 0;
 
 extern struct irx_export_table _exp_bdm;
 
@@ -89,6 +91,12 @@ void DeviceInit(void)
 void DeviceDeinit(void)
 {
     DPRINTF("%s\n", __func__);
+
+    if (g_bd_generic_sector_buffer_2 != NULL) {
+        FreeSysMemory(g_bd_generic_sector_buffer_2);
+        g_bd_generic_sector_buffer_2 = NULL;
+        g_bd_generic_sector_buffer_size_2 = 0;
+    }
 }
 
 int DeviceReady(void)
@@ -131,6 +139,78 @@ void DeviceUnmount(void)
     DPRINTF("%s\n", __func__);
 }
 
+static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sectors)
+{
+    u64 byte_offset;
+    u64 bytes_remaining;
+    u8 *destination;
+    u32 sector_size;
+
+    if (g_bd == NULL)
+        return SCECdErTRMOPN;
+
+    sector_size = g_bd->sectorSize;
+    if (g_bd_generic_sector_buffer_size_2 != sector_size) {
+        if (g_bd_generic_sector_buffer_2 != NULL)
+            FreeSysMemory(g_bd_generic_sector_buffer_2);
+
+        g_bd_generic_sector_buffer_2 = AllocSysMemory(ALLOC_FIRST, sector_size, NULL);
+        if (g_bd_generic_sector_buffer_2 == NULL) {
+            g_bd_generic_sector_buffer_size_2 = 0;
+            return SCECdErREAD;
+        }
+
+        g_bd_generic_sector_buffer_size_2 = sector_size;
+    }
+
+    byte_offset = ((u64)lsn) * 2048;
+    bytes_remaining = ((u64)sectors) * 2048;
+    destination = buffer;
+
+    WaitSema(bdm_io_sema);
+    while (bytes_remaining > 0) {
+        u64 file_sector = byte_offset / sector_size;
+        u32 sector_offset = byte_offset % sector_size;
+        u32 bytes_to_copy;
+
+        if (sector_offset == 0 && bytes_remaining >= sector_size) {
+            u32 sector_count = bytes_remaining / sector_size;
+
+            if (sector_count > 0xffff)
+                sector_count = 0xffff;
+
+            if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                          &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
+                          file_sector, destination, sector_count) != sector_count) {
+                SignalSema(bdm_io_sema);
+                return SCECdErREAD;
+            }
+
+            bytes_to_copy = sector_count * sector_size;
+        } else {
+            bytes_to_copy = sector_size - sector_offset;
+            if (bytes_to_copy > bytes_remaining)
+                bytes_to_copy = bytes_remaining;
+
+            if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                          &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
+                          file_sector, g_bd_generic_sector_buffer_2, 1) != 1) {
+                SignalSema(bdm_io_sema);
+                return SCECdErREAD;
+            }
+
+            memcpy(destination, g_bd_generic_sector_buffer_2 + sector_offset, bytes_to_copy);
+        }
+
+        byte_offset += bytes_to_copy;
+        bytes_remaining -= bytes_to_copy;
+        destination += bytes_to_copy;
+    }
+    SignalSema(bdm_io_sema);
+
+    return SCECdErNO;
+}
+
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     int rv = SCECdErNO;
@@ -139,6 +219,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
     if (g_bd == NULL)
         return SCECdErTRMOPN;
+
+    if (g_bd->sectorSize != 512)
+        return DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
 
     WaitSema(bdm_io_sema);
     //if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4) != (sectors * 4))

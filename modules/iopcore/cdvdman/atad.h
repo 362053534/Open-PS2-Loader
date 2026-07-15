@@ -35,6 +35,8 @@ typedef struct _ata_devinfo
     u32 total_sectors;
     /** Word 0x100 of the identify info.  */
     u32 security_status;
+    /** Size in bytes of one ATA logical sector.  */
+    u32 logical_sector_size;
 } ata_devinfo_t;
 
 /* Error definitions.  */

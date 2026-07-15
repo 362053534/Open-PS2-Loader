@@ -79,6 +79,9 @@ static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 co
 static int ata_bd_write(struct block_device *bd, u64 sector, const void *buffer, u16 count);
 static void ata_bd_flush(struct block_device *bd);
 static int ata_bd_stop(struct block_device *bd);
+static unsigned int ata_get_logical_sector_size_2(int device);
+static int ata_read_identify_data_2(int device, u16 *identify_data);
+static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 nsectors, int dir, unsigned int sector_size);
 #endif
 
 /* ATA command info.  */
@@ -194,7 +197,8 @@ int atad_start(void)
     g_ata_bd.devNr = 0;
     g_ata_bd.parNr = 0;
     g_ata_bd.parId = 0x00;
-    g_ata_bd.sectorSize = 512;
+    atad_devinfo.logical_sector_size = ata_get_logical_sector_size_2(0);
+    g_ata_bd.sectorSize = atad_devinfo.logical_sector_size;
     g_ata_bd.sectorOffset = 0;
     g_ata_bd.sectorCount = 0;
     g_ata_bd.read = ata_bd_read;
@@ -711,8 +715,133 @@ static void ata_shutdown_cb(void)
 }
 
 #ifdef USE_BDM_ATA
+static int ata_read_identify_data_2(int device, u16 *identify_data)
+{
+    USE_ATA_REGS;
+    int i, result;
+    u16 status;
+
+    if ((result = ata_device_select(device)) != 0)
+        return result;
+
+    ata_hwport->r_control = 0;
+    ata_hwport->r_feature = 0;
+    ata_hwport->r_nsector = 0;
+    ata_hwport->r_sector = 0;
+    ata_hwport->r_lcyl = 0;
+    ata_hwport->r_hcyl = 0;
+    ata_hwport->r_select = ((device << 4) | ATA_SEL_LBA) & 0xff;
+    ata_hwport->r_command = ATA_C_IDENTIFY_DEVICE;
+
+    if ((result = ata_wait_busy()) != 0)
+        return result;
+
+    status = ata_hwport->r_status & 0xff;
+    if (status & ATA_STAT_ERR)
+        return ATA_RES_ERR_IO;
+    if (!(status & ATA_STAT_DRQ))
+        return ATA_RES_ERR_NODATA;
+
+    for (i = 0; i < 256; i++)
+        identify_data[i] = ata_hwport->r_data;
+
+    return 0;
+}
+
+static unsigned int ata_get_logical_sector_size_2(int device)
+{
+    u16 identify_data[256];
+    u32 logical_sector_words;
+    u16 physical_logical_sector_size;
+
+    memset(identify_data, 0, sizeof(identify_data));
+    if (ata_read_identify_data_2(device, identify_data) != 0)
+        return 512;
+
+    physical_logical_sector_size = identify_data[106];
+    if ((physical_logical_sector_size & 0xc000) != 0x4000 ||
+        !(physical_logical_sector_size & 0x1000))
+        return 512;
+
+    logical_sector_words = identify_data[117] | ((u32)identify_data[118] << 16);
+    if (logical_sector_words < 256 || logical_sector_words > (0xffffffff / 2))
+        return 512;
+
+    logical_sector_words *= 2;
+    if (logical_sector_words < 512 || (logical_sector_words % 512) != 0)
+        return 512;
+
+    return logical_sector_words;
+}
+
+static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 nsectors, int dir, unsigned int sector_size)
+{
+    USE_SPD_REGS;
+    int res = 0, retries;
+    u16 sector, lcyl, hcyl, select, command, len;
+    u32 dma_blkcount_per_sector;
+
+    dma_blkcount_per_sector = sector_size / 512;
+    if (dma_blkcount_per_sector == 0)
+        return ATA_RES_ERR_IO;
+
+    WAITIOSEMA(ata_io_sema);
+
+    while (res == 0 && nsectors > 0) {
+        if (lba_48bit) {
+            len = (nsectors > 65536) ? 65536 : nsectors;
+            sector = ((lba >> 16) & 0xff00) | (lba & 0xff);
+            lcyl = ((lba >> 24) & 0xff00) | ((lba >> 8) & 0xff);
+            hcyl = ((lba >> 32) & 0xff00) | ((lba >> 16) & 0xff);
+            select = (device << 4) & 0xffff;
+            command = (dir == 1) ? ATA_C_WRITE_DMA_EXT : ATA_C_READ_DMA_EXT;
+        } else {
+            len = (nsectors > 256) ? 256 : nsectors;
+            sector = lba & 0xff;
+            lcyl = (lba >> 8) & 0xff;
+            hcyl = (lba >> 16) & 0xff;
+            select = ((device << 4) | ((lba >> 24) & 0xf)) & 0xffff;
+            command = (dir == 1) ? ATA_C_WRITE_DMA : ATA_C_READ_DMA;
+        }
+
+        for (retries = 3; retries > 0; retries--) {
+            if (ata_gamestar_workaround)
+                ata_set_dir(dir);
+
+            if ((res = sceAtaExecCmd(buf, len, 0, len, sector, lcyl, hcyl, select, command)) != 0)
+                break;
+
+            /* The ATA command counts logical sectors, while DEV9 DMA still
+               transfers in 512-byte blocks. sceAtaWaitResult() consumes
+               blkcount for DMA commands, so convert it only for this new
+               non-512-byte path before waiting for completion. */
+            atad_cmd_state.blkcount = len * dma_blkcount_per_sector;
+
+            if (!ata_gamestar_workaround)
+                ata_set_dir(dir);
+
+            res = sceAtaWaitResult();
+            SPD_REG16(SPD_R_IF_CTRL) &= ~SPD_IF_DMA_ENABLE;
+
+            if (res != ATA_RES_ERR_ICRC)
+                break;
+        }
+
+        buf = (void *)((u8 *)buf + len * sector_size);
+        lba += len;
+        nsectors -= len;
+    }
+
+    SIGNALIOSEMA(ata_io_sema);
+
+    return res;
+}
+
 static int ata_bd_io_common(struct block_device *bd, u64 lba, void *buf, u16 nsectors, int dir)
 {
+    if (bd->sectorSize != 512)
+        return ata_device_sector_io_internal_2(bd->devNr, buf, lba, nsectors, dir, bd->sectorSize);
+
     return ata_device_sector_io_internal(bd->devNr, buf, lba, nsectors, dir);
 }
 
