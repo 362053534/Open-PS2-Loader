@@ -752,8 +752,10 @@ reselect_video_mode:
             diaGetColor(diaUIConfig, UICFG_SELCOL, gDefaultSelTextColor);
         }
         diaGetInt(diaUIConfig, UICFG_TXTRENAME, &gTxtRename);
-        if (previousTxtRename != gTxtRename)
+        if (previousTxtRename != gTxtRename) {
             menuMarkGameListsForRefresh();
+            menuRefreshGameLists();
+        }
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
         diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);

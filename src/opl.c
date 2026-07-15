@@ -348,6 +348,11 @@ static void itemExecRefresh(struct menu_item *curMenu)
     sfxPlay(SFX_CONFIRM);
 }
 
+void menuRefreshGameLists(void)
+{
+    itemExecRefresh(NULL);
+}
+
 static void itemExecCross(struct menu_item *curMenu)
 {
     if (gSelectButton == KEY_CROSS)
