@@ -80,6 +80,8 @@ static void bdmEventHandler(void *packet, void *opt)
 
 static void bdmLoadBlockDeviceModules(void)
 {
+    int modulesLoaded = 0;
+
     if (gEnableILK && !iLinkModLoaded) {
         // Load iLink Block Device drivers
         LOG("[ILINKMAN]:\n");
@@ -88,6 +90,7 @@ static void bdmLoadBlockDeviceModules(void)
         sysLoadModuleBuffer(&IEEE1394_bd_irx, size_IEEE1394_bd_irx, 0, NULL);
 
         iLinkModLoaded = 1;
+        modulesLoaded = 1;
     }
 
     if (gEnableMX4SIO && !mx4sioModLoaded) {
@@ -96,6 +99,7 @@ static void bdmLoadBlockDeviceModules(void)
         sysLoadModuleBuffer(&mx4sio_bd_irx, size_mx4sio_bd_irx, 0, NULL);
 
         mx4sioModLoaded = 1;
+        modulesLoaded = 1;
     }
 
     if (gEnableBdmHDD && !hddModLoaded) {
@@ -104,8 +108,13 @@ static void bdmLoadBlockDeviceModules(void)
         hddLoadModules();
 
         hddModLoaded = 1;
+        modulesLoaded = 1;
     }
-    usleep(100000); // 加载完驱动后，延迟100毫秒再进行后续初始化
+
+    // Give newly loaded block-device drivers time to initialize. Do not stall
+    // periodic BDM refreshes once every optional driver is already loaded.
+    if (modulesLoaded)
+        usleep(100000);
 }
 
 void bdmLoadModules(void)
