@@ -41,6 +41,7 @@ typedef struct
     unsigned char LanguagesLoaded;
     unsigned char ForceRefresh;
     unsigned char DeviceRemoved;
+    unsigned char DisconnectFailures;
 } bdm_device_data_t;
 
 void bdmInit(item_list_t *itemList);

@@ -176,6 +176,7 @@ void bdmInit(item_list_t *itemList)
     pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
     pDeviceData->massDeviceIndex = -1;
     pDeviceData->DeviceRemoved = 0;
+    pDeviceData->DisconnectFailures = 0;
     configGetInt(configGetByType(CONFIG_OPL), "usb_frames_delay", &itemList->delay);
     itemList->enabled = 1;
 }
@@ -307,6 +308,7 @@ static int bdmUpdateGameList(item_list_t *itemList)
             pDeviceData->ThemesLoaded = 0;
             pDeviceData->LanguagesLoaded = 0;
             pDeviceData->DeviceRemoved = 0;
+            pDeviceData->DisconnectFailures = 0;
             return 0;
         }
 
@@ -932,6 +934,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
+        pDeviceData->DisconnectFailures = 0;
+
         if (pDeviceData->bdmPrefix[0] == '\0') {
             if (gBDMPrefix[0] != '\0')
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
@@ -1015,6 +1019,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             return result;
         }
     } else if (dir < 0 && visible == 1) {
+        // A transient I/O failure must not immediately be treated as physical removal.
+        // Confirm the failure on the next hotplug probe before hiding the device.
+        if (pDeviceData->DisconnectFailures < 2)
+            pDeviceData->DisconnectFailures++;
+        if (pDeviceData->DisconnectFailures < 2) {
+            LOG("Mass device: %d directory open failed (%d), waiting for confirmation\n", itemList->mode, dir);
+            return 0;
+        }
+
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
         if (itemList->owner != NULL) {
@@ -1024,6 +1037,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
         pDeviceData->DeviceRemoved = 1;
+        pDeviceData->DisconnectFailures = 0;
         return -1;
     }
     return 0;
