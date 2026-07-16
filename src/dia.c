@@ -26,7 +26,7 @@
 // length of breaking line in pixels
 #define UI_BREAK_LEN      600
 // scroll speed (delay in frame!) when in dialogs
-#define DIA_SCROLL_SPEED  10
+//#define DIA_SCROLL_SPEED  10
 // scroll speed (delay in frame!) when setting int value
 #define DIA_INT_SET_SPEED 2
 
@@ -876,8 +876,9 @@ int diaExecuteDialog(struct UIItem *ui, int uiId, short inMenu, int (*updater)(i
     diaStoreScrollSpeed();
 
     // slower controls for dialogs
-    setButtonDelay(KEY_UP, DIA_SCROLL_SPEED);
-    setButtonDelay(KEY_DOWN, DIA_SCROLL_SPEED);
+    //setButtonDelay(KEY_UP, DIA_SCROLL_SPEED);
+    //setButtonDelay(KEY_DOWN, DIA_SCROLL_SPEED);
+    // Dialog navigation uses the controller scroll speed saved above.
 
     // okay, we have the first selectable item
     // we can proceed with rendering etc. etc.
@@ -893,8 +894,9 @@ int diaExecuteDialog(struct UIItem *ui, int uiId, short inMenu, int (*updater)(i
             haveFocus = diaHandleInput(cur, &modified);
 
             if (!haveFocus) {
-                setButtonDelay(KEY_UP, DIA_SCROLL_SPEED);
-                setButtonDelay(KEY_DOWN, DIA_SCROLL_SPEED);
+                //setButtonDelay(KEY_UP, DIA_SCROLL_SPEED);
+                //setButtonDelay(KEY_DOWN, DIA_SCROLL_SPEED);
+                diaRestoreScrollSpeed();
             }
         } else {
             modified = 0;
