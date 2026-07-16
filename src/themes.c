@@ -1405,7 +1405,7 @@ static void thmRebuildGuiNames(void)
     guiThemesNames = (const char **)malloc((nThemes + 2) * sizeof(char **));
 
     // add default internal
-    guiThemesNames[0] = "强化主题(支持背景图)";
+    guiThemesNames[0] = "强化原生主题-支持背景图";
 
     int i = 0;
     for (; i < nThemes; i++) {
