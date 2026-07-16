@@ -91,6 +91,10 @@ IMPORT_BIN2C(popstarter_usbd_irx);
 
 IMPORT_BIN2C(popstarter_usbhdfsd_irx);
 
+IMPORT_BIN2C(popstarter_bdmhdd_irx);
+
+IMPORT_BIN2C(popstarter_mx4sio_irx);
+
 IMPORT_BIN2C(ppctty_irx);
 
 IMPORT_BIN2C(ps2atad_irx);

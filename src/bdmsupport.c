@@ -85,6 +85,17 @@ int bdmHasDeviceEvent(item_list_t *itemList)
     return pDeviceData != NULL && pDeviceData->bdmDeviceTick != BdmGeneration;
 }
 
+int bdmGetDeviceType(int mode)
+{
+    bdm_device_data_t *pDeviceData;
+
+    if (mode < BDM_MODE || mode > BDM_MODE4 || !bdmDeviceListInitialized)
+        return BDM_TYPE_UNKNOWN;
+
+    pDeviceData = (bdm_device_data_t *)bdmDeviceList[mode].priv;
+    return pDeviceData != NULL ? pDeviceData->bdmDeviceType : BDM_TYPE_UNKNOWN;
+}
+
 void bdmRequestDeviceCheck(item_list_t *itemList)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;

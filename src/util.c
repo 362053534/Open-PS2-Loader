@@ -16,6 +16,7 @@
 #include <rom0_info.h>
 
 #include "include/hdd.h"
+#include "include/bdmsupport.h"
 
 #include "../modules/isofs/zso.h"
 
@@ -161,7 +162,7 @@ static int popstarterCheckDriver(const char *path, int expectedSize)
     return size == expectedSize ? 2 : 1;
 }
 
-static int popstarterGetDriverState(int slot)
+static int popstarterGetDriverState(int slot, int usbhdfsdSize)
 {
     char path[64];
     int driversFound, driversCurrent, state;
@@ -178,7 +179,7 @@ static int popstarterGetDriverState(int slot)
     }
 
     snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-    state = popstarterCheckDriver(path, size_popstarter_usbhdfsd_irx);
+    state = popstarterCheckDriver(path, usbhdfsdSize);
     if (state > 0) {
         driversFound++;
         if (state == 2)
@@ -226,7 +227,7 @@ static int popstarterWriteDriver(char *path, const void *buffer, int size)
     return 0;
 }
 
-static int popstarterDeployDrivers(int slot)
+static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usbhdfsdSize)
 {
     char path[64];
     int result;
@@ -238,16 +239,29 @@ static int popstarterDeployDrivers(int slot)
         result = -1;
 
     snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-    if (popstarterWriteDriver(path, popstarter_usbhdfsd_irx, size_popstarter_usbhdfsd_irx) < 0)
+    if (popstarterWriteDriver(path, usbhdfsdBuffer, usbhdfsdSize) < 0)
         result = -1;
 
     return result;
 }
 
-int installPopstarterDrivers(void)
+int installPopstarterDrivers(int bdmDeviceType)
 {
     DIR *rootDir;
     int slot, state, firstAvailableSlot;
+    const void *usbhdfsdBuffer;
+    int usbhdfsdSize;
+
+    if (bdmDeviceType == BDM_TYPE_ATA) {
+        usbhdfsdBuffer = popstarter_bdmhdd_irx;
+        usbhdfsdSize = size_popstarter_bdmhdd_irx;
+    } else if (bdmDeviceType == BDM_TYPE_SDC) {
+        usbhdfsdBuffer = popstarter_mx4sio_irx;
+        usbhdfsdSize = size_popstarter_mx4sio_irx;
+    } else {
+        usbhdfsdBuffer = popstarter_usbhdfsd_irx;
+        usbhdfsdSize = size_popstarter_usbhdfsd_irx;
+    }
 
     firstAvailableSlot = -1;
     for (slot = 0; slot < 2; slot++) {
@@ -262,7 +276,7 @@ int installPopstarterDrivers(void)
         if (firstAvailableSlot < 0)
             firstAvailableSlot = slot;
 
-        state = popstarterGetDriverState(slot);
+        state = popstarterGetDriverState(slot, usbhdfsdSize);
         if (state == POPSTARTER_DRIVERS_CURRENT) {
             LOG("POPSTARTER: drivers are current on mc%d\n", slot);
             return 0;
@@ -270,13 +284,13 @@ int installPopstarterDrivers(void)
 
         if (state == POPSTARTER_DRIVERS_INCOMPLETE) {
             LOG("POPSTARTER: repairing drivers on mc%d\n", slot);
-            return popstarterDeployDrivers(slot);
+            return popstarterDeployDrivers(slot, usbhdfsdBuffer, usbhdfsdSize);
         }
     }
 
     if (firstAvailableSlot >= 0) {
         LOG("POPSTARTER: installing drivers on mc%d\n", firstAvailableSlot);
-        return popstarterDeployDrivers(firstAvailableSlot);
+        return popstarterDeployDrivers(firstAvailableSlot, usbhdfsdBuffer, usbhdfsdSize);
     }
 
     return -1;

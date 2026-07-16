@@ -53,6 +53,16 @@ static int appIsHDDPOPSLauncher(const app_info_t *app)
     return app->popstarter && !strncmp(app->path, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
 }
 
+static int appGetPOPSBDMDeviceType(const app_info_t *app)
+{
+    int mode = oplPath2Mode(app->path);
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4)
+        return bdmGetDeviceType(mode);
+
+    return BDM_TYPE_UNKNOWN;
+}
+
 static struct config_value_t *appGetConfigValue(int id)
 {
     struct config_value_t *cur = configApps->head;
@@ -586,7 +596,7 @@ static void appPreparePOPSLauncher(void)
     if (appPOPSPrepareHDD && oplMountHDDPOPS() < 0) {
         appPOPSPrepareResult |= APP_POPS_PREPARE_MOUNT_FAILED;
     } else {
-        if (gAutoDetectPS1Apps && installPopstarterDrivers() < 0)
+        if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
         if (appCreateEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
