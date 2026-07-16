@@ -32,7 +32,6 @@ static int mcID = -1;
 #define POPSTARTER_DRIVER_DIR       "POPSTARTER"
 #define POPSTARTER_USBD_FILENAME    "usbd.irx"
 #define POPSTARTER_USBHDFSD_FILENAME "usbhdfsd.irx"
-#define POPSTARTER_DRIVER_BACKUP_SUFFIX ".bak"
 
 enum {
     POPSTARTER_DRIVERS_NONE,
@@ -192,25 +191,6 @@ static int popstarterGetDriverState(int slot)
     return driversCurrent == 2 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
 }
 
-static int popstarterBackupDriver(const char *path)
-{
-    char backupPath[68];
-
-    if (snprintf(backupPath, sizeof(backupPath), "%s%s", path, POPSTARTER_DRIVER_BACKUP_SUFFIX) >= sizeof(backupPath)) {
-        LOG("POPSTARTER: backup path is too long for %s\n", path);
-        return -1;
-    }
-
-    // Keep one backup of the driver being replaced.
-    unlink(backupPath);
-    if (rename(path, backupPath) != 0) {
-        LOG("POPSTARTER: failed to back up %s\n", path);
-        return -1;
-    }
-
-    return 0;
-}
-
 static int popstarterWriteDriver(char *path, const void *buffer, int size)
 {
     const char *data = buffer;
@@ -223,9 +203,6 @@ static int popstarterWriteDriver(char *path, const void *buffer, int size)
             return 0;
         }
         close(fd);
-
-        if (popstarterBackupDriver(path) < 0)
-            return -1;
     }
 
     fd = openFile(path, O_WRONLY | O_CREAT | O_TRUNC);
