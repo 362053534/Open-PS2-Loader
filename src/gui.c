@@ -1743,7 +1743,7 @@ void guiMainLoop(void)
                 if (lngGetValue()[0] == 'E')
                     guiMsgBox("Please close non-existent block devices!", 0, NULL);
                 else
-                    guiMsgBox("请关闭不存在的块设备，以提升加载速度，预防死机！", 0, NULL);
+                    guiMsgBox("BDM块设备检测超时！", 0, NULL);
             }
         }
 
