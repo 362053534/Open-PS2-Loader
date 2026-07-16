@@ -26,9 +26,9 @@
 // length of breaking line in pixels
 #define UI_BREAK_LEN      600
 // scroll speed (delay in ms!) when in dialogs
-#define DIA_SCROLL_SPEED  300
+#define DIA_SCROLL_SPEED  5
 // scroll speed (delay in ms!) when setting int value
-#define DIA_INT_SET_SPEED 100
+#define DIA_INT_SET_SPEED 5
 
 static int screenWidth;
 static int screenHeight;
