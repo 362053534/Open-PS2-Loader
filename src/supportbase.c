@@ -562,7 +562,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         int txtFileChanged = 0;
         u32 curTxtFileSize = 1;
         u32 preTxtFileSize = 1;
-        char curModiTime[6];
+        char curModiTime[7];
         char preModiTime[6];
         struct txt_info txtInfo = {{0}, 0};
         iox_stat_t fileStat;
