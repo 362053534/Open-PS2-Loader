@@ -656,41 +656,6 @@ static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
 }
 #endif
 
-#if APP_POPS_DIRECT_LAUNCH
-static int appCopyEmbeddedPOPSLauncher(const app_info_t *app)
-{
-    char target[APP_PATH_MAX + 17];
-    unsigned int offset;
-    int fd, result, written;
-
-    if (snprintf(target, sizeof(target), "%s/POPSTARTER.ELF", app->path) >= sizeof(target))
-        return -1;
-
-    if (!access(target, F_OK))
-        return 0;
-
-    fd = open(target, O_CREAT | O_TRUNC | O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    result = 0;
-    for (offset = 0; offset < size_popstarter_elf; offset += written) {
-        written = write(fd, (unsigned char *)popstarter_elf + offset, size_popstarter_elf - offset);
-        if (written <= 0) {
-            result = -1;
-            break;
-        }
-    }
-
-    close(fd);
-
-    if (result < 0)
-        unlink(target);
-
-    return result;
-}
-#endif
-
 static void appPreparePOPSLauncher(void)
 {
     appPOPSPrepareResult = 0;
@@ -700,10 +665,7 @@ static void appPreparePOPSLauncher(void)
     } else {
         if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
-#if APP_POPS_DIRECT_LAUNCH
-        if (appCopyEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
-            appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
-#else
+#if !APP_POPS_DIRECT_LAUNCH
         if (appCreateEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
 #endif
@@ -754,12 +716,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 #if APP_POPS_DIRECT_LAUNCH
     if (appIsPOPSLauncher(&appsList[id])) {
         char popstarterArg[APP_BOOT_MAX + 5];
-        char target[APP_PATH_MAX + 17];
         char *argv[1];
-        void *source, *trampoline;
-        unsigned int offset, sourceSize;
+        void *trampoline;
+        unsigned int sourceSize;
         unsigned int trampolineSize = (unsigned char *)appPOPSDirectTrampolineEnd - (unsigned char *)appPOPSDirectTrampoline;
-        int mode, size, readSize;
+        int mode;
 
         // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
@@ -770,61 +731,17 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         }
 
         argv[0] = popstarterArg;
-        if (snprintf(target, sizeof(target), "%s/POPSTARTER.ELF", appsList[id].path) >= sizeof(target)) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-            guiMsgBox("POPSTARTER路径过长", 0, NULL);
-            return;
-        }
-
-        fd = open(target, O_RDONLY);
-        if (fd < 0) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-            guiMsgBox("无法读取POPSTARTER.ELF", 0, NULL);
-            return;
-        }
-
-        size = getFileSize(fd);
-        if (size <= 0x403 || lseek(fd, 0x400, SEEK_SET) < 0) {
-            close(fd);
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-            guiMsgBox("POPSTARTER.ELF不支持直接启动", 0, NULL);
-            return;
-        }
-
-        sourceSize = size - 0x400;
-        source = memalign(16, sourceSize);
+        sourceSize = size_popstarter_elf - 0x400;
         trampoline = memalign(16, trampolineSize);
-        if (source == NULL || trampoline == NULL) {
-            close(fd);
-            free(source);
-            free(trampoline);
+        if (trampoline == NULL) {
             if (isHDDPOPSItem)
                 oplRestoreHDDOPLPartition();
             guiMsgBox("无法为POPSTARTER分配内存", 0, NULL);
             return;
         }
 
-        for (offset = 0; offset < sourceSize; offset += readSize) {
-            readSize = read(fd, (unsigned char *)source + offset, sourceSize - offset);
-            if (readSize <= 0)
-                break;
-        }
-        close(fd);
-
-        if (offset != sourceSize || ((unsigned char *)source)[0] != 0x0C || ((unsigned char *)source)[1] != 0x00 || ((unsigned char *)source)[2] != 0x04 || ((unsigned char *)source)[3] != 0x08) {
-            free(source);
-            free(trampoline);
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-            guiMsgBox("POPSTARTER.ELF不支持直接启动", 0, NULL);
-            return;
-        }
-
         memcpy(trampoline, appPOPSDirectTrampoline, trampolineSize);
-        appPOPSDirectSource = source;
+        appPOPSDirectSource = (unsigned char *)popstarter_elf + 0x400;
         appPOPSDirectSize = sourceSize;
 
         mode = oplPath2Mode(appsList[id].path);
