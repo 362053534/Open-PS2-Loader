@@ -20,8 +20,8 @@ appPOPSDirectTrampoline:
 1:
     beq     $t2, $zero, 2f
     nop
-    lbu     $t4, 0($t1)
-    sb      $t4, 0($t3)
+    lbu     $t5, 0($t1)
+    sb      $t5, 0($t3)
     addiu   $t1, $t1, 1
     addiu   $t3, $t3, 1
     b       1b
