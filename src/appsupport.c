@@ -558,7 +558,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     char filename[256];
     const char *argv1;
 
-    if (appIsPOPSLauncher(&appsList[id])) {
+    if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
         int mode;
