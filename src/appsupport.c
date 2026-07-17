@@ -13,6 +13,7 @@
 #include "include/hddsupport.h"
 
 #include <elf-loader.h>
+#include <fileXio_rpc.h>
 
 static int appForceUpdate = 1;
 static int appItemCount = 0;
@@ -42,6 +43,7 @@ static void appFreeLegacyConfig(void);
 
 #define POPS_BDM_ELF_PREFIX "XX."
 #define POPS_SMB_ELF_PREFIX "SB."
+#define APP_POPS_DIRECT_LAUNCH 1
 
 static int appIsPOPSLauncher(const app_info_t *app)
 {
@@ -655,8 +657,13 @@ static void appPreparePOPSLauncher(void)
     } else {
         if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
+#if APP_POPS_DIRECT_LAUNCH
+        if (size_popstarter_elf <= 0x403 || popstarter_elf[0x400] != 0x0C || popstarter_elf[0x401] != 0x00 || popstarter_elf[0x402] != 0x04 || popstarter_elf[0x403] != 0x08)
+            appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
+#else
         if (appCreateEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
+#endif
     }
 
     appPOPSPrepareStatus = 0;
@@ -690,12 +697,47 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (appPOPSPrepareResult & APP_POPS_PREPARE_LAUNCHER_FAILED) {
             if (isHDDPOPSItem)
                 oplRestoreHDDOPLPartition();
+#if APP_POPS_DIRECT_LAUNCH
+            guiMsgBox("内嵌POPSTARTER不支持直接启动", 0, NULL);
+#else
             guiMsgBox("无法创建启动文件，请检查写入权限或剩余空间", 0, NULL);
+#endif
             return;
         }
     } else {
         isHDDPOPSItem = 0;
     }
+
+#if APP_POPS_DIRECT_LAUNCH
+    if (appIsPOPSLauncher(&appsList[id]) && size_popstarter_elf > 0x403 && popstarter_elf[0x400] == 0x0C && popstarter_elf[0x401] == 0x00 && popstarter_elf[0x402] == 0x04 && popstarter_elf[0x403] == 0x08) {
+        char popstarterArg[APP_BOOT_MAX + 5];
+        char *argv[1];
+        int mode;
+
+        // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
+        if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
+            if (isHDDPOPSItem)
+                oplRestoreHDDOPLPartition();
+            guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
+            return;
+        }
+
+        argv[0] = popstarterArg;
+        mode = oplPath2Mode(appsList[id].path);
+        if (mode < 0)
+            mode = APP_MODE;
+
+        // 参考 wLaunchELF：跳过 ELF 头，将 POPSTARTER 主体放到固定入口地址后直接执行。
+        deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
+        memcpy((void *)0x00100000, &popstarter_elf[0x400], size_popstarter_elf - 0x400);
+        fileXioExit();
+        SifExitRpc();
+        FlushCache(0);
+        FlushCache(2);
+        ExecPS2((void *)0x00100000, NULL, 1, argv);
+        return;
+    }
+#endif
 
     // Retrieve configuration set by appGetConfig()
     configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
