@@ -778,8 +778,7 @@ int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *
             if (prefix[0] == '\0')
                 continue;
 
-            int prefixLength = strlen(prefix);
-            snprintf(popsPath, sizeof(popsPath), "%s%sPOPS", prefix, prefixLength > 0 && prefix[prefixLength - 1] == '/' ? "" : "/");
+            snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
             count += scanPOPS(callback, arg, popsPath);
         }
     }
@@ -802,8 +801,7 @@ int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *
             if (prefix[0] == '\0')
                 continue;
 
-            int prefixLength = strlen(prefix);
-            snprintf(appsPath, sizeof(appsPath), "%s%sAPPS", prefix, prefixLength > 0 && prefix[prefixLength - 1] == '/' ? "" : "/");
+            snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
             count += scanAppELFs(callback, arg, appsPath);
         }
     }
@@ -818,7 +816,7 @@ int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *a
 
     count = 0;
     for (i = 0; i < 2; i++) {
-        snprintf(appsPath, sizeof(appsPath), "mc%d:/APPS", i);
+        snprintf(appsPath, sizeof(appsPath), "mc%d:APPS", i);
         count += scanAppELFs(callback, arg, appsPath);
     }
 
@@ -902,7 +900,7 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *
     if (result < 0)
         return 0;
 
-    result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT "/");
+    result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT);
 
     if (oplRestoreHDDOPLPartition() < 0)
         return 0;
