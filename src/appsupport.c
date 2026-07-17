@@ -711,15 +711,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         isHDDPOPSItem = 0;
     }
 
-    // Retrieve configuration set by appGetConfig()
 #if APP_POPS_DIRECT_LAUNCH
     if (appIsPOPSLauncher(&appsList[id])) {
-        if (snprintf(filename, sizeof(filename), "%s/POPSTARTER.ELF", appsList[id].path) >= sizeof(filename)) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-            guiMsgBox("POPSTARTER路径过长", 0, NULL);
-            return;
-        }
+        char *argv[1];
+        char partition[128];
+        int mode;
 
         // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
@@ -728,11 +724,26 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
             return;
         }
-    } else
+
+        argv[0] = popstarterArg;
+        strcpy(partition, "");
+
+        mode = oplPath2Mode(appsList[id].path);
+        if (mode < 0)
+            mode = APP_MODE;
+
+        if (mode == HDD_MODE)
+            snprintf(partition, sizeof(partition), "%s:", isHDDPOPSItem ? OPL_HDD_POPS_PARTITION : gOPLPart);
+
+        deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
+        LoadELFFromMemoryWithPartition(popstarter_elf, partition, 1, argv);
+        return;
+    }
 #endif
+
+    // Retrieve configuration set by appGetConfig()
     configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
 
-#if !APP_POPS_DIRECT_LAUNCH
     if (appIsPOPSLauncher(&appsList[id])) {
         // 仅修改本次启动的局部路径，不改写条目或 cfg 中原始的 POPS 路径。
         if (!strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT))) {
@@ -747,7 +758,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             memcpy(popsPath, "CACHE", 5);
         }
     }
-#endif
 
     // If no device number is specified use mass? to auto find device number
     const char *oldPrefix = "mass:";
@@ -803,17 +813,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (mode == HDD_MODE)
             snprintf(partition, sizeof(partition), "%s:", isHDDPOPSPath ? OPL_HDD_POPS_PARTITION : gOPLPart);
 
-        if (appIsPOPSLauncher(&appsList[id])) {
-#if APP_POPS_DIRECT_LAUNCH
-            argv[0] = popstarterArg;
-            argc = 1;
-#else
-            if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
-                argv[0] = (char *)argv1;
-                argc = 1;
-            }
-#endif
-        } else if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
+        if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
             argv[0] = (char *)argv1;
             argc = 1;
         }
