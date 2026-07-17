@@ -21,13 +21,11 @@ static int appItemCount = 0;
 static int appPOPSPrepareStatus;
 static int appPOPSPrepareResult;
 static int appPOPSPrepareID;
-static int appPOPSPrepareHDD;
 
 static config_set_t *configApps;
 static app_info_t *appsList;
 
-#define APP_POPS_PREPARE_MOUNT_FAILED    0x01
-#define APP_POPS_PREPARE_DRIVERS_FAILED  0x02
+#define APP_POPS_PREPARE_DRIVERS_FAILED  0x01
 
 struct app_info_linked
 {
@@ -47,11 +45,6 @@ static void appFreeLegacyConfig(void);
 static int appIsPOPSLauncher(const app_info_t *app)
 {
     return app->popstarter || strstr(app->path, "APPS") == NULL;
-}
-
-static int appIsHDDPOPSLauncher(const app_info_t *app)
-{
-    return app->popstarter && !strncmp(app->path, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
 }
 
 static int appGetPOPSBDMDeviceType(const app_info_t *app)
@@ -553,12 +546,8 @@ static void appPreparePOPSLauncher(void)
 {
     appPOPSPrepareResult = 0;
 
-    if (appPOPSPrepareHDD && oplMountHDDPOPS() < 0) {
-        appPOPSPrepareResult |= APP_POPS_PREPARE_MOUNT_FAILED;
-    } else {
-        if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
-            appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
-    }
+    if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
+        appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 
     appPOPSPrepareStatus = 0;
 }
@@ -570,48 +559,32 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     const char *argv1;
 
     if (appIsPOPSLauncher(&appsList[id])) {
-        int isHDDPOPSItem = appIsHDDPOPSLauncher(&appsList[id]);
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
-        char partition[128];
         int mode;
 
         appPOPSPrepareStatus = 1;
         appPOPSPrepareID = id;
-        appPOPSPrepareHDD = isHDDPOPSItem;
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
-        if (appPOPSPrepareResult & APP_POPS_PREPARE_MOUNT_FAILED) {
-            guiMsgBox("无法挂载__.POPS分区，请检查分区名是否正确", 0, NULL);
-            return;
-        }
         if ((appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
-            !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL)) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
+            !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL))
             return;
-        }
 
         // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
             return;
         }
 
         argv[0] = popstarterArg;
-        strcpy(partition, "");
 
         mode = oplPath2Mode(appsList[id].path);
         if (mode < 0)
             mode = APP_MODE;
 
-        if (mode == HDD_MODE)
-            snprintf(partition, sizeof(partition), "%s:", isHDDPOPSItem ? OPL_HDD_POPS_PARTITION : gOPLPart);
-
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromMemoryWithPartition(popstarter_elf, partition, 1, argv);
+        LoadELFFromMemory(popstarter_elf, 1, argv);
         return;
     }
 
