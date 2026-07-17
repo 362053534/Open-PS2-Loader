@@ -750,8 +750,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         // 先由高地址跳板复制，避免覆盖仍在运行的 OPL 代码。
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        fileXioExit();
-        SifExitRpc();
         FlushCache(0);
         FlushCache(2);
         ExecPS2(trampoline, NULL, 1, argv);
