@@ -550,24 +550,81 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
 
 static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
 {
+    char cachePath[APP_PATH_MAX + 1];
     char target[APP_PATH_MAX + APP_BOOT_MAX + 2];
     unsigned int offset;
     int fd, result, written;
 
-    if (snprintf(target, sizeof(target), "%s/%s", app->path, app->boot) >= sizeof(target)) {
+    if (!strncmp(app->path, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT))) {
+        // APA HDD 的 POPS 分区挂载为 pfs0:，将缓存目录放在 pfs0:/CACHE。
+        if (snprintf(cachePath, sizeof(cachePath), "%s/CACHE", app->path) >= sizeof(cachePath)) {
+            LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
+            return -1;
+        }
+    } else {
+        // BDM/SMB 使用现有工作目录：将路径中的 POPS 替换为 CACHE。
+        const char *popsPath = strstr(app->path, "POPS");
+        if (popsPath == NULL || snprintf(cachePath, sizeof(cachePath), "%.*sCACHE%s", (int)(popsPath - app->path), app->path, popsPath + 4) >= sizeof(cachePath)) {
+            LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
+            return -1;
+        }
+    }
+
+    if (snprintf(target, sizeof(target), "%s/%s", cachePath, app->boot) >= sizeof(target)) {
         LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
         return -1;
     }
 
-    fd = open(target, O_RDONLY);
-    if (fd >= 0) {
-        int size = getFileSize(fd);
-        close(fd);
+    if (!access(target, F_OK)) {
+        // 已有目标文件时，大小正确则复用；大小不符则跳过扫描，直接由下面的写入逻辑修复。
+        fd = open(target, O_RDONLY);
+        if (fd >= 0) {
+            int size = getFileSize(fd);
+            close(fd);
 
-        if (size == size_popstarter_elf)
-            return 0;
+            if (size == size_popstarter_elf)
+                return 0;
+        }
+    } else {
+        // CACHE 不存在时才创建，已存在则直接使用。
+        if (access(cachePath, F_OK) != 0 && mkdir(cachePath, 0777) < 0)
+            return -1;
+
+        // 仅当目标不存在时，才在 CACHE 中检查第一个可复用的 ELF。
+        DIR *dir = opendir(cachePath);
+        if (dir != NULL) {
+            struct dirent *dirent;
+            char source[APP_PATH_MAX + APP_BOOT_MAX + 2] = "";
+            int size = -1;
+
+            while ((dirent = readdir(dir)) != NULL) {
+                if (dirent->d_type == DT_DIR || strlen(dirent->d_name) < 4 || strcasecmp(&dirent->d_name[strlen(dirent->d_name) - 4], ".ELF") != 0)
+                    continue;
+
+                if (snprintf(source, sizeof(source), "%s/%s", cachePath, dirent->d_name) < sizeof(source)) {
+                    fd = open(source, O_RDONLY);
+                    if (fd >= 0) {
+                        size = getFileSize(fd);
+                        close(fd);
+                    }
+                }
+                break;
+            }
+
+            closedir(dir);
+
+            if (size == size_popstarter_elf) {
+                // 大小正确时改名为本次游戏对应的目标名称。
+                if (rename(source, target) == 0)
+                    return 0;
+            } else if (size >= 0) {
+                // 第一个 ELF 大小不符，删除后由下面的写入逻辑生成目标文件。
+                unlink(source);
+            }
+        }
     }
 
+    // 目标不存在且无可复用 ELF，或已有目标文件大小不符时，写入内嵌 POPStarter。
     fd = open(target, O_CREAT | O_TRUNC | O_WRONLY);
     if (fd < 0)
         return -1;
@@ -642,6 +699,21 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     // Retrieve configuration set by appGetConfig()
     configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
+
+    if (appIsPOPSLauncher(&appsList[id])) {
+        // 仅修改本次启动的局部路径，不改写条目或 cfg 中原始的 POPS 路径。
+        if (!strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT))) {
+            const size_t prefixLength = strlen(OPL_HDD_POPS_MOUNTPOINT);
+            // APA HDD：pfs0:/游戏.ELF -> pfs0:/CACHE/游戏.ELF。
+            memmove(filename + prefixLength + 6, filename + prefixLength, strlen(filename + prefixLength) + 1);
+            memcpy(filename + prefixLength, "/CACHE", 6);
+        } else {
+            char *popsPath = strstr(filename, "POPS");
+            // BDM/SMB：将 .../POPS/游戏.ELF 临时改为 .../CACHE/游戏.ELF。
+            memmove(popsPath + 5, popsPath + 4, strlen(popsPath + 4) + 1);
+            memcpy(popsPath, "CACHE", 5);
+        }
+    }
 
     // If no device number is specified use mass? to auto find device number
     const char *oldPrefix = "mass:";
