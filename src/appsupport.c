@@ -28,7 +28,6 @@ static app_info_t *appsList;
 
 #define APP_POPS_PREPARE_MOUNT_FAILED    0x01
 #define APP_POPS_PREPARE_DRIVERS_FAILED  0x02
-#define APP_POPS_PREPARE_LAUNCHER_FAILED 0x04
 
 struct app_info_linked
 {
@@ -44,7 +43,6 @@ static void appFreeLegacyConfig(void);
 
 #define POPS_BDM_ELF_PREFIX "XX."
 #define POPS_SMB_ELF_PREFIX "SB."
-#define APP_POPS_DIRECT_LAUNCH 1
 
 static int appIsPOPSLauncher(const app_info_t *app)
 {
@@ -551,106 +549,6 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
     appForceUpdate = 1;
 }
 
-#if !APP_POPS_DIRECT_LAUNCH
-static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
-{
-    char cachePath[APP_PATH_MAX + 1];
-    char target[APP_PATH_MAX + APP_BOOT_MAX + 2];
-    unsigned int offset;
-    int fd, result, written;
-
-    if (!strncmp(app->path, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT))) {
-        // APA HDD 的 POPS 分区挂载为 pfs0:，将缓存目录放在 pfs0:/CACHE。
-        if (snprintf(cachePath, sizeof(cachePath), "%s/CACHE", app->path) >= sizeof(cachePath)) {
-            LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
-            return -1;
-        }
-    } else {
-        // BDM/SMB 使用现有工作目录：将路径中的 POPS 替换为 CACHE。
-        const char *popsPath = strstr(app->path, "POPS");
-        if (popsPath == NULL || snprintf(cachePath, sizeof(cachePath), "%.*sCACHE%s", (int)(popsPath - app->path), app->path, popsPath + 4) >= sizeof(cachePath)) {
-            LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
-            return -1;
-        }
-    }
-
-    if (snprintf(target, sizeof(target), "%s/%s", cachePath, app->boot) >= sizeof(target)) {
-        LOG("APPSUPPORT POPS path is too long for %s\n", app->title);
-        return -1;
-    }
-
-    if (!access(target, F_OK)) {
-        // 已有目标文件时，大小正确则复用；大小不符则跳过扫描，直接由下面的写入逻辑修复。
-        fd = open(target, O_RDONLY);
-        if (fd >= 0) {
-            int size = getFileSize(fd);
-            close(fd);
-
-            if (size == size_popstarter_elf)
-                return 0;
-        }
-    } else {
-        // CACHE 不存在时才创建，已存在则直接使用。
-        if (access(cachePath, F_OK) != 0 && mkdir(cachePath, 0777) < 0)
-            return -1;
-
-        // 仅当目标不存在时，才在 CACHE 中检查第一个可复用的 ELF。
-        DIR *dir = opendir(cachePath);
-        if (dir != NULL) {
-            struct dirent *dirent;
-            char source[APP_PATH_MAX + APP_BOOT_MAX + 2] = "";
-            int size = -1;
-
-            while ((dirent = readdir(dir)) != NULL) {
-                if (dirent->d_type == DT_DIR || strlen(dirent->d_name) < 4 || strcasecmp(&dirent->d_name[strlen(dirent->d_name) - 4], ".ELF") != 0)
-                    continue;
-
-                if (snprintf(source, sizeof(source), "%s/%s", cachePath, dirent->d_name) < sizeof(source)) {
-                    fd = open(source, O_RDONLY);
-                    if (fd >= 0) {
-                        size = getFileSize(fd);
-                        close(fd);
-                    }
-                }
-                break;
-            }
-
-            closedir(dir);
-
-            if (size == size_popstarter_elf) {
-                // 大小正确时改名为本次游戏对应的目标名称。
-                if (rename(source, target) == 0)
-                    return 0;
-            } else if (size >= 0) {
-                // 第一个 ELF 大小不符，删除后由下面的写入逻辑生成目标文件。
-                unlink(source);
-            }
-        }
-    }
-
-    // 目标不存在且无可复用 ELF，或已有目标文件大小不符时，写入内嵌 POPStarter。
-    fd = open(target, O_CREAT | O_TRUNC | O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    result = 0;
-    for (offset = 0; offset < size_popstarter_elf; offset += written) {
-        written = write(fd, &popstarter_elf[offset], size_popstarter_elf - offset);
-        if (written <= 0) {
-            result = -1;
-            break;
-        }
-    }
-
-    close(fd);
-
-    if (result < 0)
-        unlink(target);
-
-    return result;
-}
-#endif
-
 static void appPreparePOPSLauncher(void)
 {
     appPOPSPrepareResult = 0;
@@ -660,10 +558,6 @@ static void appPreparePOPSLauncher(void)
     } else {
         if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
-#if !APP_POPS_DIRECT_LAUNCH
-        if (appCreateEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
-            appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
-#endif
     }
 
     appPOPSPrepareStatus = 0;
@@ -672,16 +566,16 @@ static void appPreparePOPSLauncher(void)
 static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int fd;
-    int isHDDPOPSItem;
-    int isHDDPOPSPath;
     char filename[256];
-#if APP_POPS_DIRECT_LAUNCH
-    char popstarterArg[APP_BOOT_MAX + 5];
-#endif
     const char *argv1;
 
     if (appIsPOPSLauncher(&appsList[id])) {
-        isHDDPOPSItem = appIsHDDPOPSLauncher(&appsList[id]);
+        int isHDDPOPSItem = appIsHDDPOPSLauncher(&appsList[id]);
+        char popstarterArg[APP_BOOT_MAX + 5];
+        char *argv[1];
+        char partition[128];
+        int mode;
+
         appPOPSPrepareStatus = 1;
         appPOPSPrepareID = id;
         appPOPSPrepareHDD = isHDDPOPSItem;
@@ -697,25 +591,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 oplRestoreHDDOPLPartition();
             return;
         }
-        if (appPOPSPrepareResult & APP_POPS_PREPARE_LAUNCHER_FAILED) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-#if APP_POPS_DIRECT_LAUNCH
-            guiMsgBox("无法准备内嵌POPSTARTER", 0, NULL);
-#else
-            guiMsgBox("无法创建启动文件，请检查写入权限或剩余空间", 0, NULL);
-#endif
-            return;
-        }
-    } else {
-        isHDDPOPSItem = 0;
-    }
-
-#if APP_POPS_DIRECT_LAUNCH
-    if (appIsPOPSLauncher(&appsList[id])) {
-        char *argv[1];
-        char partition[128];
-        int mode;
 
         // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
@@ -739,25 +614,9 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         LoadELFFromMemoryWithPartition(popstarter_elf, partition, 1, argv);
         return;
     }
-#endif
 
     // Retrieve configuration set by appGetConfig()
     configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
-
-    if (appIsPOPSLauncher(&appsList[id])) {
-        // 仅修改本次启动的局部路径，不改写条目或 cfg 中原始的 POPS 路径。
-        if (!strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT))) {
-            const size_t prefixLength = strlen(OPL_HDD_POPS_MOUNTPOINT);
-            // APA HDD：pfs0:/游戏.ELF -> pfs0:/CACHE/游戏.ELF。
-            memmove(filename + prefixLength + 6, filename + prefixLength, strlen(filename + prefixLength) + 1);
-            memcpy(filename + prefixLength, "/CACHE", 6);
-        } else {
-            char *popsPath = strstr(filename, "POPS");
-            // BDM/SMB：将 .../POPS/游戏.ELF 临时改为 .../CACHE/游戏.ELF。
-            memmove(popsPath + 5, popsPath + 4, strlen(popsPath + 4) + 1);
-            memcpy(popsPath, "CACHE", 5);
-        }
-    }
 
     // If no device number is specified use mass? to auto find device number
     const char *oldPrefix = "mass:";
@@ -793,9 +652,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     //    memcpy(filename, smbNewPrefix, newPrefixLen);
     //}
-
-
-    isHDDPOPSPath = isHDDPOPSItem && !strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT));
     fd = open(filename, O_RDONLY);
     if (fd >= 0) {
         int mode, argc = 0;
@@ -811,7 +667,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             mode = APP_MODE; // Legacy apps mode on memory card (mc?:/*)
 
         if (mode == HDD_MODE)
-            snprintf(partition, sizeof(partition), "%s:", isHDDPOPSPath ? OPL_HDD_POPS_PARTITION : gOPLPart);
+            snprintf(partition, sizeof(partition), "%s:", gOPLPart);
 
         if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
             argv[0] = (char *)argv1;
@@ -821,8 +677,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
         LoadELFFromFileWithPartition(filename, partition, argc, argv);
     } else {
-        if (isHDDPOPSPath)
-            oplRestoreHDDOPLPartition();
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
     }
 }
