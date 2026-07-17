@@ -18,7 +18,6 @@
 *.patch
 *.rej
 *.s
-!src/pops_trampoline.S
 *.zip
 *.ZIP
 *.a

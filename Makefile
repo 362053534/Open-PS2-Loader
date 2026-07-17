@@ -73,7 +73,7 @@ endif
 
 FRONTEND_OBJS = pad.o xparam.o fntsys.o renderman.o menusys.o OSDHistory.o system.o lang.o lang_internal.o config.o hdd.o dialogs.o \
 		dia.o ioman.o texcache.o themes.o supportbase.o bdmsupport.o ethsupport.o hddsupport.o zso.o lz4.o \
-		appsupport.o pops_trampoline.o gui.o guigame.o textures.o opl.o atlas.o nbns.o httpclient.o gsm.o cheatman.o sound.o ps2cnf.o
+		appsupport.o gui.o guigame.o textures.o opl.o atlas.o nbns.o httpclient.o gsm.o cheatman.o sound.o ps2cnf.o
 
 IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		bdm.o bdmfs_fatfs.o usbmass_bd.o iLinkman.o IEEE1394_bd.o mx4sio_bd.o \
@@ -783,9 +783,6 @@ $(EE_ASM_DIR)deci2_img.c: modules/debug/deci2.img | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)
 
 $(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.c | $(EE_OBJS_DIR)
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-
-$(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.S | $(EE_OBJS_DIR)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 
 $(EE_OBJS_DIR)%.o: $(EE_ASM_DIR)%.c | $(EE_OBJS_DIR)

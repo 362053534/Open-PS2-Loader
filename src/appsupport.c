@@ -23,11 +23,6 @@ static int appPOPSPrepareResult;
 static int appPOPSPrepareID;
 static int appPOPSPrepareHDD;
 
-void *appPOPSDirectSource;
-unsigned int appPOPSDirectSize;
-extern void appPOPSDirectTrampoline(void);
-extern void appPOPSDirectTrampolineEnd(void);
-
 static config_set_t *configApps;
 static app_info_t *appsList;
 
@@ -680,6 +675,9 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     int isHDDPOPSItem;
     int isHDDPOPSPath;
     char filename[256];
+#if APP_POPS_DIRECT_LAUNCH
+    char popstarterArg[APP_BOOT_MAX + 5];
+#endif
     const char *argv1;
 
     if (appIsPOPSLauncher(&appsList[id])) {
@@ -713,14 +711,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         isHDDPOPSItem = 0;
     }
 
+    // Retrieve configuration set by appGetConfig()
 #if APP_POPS_DIRECT_LAUNCH
     if (appIsPOPSLauncher(&appsList[id])) {
-        char popstarterArg[APP_BOOT_MAX + 5];
-        char *argv[1];
-        void *trampoline;
-        unsigned int sourceSize;
-        unsigned int trampolineSize = (unsigned char *)appPOPSDirectTrampolineEnd - (unsigned char *)appPOPSDirectTrampoline;
-        int mode;
+        if (snprintf(filename, sizeof(filename), "%s/POPSTARTER.ELF", appsList[id].path) >= sizeof(filename)) {
+            if (isHDDPOPSItem)
+                oplRestoreHDDOPLPartition();
+            guiMsgBox("POPSTARTER路径过长", 0, NULL);
+            return;
+        }
 
         // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
@@ -729,37 +728,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
             return;
         }
-
-        argv[0] = popstarterArg;
-        sourceSize = size_popstarter_elf - 0x400;
-        trampoline = memalign(16, trampolineSize);
-        if (trampoline == NULL) {
-            if (isHDDPOPSItem)
-                oplRestoreHDDOPLPartition();
-            guiMsgBox("无法为POPSTARTER分配内存", 0, NULL);
-            return;
-        }
-
-        memcpy(trampoline, appPOPSDirectTrampoline, trampolineSize);
-        appPOPSDirectSource = (unsigned char *)popstarter_elf + 0x400;
-        appPOPSDirectSize = sourceSize;
-
-        mode = oplPath2Mode(appsList[id].path);
-        if (mode < 0)
-            mode = APP_MODE;
-
-        // 先由高地址跳板复制，避免覆盖仍在运行的 OPL 代码。
-        deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        FlushCache(0);
-        FlushCache(2);
-        ExecPS2(trampoline, NULL, 1, argv);
-        return;
-    }
+    } else
 #endif
-
-    // Retrieve configuration set by appGetConfig()
     configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, filename, sizeof(filename));
 
+#if !APP_POPS_DIRECT_LAUNCH
     if (appIsPOPSLauncher(&appsList[id])) {
         // 仅修改本次启动的局部路径，不改写条目或 cfg 中原始的 POPS 路径。
         if (!strncmp(filename, OPL_HDD_POPS_MOUNTPOINT, strlen(OPL_HDD_POPS_MOUNTPOINT))) {
@@ -774,6 +747,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             memcpy(popsPath, "CACHE", 5);
         }
     }
+#endif
 
     // If no device number is specified use mass? to auto find device number
     const char *oldPrefix = "mass:";
@@ -829,7 +803,17 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (mode == HDD_MODE)
             snprintf(partition, sizeof(partition), "%s:", isHDDPOPSPath ? OPL_HDD_POPS_PARTITION : gOPLPart);
 
-        if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
+        if (appIsPOPSLauncher(&appsList[id])) {
+#if APP_POPS_DIRECT_LAUNCH
+            argv[0] = popstarterArg;
+            argc = 1;
+#else
+            if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
+                argv[0] = (char *)argv1;
+                argc = 1;
+            }
+#endif
+        } else if (configGetStr(configSet, CONFIG_ITEM_ALTSTARTUP, &argv1) != 0) {
             argv[0] = (char *)argv1;
             argc = 1;
         }
