@@ -13,6 +13,7 @@
 #include "include/hddsupport.h"
 
 #include <elf-loader.h>
+#define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 
 static int appForceUpdate = 1;
@@ -550,6 +551,7 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
     appForceUpdate = 1;
 }
 
+#if !APP_POPS_DIRECT_LAUNCH
 static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
 {
     char cachePath[APP_PATH_MAX + 1];
@@ -647,6 +649,7 @@ static int appCreateEmbeddedPOPSLauncher(const app_info_t *app)
 
     return result;
 }
+#endif
 
 static void appPreparePOPSLauncher(void)
 {
@@ -658,7 +661,7 @@ static void appPreparePOPSLauncher(void)
         if (gAutoDetectPS1Apps && installPopstarterDrivers(appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 #if APP_POPS_DIRECT_LAUNCH
-        if (size_popstarter_elf <= 0x403 || popstarter_elf[0x400] != 0x0C || popstarter_elf[0x401] != 0x00 || popstarter_elf[0x402] != 0x04 || popstarter_elf[0x403] != 0x08)
+        if (size_popstarter_elf <= 0x403 || ((unsigned char *)popstarter_elf)[0x400] != 0x0C || ((unsigned char *)popstarter_elf)[0x401] != 0x00 || ((unsigned char *)popstarter_elf)[0x402] != 0x04 || ((unsigned char *)popstarter_elf)[0x403] != 0x08)
             appPOPSPrepareResult |= APP_POPS_PREPARE_LAUNCHER_FAILED;
 #else
         if (appCreateEmbeddedPOPSLauncher(&appsList[appPOPSPrepareID]) < 0)
@@ -709,7 +712,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     }
 
 #if APP_POPS_DIRECT_LAUNCH
-    if (appIsPOPSLauncher(&appsList[id]) && size_popstarter_elf > 0x403 && popstarter_elf[0x400] == 0x0C && popstarter_elf[0x401] == 0x00 && popstarter_elf[0x402] == 0x04 && popstarter_elf[0x403] == 0x08) {
+    if (appIsPOPSLauncher(&appsList[id]) && size_popstarter_elf > 0x403 && ((unsigned char *)popstarter_elf)[0x400] == 0x0C && ((unsigned char *)popstarter_elf)[0x401] == 0x00 && ((unsigned char *)popstarter_elf)[0x402] == 0x04 && ((unsigned char *)popstarter_elf)[0x403] == 0x08) {
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
         int mode;
@@ -729,7 +732,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         // 参考 wLaunchELF：跳过 ELF 头，将 POPSTARTER 主体放到固定入口地址后直接执行。
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        memcpy((void *)0x00100000, &popstarter_elf[0x400], size_popstarter_elf - 0x400);
+        memcpy((void *)0x00100000, (unsigned char *)popstarter_elf + 0x400, size_popstarter_elf - 0x400);
         fileXioExit();
         SifExitRpc();
         FlushCache(0);
