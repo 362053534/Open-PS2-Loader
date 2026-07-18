@@ -535,6 +535,9 @@ int UiId = -1;
 void guiShowConfig()
 {
     int previousAutoDetectPS1Apps = gAutoDetectPS1Apps;
+    int previousBDMStartMode = gBDMStartMode;
+    int previousHDDStartMode = gHDDStartMode;
+    int previousETHStartMode = gETHStartMode;
 
 reConfig:
     // configure the enumerations
@@ -615,7 +618,11 @@ reConfig:
                     reFindBDM();
             }
             applyConfig(-1, -1, 0);
-            if (previousAutoDetectPS1Apps != gAutoDetectPS1Apps)
+            if ((previousAutoDetectPS1Apps != gAutoDetectPS1Apps) ||
+                (gAutoDetectPS1Apps &&
+                 ((previousBDMStartMode == START_MODE_DISABLED && gBDMStartMode == START_MODE_AUTO) ||
+                  (previousHDDStartMode == START_MODE_DISABLED && gHDDStartMode == START_MODE_AUTO) ||
+                  (previousETHStartMode == START_MODE_DISABLED && gETHStartMode == START_MODE_AUTO))))
                 appForceRefresh();
             menuReinitMainMenu();
         }

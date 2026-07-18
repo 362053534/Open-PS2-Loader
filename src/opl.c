@@ -268,9 +268,10 @@ static void itemInitSupport(item_list_t *support)
     support->itemInit(support);
     moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
-    if (!gAutoRefresh || (support->updateDelay == MENU_UPD_DELAY_NOUPDATE))
-        menuDeferredUpdate(&support->mode);
-        //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
+    menuDeferredUpdate(&support->mode);
+    if (gAutoDetectPS1Apps && support->enabled && support->mode != APP_MODE)
+        appForceRefresh();
+    //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 }
 
 static void backLoadSupports_Manual(void)
