@@ -24,6 +24,7 @@
 #include "include/sound.h"
 #include "include/guigame.h"
 #include "include/texcache.h"
+#include "include/bdmsupport.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -457,6 +458,7 @@ void guiShowNetCompatUpdateSingle(int id, item_list_t *support, config_set_t *co
 static void guiShowBlockDeviceConfig(void)
 {
     int ret;
+    int previousEnableBdmHDD = gEnableBdmHDD;
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
@@ -472,6 +474,12 @@ static void guiShowBlockDeviceConfig(void)
         // BDMHDD开启时，自动关闭APA
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (ret == UIID_BTN_OK) {
+            if (!previousEnableBdmHDD && gEnableBdmHDD) {
+                for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                    if (list_support[i].support != NULL)
+                        bdmRequestDeviceCheck(list_support[i].support);
+                }
+            }
             if (gHDDStartMode && gEnableBdmHDD) {
                 gHDDStartMode = 0;
                 guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);

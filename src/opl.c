@@ -1071,10 +1071,8 @@ void menuUpdateBDMSupport(void)
     // BDM设备会在欢迎界面或手动启动时不断尝试初始化，直到成功或超时为止
     for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
         bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-        if ((list_support[i].support && list_support[i].support->enabled) && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1))) {
-            bdmRequestDeviceCheck(list_support[i].support);
+        if ((list_support[i].support && list_support[i].support->enabled) && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
-        }
     }
 }
 static void menuUpdateHook()
