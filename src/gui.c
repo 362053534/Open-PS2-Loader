@@ -5,6 +5,7 @@
  */
 
 #include "include/opl.h"
+#include "include/appsupport.h"
 #include "include/gui.h"
 #include "include/renderman.h"
 #include "include/menusys.h"
@@ -615,7 +616,7 @@ reConfig:
             }
             applyConfig(-1, -1, 0);
             if (previousAutoDetectPS1Apps != gAutoDetectPS1Apps)
-                menuRefreshAppsList();
+                appForceRefresh();
             menuReinitMainMenu();
         }
     }

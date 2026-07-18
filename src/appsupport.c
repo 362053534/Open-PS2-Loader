@@ -143,6 +143,12 @@ item_list_t *appGetObject(int initOnly)
     return &appItemList;
 }
 
+void appForceRefresh(void)
+{
+    appForceUpdate = 1;
+    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &appItemList.mode);
+}
+
 static int appNeedsUpdate(item_list_t *itemList)
 {
     int update;

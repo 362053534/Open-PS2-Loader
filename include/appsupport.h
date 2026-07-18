@@ -29,6 +29,7 @@ typedef struct
 
 void appInit(item_list_t *itemList);
 item_list_t *appGetObject(int initOnly);
+void appForceRefresh(void);
 void appPostUpdateCallback(int mode);
 
 #endif
