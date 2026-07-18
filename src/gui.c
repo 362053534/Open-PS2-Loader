@@ -475,7 +475,7 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (ret == UIID_BTN_OK) {
             if (!previousEnableBdmHDD && gEnableBdmHDD)
-                bdmEnumerateDevices();
+                bdmInitDevicesData();
             if (gHDDStartMode && gEnableBdmHDD) {
                 gHDDStartMode = 0;
                 guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
