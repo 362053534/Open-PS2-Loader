@@ -590,49 +590,40 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
     //char priority;
     item_list_t *listSupport;
 
-    int elfbootmode = -1;
     if (device != NULL) {
-        elfbootmode = oplPath2Mode(device);
+        int elfbootmode = oplPath2Mode(device);
         if (elfbootmode >= 0) {
             listSupport = list_support[elfbootmode].support;
+            if ((listSupport != NULL) && (listSupport->enabled)) {
+                if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+                    return 0;
+            }
+        }
+    } else {
+        //// We search on ever devices from fatest to slowest.
+        //for (remaining = MODE_COUNT, priority = 0; remaining > 0 && priority < 4; priority++) {
+        //    for (i = 0; i < MODE_COUNT; i++) {
+        //        listSupport = list_support[i].support;
 
+        //        if (i == elfbootmode)
+        //            continue;
+
+        //        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->appsPriority == priority)) {
+        //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+        //                return 0;
+        //            remaining--;
+        //        }
+        //    }
+        //}
+        // mc内的apps应用，会从HDD开始循环一次查找ART图集（所有设备都找不到ART图时，会非常影响性能）
+        for (int i = HDD_MODE; i >= 0; i--) {
+            listSupport = list_support[i].support;
             if ((listSupport != NULL) && (listSupport->enabled)) {
                 if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
                     return 0;
             }
         }
     }
-
-    //// We search on ever devices from fatest to slowest.
-    //for (remaining = MODE_COUNT, priority = 0; remaining > 0 && priority < 4; priority++) {
-    //    for (i = 0; i < MODE_COUNT; i++) {
-    //        listSupport = list_support[i].support;
-
-    //        if (i == elfbootmode)
-    //            continue;
-
-    //        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->appsPriority == priority)) {
-    //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
-    //                return 0;
-    //            remaining--;
-    //        }
-    //    }
-    //}
-    // 如果第一次没找到图，则所有设备从HDD开始循环一次（不要重复循环，会极大的拖慢速度）
-    //for (int i = HDD_MODE; i >= 0; i--) {
-    //    listSupport = list_support[i].support;
-
-    //    if (i == elfbootmode)
-    //        continue;
-
-    //    if ((listSupport != NULL) && (listSupport->enabled)) {
-    //        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
-    //            return 0;
-    //    }
-    //}
-    // APPS and POPS artwork belongs to the device that owns the launcher.
-    // Do not probe every enabled device after a miss: this can otherwise cause
-    // many synchronous file lookups, especially when SMB is enabled.
     return -1;
 }
 

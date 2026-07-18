@@ -701,13 +701,29 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
 
 static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
-    char device[8], *startup;
+    char device[8] = "", *startup;
+    int id;
+
+    for (id = 0; id < appItemCount; id++) {
+        if (appsList[id].legacy) {
+            struct config_value_t *cur = appGetConfigValue(id);
+            if (value == appGetELFName(cur->val)) {
+                appGetBoot(device, sizeof(device), cur->val);
+                break;
+            }
+        } else if (value == appsList[id].boot) {
+            appGetBoot(device, sizeof(device), appsList[id].path);
+            break;
+        }
+    }
 
     startup = appGetBoot(device, sizeof(device), value);
 
-    if (!strcmp(folder, "ART"))
+    if (!strcmp(folder, "ART")) {
+        // if (!strncmp(device, "mc", 2))    // 暂时注释掉查找mc里APPS的逻辑，因为非常影响性能
+        //     return oplGetAppImage(NULL, folder, isRelative, startup, suffix, resultTex, psm);
         return oplGetAppImage(device, folder, isRelative, startup, suffix, resultTex, psm);
-    else
+    } else
         return oplGetAppImage(device, folder, isRelative, value, suffix, resultTex, psm);
 }
 
