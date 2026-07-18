@@ -4,6 +4,7 @@
 #include "include/gui.h"
 #include "include/supportbase.h"
 #include "include/hddsupport.h"
+#include "include/bdmsupport.h"
 #include "include/util.h"
 #include "include/themes.h"
 #include "include/textures.h"
@@ -34,6 +35,9 @@ static unsigned char hddSupportModulesLoaded = 0;
 
 static char *hddPrefix = "pfs0:";
 static hdl_games_list_t hddGames;
+static base_game_info_t *hddIsoGames;
+static int hddIsoGameCount;
+static int hddIsoFileSize;
 
 // forward declaration
 static item_list_t hddGameList;
@@ -412,47 +416,62 @@ static int hddUpdateGameList(item_list_t *itemList)
         }
     }
 
+    sbReadList(&hddIsoGames, gHDDPrefix, &hddIsoFileSize, &hddIsoGameCount);
+
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
-    return (ret == 0 ? hddGames.count : 0);
+    return (ret == 0 ? hddGames.count + hddIsoGameCount : 0);
 }
 
 static int hddGetGameCount(item_list_t *itemList)
 {
-    return hddGames.count;
+    return hddGames.count + hddIsoGameCount;
 }
 
 static void *hddGetGame(item_list_t *itemList, int id)
 {
-    return (void *)&hddGames.games[id];
+    if (id < hddGames.count)
+        return (void *)&hddGames.games[id];
+    else
+        return (void *)&hddIsoGames[id - hddGames.count];
 }
 
 static char *hddGetGameName(item_list_t *itemList, int id)
 {
-    return hddGames.games[id].name;
+    if (id < hddGames.count)
+        return hddGames.games[id].name;
+    else
+        return hddIsoGames[id - hddGames.count].name;
 }
 
 static int hddGetGameNameLength(item_list_t *itemList, int id)
 {
-    return HDL_GAME_NAME_MAX + 1;
+    return id < hddGames.count ? HDL_GAME_NAME_MAX + 1 : ISO_GAME_NAME_MAX + 1;
 }
 
 static char *hddGetGameStartup(item_list_t *itemList, int id)
 {
-    return hddGames.games[id].startup;
+    if (id < hddGames.count)
+        return hddGames.games[id].startup;
+    else
+        return hddIsoGames[id - hddGames.count].startup;
 }
 
 static void hddDeleteGame(item_list_t *itemList, int id)
 {
-    hddDeleteHDLGame(&hddGames.games[id]);
-    hddForceUpdate = 1;
+    if (id < hddGames.count) {
+        hddDeleteHDLGame(&hddGames.games[id]);
+        hddForceUpdate = 1;
+    }
 }
 
 static void hddRenameGame(item_list_t *itemList, int id, char *newName)
 {
-    hdl_game_info_t *game = &hddGames.games[id];
-    strcpy(game->name, newName);
-    hddSetHDLGameInfo(&hddGames.games[id]);
-    hddForceUpdate = 1;
+    if (id < hddGames.count) {
+        hdl_game_info_t *game = &hddGames.games[id];
+        strcpy(game->name, newName);
+        hddSetHDLGameInfo(&hddGames.games[id]);
+        hddForceUpdate = 1;
+    }
 }
 
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
@@ -464,6 +483,23 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     char filename[32];
     hdl_game_info_t *game;
     struct cdvdman_settings_hdd *settings;
+
+    if (id >= hddGames.count) {
+        item_list_t bdmItemList;
+        bdm_device_data_t bdmDeviceData;
+
+        memset(&bdmItemList, 0, sizeof(bdmItemList));
+        memset(&bdmDeviceData, 0, sizeof(bdmDeviceData));
+        bdmItemList.mode = HDD_MODE;
+        bdmItemList.priv = &bdmDeviceData;
+        bdmDeviceData.bdmGames = hddIsoGames;
+        snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", gHDDPrefix);
+        strcpy(bdmDeviceData.bdmDriver, "ata");
+        bdmDeviceData.massDeviceIndex = 0;
+        bdmResolveLBA_UDMA(&bdmDeviceData);
+        bdmLaunchGame(&bdmItemList, id - hddGames.count, configSet);
+        return;
+    }
 
     if (gAutoLaunchGame == NULL)
         game = &hddGames.games[id];
@@ -663,6 +699,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
 {
+    if (id >= hddGames.count)
+        return sbPopulateConfig(&hddIsoGames[id - hddGames.count], gHDDPrefix, "/");
+
     char path[256];
     hdl_game_info_t *game = &hddGames.games[id];
 
@@ -717,6 +756,9 @@ static void hddCleanUp(item_list_t *itemList, int exception)
 
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
+        free(hddIsoGames);
+        hddIsoGames = NULL;
+        hddIsoGameCount = 0;
 
         if ((exception & UNMOUNT_EXCEPTION) == 0)
             fileXioUmount(hddPrefix);
@@ -742,6 +784,9 @@ static void hddShutdown(item_list_t *itemList)
 
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
+        free(hddIsoGames);
+        hddIsoGames = NULL;
+        hddIsoGameCount = 0;
         fileXioUmount(hddPrefix);
     }
 

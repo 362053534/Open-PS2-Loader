@@ -24,7 +24,6 @@
 #include "include/sound.h"
 #include "include/guigame.h"
 #include "include/texcache.h"
-#include "include/bdmsupport.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -458,7 +457,6 @@ void guiShowNetCompatUpdateSingle(int id, item_list_t *support, config_set_t *co
 static void guiShowBlockDeviceConfig(void)
 {
     int ret;
-    int previousEnableBdmHDD = gEnableBdmHDD;
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
@@ -473,13 +471,9 @@ static void guiShowBlockDeviceConfig(void)
 
         // BDMHDD开启时，自动关闭APA
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
+        if (gEnableBdmHDD)
+            gHDDStartMode = START_MODE_DISABLED;
         if (ret == UIID_BTN_OK) {
-            if (!previousEnableBdmHDD && gEnableBdmHDD)
-                bdmInitDevicesData();
-            if (gHDDStartMode && gEnableBdmHDD) {
-                gHDDStartMode = 0;
-                guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
-            }
             if (BdmStarted)
                 reFindBDM();
             applyConfig(-1, -1, 0);
@@ -598,6 +592,8 @@ reConfig:
 
         // APA开启时，自动关闭BDMHDD
         diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
+        if (gHDDStartMode != START_MODE_DISABLED)
+            gEnableBdmHDD = 0;
         diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
         diaGetInt(diaConfig, CFG_BDMCACHE, &bdmCacheSize);
@@ -612,13 +608,9 @@ reConfig:
             UiId = BLOCKDEVICE_BUTTON; // 块设备的uiid
             goto reConfig;
         } else if (ret == UIID_BTN_OK) {
-            if (gHDDStartMode && gEnableBdmHDD) {
-                gEnableBdmHDD = 0;
-                guiMsgBox("检测到冲突！已自动关闭BDMHDD模式！", 0, NULL);
-            }
             // BDM中途设为自动模式时
             if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
-                if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
+                if (gEnableUSB || gEnableILK || gEnableMX4SIO)
                     reFindBDM();
             }
             applyConfig(-1, -1, 0);
@@ -1681,7 +1673,7 @@ void reFindBDM()
     //}
 
     // 根据设备的就绪状态来添加延迟
-    if ((gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
+    if (gEnableMX4SIO > MX4SIOFound)
         endIntroDelayFrame = defaultDelayFrame; // 需要更长时间搜寻设备
     else if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound))
         endIntroDelayFrame = ShortDelayTime; // 搜寻设备的时间不需要太长
@@ -1720,7 +1712,7 @@ void guiMainLoop(void)
     endIntroDelayFrame = defaultDelayFrame;
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就给最低启动延迟，为了预加载背景图和封面
-    if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
+    if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound))
         endIntroDelayFrame = 0;
     if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !BdmStarted))
         endIntroDelayFrame = 0;
@@ -1768,7 +1760,7 @@ void guiMainLoop(void)
             // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
             if (endIntroDelayFrame > 0) {
                 // 所有设备准备就绪，才可以结束延迟
-                if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
+                if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound)) {
                     //// debug  打印debug信息
                     // char debugFileDir[64];
                     // strcpy(debugFileDir, "smb:debug-BDMReady.txt");
