@@ -416,7 +416,20 @@ static int hddUpdateGameList(item_list_t *itemList)
         }
     }
 
-    sbReadList(&hddIsoGames, gHDDPrefix, &hddIsoFileSize, &hddIsoGameCount);
+    if (!strcmp(gOPLPart, "hdd0:+OPL")) {
+        sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
+    } else {
+        fileXioUmount(hddPrefix);
+        if (fileXioMount(hddPrefix, "hdd0:+OPL", FIO_MT_RDWR) == 0)
+            sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
+        else {
+            free(hddIsoGames);
+            hddIsoGames = NULL;
+            hddIsoGameCount = 0;
+        }
+        fileXioUmount(hddPrefix);
+        fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+    }
 
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
     return (ret == 0 ? hddGames.count + hddIsoGameCount : 0);
@@ -488,16 +501,29 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         item_list_t bdmItemList;
         bdm_device_data_t bdmDeviceData;
 
+        if (strcmp(gOPLPart, "hdd0:+OPL")) {
+            fileXioUmount(hddPrefix);
+            if (fileXioMount(hddPrefix, "hdd0:+OPL", FIO_MT_RDWR) < 0) {
+                fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+                guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+                return;
+            }
+        }
+
         memset(&bdmItemList, 0, sizeof(bdmItemList));
         memset(&bdmDeviceData, 0, sizeof(bdmDeviceData));
         bdmItemList.mode = HDD_MODE;
         bdmItemList.priv = &bdmDeviceData;
         bdmDeviceData.bdmGames = hddIsoGames;
-        snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", gHDDPrefix);
+        snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", hddPrefix);
         strcpy(bdmDeviceData.bdmDriver, "ata");
         bdmDeviceData.massDeviceIndex = 0;
         bdmResolveLBA_UDMA(&bdmDeviceData);
         bdmLaunchGame(&bdmItemList, id - hddGames.count, configSet);
+        if (strcmp(gOPLPart, "hdd0:+OPL")) {
+            fileXioUmount(hddPrefix);
+            fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+        }
         return;
     }
 
@@ -699,8 +725,26 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
 {
-    if (id >= hddGames.count)
-        return sbPopulateConfig(&hddIsoGames[id - hddGames.count], gHDDPrefix, "/");
+    if (id >= hddGames.count) {
+        config_set_t *config;
+
+        if (strcmp(gOPLPart, "hdd0:+OPL")) {
+            fileXioUmount(hddPrefix);
+            if (fileXioMount(hddPrefix, "hdd0:+OPL", FIO_MT_RDWR) < 0) {
+                fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+                return NULL;
+            }
+        }
+
+        config = sbPopulateConfig(&hddIsoGames[id - hddGames.count], hddPrefix, "/");
+
+        if (strcmp(gOPLPart, "hdd0:+OPL")) {
+            fileXioUmount(hddPrefix);
+            fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+        }
+
+        return config;
+    }
 
     char path[256];
     hdl_game_info_t *game = &hddGames.games[id];

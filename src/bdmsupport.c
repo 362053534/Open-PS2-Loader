@@ -518,8 +518,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     struct cdvdman_fragfile *iso_frag = &settings->fragfile[0];
     iso_frag->frag_start = 0;
     iso_frag->frag_count = 0;
-    if (!strcmp(pDeviceData->bdmPrefix, gHDDPrefix)) {
-        hddPartCount = hddGetPartitionInfo(gOPLPart, parts);
+    if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
+        hddPartCount = hddGetPartitionInfo("hdd0:+OPL", parts);
         if (hddPartCount < 0) {
             sbUnprepare(&settings->common);
             guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
@@ -539,7 +539,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
         // Get fragment list
         int iFragCount;
-        if (!strcmp(pDeviceData->bdmPrefix, gHDDPrefix)) {
+        if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
             iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
             if (iFragCount > 0) {
                 int j;
@@ -554,7 +554,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             }
         } else
             iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
-        if ((!strcmp(pDeviceData->bdmPrefix, gHDDPrefix) && iFragCount <= 0) || iFragCount > BDM_MAX_FRAGS) {
+        if ((!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && iFragCount <= 0) || iFragCount > BDM_MAX_FRAGS) {
             // Too many fragments
             close(fd);
             sbUnprepare(&settings->common);
