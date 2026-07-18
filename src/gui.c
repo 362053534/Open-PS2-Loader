@@ -533,6 +533,8 @@ int guiIoModeToDeviceType(int ioMode)
 int UiId = -1;
 void guiShowConfig()
 {
+    int previousAutoDetectPS1Apps = gAutoDetectPS1Apps;
+
 reConfig:
     // configure the enumerations
     const char *deviceNames[] = {_l(_STR_BDM_GAMES), _l(_STR_NET_GAMES), _l(_STR_HDD_GAMES), _l(_STR_APPS), NULL};
@@ -612,6 +614,8 @@ reConfig:
                     reFindBDM();
             }
             applyConfig(-1, -1, 0);
+            if (previousAutoDetectPS1Apps != gAutoDetectPS1Apps)
+                menuRefreshAppsList();
             menuReinitMainMenu();
         }
     }

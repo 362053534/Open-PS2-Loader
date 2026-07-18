@@ -353,6 +353,14 @@ void menuRefreshGameLists(void)
     itemExecRefresh(NULL);
 }
 
+void menuRefreshAppsList(void)
+{
+    if (list_support[APP_MODE].support && list_support[APP_MODE].support->enabled) {
+        forcedMenuUpdates[APP_MODE] = 1;
+        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
+    }
+}
+
 static void itemExecCross(struct menu_item *curMenu)
 {
     if (gSelectButton == KEY_CROSS)
