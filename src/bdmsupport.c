@@ -544,13 +544,14 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
             if (iFragCount > 0) {
                 int j;
+                iFragCount--;
                 for (j = 0; j < iFragCount; j++) {
-                    if (blocks[j].subpart >= hddPartCount) {
+                    if (blocks[j + 1].subpart >= hddPartCount) {
                         iFragCount = -1;
                         break;
                     }
-                    settings->frags[iTotalFragCount + j].sector = parts[blocks[j].subpart].start + ((u64)blocks[j].number << 4);
-                    settings->frags[iTotalFragCount + j].count = (u32)blocks[j].count << 4;
+                    settings->frags[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
+                    settings->frags[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
                 }
             }
         } else
