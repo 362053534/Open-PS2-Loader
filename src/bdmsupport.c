@@ -11,6 +11,7 @@
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
 #include "include/sound.h"
+#include "include/hddsupport.h"
 #include "modules/iopcore/common/cdvd_config.h"
 
 #include <usbhdfsd-common.h>
@@ -132,6 +133,14 @@ static void bdmLoadBlockDeviceModules(void)
         // Load dev9 and atad device drivers.
         LOG("bdmLoadBlockDeviceModules loading hdd drivers...\n");
         hddLoadModules();
+        if (hddLoadModulesSuccess) {
+            int retryCount = 0;
+            while (hddLoadSupportModules()) {
+                if (++retryCount >= 20)
+                    break;
+                usleep(100000);
+            }
+        }
 
         hddModLoaded = 1;
         modulesLoaded = 1;
@@ -403,6 +412,7 @@ static void bdmRenameGame(item_list_t *itemList, int id, char *newName)
 void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, fd, iop_fd, index, compatmask = 0;
+    int hddPartCount = 0;
     int EnablePS2Logo = 0;
     int result;
     u64 startingLBA;
@@ -412,6 +422,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     struct cdvdman_settings_bdm *settings;
     u32 layer1_start, layer1_offset;
     unsigned short int layer1_part;
+    apa_sub_t parts[APA_MAXSUB + 1];
+    pfs_blockinfo_t blocks[BDM_MAX_FRAGS];
 
     bdm_device_data_t *pDeviceData = NULL;
 
@@ -524,6 +536,14 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     struct cdvdman_fragfile *iso_frag = &settings->fragfile[0];
     iso_frag->frag_start = 0;
     iso_frag->frag_count = 0;
+    if (!strcmp(pDeviceData->bdmPrefix, gHDDPrefix)) {
+        hddPartCount = hddGetPartitionInfo(gOPLPart, parts);
+        if (hddPartCount < 0) {
+            sbUnprepare(&settings->common);
+            guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+            return;
+        }
+    }
     for (i = 0; i < game->parts; i++) {
         // Open file
         sbCreatePath(game, partname, pDeviceData->bdmPrefix, "/", i);
@@ -536,8 +556,23 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         }
 
         // Get fragment list
-        int iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
-        if (iFragCount > BDM_MAX_FRAGS) {
+        int iFragCount;
+        if (!strcmp(pDeviceData->bdmPrefix, gHDDPrefix)) {
+            iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
+            if (iFragCount > 0) {
+                int j;
+                for (j = 0; j < iFragCount; j++) {
+                    if (blocks[j].subpart >= hddPartCount) {
+                        iFragCount = -1;
+                        break;
+                    }
+                    settings->frags[iTotalFragCount + j].sector = parts[blocks[j].subpart].start + ((u64)blocks[j].number << 4);
+                    settings->frags[iTotalFragCount + j].count = (u32)blocks[j].count << 4;
+                }
+            }
+        } else
+            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
+        if ((!strcmp(pDeviceData->bdmPrefix, gHDDPrefix) && iFragCount <= 0) || iFragCount > BDM_MAX_FRAGS) {
             // Too many fragments
             close(fd);
             sbUnprepare(&settings->common);
@@ -939,19 +974,37 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     char path[16] = {0};
     sprintf(path, "mass%d:/", itemList->mode);
     int dir = fileXioDopen(path);
+    int isAPAHDD = 0;
+    int i;
     // LOG("opendir %s -> %d\n", path, dir);
+
+    // BDM HDD开启时，将第一个未被mass设备使用的页面作为APA HDD设备。
+    if (dir < 0 && gEnableBdmHDD && (pDeviceData->bdmPrefix[0] == '\0' || !strcmp(pDeviceData->bdmPrefix, gHDDPrefix))) {
+        for (i = 0; i < itemList->mode; i++) {
+            if (!strcmp(((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmPrefix, gHDDPrefix))
+                break;
+        }
+        if (i == itemList->mode && (dir = fileXioDopen(gHDDPrefix)) >= 0)
+            isAPAHDD = 1;
+    }
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
         if (pDeviceData->bdmPrefix[0] == '\0') {
-            if (gBDMPrefix[0] != '\0')
+            if (isAPAHDD) {
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "%s", gHDDPrefix);
+                strcpy(pDeviceData->bdmDriver, "ata");
+                pDeviceData->massDeviceIndex = 0;
+            } else if (gBDMPrefix[0] != '\0')
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
             else
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
 
             // Get the name of the underlying device driver that backs the fat fs.
-            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
-            fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &pDeviceData->massDeviceIndex, sizeof(pDeviceData->massDeviceIndex));
+            if (!isAPAHDD) {
+                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
+                fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &pDeviceData->massDeviceIndex, sizeof(pDeviceData->massDeviceIndex));
+            }
 
             itemList->flags = 0;
 

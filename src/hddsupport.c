@@ -370,6 +370,8 @@ int hddLoadSupportModules(void)
         // }
         return 0;
     }
+
+    return 0;
 }
 
 void hddInit(item_list_t *itemList)
