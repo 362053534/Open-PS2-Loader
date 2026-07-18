@@ -18,6 +18,7 @@
 #include "include/config.h"
 #include "include/system.h"
 #include "include/ethsupport.h"
+#include "include/hddsupport.h"
 #include "include/compatupd.h"
 #include "include/pggsm.h"
 #include "include/cheatman.h"
@@ -1752,6 +1753,10 @@ void guiMainLoop(void)
                     guiMsgBox("Please close non-existent block devices!", 0, NULL);
                 else
                     guiMsgBox("BDM块设备检测超时！", 0, NULL);
+            }
+            if (hddIsoDebugMessageReady) {
+                hddIsoDebugMessageReady = 0;
+                guiMsgBox(hddIsoDebugMessage, 0, NULL);
             }
         }
 

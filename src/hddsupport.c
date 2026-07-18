@@ -38,6 +38,8 @@ static hdl_games_list_t hddGames;
 static base_game_info_t *hddIsoGames;
 static int hddIsoGameCount;
 static int hddIsoFileSize;
+char hddIsoDebugMessage[256];
+volatile int hddIsoDebugMessageReady;
 
 // forward declaration
 static item_list_t hddGameList;
@@ -403,7 +405,9 @@ static int hddNeedsUpdate(item_list_t *itemList)
 static int hddUpdateGameList(item_list_t *itemList)
 {
     hdl_games_list_t hddGamesNew;
-    int ret;
+    int ret, hddIsoMountResult, hddIsoScanResult, hddIsoCDDir, hddIsoDVDDir;
+    char isoPath[256];
+    DIR *isoDir;
 
     if (hddForceUpdate || ((ret = hddLoadGameListCache(&hddGames)) != 0)) {
         hddGamesNew.count = 0;
@@ -416,20 +420,50 @@ static int hddUpdateGameList(item_list_t *itemList)
         }
     }
 
-    if (!strcmp(gOPLPart, "hdd0:+OPL")) {
-        sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
-    } else {
+    hddIsoMountResult = 0;
+    hddIsoScanResult = -1;
+    hddIsoCDDir = -1;
+    hddIsoDVDDir = -1;
+
+    if (strcmp(gOPLPart, "hdd0:+OPL")) {
         fileXioUmount(hddPrefix);
-        if (fileXioMount(hddPrefix, "hdd0:+OPL", FIO_MT_RDWR) == 0)
-            sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
-        else {
-            free(hddIsoGames);
-            hddIsoGames = NULL;
-            hddIsoGameCount = 0;
-        }
+        hddIsoMountResult = fileXioMount(hddPrefix, "hdd0:+OPL", FIO_MT_RDWR);
+    }
+
+    if (hddIsoMountResult == 0) {
+        snprintf(isoPath, sizeof(isoPath), "%sCD", hddPrefix);
+        if ((isoDir = opendir(isoPath)) != NULL) {
+            hddIsoCDDir = 1;
+            closedir(isoDir);
+        } else
+            hddIsoCDDir = 0;
+
+        snprintf(isoPath, sizeof(isoPath), "%sDVD", hddPrefix);
+        if ((isoDir = opendir(isoPath)) != NULL) {
+            hddIsoDVDDir = 1;
+            closedir(isoDir);
+        } else
+            hddIsoDVDDir = 0;
+
+        hddIsoScanResult = sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
+    } else {
+        free(hddIsoGames);
+        hddIsoGames = NULL;
+        hddIsoGameCount = 0;
+    }
+
+    if (strcmp(gOPLPart, "hdd0:+OPL")) {
         fileXioUmount(hddPrefix);
         fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
     }
+
+    // 后台扫描完成后，由GUI线程显示结果，避免在I/O线程中直接调用guiMsgBox导致死锁。
+    snprintf(hddIsoDebugMessage, sizeof(hddIsoDebugMessage), "APA ISO扫描调试\n+OPL挂载: %s (%d)\nCD目录: %s\nDVD目录: %s\nISO扫描返回: %d，找到: %d\nAPA: %d，合计: %d",
+             hddIsoMountResult == 0 ? "成功" : "失败", hddIsoMountResult,
+             hddIsoCDDir > 0 ? "成功" : (hddIsoCDDir == 0 ? "失败" : "未执行"),
+             hddIsoDVDDir > 0 ? "成功" : (hddIsoDVDDir == 0 ? "失败" : "未执行"),
+             hddIsoScanResult, hddIsoGameCount, hddGames.count, hddGames.count + hddIsoGameCount);
+    hddIsoDebugMessageReady = 1;
 
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
     return (ret == 0 ? hddGames.count + hddIsoGameCount : 0);

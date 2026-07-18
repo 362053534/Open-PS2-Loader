@@ -68,5 +68,7 @@ int hddLoadSupportModules(void);
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);
 
 extern int hddLoadModulesSuccess;
+extern char hddIsoDebugMessage[256];
+extern volatile int hddIsoDebugMessageReady;
 
 #endif
