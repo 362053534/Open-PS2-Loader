@@ -16,7 +16,6 @@ extern struct irx_export_table _exp_atad;
 
 char lba_48bit = 0;
 char atad_inited = 0;
-static unsigned char CurrentPart = 0;
 static unsigned char NumParts;
 
 static hdl_partspecs_t cdvdman_partspecs[HDL_NUM_PART_SPECS];
@@ -27,14 +26,14 @@ extern int ata_device_set_write_cache(int device, int enable);
 
 extern int ata_io_sema;
 
-static int cdvdman_get_part_specs(u32 lsn)
+static int cdvdman_get_part_specs(u32 lsn, unsigned char *currentPart)
 {
     register int i;
     hdl_partspecs_t *ps;
 
     for (ps = cdvdman_partspecs, i = 0; i < NumParts; i++, ps++) {
         if ((lsn >= ps->part_offset) && (lsn < (ps->part_offset + (ps->part_size / 2048)))) {
-            CurrentPart = i;
+            *currentPart = i;
             break;
         }
     }
@@ -111,16 +110,17 @@ void DeviceStop(void)
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     u32 offset = 0;
+    unsigned char currentPart = 0;
     while (sectors) {
-        if (!((lsn >= cdvdman_partspecs[CurrentPart].part_offset) && (lsn < (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048)))))
-            cdvdman_get_part_specs(lsn);
+        if (!((lsn >= cdvdman_partspecs[currentPart].part_offset) && (lsn < (cdvdman_partspecs[currentPart].part_offset + (cdvdman_partspecs[currentPart].part_size / 2048)))))
+            cdvdman_get_part_specs(lsn, &currentPart);
             //if (cdvdman_get_part_specs(lsn) != 0)
             //    return SCECdErTRMOPN;
-        u32 nsectors = (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048)) - lsn;
+        u32 nsectors = (cdvdman_partspecs[currentPart].part_offset + (cdvdman_partspecs[currentPart].part_size / 2048)) - lsn;
         if (sectors < nsectors)
             nsectors = sectors;
 
-        u32 lba = cdvdman_partspecs[CurrentPart].data_start + ((lsn - cdvdman_partspecs[CurrentPart].part_offset) << 2);
+        u32 lba = cdvdman_partspecs[currentPart].data_start + ((lsn - cdvdman_partspecs[currentPart].part_offset) << 2);
         //if (sceAtaDmaTransfer(0, (void *)((u8 *)buffer + offset), lba, nsectors << 2, ATA_DIR_READ) != 0) {
         //    return SCECdErREAD;
         //}
