@@ -763,7 +763,7 @@ int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *
     count = 0;
     for (i = BDM_MODE; i <= BDM_MODE4; i++) {
         listSupport = list_support[i].support;
-        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
+        if ((gBDMStartMode != START_MODE_DISABLED) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
 
             if (prefix[0] == '\0')
@@ -786,7 +786,7 @@ int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *
     count = 0;
     for (i = BDM_MODE; i <= BDM_MODE4; i++) {
         listSupport = list_support[i].support;
-        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
+        if ((gBDMStartMode != START_MODE_DISABLED) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
 
             if (prefix[0] == '\0')
@@ -821,7 +821,7 @@ int oplScanSMBApps(int (*callback)(const char *path, const char *elfName, void *
     char *prefix;
 
     listSupport = list_support[ETH_MODE].support;
-    if ((listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
+    if ((gETHStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
         return 0;
 
     prefix = listSupport->itemGetPrefix(listSupport);
@@ -839,7 +839,7 @@ int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *
     char appsPath[128];
 
     listSupport = list_support[HDD_MODE].support;
-    if ((listSupport == NULL) || !listSupport->enabled || (gHDDPrefix == NULL) || (gHDDPrefix[0] == '\0'))
+    if ((gHDDStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (gHDDPrefix == NULL) || (gHDDPrefix[0] == '\0'))
         return 0;
 
     // hdd0:+OPL is mounted as pfs0:, which is the default gHDDPrefix.
@@ -854,7 +854,7 @@ int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *
     char *prefix;
 
     listSupport = list_support[ETH_MODE].support;
-    if ((listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
+    if ((gETHStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
         return 0;
 
     prefix = listSupport->itemGetPrefix(listSupport);
@@ -884,7 +884,7 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *
     int result;
 
     listSupport = list_support[HDD_MODE].support;
-    if ((listSupport == NULL) || !listSupport->enabled)
+    if ((gHDDStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled)
         return 0;
 
     result = oplMountHDDPOPS();
