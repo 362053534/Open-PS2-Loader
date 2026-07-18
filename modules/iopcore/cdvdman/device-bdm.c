@@ -44,11 +44,17 @@ void bdm_connect_bd(struct block_device *bd)
         DPRINTF("attaching to %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
         g_bd = bd;
         if (cdvdman_settings.fragsAre512ByteSectors && bd->sectorSize != 512) {
-            unsigned int sectors_per_pfs_sector = bd->sectorSize / 512;
+            unsigned int sector_shift = 0;
+            unsigned int sectors_per_pfs_sector = bd->sectorSize >> 9;
+
+            while (sectors_per_pfs_sector > 1) {
+                sectors_per_pfs_sector >>= 1;
+                sector_shift++;
+            }
 
             for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++) {
-                cdvdman_settings.frags[i].sector /= sectors_per_pfs_sector;
-                cdvdman_settings.frags[i].count /= sectors_per_pfs_sector;
+                cdvdman_settings.frags[i].sector >>= sector_shift;
+                cdvdman_settings.frags[i].count >>= sector_shift;
             }
             cdvdman_settings.fragsAre512ByteSectors = 0;
         }
