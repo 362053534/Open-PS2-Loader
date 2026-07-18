@@ -16,7 +16,6 @@ extern struct irx_export_table _exp_atad;
 
 char lba_48bit = 0;
 char atad_inited = 0;
-static int hdd_io_sema;
 static unsigned char CurrentPart = 0;
 static unsigned char NumParts;
 
@@ -27,6 +26,7 @@ extern int ata_device_set_write_cache(int device, int enable);
 #endif
 
 extern int ata_io_sema;
+extern unsigned int ata_get_logical_sector_size_2(int device);
 
 static int cdvdman_get_part_specs(u32 lsn)
 {
@@ -48,18 +48,11 @@ static int cdvdman_get_part_specs(u32 lsn)
 
 void DeviceInit(void)
 {
-    iop_sema_t smp;
-
     RegisterLibraryEntries(&_exp_atad);
 
     atad_start();
     atad_inited = 1;
-
-    smp.initial = 1;
-    smp.max = 1;
-    smp.option = 0;
-    smp.attr = SA_THPRI;
-    hdd_io_sema = CreateSema(&smp);
+    ata_get_logical_sector_size_2(0);
 
     lba_48bit = cdvdman_settings.common.media;
 
@@ -121,7 +114,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     u32 offset = 0;
 
-    WaitSema(hdd_io_sema);
     while (sectors) {
         if (!((lsn >= cdvdman_partspecs[CurrentPart].part_offset) && (lsn < (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048)))))
             cdvdman_get_part_specs(lsn);
@@ -140,8 +132,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         sectors -= nsectors;
         lsn += nsectors;
     }
-
-    SignalSema(hdd_io_sema);
 
     return SCECdErNO;
 }

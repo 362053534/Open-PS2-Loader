@@ -79,9 +79,12 @@ static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 co
 static int ata_bd_write(struct block_device *bd, u64 sector, const void *buffer, u16 count);
 static void ata_bd_flush(struct block_device *bd);
 static int ata_bd_stop(struct block_device *bd);
-static unsigned int ata_get_logical_sector_size_2(int device);
-static int ata_read_identify_data_2(int device, u16 *identify_data);
 static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 nsectors, int dir, unsigned int sector_size);
+#endif
+
+#if defined(USE_BDM_ATA) || defined(HDD_DRIVER)
+unsigned int ata_get_logical_sector_size_2(int device);
+static int ata_read_identify_data_2(int device, u16 *identify_data);
 #endif
 
 /* ATA command info.  */
@@ -714,7 +717,7 @@ static void ata_shutdown_cb(void)
         ata_device_standby_immediate(0);
 }
 
-#ifdef USE_BDM_ATA
+#if defined(USE_BDM_ATA) || defined(HDD_DRIVER)
 static int ata_read_identify_data_2(int device, u16 *identify_data)
 {
     USE_ATA_REGS;
@@ -748,7 +751,7 @@ static int ata_read_identify_data_2(int device, u16 *identify_data)
     return 0;
 }
 
-static unsigned int ata_get_logical_sector_size_2(int device)
+unsigned int ata_get_logical_sector_size_2(int device)
 {
     u16 identify_data[256];
     u32 logical_sector_words;
@@ -773,6 +776,9 @@ static unsigned int ata_get_logical_sector_size_2(int device)
     return logical_sector_words;
 }
 
+#endif
+
+#ifdef USE_BDM_ATA
 static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 nsectors, int dir, unsigned int sector_size)
 {
     USE_SPD_REGS;
