@@ -848,15 +848,40 @@ static int ata_bd_io_common(struct block_device *bd, u64 lba, void *buf, u16 nse
 // Block device interface
 //
 
+static int ata_bd_soft_reset(void)
+{
+    int result;
+
+    USE_ATA_REGS;
+
+    WAITIOSEMA(ata_io_sema);
+    ata_hwport->r_control = 6;
+    DelayThread(100);
+    ata_hwport->r_control = 2;
+    DelayThread(3000);
+    result = ata_wait_busy();
+    SIGNALIOSEMA(ata_io_sema);
+
+    return result;
+}
+
 static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 count)
 {
-    if (ata_bd_io_common(bd, sector, buffer, count, 0) != 0)
+    int result = ata_bd_io_common(bd, sector, buffer, count, 0);
+
+    if ((result == ATA_RES_ERR_TIMEOUT || result == ATA_RES_ERR_ICRC) && ata_bd_soft_reset() == 0)
+        result = ata_bd_io_common(bd, sector, buffer, count, 0);
+    if (result != 0)
         return -EIO;
     return count;
 }
 static int ata_bd_write(struct block_device *bd, u64 sector, const void *buffer, u16 count)
 {
-    if (ata_bd_io_common(bd, sector, (void *)buffer, count, 1) != 0)
+    int result = ata_bd_io_common(bd, sector, (void *)buffer, count, 1);
+
+    if ((result == ATA_RES_ERR_TIMEOUT || result == ATA_RES_ERR_ICRC) && ata_bd_soft_reset() == 0)
+        result = ata_bd_io_common(bd, sector, (void *)buffer, count, 1);
+    if (result != 0)
         return -EIO;
     return count;
 }
