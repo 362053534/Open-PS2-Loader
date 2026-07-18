@@ -703,6 +703,22 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         return;
     }
 
+    u32 part_offset = 0;
+    int map_matches = 1;
+    FILE *debugFile = fopen("mass0:APA-debug.txt", "ab+");
+    if (debugFile != NULL) {
+        fprintf(debugFile, "HDL P:%d\r\n", hdl_header->num_partitions);
+        for (i = 0; i < hdl_header->num_partitions; i++) {
+            if (hdl_header->part_specs[i].part_offset != part_offset)
+                map_matches = 0;
+            fprintf(debugFile, "P%d O:%08X E:%08X S:%08X D:%08X\r\n", i, (unsigned int)hdl_header->part_specs[i].part_offset,
+                    (unsigned int)part_offset, (unsigned int)(hdl_header->part_specs[i].part_size >> 11), (unsigned int)hdl_header->part_specs[i].data_start);
+            part_offset += hdl_header->part_specs[i].part_size >> 11;
+        }
+        fprintf(debugFile, "HDL M:%d\r\n", map_matches);
+        fclose(debugFile);
+    }
+
     size_irx = size_bdm_ata_cdvdman_irx;
     irx = &bdm_ata_cdvdman_irx;
     sbPrepare(NULL, configSet, size_irx, irx, &i);
