@@ -41,6 +41,27 @@ static int hddIsoFileSize;
 char hddIsoDebugMessage[256];
 volatile int hddIsoDebugMessageReady;
 
+typedef struct
+{
+    u32 checksum;
+    u32 magic;
+    char gamename[160];
+    u8 hdl_compat_flags;
+    u8 ops2l_compat_flags;
+    u8 dma_type;
+    u8 dma_mode;
+    char startup[60];
+    u32 layer1_start;
+    u32 discType;
+    int num_partitions;
+    struct
+    {
+        u32 part_offset;
+        u32 data_start;
+        u32 part_size;
+    } part_specs[65];
+} hdl_apa_header;
+
 // forward declaration
 static item_list_t hddGameList;
 
@@ -512,7 +533,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     void *irx = NULL;
     char filename[32];
     hdl_game_info_t *game;
-    struct cdvdman_settings_hdd *settings;
+    struct cdvdman_settings_bdm *settings;
+    hdl_apa_header *hdl_header;
+    struct cdvdman_fragfile *iso_frag;
 
     if (id >= hddGames.count) {
         item_list_t bdmItemList;
@@ -669,14 +692,19 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
     hddSetIdleTimeout(gHDDSpindown * 12);
 
-    if (hddHDProKitDetected) {
-        size_irx = size_hdd_hdpro_cdvdman_irx;
-        irx = &hdd_hdpro_cdvdman_irx;
-    } else {
-        size_irx = size_hdd_cdvdman_irx;
-        irx = &hdd_cdvdman_irx;
+    if (hddReadSectors(game->start_sector, 2, IOBuffer) != 0) {
+        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+        return;
     }
 
+    hdl_header = (hdl_apa_header *)IOBuffer;
+    if (hdl_header->num_partitions <= 0 || hdl_header->num_partitions > BDM_MAX_FRAGS) {
+        guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+        return;
+    }
+
+    size_irx = size_bdm_ata_cdvdman_irx;
+    irx = &bdm_ata_cdvdman_irx;
     sbPrepare(NULL, configSet, size_irx, irx, &i);
 
     if ((result = sbLoadCheats(gHDDPrefix, game->startup)) < 0) {
@@ -692,13 +720,21 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             LOG("Cheats error\n");
     }
 
-    settings = (struct cdvdman_settings_hdd *)((u8 *)irx + i);
+    settings = (struct cdvdman_settings_bdm *)((u8 *)irx + i);
 
-    // patch 48bit flag
-    settings->common.media = hddIs48bit() & 0xff;
-
-    // patch start_sector
-    settings->lba_start = game->start_sector;
+    memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
+    iso_frag = &settings->fragfile[0];
+    iso_frag->frag_start = 0;
+    iso_frag->frag_count = hdl_header->num_partitions;
+    for (i = 0; i < hdl_header->num_partitions; i++) {
+        settings->frags[i].sector = hdl_header->part_specs[i].data_start;
+        settings->frags[i].count = hdl_header->part_specs[i].part_size >> 9;
+    }
+    settings->bdDeviceId = 0;
+    settings->hddIsLBA48 = hddIs48bit();
+    settings->fragsAre512ByteSectors = 0;
+    settings->common.NumParts = 1;
+    settings->common.media = hdl_header->discType;
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         strcpy(filename, game->startup);
@@ -707,7 +743,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
 
     // Check for ZSO to correctly adjust layer1 start
-    settings->common.layer1_start = 0; // cdvdman will read it from APA header
+    settings->common.layer1_start = hdl_header->layer1_start;
     hddReadSectors(game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET, 1, IOBuffer);
     if (*(u32 *)IOBuffer == ZSO_MAGIC) {
         probed_fd = 0;
@@ -737,7 +773,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // adjust ZSO cache
     settings->common.zso_cache = hddCacheSize;
-    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, size_mcemu_irx, hdd_mcemu_irx, EnablePS2Logo, compatMode);
+    sysLaunchLoaderElf(filename, "BDM_ATA_MODE", size_irx, irx, size_mcemu_irx, hdd_mcemu_irx, EnablePS2Logo, compatMode);
 }
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
