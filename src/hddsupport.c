@@ -789,7 +789,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // adjust ZSO cache
     settings->common.zso_cache = hddCacheSize;
-    sysLaunchLoaderElf(filename, "BDM_ATA_MODE", size_irx, irx, size_mcemu_irx, hdd_mcemu_irx, EnablePS2Logo, compatMode);
+    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, size_mcemu_irx, hdd_mcemu_irx, EnablePS2Logo, compatMode);
 }
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
