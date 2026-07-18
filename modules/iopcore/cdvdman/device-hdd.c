@@ -26,9 +26,6 @@ extern int ata_device_set_write_cache(int device, int enable);
 #endif
 
 extern int ata_io_sema;
-#ifndef HD_PRO
-extern unsigned int ata_get_logical_sector_size_2(int device);
-#endif
 
 static int cdvdman_get_part_specs(u32 lsn)
 {
@@ -54,9 +51,6 @@ void DeviceInit(void)
 
     atad_start();
     atad_inited = 1;
-#ifndef HD_PRO
-    ata_get_logical_sector_size_2(0);
-#endif
 
     lba_48bit = cdvdman_settings.common.media;
 

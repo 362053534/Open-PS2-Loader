@@ -533,8 +533,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     void *irx = NULL;
     char filename[32];
     hdl_game_info_t *game;
-    struct cdvdman_settings_hdd *settings;
+    struct cdvdman_settings_bdm *settings;
     hdl_apa_header *hdl_header;
+    struct cdvdman_fragfile *iso_frag;
 
     if (id >= hddGames.count) {
         item_list_t bdmItemList;
@@ -718,8 +719,8 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         fclose(debugFile);
     }
 
-    size_irx = size_hdd_cdvdman_irx;
-    irx = &hdd_cdvdman_irx;
+    size_irx = size_bdm_ata_cdvdman_irx;
+    irx = &bdm_ata_cdvdman_irx;
     sbPrepare(NULL, configSet, size_irx, irx, &i);
 
     if ((result = sbLoadCheats(gHDDPrefix, game->startup)) < 0) {
@@ -735,9 +736,21 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             LOG("Cheats error\n");
     }
 
-    settings = (struct cdvdman_settings_hdd *)((u8 *)irx + i);
-    settings->lba_start = game->start_sector;
-    settings->common.media = hddIs48bit();
+    settings = (struct cdvdman_settings_bdm *)((u8 *)irx + i);
+
+    memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
+    iso_frag = &settings->fragfile[0];
+    iso_frag->frag_start = 0;
+    iso_frag->frag_count = hdl_header->num_partitions;
+    for (i = 0; i < hdl_header->num_partitions; i++) {
+        settings->frags[i].sector = hdl_header->part_specs[i].data_start;
+        settings->frags[i].count = hdl_header->part_specs[i].part_size >> 9;
+    }
+    settings->bdDeviceId = 0;
+    settings->hddIsLBA48 = hddIs48bit();
+    settings->fragsAre512ByteSectors = 0;
+    settings->common.NumParts = 1;
+    settings->common.media = hdl_header->discType;
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         strcpy(filename, game->startup);
