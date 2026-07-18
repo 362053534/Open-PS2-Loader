@@ -518,6 +518,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     struct cdvdman_fragfile *iso_frag = &settings->fragfile[0];
     iso_frag->frag_start = 0;
     iso_frag->frag_count = 0;
+    settings->fragsAre512ByteSectors = !strncmp(pDeviceData->bdmPrefix, "pfs", 3);
     if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
         hddPartCount = hddGetPartitionInfo("hdd0:+OPL", parts);
         if (hddPartCount < 0) {
@@ -651,6 +652,31 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
         hddSetIdleTimeout(gHDDSpindown * 12);
         settings->hddIsLBA48 = pDeviceData->bdmHddIsLBA48;
+    }
+
+    if (settings->fragsAre512ByteSectors) {
+        int hddIsoSectorSize = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_LOGICAL_SECTOR_SIZE, NULL, 0, NULL, 0);
+        int sectorsPerPfsSector = (hddIsoSectorSize > 0 && (hddIsoSectorSize % 512) == 0) ? hddIsoSectorSize / 512 : 0;
+        char hddIsoDebugMessage[64];
+
+        snprintf(hddIsoDebugMessage, sizeof(hddIsoDebugMessage), "S:%d x:%d F:%u A:%u L:%u", hddIsoSectorSize, sectorsPerPfsSector,
+                 iso_frag->frag_count, settings->bdDeviceId, settings->hddIsLBA48);
+        FILE *debugFile = fopen("mass0:APA-debug.txt", "ab+");
+        if (debugFile != NULL) {
+            fprintf(debugFile, "LAUNCH %s\r\n", hddIsoDebugMessage);
+            if (sectorsPerPfsSector > 0)
+                fprintf(debugFile, "R:%llX/%X>C:%llX/%X\r\n", (unsigned long long)settings->frags[0].sector,
+                        settings->frags[0].count, (unsigned long long)(settings->frags[0].sector / sectorsPerPfsSector),
+                        settings->frags[0].count / sectorsPerPfsSector);
+            fclose(debugFile);
+        }
+        guiMsgBox(hddIsoDebugMessage, 0, NULL);
+        if (sectorsPerPfsSector > 0) {
+            snprintf(hddIsoDebugMessage, sizeof(hddIsoDebugMessage), "R:%llX/%X>C:%llX/%X", (unsigned long long)settings->frags[0].sector,
+                     settings->frags[0].count, (unsigned long long)(settings->frags[0].sector / sectorsPerPfsSector),
+                     settings->frags[0].count / sectorsPerPfsSector);
+            guiMsgBox(hddIsoDebugMessage, 0, NULL);
+        }
     }
 
     if (gAutoLaunchBDMGame == NULL)

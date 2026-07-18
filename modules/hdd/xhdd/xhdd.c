@@ -70,6 +70,27 @@ static int xhddDevctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsi
 
             return -EINVAL;
         }
+
+        case ATA_DEVCTL_GET_LOGICAL_SECTOR_SIZE: {
+            u16 *identify_data = (u16 *)&deviceIdentifyData;
+            u32 logical_sector_words;
+            u16 physical_logical_sector_size;
+
+            if (ata_device_identify(fd->unit, &deviceIdentifyData) != 0)
+                return -EIO;
+
+            physical_logical_sector_size = identify_data[106];
+            if ((physical_logical_sector_size & 0xc000) != 0x4000 ||
+                !(physical_logical_sector_size & 0x1000))
+                return 512;
+
+            logical_sector_words = identify_data[117] | ((u32)identify_data[118] << 16);
+            if (logical_sector_words < 256 || logical_sector_words > (0xffffffff / 2))
+                return 512;
+
+            logical_sector_words *= 2;
+            return (logical_sector_words < 512 || (logical_sector_words % 512) != 0) ? 512 : logical_sector_words;
+        }
         default:
             return -EINVAL;
     }

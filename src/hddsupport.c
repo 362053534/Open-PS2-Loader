@@ -405,9 +405,7 @@ static int hddNeedsUpdate(item_list_t *itemList)
 static int hddUpdateGameList(item_list_t *itemList)
 {
     hdl_games_list_t hddGamesNew;
-    int ret, hddIsoMountResult, hddIsoScanResult, hddIsoCDDir, hddIsoDVDDir;
-    char isoPath[256];
-    DIR *isoDir;
+    int ret, hddIsoMountResult, hddIsoSectorSize;
 
     if (hddForceUpdate || ((ret = hddLoadGameListCache(&hddGames)) != 0)) {
         hddGamesNew.count = 0;
@@ -421,9 +419,6 @@ static int hddUpdateGameList(item_list_t *itemList)
     }
 
     hddIsoMountResult = 0;
-    hddIsoScanResult = -1;
-    hddIsoCDDir = -1;
-    hddIsoDVDDir = -1;
 
     if (strcmp(gOPLPart, "hdd0:+OPL")) {
         fileXioUmount(hddPrefix);
@@ -431,21 +426,7 @@ static int hddUpdateGameList(item_list_t *itemList)
     }
 
     if (hddIsoMountResult == 0) {
-        snprintf(isoPath, sizeof(isoPath), "%sCD", hddPrefix);
-        if ((isoDir = opendir(isoPath)) != NULL) {
-            hddIsoCDDir = 1;
-            closedir(isoDir);
-        } else
-            hddIsoCDDir = 0;
-
-        snprintf(isoPath, sizeof(isoPath), "%sDVD", hddPrefix);
-        if ((isoDir = opendir(isoPath)) != NULL) {
-            hddIsoDVDDir = 1;
-            closedir(isoDir);
-        } else
-            hddIsoDVDDir = 0;
-
-        hddIsoScanResult = sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
+        sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
     } else {
         free(hddIsoGames);
         hddIsoGames = NULL;
@@ -458,11 +439,13 @@ static int hddUpdateGameList(item_list_t *itemList)
     }
 
     // 后台扫描完成后，由GUI线程显示结果，避免在I/O线程中直接调用guiMsgBox导致死锁。
-    snprintf(hddIsoDebugMessage, sizeof(hddIsoDebugMessage), "APA ISO扫描调试\n+OPL挂载: %s (%d)\nCD目录: %s\nDVD目录: %s\nISO扫描返回: %d，找到: %d\nAPA: %d，合计: %d",
-             hddIsoMountResult == 0 ? "成功" : "失败", hddIsoMountResult,
-             hddIsoCDDir > 0 ? "成功" : (hddIsoCDDir == 0 ? "失败" : "未执行"),
-             hddIsoDVDDir > 0 ? "成功" : (hddIsoDVDDir == 0 ? "失败" : "未执行"),
-             hddIsoScanResult, hddIsoGameCount, hddGames.count, hddGames.count + hddIsoGameCount);
+    hddIsoSectorSize = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_LOGICAL_SECTOR_SIZE, NULL, 0, NULL, 0);
+    snprintf(hddIsoDebugMessage, sizeof(hddIsoDebugMessage), "ATAD逻辑扇区大小: %d 字节", hddIsoSectorSize);
+    FILE *debugFile = fopen("mass0:APA-debug.txt", "ab+");
+    if (debugFile != NULL) {
+        fprintf(debugFile, "SCAN S:%d\r\n", hddIsoSectorSize);
+        fclose(debugFile);
+    }
     hddIsoDebugMessageReady = 1;
 
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.

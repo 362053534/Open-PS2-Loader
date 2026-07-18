@@ -39,8 +39,19 @@ void bdm_connect_bd(struct block_device *bd)
     DPRINTF("connecting device %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
 
     if (g_bd == NULL && bd->devNr == cdvdman_settings.bdDeviceId) {
+        unsigned int i;
+
         DPRINTF("attaching to %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
         g_bd = bd;
+        if (cdvdman_settings.fragsAre512ByteSectors && bd->sectorSize != 512) {
+            unsigned int sectors_per_pfs_sector = bd->sectorSize / 512;
+
+            for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++) {
+                cdvdman_settings.frags[i].sector /= sectors_per_pfs_sector;
+                cdvdman_settings.frags[i].count /= sectors_per_pfs_sector;
+            }
+            cdvdman_settings.fragsAre512ByteSectors = 0;
+        }
         g_bd_sectors_per_sector = (2048 / bd->sectorSize);
         // Free usage of block device
         SignalSema(bdm_io_sema);
