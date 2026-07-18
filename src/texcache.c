@@ -29,7 +29,7 @@ static int cdFramesCount = 0; // 手动重复按键
 static char *curStartUp = NULL;
 static int findBGCount = 0; // 寻找背景图的次数
 static int usePthread = 1;  // 使用pthread多线程方法加载图片
-static int texLoadingTimeOut = 0;  // 用于判断加载计数异常时，将texLoading置为0
+//static int texLoadingTimeOut = 0;  // 用于判断加载计数异常时，将texLoading置为0
 
 // 申请线程
 pthread_t tid1;
@@ -226,33 +226,33 @@ void flushBatchRequests(void)
         ForceRefreshPrevTexCache = 0;
 
     // 线程异常时，将线程取消后重新创建(补救措施,大概率没用作用)
-    if (texLoading && !getKeyPressed(KEY_UP) && !getKeyPressed(KEY_DOWN) && !getKeyPressed(KEY_L1) && !getKeyPressed(KEY_R1)) {
-        if (++texLoadingTimeOut >= 600) { // 没有按住按键，且加载超过10秒时，重置texLoading
-            if (usePthread) {
-                if (pthread_created_BG)
-                    pthread_cancel(tid1);
-                if (pthread_created_COV)
-                    pthread_cancel(tid2);
-                if (pthread_created_ICO)
-                    pthread_cancel(tid3);
+    //if (texLoading && !getKeyPressed(KEY_UP) && !getKeyPressed(KEY_DOWN) && !getKeyPressed(KEY_L1) && !getKeyPressed(KEY_R1)) {
+    //    if (++texLoadingTimeOut >= 600) { // 没有按住按键，且加载超过10秒时，重置texLoading
+    //        if (usePthread) {
+    //            if (pthread_created_BG)
+    //                pthread_cancel(tid1);
+    //            if (pthread_created_COV)
+    //                pthread_cancel(tid2);
+    //            if (pthread_created_ICO)
+    //                pthread_cancel(tid3);
 
-                // 线程分离，如果不需要pthread_join
-                 pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    //            // 线程分离，如果不需要pthread_join
+    //             pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-                if (pthread_created_BG)
-                    pthread_create(&tid1, &attr, cacheLoadImage, &req1);
-                if (pthread_created_COV)
-                    pthread_create(&tid2, &attr, cacheLoadImage, &req2);
-                if (pthread_created_ICO)
-                    pthread_create(&tid3, &attr, cacheLoadImage, &req3);
+    //            if (pthread_created_BG)
+    //                pthread_create(&tid1, &attr, cacheLoadImage, &req1);
+    //            if (pthread_created_COV)
+    //                pthread_create(&tid2, &attr, cacheLoadImage, &req2);
+    //            if (pthread_created_ICO)
+    //                pthread_create(&tid3, &attr, cacheLoadImage, &req3);
 
-                texLoading = 0;
-            } else {
-                ;
-            }
-        }
-    } else
-        texLoadingTimeOut = 0;
+    //            texLoading = 0;
+    //        } else {
+    //            ;
+    //        }
+    //    }
+    //} else
+    //    texLoadingTimeOut = 0;
 
     //// 有堆积的图片待加载
     //if (batchRequestCount > 0 && !texLoading) {
