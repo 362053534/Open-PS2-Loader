@@ -1778,10 +1778,7 @@ void guiMainLoop(void)
                     endIntroDelayFrame = 0;
                 } else {
                     menuUpdateBDMSupport(); // 继续尝试检索bdm设备
-                    endIntroDelayFrame--;
-                    // BDM设备超时，弹出提示框
-                    if ((greetingAlpha <= 0x00) && (endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted || bdmManualTrigger))
-                        bdmTimeOut = 1;
+
 
                     //// debug  打印debug信息
                     // delayFrameCount++;
