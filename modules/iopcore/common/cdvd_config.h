@@ -62,7 +62,7 @@ struct cdvdman_settings_smb
 } __attribute__((packed));
 
 #define BDM_MAX_FILES 1  // ISO
-#define BDM_MAX_FRAGS 64 // 64 * 8bytes = 512bytes
+#define BDM_MAX_FRAGS 65 // 65 * 8bytes = 520bytes
 
 struct cdvdman_fragfile
 {
