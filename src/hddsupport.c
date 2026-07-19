@@ -435,7 +435,7 @@ static int hddUpdateGameList(item_list_t *itemList)
         }
     }
 
-    sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
+    sbReadList(&hddIsoGames, gHDDPrefix, &hddIsoFileSize, &hddIsoGameCount);
 
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
     return (ret == 0 ? hddGames.count + hddIsoGameCount : 0);
@@ -514,7 +514,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         bdmItemList.mode = HDD_MODE;
         bdmItemList.priv = &bdmDeviceData;
         bdmDeviceData.bdmGames = hddIsoGames;
-        snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", hddPrefix);
+        snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", gHDDPrefix);
         strcpy(bdmDeviceData.bdmDriver, "ata");
         bdmDeviceData.massDeviceIndex = 0;
         bdmResolveLBA_UDMA(&bdmDeviceData);
@@ -735,7 +735,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
 {
     if (id >= hddGames.count) {
-        return sbPopulateConfig(&hddIsoGames[id - hddGames.count], hddPrefix, "/");
+        return sbPopulateConfig(&hddIsoGames[id - hddGames.count], gHDDPrefix, "/");
     }
 
     char path[256];
