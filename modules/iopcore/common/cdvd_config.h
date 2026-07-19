@@ -62,7 +62,7 @@ struct cdvdman_settings_smb
 } __attribute__((packed));
 
 #define BDM_MAX_FILES 1  // ISO
-#define BDM_MAX_FRAGS 64 // 64 * 8bytes = 512bytes
+#define BDM_MAX_FRAGS 65 // 65 * 8bytes = 520bytes
 
 struct cdvdman_fragfile
 {
@@ -83,6 +83,9 @@ struct cdvdman_settings_bdm
 
     // Indicates the supported LBA size of the HDD (1 for LBA48, 0 for LBA28).
     u32 hddIsLBA48;
+
+    // Indicates that the fragment table uses 512-byte APA/PFS sectors.
+    u32 fragsAre512ByteSectors;
 
     // Fragment table, containing the fragments of all files
     bd_fragment_t frags[BDM_MAX_FRAGS];

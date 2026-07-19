@@ -3,6 +3,7 @@
 #include "include/gui.h"
 #include "include/supportbase.h"
 #include "include/bdmsupport.h"
+#include "include/hdd.h"
 #include "include/util.h"
 #include "include/themes.h"
 #include "include/textures.h"
@@ -412,6 +413,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     struct cdvdman_settings_bdm *settings;
     u32 layer1_start, layer1_offset;
     unsigned short int layer1_part;
+    apa_sub_t parts[APA_MAXSUB + 1];
+    pfs_blockinfo_t blocks[BDM_MAX_FRAGS];
+    int hddPartCount = 0;
 
     bdm_device_data_t *pDeviceData = NULL;
 
@@ -507,6 +511,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         irx_size = size_bdm_cdvdman_irx;
     }
 
+    if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3))
+        hddPartCount = hddGetPartitionInfo(gOPLPart, parts);
+
     compatmask = sbPrepare(game, configSet, irx_size, irx, &index);
     settings = (struct cdvdman_settings_bdm *)((u8 *)irx + index);
     if (settings == NULL) {
@@ -536,8 +543,26 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         }
 
         // Get fragment list
-        int iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
-        if (iFragCount > BDM_MAX_FRAGS) {
+        int iFragCount;
+        if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
+            iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
+            if (iFragCount > 0) {
+                int j;
+
+                iFragCount--;
+                for (j = 0; j < iFragCount; j++) {
+                    if (blocks[j + 1].subpart >= hddPartCount) {
+                        iFragCount = -1;
+                        break;
+                    }
+                    settings->frags[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
+                    settings->frags[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
+                }
+                settings->fragsAre512ByteSectors = 1;
+            }
+        } else
+            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
+        if ((!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && iFragCount <= 0) || iFragCount > BDM_MAX_FRAGS) {
             // Too many fragments
             close(fd);
             sbUnprepare(&settings->common);

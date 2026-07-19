@@ -4,6 +4,7 @@
 #include "include/gui.h"
 #include "include/supportbase.h"
 #include "include/hddsupport.h"
+#include "include/bdmsupport.h"
 #include "include/util.h"
 #include "include/themes.h"
 #include "include/textures.h"
@@ -34,6 +35,28 @@ static unsigned char hddSupportModulesLoaded = 0;
 
 static char *hddPrefix = "pfs0:";
 static hdl_games_list_t hddGames;
+static base_game_info_t *hddIsoGames;
+static int hddIsoGameCount;
+static int hddIsoFileSize;
+
+typedef struct
+{
+    u32 checksum;
+    u32 magic;
+    char gamename[160];
+    u8 compat_flags;
+    u8 pad[3];
+    char startup[60];
+    u32 layer1_start;
+    u32 discType;
+    int num_partitions;
+    struct
+    {
+        u32 part_offset;
+        u32 data_start;
+        u32 part_size;
+    } part_specs[65];
+} hdl_apa_header;
 
 // forward declaration
 static item_list_t hddGameList;
@@ -370,6 +393,8 @@ int hddLoadSupportModules(void)
         // }
         return 0;
     }
+
+    return 0;
 }
 
 void hddInit(item_list_t *itemList)
@@ -410,47 +435,62 @@ static int hddUpdateGameList(item_list_t *itemList)
         }
     }
 
+    sbReadList(&hddIsoGames, hddPrefix, &hddIsoFileSize, &hddIsoGameCount);
+
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
-    return (ret == 0 ? hddGames.count : 0);
+    return (ret == 0 ? hddGames.count + hddIsoGameCount : 0);
 }
 
 static int hddGetGameCount(item_list_t *itemList)
 {
-    return hddGames.count;
+    return hddGames.count + hddIsoGameCount;
 }
 
 static void *hddGetGame(item_list_t *itemList, int id)
 {
-    return (void *)&hddGames.games[id];
+    if (id < hddGames.count)
+        return (void *)&hddGames.games[id];
+    else
+        return (void *)&hddIsoGames[id - hddGames.count];
 }
 
 static char *hddGetGameName(item_list_t *itemList, int id)
 {
-    return hddGames.games[id].name;
+    if (id < hddGames.count)
+        return hddGames.games[id].name;
+    else
+        return hddIsoGames[id - hddGames.count].name;
 }
 
 static int hddGetGameNameLength(item_list_t *itemList, int id)
 {
-    return HDL_GAME_NAME_MAX + 1;
+    return id < hddGames.count ? HDL_GAME_NAME_MAX + 1 : ISO_GAME_NAME_MAX + 1;
 }
 
 static char *hddGetGameStartup(item_list_t *itemList, int id)
 {
-    return hddGames.games[id].startup;
+    if (id < hddGames.count)
+        return hddGames.games[id].startup;
+    else
+        return hddIsoGames[id - hddGames.count].startup;
 }
 
 static void hddDeleteGame(item_list_t *itemList, int id)
 {
-    hddDeleteHDLGame(&hddGames.games[id]);
-    hddForceUpdate = 1;
+    if (id < hddGames.count) {
+        hddDeleteHDLGame(&hddGames.games[id]);
+        hddForceUpdate = 1;
+    }
 }
 
 static void hddRenameGame(item_list_t *itemList, int id, char *newName)
 {
-    hdl_game_info_t *game = &hddGames.games[id];
-    strcpy(game->name, newName);
-    hddSetHDLGameInfo(&hddGames.games[id]);
-    hddForceUpdate = 1;
+    if (id < hddGames.count) {
+        hdl_game_info_t *game = &hddGames.games[id];
+        strcpy(game->name, newName);
+        hddSetHDLGameInfo(&hddGames.games[id]);
+        hddForceUpdate = 1;
+    }
 }
 
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
@@ -461,7 +501,26 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     void *irx = NULL;
     char filename[32];
     hdl_game_info_t *game;
-    struct cdvdman_settings_hdd *settings;
+    struct cdvdman_settings_bdm *settings;
+    hdl_apa_header *hdl_header;
+    struct cdvdman_fragfile *iso_frag;
+
+    if (id >= hddGames.count) {
+        item_list_t bdmItemList;
+        bdm_device_data_t bdmDeviceData;
+
+        memset(&bdmItemList, 0, sizeof(bdmItemList));
+        memset(&bdmDeviceData, 0, sizeof(bdmDeviceData));
+        bdmItemList.mode = HDD_MODE;
+        bdmItemList.priv = &bdmDeviceData;
+        bdmDeviceData.bdmGames = hddIsoGames;
+        snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", hddPrefix);
+        strcpy(bdmDeviceData.bdmDriver, "ata");
+        bdmDeviceData.massDeviceIndex = 0;
+        bdmResolveLBA_UDMA(&bdmDeviceData);
+        bdmLaunchGame(&bdmItemList, id - hddGames.count, configSet);
+        return;
+    }
 
     if (gAutoLaunchGame == NULL)
         game = &hddGames.games[id];
@@ -588,13 +647,19 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
     hddSetIdleTimeout(gHDDSpindown * 12);
 
-    if (hddHDProKitDetected) {
-        size_irx = size_hdd_hdpro_cdvdman_irx;
-        irx = &hdd_hdpro_cdvdman_irx;
-    } else {
-        size_irx = size_hdd_cdvdman_irx;
-        irx = &hdd_cdvdman_irx;
+    if (hddReadSectors(game->start_sector, 2, IOBuffer) != 0) {
+        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+        return;
     }
+
+    hdl_header = (hdl_apa_header *)IOBuffer;
+    if (hdl_header->num_partitions <= 0 || hdl_header->num_partitions > BDM_MAX_FRAGS) {
+        guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+        return;
+    }
+
+    size_irx = size_bdm_ata_cdvdman_irx;
+    irx = &bdm_ata_cdvdman_irx;
 
     sbPrepare(NULL, configSet, size_irx, irx, &i);
 
@@ -611,13 +676,21 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             LOG("Cheats error\n");
     }
 
-    settings = (struct cdvdman_settings_hdd *)((u8 *)irx + i);
+    settings = (struct cdvdman_settings_bdm *)((u8 *)irx + i);
 
-    // patch 48bit flag
-    settings->common.media = hddIs48bit() & 0xff;
-
-    // patch start_sector
-    settings->lba_start = game->start_sector;
+    memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
+    iso_frag = &settings->fragfile[0];
+    iso_frag->frag_start = 0;
+    iso_frag->frag_count = hdl_header->num_partitions;
+    for (i = 0; i < hdl_header->num_partitions; i++) {
+        settings->frags[i].sector = hdl_header->part_specs[i].data_start;
+        settings->frags[i].count = hdl_header->part_specs[i].part_size >> 9;
+    }
+    settings->bdDeviceId = 0;
+    settings->hddIsLBA48 = hddIs48bit();
+    settings->fragsAre512ByteSectors = 1;
+    settings->common.NumParts = 1;
+    settings->common.media = hdl_header->discType;
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         strcpy(filename, game->startup);
@@ -626,7 +699,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
 
     // Check for ZSO to correctly adjust layer1 start
-    settings->common.layer1_start = 0; // cdvdman will read it from APA header
+    settings->common.layer1_start = hdl_header->layer1_start;
     hddReadSectors(game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET, 1, IOBuffer);
     if (*(u32 *)IOBuffer == ZSO_MAGIC) {
         probed_fd = 0;
@@ -661,6 +734,10 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
 {
+    if (id >= hddGames.count) {
+        return sbPopulateConfig(&hddIsoGames[id - hddGames.count], hddPrefix, "/");
+    }
+
     char path[256];
     hdl_game_info_t *game = &hddGames.games[id];
 
@@ -715,6 +792,9 @@ static void hddCleanUp(item_list_t *itemList, int exception)
 
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
+        free(hddIsoGames);
+        hddIsoGames = NULL;
+        hddIsoGameCount = 0;
 
         if ((exception & UNMOUNT_EXCEPTION) == 0)
             fileXioUmount(hddPrefix);
@@ -740,6 +820,9 @@ static void hddShutdown(item_list_t *itemList)
 
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
+        free(hddIsoGames);
+        hddIsoGames = NULL;
+        hddIsoGameCount = 0;
         fileXioUmount(hddPrefix);
     }
 
