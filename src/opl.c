@@ -2163,7 +2163,7 @@ static void setDefaults(void)
     gDefaultDevice = BDM_MODE;
     gTxtRename = 0;
     gAutosort = 1;
-    gAutoRefresh = 0;
+    gAutoRefresh = 1;
     gEnableDebug = 0;
     gPS2Logo = 1;
     gHDDGameListCache = 0;
