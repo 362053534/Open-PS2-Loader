@@ -285,7 +285,10 @@ static int ethLoadModules(void)
     if (!ethModulesLoaded) {
         ethModulesLoaded = 1;
 
-        sysInitDev9();
+        if (sysInitDev9() < 0) {
+            gNetworkStartup = ERROR_ETH_MODULE_DEV9_FAILURE;
+            return -1;
+        }
 
         LOG("[NETMAN]:\n");
         if (sysLoadModuleBuffer(&netman_irx, size_netman_irx, 0, NULL) >= 0) {
@@ -309,11 +312,13 @@ static int ethLoadModules(void)
                     LOG("ETHSUPPORT Modules loaded\n");
                     usleep(100000); // 加载完驱动后，延迟100毫秒再进行后续初始化
                     return 0;
-                }
-            }
-        }
+                } else
+                    gNetworkStartup = ERROR_ETH_MODULE_PS2IP_FAILURE;
+            } else
+                gNetworkStartup = ERROR_ETH_MODULE_SMAP_FAILURE;
+        } else
+            gNetworkStartup = ERROR_ETH_MODULE_NETMAN_FAILURE;
 
-        gNetworkStartup = ERROR_ETH_MODULE_NETIF_FAILURE;
         return -1;
     }
 
@@ -367,6 +372,10 @@ void ethDisplayErrorStatus(void)
         case 0: // No error
             break;
         case ERROR_ETH_MODULE_NETIF_FAILURE:
+        case ERROR_ETH_MODULE_NETMAN_FAILURE:
+        case ERROR_ETH_MODULE_SMAP_FAILURE:
+        case ERROR_ETH_MODULE_PS2IP_FAILURE:
+        case ERROR_ETH_MODULE_DEV9_FAILURE:
             setErrorMessageWithCode(_STR_NETWORK_STARTUP_ERROR_NETIF, gNetworkStartup);
             break;
         case ERROR_ETH_SMB_CONN:

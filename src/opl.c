@@ -2029,7 +2029,15 @@ void handleLwnbdSrv()
         snprintf(temp, sizeof(temp), "%s", _l(_STR_RUNNINGNBD));
         guiMsgBox(temp, 0, NULL);
     } else if (ret == -1) {
-        if (gNetworkStartup == ERROR_ETH_MODULE_NETIF_FAILURE)
+        if (gNetworkStartup == ERROR_ETH_MODULE_DEV9_FAILURE)
+            guiMsgBox("NBD启动失败：DEV9模块加载失败", 0, NULL);
+        else if (gNetworkStartup == ERROR_ETH_MODULE_NETMAN_FAILURE)
+            guiMsgBox("NBD启动失败：NETMAN模块加载失败", 0, NULL);
+        else if (gNetworkStartup == ERROR_ETH_MODULE_SMAP_FAILURE)
+            guiMsgBox("NBD启动失败：SMAP模块加载失败", 0, NULL);
+        else if (gNetworkStartup == ERROR_ETH_MODULE_PS2IP_FAILURE)
+            guiMsgBox("NBD启动失败：PS2IP模块加载失败", 0, NULL);
+        else if (gNetworkStartup == ERROR_ETH_MODULE_NETIF_FAILURE)
             guiMsgBox("NBD启动失败：网络驱动加载失败", 0, NULL);
         else if (gNetworkStartup == ERROR_ETH_LINK_FAIL)
             guiMsgBox("NBD启动失败：未检测到网络连接", 0, NULL);

@@ -150,7 +150,7 @@ exit:
 static SifCmdHandlerData_t OplSifCmdbuffer[OPL_SIF_CMD_BUFF_SIZE];
 static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9InitCount = 0;
 
-void sysInitDev9(void)
+int sysInitDev9(void)
 {
     int ret;
 
@@ -162,6 +162,8 @@ void sysInitDev9(void)
     }
 
     dev9InitCount++;
+
+    return dev9Loaded ? 0 : -1;
 }
 
 void sysShutdownDev9(void)
