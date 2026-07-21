@@ -1969,8 +1969,13 @@ static int loadLwnbdSvr(void)
             ret = sysLoadModuleBuffer(&lwnbdsvr_irx, size_lwnbdsvr_irx, sizeof(config), (char *)&config);
             if (ret >= 0)
                 ret = 0;
+            else
+                ret = -3;
         }
-    }
+        else
+            ret = -2;
+    } else
+        ret = -1;
 
     padInit(0);
 
@@ -2016,13 +2021,19 @@ static void unloadLwnbdSvr(void)
 void handleLwnbdSrv()
 {
     char temp[256];
+    int ret;
     // prepare for lwnbd, display screen with info
     guiRenderTextScreen(_l(_STR_STARTINGNBD));
-    if (loadLwnbdSvr() == 0) {
+    ret = loadLwnbdSvr();
+    if (ret == 0) {
         snprintf(temp, sizeof(temp), "%s", _l(_STR_RUNNINGNBD));
         guiMsgBox(temp, 0, NULL);
-    } else
-        guiMsgBox(_l(_STR_STARTFAILNBD), 0, NULL);
+    } else if (ret == -1)
+        guiMsgBox("NBD启动失败：网络模块初始化失败", 0, NULL);
+    else if (ret == -2)
+        guiMsgBox("NBD启动失败：PS2ATAD模块加载失败", 0, NULL);
+    else
+        guiMsgBox("NBD启动失败：lwNBD模块加载失败", 0, NULL);
 
     // restore normal functionality again
     guiRenderTextScreen(_l(_STR_UNLOADNBD));
