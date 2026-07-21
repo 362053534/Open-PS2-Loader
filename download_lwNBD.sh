@@ -1,9 +1,9 @@
 #!/bin/bash
 
 ## Download lwNBD
-REPO_URL="https://github.com/bignaux/lwNBD.git"
+REPO_URL="https://github.com/362053534/lwNBD.git"
 REPO_FOLDER="modules/network/lwNBD"
-COMMIT="15f1c14536d662e2e00d38d0aa91ef24149e8b96"
+COMMIT="f3f96d007c497a85467583101945e8c806e5135d"
 if test ! -d "$REPO_FOLDER"; then
   git clone $REPO_URL "$REPO_FOLDER" || { exit 1; }
   (cd $REPO_FOLDER && git checkout "$COMMIT" && cd -) || { exit 1; }
