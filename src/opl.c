@@ -2027,18 +2027,9 @@ void handleLwnbdSrv()
     if (ret == 0) {
         snprintf(temp, sizeof(temp), "%s", _l(_STR_RUNNINGNBD));
         guiMsgBox(temp, 0, NULL);
-    } else if (ret == -1) {
-        if (gNetworkStartup == ERROR_ETH_MODULE_NETIF_FAILURE)
-            guiMsgBox("NBD启动失败：网络驱动加载失败", 0, NULL);
-        else if (gNetworkStartup == ERROR_ETH_LINK_FAIL)
-            guiMsgBox("NBD启动失败：未检测到网络连接", 0, NULL);
-        else if (gNetworkStartup == ERROR_ETH_DHCP_FAIL)
-            guiMsgBox("NBD启动失败：DHCP获取地址失败", 0, NULL);
-        else {
-            snprintf(temp, sizeof(temp), "NBD启动失败：网络初始化错误(%d)", gNetworkStartup);
-            guiMsgBox(temp, 0, NULL);
-        }
-    } else if (ret == -2)
+    } else if (ret == -1)
+        guiMsgBox("NBD启动失败：网络模块初始化失败", 0, NULL);
+    else if (ret == -2)
         guiMsgBox("NBD启动失败：PS2ATAD模块加载失败", 0, NULL);
     else
         guiMsgBox("NBD启动失败：lwNBD模块加载失败", 0, NULL);
