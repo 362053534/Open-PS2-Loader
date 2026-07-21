@@ -127,7 +127,7 @@ static char *appGetBoot(char *device, int max, char *path)
 void appInit(item_list_t *itemList)
 {
     LOG("APPSUPPORT Init\n");
-    appForceUpdate = 1;
+    appForceUpdate = !(gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO);
     configGetInt(configGetByType(CONFIG_OPL), "app_frames_delay", &appItemList.delay);
     appFreeLegacyConfig();
     if (!gAutoDetectPS1Apps)

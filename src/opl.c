@@ -1045,9 +1045,8 @@ void menuDeferredUpdate(void *data)
         if (mod->support->mode != APP_MODE) {
             shouldAppsUpdate = 1;
 
-            // Rebuild automatically detected APPS/POPS entries only after a BDM device
-            // has actually been added or removed.
-            if (gAutoRefresh && mod->support->mode >= BDM_MODE && mod->support->mode <= BDM_MODE4 &&
+            // 开启自动刷新时，在BDM设备更新后重建APPS列表。
+            if (gAutoRefresh && mainScreenInitDone && mod->support->mode >= BDM_MODE && mod->support->mode <= BDM_MODE4 &&
                 list_support[APP_MODE].support != NULL && list_support[APP_MODE].support->enabled)
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
         }
