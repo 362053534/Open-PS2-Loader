@@ -9,7 +9,7 @@
 
 unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
-int sysInitDev9(void);
+void sysInitDev9(void);
 void sysShutdownDev9(void);
 void sysReset(int modload_mask);
 void sysExecExit(void);
