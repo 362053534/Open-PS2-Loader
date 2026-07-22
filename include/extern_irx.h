@@ -95,6 +95,15 @@ IMPORT_BIN2C(popstarter_bdmhdd_irx);
 
 IMPORT_BIN2C(popstarter_mx4sio_irx);
 
+IMPORT_BIN2C(popstarter_smb_poweroff_irx);
+IMPORT_BIN2C(popstarter_smb_ps2dev9_irx);
+IMPORT_BIN2C(popstarter_smb_ps2ip_irx);
+IMPORT_BIN2C(popstarter_smb_ps2smap_irx);
+IMPORT_BIN2C(popstarter_smb_smbman_irx);
+IMPORT_BIN2C(popstarter_smb_smsutils_irx);
+IMPORT_BIN2C(popstarter_smb_ipconfig_dat);
+IMPORT_BIN2C(popstarter_smb_smbconfig_dat);
+
 IMPORT_BIN2C(ppctty_irx);
 
 IMPORT_BIN2C(ps2atad_irx);
