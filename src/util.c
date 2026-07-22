@@ -191,15 +191,22 @@ static int popstarterGetDriverState(int slot, int usbhdfsdSize, int mode)
 
         for (int i = 0; i < 8; i++) {
             snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, filenames[i]);
-            if (access(path, F_OK) == 0)
+            state = open(path, O_RDONLY);
+            if (state >= 0) {
+                close(state);
                 driversFound++;
+            }
         }
 
         snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-        if (driversFound == 0 && access(path, F_OK) != 0)
+        state = open(path, O_RDONLY);
+        if (state >= 0)
+            close(state);
+
+        if (driversFound == 0 && state < 0)
             return POPSTARTER_DRIVERS_NONE;
 
-        return driversFound == 8 && access(path, F_OK) != 0 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
+        return driversFound == 8 && state < 0 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
     }
 
     snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
@@ -262,7 +269,7 @@ static int popstarterWriteDriver(char *path, const void *buffer, int size)
 static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usbhdfsdSize, int mode)
 {
     char path[64];
-    int result;
+    int fd, result;
 
     result = 0;
 
@@ -296,12 +303,19 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
             size_popstarter_smb_smbconfig_dat};
 
         snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-        if (access(path, F_OK) == 0 && unlink(path) < 0)
-            result = -1;
+        fd = open(path, O_RDONLY);
+        if (fd >= 0) {
+            close(fd);
+            if (unlink(path) < 0)
+                result = -1;
+        }
 
         for (int i = 0; i < 8; i++) {
             snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, filenames[i]);
-            if (access(path, F_OK) != 0 && popstarterWriteDriver(path, buffers[i], sizes[i]) < 0)
+            fd = open(path, O_RDONLY);
+            if (fd >= 0)
+                close(fd);
+            else if (popstarterWriteDriver(path, buffers[i], sizes[i]) < 0)
                 result = -1;
         }
 
