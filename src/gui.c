@@ -1812,6 +1812,12 @@ void guiMainLoop(void)
                         }
                     }
                     mainScreenInitDone = 1;
+                    // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
+                    if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO && !gPCShareName[0]) {
+                        item_list_t *ethSupport = ethGetObject(1);
+                        if (ethSupport && ethSupport->itemGetCount(ethSupport) == 0)
+                            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
+                    }
                     // 首次初始化阶段结束后，统一刷新一次自动识别的APPS/POPS列表。
                     if (!bdmManualTrigger && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO)
                         appForceRefresh();
@@ -1838,8 +1844,11 @@ void guiMainLoop(void)
             if (artLoadDelayTime > 0) {
                 artLoadDelayTime--;
                 // 启动画面的延迟期间，预加载art图片
-                if (!texLoading)
-                    artLoadDelayTime = 0;
+                if (!texLoading) {
+                    item_list_t *ethSupport = ethGetObject(1);
+                    if (bdmManualTrigger || gETHStartMode != START_MODE_AUTO || gPCShareName[0] || !ethSupport || ethSupport->itemGetCount(ethSupport) > 0 || !ioHasPendingRequests())
+                        artLoadDelayTime = 0;
+                }
                 if (artLoadDelayTime <= 0) {
                     // 手动启动BDM后的变量处理
                     if (bdmManualTrigger) {
