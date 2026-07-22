@@ -889,8 +889,10 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *
         return 0;
 
     result = oplMountHDDPOPS();
-    if (result < 0)
+    if (result < 0) {
+        oplRestoreHDDOPLPartition();
         return 0;
+    }
 
     result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT);
 
