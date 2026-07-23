@@ -1846,7 +1846,7 @@ void guiMainLoop(void)
                 // 启动画面的延迟期间，预加载art图片
                 if (!texLoading) {
                     item_list_t *ethSupport = ethGetObject(1);
-                    if (bdmManualTrigger || gETHStartMode != START_MODE_AUTO || gPCShareName[0] || !ethSupport || ethSupport->itemGetCount(ethSupport) > 0 || !ioHasPendingRequests())
+                    if (bdmManualTrigger || gETHStartMode != START_MODE_AUTO || !ethSupport || ethSupport->itemGetCount(ethSupport) > 0 || !ioHasPendingRequests())
                         artLoadDelayTime = 0;
                 }
                 if (artLoadDelayTime <= 0) {
