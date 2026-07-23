@@ -301,9 +301,14 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
         for (int i = 0; i < 6; i++) {
             snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, filenames[i]);
             fd = open(path, O_RDONLY);
-            if (fd >= 0)
-                close(fd);
-            else if (popstarterWriteDriver(path, buffers[i], sizes[i], 0) < 0)
+            if (fd >= 0) {
+                if (!strcmp(filenames[i], POPSTARTER_SMB_SMBMAN_FILENAME) && getFileSize(fd) != sizes[i]) {
+                    close(fd);
+                    if (popstarterWriteDriver(path, buffers[i], sizes[i], 0) < 0)
+                        result = -1;
+                } else
+                    close(fd);
+            } else if (popstarterWriteDriver(path, buffers[i], sizes[i], 0) < 0)
                 result = -1;
         }
 
