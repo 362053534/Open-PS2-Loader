@@ -565,9 +565,32 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     const char *argv1;
 
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
+        char cheatPath[APP_PATH_MAX + 12];
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
+        const char *cheats;
         int mode;
+
+        // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
+        if (snprintf(cheatPath, sizeof(cheatPath), "%s/CHEATS.TXT", appsList[id].path) < sizeof(cheatPath)) {
+            fd = openFile(cheatPath, O_RDONLY);
+            if (fd >= 0)
+                close(fd);
+            else {
+                if (guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i", "240p", NULL))
+                    cheats = "$SAFEMODE\n$HDTVFIX\n480p";
+                else
+                    cheats = "$SAFEMODE\nHDTVFIX\n480p";
+
+                guiMsgBox("若删除POPS/CHEATS.TXT，可重新选择分辨率！", 0, NULL);
+
+                fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
+                if (fd >= 0) {
+                    write(fd, cheats, strlen(cheats));
+                    close(fd);
+                }
+            }
+        }
 
         appPOPSPrepareStatus = 1;
         appPOPSPrepareID = id;

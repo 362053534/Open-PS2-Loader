@@ -1982,6 +1982,67 @@ int guiMsgBox(const char *text, int addAccept, struct UIItem *ui)
     return terminate - 1;
 }
 
+int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancelText, struct UIItem *ui)
+{
+    int terminate = 0;
+    int i;
+    const int iconIds[2] = {gSelectButton == KEY_CIRCLE ? CIRCLE_ICON : CROSS_ICON, gSelectButton == KEY_CIRCLE ? CROSS_ICON : CIRCLE_ICON};
+    const int positions[2] = {70, 500};
+    const char *buttonText[2] = {acceptText, cancelText};
+
+    sfxPlay(SFX_MESSAGE);
+
+    while (!terminate) {
+        guiStartFrame();
+
+        readPads();
+
+        if (getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE))
+            terminate = 1;
+        else if (getKeyOn(gSelectButton))
+            terminate = 2;
+
+        if (ui)
+            diaRenderUI(ui, screenHandler->inMenu, NULL, 0);
+        else
+            guiShow();
+
+        rmDrawRect(0, 0, screenWidth, screenHeight, gColDarker);
+
+        rmDrawLine(50, 75, screenWidth - 50, 75, gColWhite);
+        rmDrawLine(50, 410, screenWidth - 50, 410, gColWhite);
+
+        fntRenderString(gTheme->fonts[0], screenWidth >> 1, gTheme->usedHeight >> 1, ALIGN_CENTER, 0, 0, text, gTheme->textColor);
+        for (i = 0; i < 2; i++) {
+            GSTEXTURE *iconTex = thmGetTexture(iconIds[i]);
+            int x = positions[i];
+            int w = 0;
+            int h = 20;
+
+            if (iconTex)
+                w = (iconTex->Width * 20) / iconTex->Height;
+
+            if (iconTex && iconTex->Mem) {
+                rmDrawPixmap(iconTex, x, 427, ALIGN_VCENTER, w, h, SCALING_RATIO, gDefaultCol);
+                x += rmWideScale(w) + 2;
+            }
+
+            fntRenderString(gTheme->fonts[0], x, 427, ALIGN_VCENTER, 0, 0, buttonText[i], gTheme->selTextColor);
+        }
+
+        guiEndFrame();
+    }
+
+    if (terminate == 1) {
+        sfxPlay(SFX_CANCEL);
+    }
+    if (terminate == 2) {
+        sfxPlay(SFX_CONFIRM);
+    }
+
+    return terminate - 1;
+}
+
 void guiHandleDeferedIO(int *ptr, const char *message, int type, void *data)
 {
     ioPutRequest(type, data);
