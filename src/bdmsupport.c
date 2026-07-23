@@ -996,14 +996,22 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // 根据BDM类型开启相应的分桶开关
             char art2Path[128];
             snprintf(art2Path, sizeof(art2Path), "%sART2", pDeviceData->bdmPrefix);
-            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                artUseBuckets_USB = !access(art2Path, F_OK);
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                artUseBuckets_ILINK = !access(art2Path, F_OK);
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                artUseBuckets_SDC = !access(art2Path, F_OK);
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                artUseBuckets_ATA = !access(art2Path, F_OK);
+            if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
+                DIR *art2Dir = opendir(art2Path);
+                int artUseBuckets = art2Dir ? 1 : 0;
+
+                if (art2Dir)
+                    closedir(art2Dir);
+
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                    artUseBuckets_USB = artUseBuckets;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                    artUseBuckets_ILINK = artUseBuckets;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                    artUseBuckets_SDC = artUseBuckets;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                    artUseBuckets_ATA = artUseBuckets;
+            }
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.
             if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {

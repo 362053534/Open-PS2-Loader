@@ -373,7 +373,10 @@ int hddLoadSupportModules(void)
         // 判断是否存在ART2，提升图片读取效率
         char art2Path[128];
         snprintf(art2Path, sizeof(art2Path), "%sART2", gHDDPrefix);
-        artUseBuckets_APA = !access(art2Path, F_OK);
+        DIR *art2Dir = opendir(art2Path);
+        artUseBuckets_APA = art2Dir ? 1 : 0;
+        if (art2Dir)
+            closedir(art2Dir);
 
         // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
         int gDmaMode = -1; // 获取配置失败时，不重设传输模式

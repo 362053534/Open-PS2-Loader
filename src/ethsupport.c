@@ -146,7 +146,10 @@ static void ethSMBConnect(void)
     // 判断是否存在ART2，提升图片读取效率
     char art2Path[128];
     snprintf(art2Path, sizeof(art2Path), "%sART2", ethPrefix);
-    artUseBuckets_SMB = !access(art2Path, F_OK);
+    DIR *art2Dir = opendir(art2Path);
+    artUseBuckets_SMB = art2Dir ? 1 : 0;
+    if (art2Dir)
+        closedir(art2Dir);
 }
 
 static int ethSMBDisconnect(void)
