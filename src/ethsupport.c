@@ -2,6 +2,7 @@
 #include "include/lang.h"
 #include "include/gui.h"
 #include "include/supportbase.h"
+#include "include/appsupport.h"
 #include "include/ethsupport.h"
 #include "include/util.h"
 #include "include/renderman.h"
@@ -603,6 +604,8 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &ethInitSMB);
         ethInitSMB();
         ioPutRequest(IO_MENU_UPDATE_DEFFERED, &ethGameList.mode); // reload the game list
+        if (gAPPStartMode == START_MODE_AUTO && gAutoDetectPS1Apps)
+            appForceRefresh();
         return;
     }
 
