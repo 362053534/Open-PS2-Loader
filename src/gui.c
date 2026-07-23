@@ -1813,7 +1813,7 @@ void guiMainLoop(void)
                     }
                     mainScreenInitDone = 1;
                     // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
-                    if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO && !gPCShareName[0]) {
+                    if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {
                         item_list_t *ethSupport = ethGetObject(1);
                         if (ethSupport && ethSupport->itemGetCount(ethSupport) == 0)
                             ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
