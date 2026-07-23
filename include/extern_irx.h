@@ -101,8 +101,6 @@ IMPORT_BIN2C(popstarter_smb_ps2ip_irx);
 IMPORT_BIN2C(popstarter_smb_ps2smap_irx);
 IMPORT_BIN2C(popstarter_smb_smbman_irx);
 IMPORT_BIN2C(popstarter_smb_smsutils_irx);
-IMPORT_BIN2C(popstarter_smb_ipconfig_dat);
-IMPORT_BIN2C(popstarter_smb_smbconfig_dat);
 
 IMPORT_BIN2C(ppctty_irx);
 

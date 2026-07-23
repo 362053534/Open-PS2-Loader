@@ -108,8 +108,7 @@ AUDIO_OBJS =	boot.o cancel.o confirm.o cursor.o message.o transition.o bd_connec
 MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o \
 		popstarter_usbd.o popstarter_usbhdfsd.o popstarter_bdmhdd.o popstarter_mx4sio.o popstarter_elf.o \
 		popstarter_smb_poweroff.o popstarter_smb_ps2dev9.o popstarter_smb_ps2ip.o \
-		popstarter_smb_ps2smap.o popstarter_smb_smbman.o popstarter_smb_smsutils.o \
-		popstarter_smb_ipconfig.o popstarter_smb_smbconfig.o
+		popstarter_smb_ps2smap.o popstarter_smb_smbman.o popstarter_smb_smsutils.o
 
 TRANSLATIONS = Albanian Arabic Bulgarian Cebuano Croatian Czech Danish Dutch Filipino French \
 	German Greek Hungarian Indonesian Italian Japanese Korean Laotian Persian Polish Portuguese \
@@ -441,12 +440,6 @@ $(EE_ASM_DIR)popstarter_smb_smbman.c: modules/popstarter/SMB/smbman.irx | $(EE_A
 
 $(EE_ASM_DIR)popstarter_smb_smsutils.c: modules/popstarter/SMB/SMSUTILS.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ popstarter_smb_smsutils_irx
-
-$(EE_ASM_DIR)popstarter_smb_ipconfig.c: modules/popstarter/SMB/IPCONFIG.DAT | $(EE_ASM_DIR)
-	$(BIN2C) $< $@ popstarter_smb_ipconfig_dat
-
-$(EE_ASM_DIR)popstarter_smb_smbconfig.c: modules/popstarter/SMB/SMBCONFIG.DAT | $(EE_ASM_DIR)
-	$(BIN2C) $< $@ popstarter_smb_smbconfig_dat
 
 modules/iopcore/cdvdman/bdm_cdvdman.irx: modules/iopcore/cdvdman
 	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) USE_BDM=1 -C $< all
