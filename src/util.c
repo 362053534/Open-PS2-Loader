@@ -179,6 +179,9 @@ static int popstarterGetDriverState(int slot, int usbhdfsdSize, int mode)
     driversFound = 0;
     driversCurrent = 0;
 
+    if (mode == HDD_MODE)
+        return POPSTARTER_DRIVERS_CURRENT;
+
     if (mode == ETH_MODE) {
         const char *filenames[] = {
             POPSTARTER_SMB_POWEROFF_FILENAME,
@@ -197,15 +200,10 @@ static int popstarterGetDriverState(int slot, int usbhdfsdSize, int mode)
             }
         }
 
-        snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-        state = open(path, O_RDONLY);
-        if (state >= 0)
-            close(state);
-
-        if (driversFound == 0 && state < 0)
+        if (driversFound == 0)
             return POPSTARTER_DRIVERS_NONE;
 
-        return driversFound == 6 && state < 0 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
+        return driversFound == 6 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
     }
 
     snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
@@ -276,7 +274,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
 
     if (mode == ETH_MODE) {
         u8 ipAddress[4], netmask[4], gateway[4];
-        char ipconfig[48], smbconfig[64];
+        char ipconfig[48], smbconfig[128];
         int ipconfigSize, smbconfigSize;
         const char *filenames[] = {
             POPSTARTER_SMB_POWEROFF_FILENAME,
@@ -300,14 +298,6 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
             size_popstarter_smb_smbman_irx,
             size_popstarter_smb_smsutils_irx};
 
-        snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-        fd = open(path, O_RDONLY);
-        if (fd >= 0) {
-            close(fd);
-            if (unlink(path) < 0)
-                result = -1;
-        }
-
         for (int i = 0; i < 6; i++) {
             snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, filenames[i]);
             fd = open(path, O_RDONLY);
@@ -323,7 +313,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
         if (popstarterWriteDriver(path, ipconfig, ipconfigSize, 1) < 0)
             result = -1;
 
-        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], gPCShareName);
+        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s%s%s%s%s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], gPCShareName, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCUserName, gPCPassword[0] ? "\n" : "", gPCPassword);
         snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_SMB_SMBCONFIG_FILENAME);
         if (popstarterWriteDriver(path, smbconfig, smbconfigSize, 1) < 0)
             result = -1;
