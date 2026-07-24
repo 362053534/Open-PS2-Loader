@@ -1046,7 +1046,7 @@ void menuDeferredUpdate(void *data)
             shouldAppsUpdate = 1;
 
             // 来源设备更新后重建自动识别的APPS列表。
-            if (gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO &&
+            if (gAutoDetectPS1Apps && gAPPStartMode != START_MODE_DISABLED &&
                 list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
         }
