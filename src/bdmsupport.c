@@ -876,10 +876,6 @@ void bdmInitDevicesData()
 
     // Refresh the visibility of the menu.
     for (int i = 0; i < MAX_BDM_DEVICES; i++) {
-        int wasVisible = 0;
-        if (bdmDeviceList[i].owner)
-            wasVisible = ((opl_io_module_t *)bdmDeviceList[i].owner)->menuItem.visible;
-
         // Register the device structure into the UI.
         initSupport(&bdmDeviceList[i], i, 0);
 
@@ -909,16 +905,7 @@ void bdmInitDevicesData()
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 //pOwner->menuItem.visible = 0; // initSupport里已经赋值
-                if (bdmDeviceCount == 0 && i != BDM_MODE)
-                    pOwner->menuItem.visible = 0;
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
-            }
-
-            if (((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmPrefix[0] != '\0') {
-                if (wasVisible && !pOwner->menuItem.visible && bdmDeviceCount > 0)
-                    bdmDeviceCount--;
-                else if (!wasVisible && pOwner->menuItem.visible)
-                    bdmDeviceCount++;
             }
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
         }
