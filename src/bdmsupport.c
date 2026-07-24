@@ -854,47 +854,6 @@ void bdmInitSemaphore()
     bdmLoadModuleLock = CreateSema(&semaphore);
 }
 
-static void bdmUpdateMenuVisibility(void)
-{
-    int bdmDeviceFound = 0;
-    int bdm0DeviceFound = 0;
-
-    // 根据当前已识别且已启用的设备，统一刷新BDM页面可见状态。
-    for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)bdmDeviceList[i].priv;
-        int deviceVisible = 0;
-
-        if (pDeviceData && pDeviceData->bdmPrefix[0] != '\0' && !pDeviceData->DeviceRemoved) {
-            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                deviceVisible = gEnableUSB;
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                deviceVisible = gEnableILK;
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                deviceVisible = gEnableMX4SIO;
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                deviceVisible = gEnableBdmHDD;
-        }
-
-        if (bdmDeviceList[i].owner) {
-            if (i == BDM_MODE) {
-                if (deviceVisible)
-                    bdm0DeviceFound = 1;
-            } else
-                ((opl_io_module_t *)bdmDeviceList[i].owner)->menuItem.visible = deviceVisible;
-
-            if (deviceVisible)
-                bdmDeviceFound = 1;
-        }
-    }
-
-    if (bdmDeviceList[BDM_MODE].owner) {
-        if (bdm0DeviceFound || !bdmDeviceFound)
-            ((opl_io_module_t *)bdmDeviceList[BDM_MODE].owner)->menuItem.visible = 1;
-        else
-            ((opl_io_module_t *)bdmDeviceList[BDM_MODE].owner)->menuItem.visible = 0;
-    }
-}
-
 void bdmInitDevicesData()
 {
     // If the device list hasn't been initialized do it now.
@@ -950,9 +909,6 @@ void bdmInitDevicesData()
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
         }
     }
-
-    if (gBDMStartMode != START_MODE_DISABLED)
-        bdmUpdateMenuVisibility();
 }
 
 void bdmEnumerateDevices()
@@ -1085,8 +1041,19 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 LOG("Mass device: %d (%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);
 
             // Make the menu item visible.
-            // 设备初始化完成后，根据BDM设备开关，来决定visible的值
-            bdmUpdateMenuVisibility();
+            if (itemList->owner != NULL) {
+                // 设备初始化完成后，根据BDM设备开关，来决定visible的值
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
+                else
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0; // 默认隐藏
+            }
             // Close the device handle.
             fileXioDclose(dir);
             return 1;
@@ -1111,12 +1078,16 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             fileXioDclose(dir);
             return result;
         }
-    } else if (dir < 0 && visible == 1 && pDeviceData->bdmPrefix[0] != '\0') {
+    } else if (dir < 0 && visible == 1) {
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
-        pDeviceData->DeviceRemoved = 1;
-        bdmUpdateMenuVisibility();
+        if (itemList->owner != NULL) {
+            LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
+            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+        }
+
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
+        pDeviceData->DeviceRemoved = 1;
         return -1;
     }
     return 0;
