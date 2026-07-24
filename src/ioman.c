@@ -36,6 +36,8 @@ struct io_handler_t
 /// Circular request queue
 static struct io_request_t *gReqList;
 static struct io_request_t *gReqEnd;
+static int gActiveRequestType = -1;
+static void *gActiveRequestData;
 
 static struct io_handler_t gRequestHandlers[MAX_IO_HANDLERS];
 
@@ -153,6 +155,8 @@ static void ioWorkerThread(void *arg)
                 gReqList = req->next;
                 if (!gReqList)
                     gReqEnd = NULL;
+                gActiveRequestType = req->type;
+                gActiveRequestData = req->data;
             } else
                 gReqEnd = NULL; // 队列为空时，保险起见设NULL
 
@@ -164,6 +168,10 @@ static void ioWorkerThread(void *arg)
             SignalSema(gEndSemaId);
 
             ioProcessRequest(req);
+            WaitSema(gEndSemaId);
+            gActiveRequestType = -1;
+            gActiveRequestData = NULL;
+            SignalSema(gEndSemaId);
             FreeIoRequest(req);
         }
     }
@@ -203,6 +211,8 @@ void ioInit(void)
     gHandlerCount = 0;
     gReqList = NULL;
     gReqEnd = NULL;
+    gActiveRequestType = -1;
+    gActiveRequestData = NULL;
 
     gIOThreadId = 0;
 
@@ -247,6 +257,11 @@ static int ioPutRequestInternal(int type, void *data, int unique)
 
     if (unique) {
         struct io_request_t *req;
+
+        if ((gActiveRequestType == type) && (gActiveRequestData == data)) {
+            SignalSema(gEndSemaId);
+            return IO_OK;
+        }
 
         for (req = gReqList; req != NULL; req = req->next) {
             if ((req->type == type) && (req->data == data)) {
