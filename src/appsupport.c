@@ -572,7 +572,19 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         int mode;
 
         // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
-        if (snprintf(cheatPath, sizeof(cheatPath), "%s/CHEATS.TXT", appsList[id].path) < sizeof(cheatPath)) {
+        mode = oplPath2Mode(appsList[id].path);
+        if (mode == HDD_MODE) {
+            fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
+            if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, "hdd0:__common", FIO_MT_RDWR) == 0)
+                snprintf(cheatPath, sizeof(cheatPath), "pfs0:POPS/CHEATS.TXT");
+            else {
+                cheatPath[0] = '\0';
+                oplRestoreHDDOPLPartition();
+            }
+        } else
+            snprintf(cheatPath, sizeof(cheatPath), "%s/CHEATS.TXT", appsList[id].path);
+
+        if (cheatPath[0] != '\0') {
             fd = openFile(cheatPath, O_RDONLY);
             if (fd >= 0)
                 close(fd);
@@ -597,23 +609,29 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
         if ((appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
-            !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL))
+            !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL)) {
+            if (mode == HDD_MODE)
+                oplRestoreHDDOPLPartition();
             return;
+        }
 
         // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
+            if (mode == HDD_MODE)
+                oplRestoreHDDOPLPartition();
             return;
         }
 
         argv[0] = popstarterArg;
 
-        mode = oplPath2Mode(appsList[id].path);
         if (mode < 0)
             mode = APP_MODE;
 
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
         LoadELFFromMemory(popstarter_elf, 1, argv);
+        if (mode == HDD_MODE)
+            oplRestoreHDDOPLPartition();
         return;
     }
 
