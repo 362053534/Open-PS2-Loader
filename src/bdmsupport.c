@@ -991,9 +991,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         if (pDeviceData->bdmPrefix[0] == '\0') {
             int bdmDeviceFound = 0;
             for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-                if (i != itemList->mode && bdmDeviceList[i].priv && bdmDeviceList[i].owner) {
-                    bdm_device_data_t *pOtherDeviceData = (bdm_device_data_t *)bdmDeviceList[i].priv;
-                    if (pOtherDeviceData->bdmPrefix[0] != '\0' && ((opl_io_module_t *)bdmDeviceList[i].owner)->menuItem.visible) {
+                if (i != itemList->mode && list_support[i].support && list_support[i].support->priv) {
+                    bdm_device_data_t *pOtherDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                    if (pOtherDeviceData->bdmPrefix[0] != '\0' && list_support[i].menuItem.visible) {
                         bdmDeviceFound = 1;
                         break;
                     }
@@ -1071,8 +1071,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // BDM已启动时，首个设备接入后隐藏保底空页并切换到该设备页。
             if (mainScreenInitDone && bdmDeviceModeStarted && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD) &&
                 !bdmDeviceFound && itemList->owner && ((opl_io_module_t *)itemList->owner)->menuItem.visible) {
-                if (itemList->mode != BDM_MODE && bdmDeviceList[BDM_MODE].owner)
-                    ((opl_io_module_t *)bdmDeviceList[BDM_MODE].owner)->menuItem.visible = 0;
+                if (itemList->mode != BDM_MODE && list_support[BDM_MODE].support)
+                    list_support[BDM_MODE].menuItem.visible = 0;
 
                 struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
                 id->menu.menu = &((opl_io_module_t *)itemList->owner)->menuItem;
@@ -1112,20 +1112,20 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         if (bdmDeviceModeStarted && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
             int bdmDeviceFound = 0;
             for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-                if (i != itemList->mode && bdmDeviceList[i].priv && bdmDeviceList[i].owner) {
-                    bdm_device_data_t *pOtherDeviceData = (bdm_device_data_t *)bdmDeviceList[i].priv;
-                    if (pOtherDeviceData->bdmPrefix[0] != '\0' && ((opl_io_module_t *)bdmDeviceList[i].owner)->menuItem.visible) {
+                if (i != itemList->mode && list_support[i].support && list_support[i].support->priv) {
+                    bdm_device_data_t *pOtherDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                    if (pOtherDeviceData->bdmPrefix[0] != '\0' && list_support[i].menuItem.visible) {
                         bdmDeviceFound = 1;
                         break;
                     }
                 }
             }
 
-            if (!bdmDeviceFound && bdmDeviceList[BDM_MODE].owner) {
-                ((opl_io_module_t *)bdmDeviceList[BDM_MODE].owner)->menuItem.visible = 1;
+            if (!bdmDeviceFound && list_support[BDM_MODE].support) {
+                list_support[BDM_MODE].menuItem.visible = 1;
                 if (mainScreenInitDone) {
                     struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
-                    id->menu.menu = &((opl_io_module_t *)bdmDeviceList[BDM_MODE].owner)->menuItem;
+                    id->menu.menu = &list_support[BDM_MODE].menuItem;
                     guiDeferUpdate(id);
                 }
             }
