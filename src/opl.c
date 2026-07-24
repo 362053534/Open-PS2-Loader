@@ -1069,9 +1069,11 @@ void menuUpdateBDMSupport(void)
 {
     // BDM设备会在欢迎界面或手动启动时不断尝试初始化，直到成功或超时为止
     for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-        if ((list_support[i].support && list_support[i].support->enabled) && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
-            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+        if (list_support[i].support) {
+            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+            if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
+                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+        }
     }
 }
 static void menuUpdateHook()
@@ -1568,9 +1570,11 @@ static void loadSupportsBackground(void)
     // BDM设备还需要刷新一下列表
     if (!mainScreenInitDone) {
         for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-            if ((list_support[i].support && list_support[i].support->enabled) && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
-                menuDeferredUpdate(&list_support[i].support->mode);
+            if (list_support[i].support) {
+                bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
+                    menuDeferredUpdate(&list_support[i].support->mode);
+            }
         }
     }
     theardInitDone = 1;
