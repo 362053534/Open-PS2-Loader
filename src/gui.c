@@ -620,9 +620,9 @@ reConfig:
             applyConfig(-1, -1, 0);
             if ((previousAutoDetectPS1Apps != gAutoDetectPS1Apps) ||
                 (gAutoDetectPS1Apps &&
-                 ((previousBDMStartMode == START_MODE_DISABLED && gBDMStartMode == START_MODE_AUTO) ||
-                  (previousHDDStartMode == START_MODE_DISABLED && gHDDStartMode == START_MODE_AUTO) ||
-                  (previousETHStartMode == START_MODE_DISABLED && gETHStartMode == START_MODE_AUTO))))
+                 ((previousBDMStartMode != START_MODE_AUTO && gBDMStartMode == START_MODE_AUTO) ||
+                  (previousHDDStartMode != START_MODE_AUTO && gHDDStartMode == START_MODE_AUTO) ||
+                  (previousETHStartMode != START_MODE_AUTO && gETHStartMode == START_MODE_AUTO))))
                 appForceRefresh();
             menuReinitMainMenu();
         }
