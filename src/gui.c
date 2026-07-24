@@ -538,6 +538,7 @@ void guiShowConfig()
     int previousBDMStartMode = gBDMStartMode;
     int previousHDDStartMode = gHDDStartMode;
     int previousETHStartMode = gETHStartMode;
+    int previousAPPStartMode = gAPPStartMode;
 
 reConfig:
     // configure the enumerations
@@ -622,7 +623,8 @@ reConfig:
                 (gAutoDetectPS1Apps &&
                  ((previousBDMStartMode != START_MODE_AUTO && gBDMStartMode == START_MODE_AUTO) ||
                   (previousHDDStartMode != START_MODE_AUTO && gHDDStartMode == START_MODE_AUTO) ||
-                  (previousETHStartMode != START_MODE_AUTO && gETHStartMode == START_MODE_AUTO))))
+                  (previousETHStartMode != START_MODE_AUTO && gETHStartMode == START_MODE_AUTO) ||
+                  (previousAPPStartMode != START_MODE_AUTO && gAPPStartMode == START_MODE_AUTO))))
                 appForceRefresh();
             menuReinitMainMenu();
         }
