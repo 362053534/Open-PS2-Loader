@@ -15,6 +15,7 @@
 #include <elf-loader.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
+#include <io_common.h>
 
 static int appForceUpdate = 1;
 static int appItemCount = 0;
