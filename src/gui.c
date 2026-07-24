@@ -535,9 +535,6 @@ int UiId = -1;
 void guiShowConfig()
 {
     int previousAutoDetectPS1Apps = gAutoDetectPS1Apps;
-    int previousBDMStartMode = gBDMStartMode;
-    int previousHDDStartMode = gHDDStartMode;
-    int previousETHStartMode = gETHStartMode;
     int previousAPPStartMode = gAPPStartMode;
 
 reConfig:
@@ -621,10 +618,7 @@ reConfig:
             applyConfig(-1, -1, 0);
             if ((previousAutoDetectPS1Apps != gAutoDetectPS1Apps) ||
                 (gAutoDetectPS1Apps &&
-                 ((previousBDMStartMode != START_MODE_AUTO && gBDMStartMode == START_MODE_AUTO) ||
-                  (previousHDDStartMode != START_MODE_AUTO && gHDDStartMode == START_MODE_AUTO) ||
-                  (previousETHStartMode != START_MODE_AUTO && gETHStartMode == START_MODE_AUTO) ||
-                  (previousAPPStartMode != START_MODE_AUTO && gAPPStartMode == START_MODE_AUTO))))
+                 (previousAPPStartMode != START_MODE_AUTO && gAPPStartMode == START_MODE_AUTO)))
                 appForceRefresh();
             menuReinitMainMenu();
         }
@@ -1820,9 +1814,6 @@ void guiMainLoop(void)
                         if (ethSupport && ethSupport->itemGetCount(ethSupport) == 0)
                             ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
                     }
-                    // 首次初始化阶段结束后，统一刷新一次自动识别的APPS/POPS列表。
-                    if (!bdmManualTrigger && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO)
-                        appForceRefresh();
                     theardInitDone = 0;
                     // BDM自动模式时，启动变量直接改为1
                     if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)

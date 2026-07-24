@@ -269,8 +269,6 @@ static void itemInitSupport(item_list_t *support)
     moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
     menuDeferredUpdate(&support->mode);
-    if (gAutoDetectPS1Apps && support->enabled && support->mode != APP_MODE)
-        appForceRefresh();
     //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 }
 
@@ -1047,9 +1045,9 @@ void menuDeferredUpdate(void *data)
         if (mod->support->mode != APP_MODE) {
             shouldAppsUpdate = 1;
 
-            // 开启自动刷新时，在BDM设备更新后重建APPS列表。
-            if (gAutoRefresh && mainScreenInitDone && mod->support->mode >= BDM_MODE && mod->support->mode <= BDM_MODE4 &&
-                list_support[APP_MODE].support != NULL && list_support[APP_MODE].support->enabled)
+            // 来源设备更新后重建自动识别的APPS列表。
+            if (gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO &&
+                list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
         }
     }
