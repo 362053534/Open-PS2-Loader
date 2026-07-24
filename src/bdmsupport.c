@@ -909,12 +909,10 @@ void bdmInitDevicesData()
                 }
             } else if (gBDMStartMode == START_MODE_AUTO) {
                 //pOwner->menuItem.visible = 0; // initSupport里已经赋值
+                if (bdmDeviceCount == 0 && i != BDM_MODE)
+                    pOwner->menuItem.visible = 0;
                 ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmDeviceTick = -1;
             }
-
-            if (i != BDM_MODE && ((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmPrefix[0] == '\0' &&
-                !(bdmDeviceCount == 0 && wasVisible && bdmDeviceList[BDM_MODE].owner && !((opl_io_module_t *)bdmDeviceList[BDM_MODE].owner)->menuItem.visible))
-                pOwner->menuItem.visible = 0;
 
             if (((bdm_device_data_t *)bdmDeviceList[i].priv)->bdmPrefix[0] != '\0') {
                 if (wasVisible && !pOwner->menuItem.visible && bdmDeviceCount > 0)
