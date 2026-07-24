@@ -30,6 +30,7 @@ int bdmDeviceModeStarted;
 
 static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
+static int bdmDeviceCount;
 
 // 判断BDM设备是否使用ART2文件夹
 static int artUseBuckets_USB = 0;
@@ -1053,6 +1054,18 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
                 else
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0; // 默认隐藏
+
+                if (((opl_io_module_t *)itemList->owner)->menuItem.visible) {
+                    if (bdmDeviceCount++ == 0) {
+                        // 第一个可显示设备接入时隐藏之前保留的空白页。
+                        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                            if (i != itemList->mode && bdmDeviceList[i].owner)
+                                ((opl_io_module_t *)bdmDeviceList[i].owner)->menuItem.visible = 0;
+                        }
+                    }
+                } else if (gBDMStartMode == START_MODE_AUTO && bdmDeviceCount == 0 && itemList->mode == BDM_MODE) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+                }
             }
             // Close the device handle.
             fileXioDclose(dir);
@@ -1078,10 +1091,14 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             fileXioDclose(dir);
             return result;
         }
-    } else if (dir < 0 && visible == 1) {
+    } else if (dir < 0 && visible == 1 && pDeviceData->bdmPrefix[0] != '\0') {
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
-        if (itemList->owner != NULL) {
+        if (bdmDeviceCount > 0)
+            bdmDeviceCount--;
+
+        // 保留最后一个可显示设备页作为空白页。
+        if (itemList->owner && bdmDeviceCount > 0) {
             LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
             ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
         }
@@ -1089,6 +1106,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
         pDeviceData->DeviceRemoved = 1;
         return -1;
+    } else if (dir < 0 && gBDMStartMode == START_MODE_AUTO && bdmDeviceCount == 0 && itemList->mode == BDM_MODE && itemList->owner) {
+        // 自动模式下未识别到设备时，显示BDM0保底页。
+        ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
     }
     return 0;
 }
