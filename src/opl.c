@@ -1158,8 +1158,9 @@ static int checkLoadConfigBDM(int types)
         configEnd();
         configInit(path);
         value = configReadMulti(types);
-        config_set_t *configOPL = configGetByType(CONFIG_OPL);
-        configSetInt(configOPL, CONFIG_OPL_BDM_MODE, START_MODE_AUTO);
+        // 配置文件所在设备不应覆盖用户设置的BDM启动模式。
+        //config_set_t *configOPL = configGetByType(CONFIG_OPL);
+        //configSetInt(configOPL, CONFIG_OPL_BDM_MODE, START_MODE_AUTO);
         return value;
     }
 
@@ -1190,8 +1191,9 @@ static int checkLoadConfigHDD(int types)
         configEnd();
         configInit(gHDDPrefix);
         value = configReadMulti(types);
-        config_set_t *configOPL = configGetByType(CONFIG_OPL);
-        configSetInt(configOPL, CONFIG_OPL_HDD_MODE, START_MODE_AUTO);
+        // 配置文件所在设备不应覆盖用户设置的APA HDD启动模式。
+        //config_set_t *configOPL = configGetByType(CONFIG_OPL);
+        //configSetInt(configOPL, CONFIG_OPL_HDD_MODE, START_MODE_AUTO);
         return value;
     }
 
