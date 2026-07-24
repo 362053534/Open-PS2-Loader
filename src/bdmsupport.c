@@ -989,6 +989,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
         if (pDeviceData->bdmPrefix[0] == '\0') {
+            int bdmDeviceFound = 0;
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if (i != itemList->mode && list_support[i].support && list_support[i].support->priv) {
+                    bdm_device_data_t *pOtherDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                    if (pOtherDeviceData->bdmPrefix[0] != '\0' && list_support[i].menuItem.visible) {
+                        bdmDeviceFound = 1;
+                        break;
+                    }
+                }
+            }
+
             if (gBDMPrefix[0] != '\0')
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
             else
@@ -1056,6 +1067,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             }
             // Close the device handle.
             fileXioDclose(dir);
+
+            // BDM已启动时，首个设备接入后隐藏保底空页并切换到该设备页。
+            if (mainScreenInitDone && bdmDeviceModeStarted && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD) &&
+                !bdmDeviceFound && itemList->owner && ((opl_io_module_t *)itemList->owner)->menuItem.visible) {
+                if (itemList->mode != BDM_MODE && list_support[BDM_MODE].support)
+                    list_support[BDM_MODE].menuItem.visible = 0;
+
+                struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
+                id->menu.menu = &((opl_io_module_t *)itemList->owner)->menuItem;
+                guiDeferUpdate(id);
+            }
             return 1;
         } else { // 如果已经初始化
             // 设备从关到开，才需要return1，否则不更新
@@ -1079,14 +1101,35 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             return result;
         }
     } else if (dir < 0 && visible == 1) {
-        // 设备移除后保留页签可见，后续列表刷新会清空游戏条目。
+        // 设备移除后隐藏原页签，后续列表刷新会清空游戏条目。
         if (itemList->owner) {
-            LOG("bdmUpdateDeviceData: keeping device %d visible\n", itemList->mode);
-            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+            LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
+            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
         }
 
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
         pDeviceData->DeviceRemoved = 1;
+        if (bdmDeviceModeStarted && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
+            int bdmDeviceFound = 0;
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if (i != itemList->mode && list_support[i].support && list_support[i].support->priv) {
+                    bdm_device_data_t *pOtherDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                    if (pOtherDeviceData->bdmPrefix[0] != '\0' && list_support[i].menuItem.visible) {
+                        bdmDeviceFound = 1;
+                        break;
+                    }
+                }
+            }
+
+            if (!bdmDeviceFound && list_support[BDM_MODE].support) {
+                list_support[BDM_MODE].menuItem.visible = 1;
+                if (mainScreenInitDone) {
+                    struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
+                    id->menu.menu = &list_support[BDM_MODE].menuItem;
+                    guiDeferUpdate(id);
+                }
+            }
+        }
         return -1;
     }
     return 0;

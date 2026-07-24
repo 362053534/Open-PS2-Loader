@@ -1804,6 +1804,27 @@ void guiMainLoop(void)
                             // 手动启动BDM时，重置一次art预加载时间
                             if (bdmManualTrigger)
                                 BdmStarted = 1;
+                            if (gBDMStartMode == START_MODE_AUTO && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
+                                int bdmDeviceFound = 0;
+                                for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                                    if (list_support[i].support && list_support[i].support->priv) {
+                                        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                                        if (pDeviceData->bdmPrefix[0] != '\0' && list_support[i].menuItem.visible) {
+                                            bdmDeviceFound = 1;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (list_support[BDM_MODE].support && list_support[BDM_MODE].support->priv) {
+                                    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[BDM_MODE].support->priv;
+                                    // 自动模式下无设备时保留BDM0空页，有设备时隐藏空页。
+                                    if (!bdmDeviceFound)
+                                        list_support[BDM_MODE].menuItem.visible = 1;
+                                    else if (pDeviceData->bdmPrefix[0] == '\0')
+                                        list_support[BDM_MODE].menuItem.visible = 0;
+                                }
+                            }
                             refreshMenuPosition(); // 纠正一下菜单位置，更保险。先切换screen，再刷新BDM菜单的停留位置才有效
                         }
                     }
