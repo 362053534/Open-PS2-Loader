@@ -341,7 +341,14 @@ static void itemExecRefresh(struct menu_item *curMenu)
 
     // 刷新所有页面
     for (int i = 0; i < MODE_COUNT; i++) {
-        if (list_support[i].support && list_support[i].support->enabled)
+        int deviceType = bdmGetDeviceType(i);
+        if (list_support[i].support && list_support[i].support->enabled &&
+            (!((i >= BDM_MODE && i <= BDM_MODE4) &&
+               ((!gEnableUSB && !gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) ||
+                (deviceType == BDM_TYPE_USB && !gEnableUSB) ||
+                (deviceType == BDM_TYPE_ILINK && !gEnableILK) ||
+                (deviceType == BDM_TYPE_SDC && !gEnableMX4SIO) ||
+                (deviceType == BDM_TYPE_ATA && !gEnableBdmHDD))))
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     }
     sfxPlay(SFX_CONFIRM);
@@ -1086,7 +1093,7 @@ static void menuUpdateHook()
     // Treat automatic refresh as BDM hotplug detection. BDM events are handled
     // immediately, while a low-frequency probe catches any missed event. The probe
     // only opens massN:/ for already connected devices; it does not rescan ISO files.
-    if (gAutoRefresh && mainScreenInitDone) {
+    if (gAutoRefresh && mainScreenInitDone && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
         const int fallbackCheck = frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0;
 
         for (i = BDM_MODE; i <= BDM_MODE4; i++) {
