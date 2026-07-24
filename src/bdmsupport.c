@@ -1079,11 +1079,10 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             return result;
         }
     } else if (dir < 0 && visible == 1) {
-        // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
-        // as we don't know if the data is being used asynchronously.
-        if (itemList->owner != NULL) {
-            LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
-            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+        // 设备移除后保留页签可见，后续列表刷新会清空游戏条目。
+        if (itemList->owner) {
+            LOG("bdmUpdateDeviceData: keeping device %d visible\n", itemList->mode);
+            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
         }
 
         LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
