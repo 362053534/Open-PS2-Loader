@@ -6,6 +6,7 @@
 #include "include/system.h"
 #include "include/ioman.h"
 #include "include/util.h"
+#include "include/textures.h"
 #include "include/extern_irx.h"
 
 #include "include/bdmsupport.h"
@@ -768,8 +769,13 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
     startup = appGetBoot(device, sizeof(device), value);
 
     if (!strcmp(folder, "ART")) {
-        // if (!strncmp(device, "mc", 2))    // 暂时注释掉查找mc里APPS的逻辑，因为非常影响性能
-        //     return oplGetAppImage(NULL, folder, isRelative, startup, suffix, resultTex, psm);
+        // 记忆卡ELF：只从卡根 ART/ 读取，不扫其它设备
+        if (!strncmp(device, "mc", 2)) {
+            char path[128];
+
+            snprintf(path, sizeof(path), "%sART/%s_%s", device, startup, suffix);
+            return texDiscoverLoad(resultTex, path, -1);
+        }
         return oplGetAppImage(device, folder, isRelative, startup, suffix, resultTex, psm);
     } else
         return oplGetAppImage(device, folder, isRelative, value, suffix, resultTex, psm);

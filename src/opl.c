@@ -610,31 +610,33 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
                     return 0;
             }
         }
-    } else {
-        //// We search on ever devices from fatest to slowest.
-        //for (remaining = MODE_COUNT, priority = 0; remaining > 0 && priority < 4; priority++) {
-        //    for (i = 0; i < MODE_COUNT; i++) {
-        //        listSupport = list_support[i].support;
-
-        //        if (i == elfbootmode)
-        //            continue;
-
-        //        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->appsPriority == priority)) {
-        //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
-        //                return 0;
-        //            remaining--;
-        //        }
-        //    }
-        //}
-        // mc内的apps应用，会从HDD开始循环一次查找ART图集（所有设备都找不到ART图时，会非常影响性能）
-        for (int i = HDD_MODE; i >= 0; i--) {
-            listSupport = list_support[i].support;
-            if ((listSupport != NULL) && (listSupport->enabled)) {
-                if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
-                    return 0;
-            }
-        }
     }
+    // device为NULL时的全设备扫描分支已不再使用（MC现改为本卡ART/）
+    //else {
+    //    //// We search on ever devices from fatest to slowest.
+    //    //for (remaining = MODE_COUNT, priority = 0; remaining > 0 && priority < 4; priority++) {
+    //    //    for (i = 0; i < MODE_COUNT; i++) {
+    //    //        listSupport = list_support[i].support;
+    //
+    //    //        if (i == elfbootmode)
+    //    //            continue;
+    //
+    //    //        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->appsPriority == priority)) {
+    //    //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+    //    //                return 0;
+    //    //            remaining--;
+    //    //        }
+    //    //    }
+    //    //}
+    //    // mc内的apps应用，会从HDD开始循环一次查找ART图集（所有设备都找不到ART图时，会非常影响性能）
+    //    for (int i = HDD_MODE; i >= 0; i--) {
+    //        listSupport = list_support[i].support;
+    //        if ((listSupport != NULL) && (listSupport->enabled)) {
+    //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+    //                return 0;
+    //        }
+    //    }
+    //}
     return -1;
 }
 
