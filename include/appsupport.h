@@ -21,6 +21,8 @@ typedef struct
     char title[APP_TITLE_MAX + 1];
     char path[APP_PATH_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
+    // 封面下方文字 / ART KEY（有编号前缀的VCD为11字符编号，其它与boot一致）
+    char startup[APP_BOOT_MAX + 1];
     char argv1[APP_ARGV1_MAX + 1];
     u8 legacy;
     u8 generated;

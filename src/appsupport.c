@@ -224,6 +224,8 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
             strncpy(app->app.path, cur->val, APP_PATH_MAX + 1);
             app->app.path[APP_BOOT_MAX] = '\0';
         }
+        strncpy(app->app.startup, app->app.boot, APP_BOOT_MAX + 1);
+        app->app.startup[APP_BOOT_MAX] = '\0';
 
         app->app.legacy = 1;
         app->app.generated = 0;
@@ -263,6 +265,8 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         app->app.title[APP_TITLE_MAX] = '\0';
         strncpy(app->app.boot, boot, APP_BOOT_MAX + 1);
         app->app.boot[APP_BOOT_MAX] = '\0';
+        strncpy(app->app.startup, app->app.boot, APP_BOOT_MAX + 1);
+        app->app.startup[APP_BOOT_MAX] = '\0';
         strncpy(app->app.path, path, APP_PATH_MAX + 1);
         app->app.path[APP_PATH_MAX] = '\0';
         if (configGetStr(appConfig, APP_CONFIG_ARGV1, &argv1) != 0) {
@@ -282,27 +286,58 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     return -1;
 }
 
+static int appIsNumberedVcdName(const char *vcdName, int nameLength)
+{
+    // 对齐旧ISO：SCUS_XXX.XX.显示名.VCD（编号11字符 + '.' + 标题 + .VCD）
+    return nameLength >= 17 && vcdName[4] == '_' && vcdName[8] == '.' && vcdName[11] == '.' &&
+           strcasecmp(&vcdName[nameLength - 4], ".VCD") == 0;
+}
+
 static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
     struct app_info_linked *app;
     char title[APP_TITLE_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
+    char startup[APP_BOOT_MAX + 1];
     int nameLength, titleLength, pathLength;
 
     nameLength = strlen(vcdName);
-    titleLength = nameLength - 4; // Remove the .VCD extension.
-    if (titleLength <= 0 || titleLength > APP_TITLE_MAX) {
-        LOG("APPSUPPORT POPS VCD filename is too long: %s\n", vcdName);
-        return 1;
-    }
+    if (appIsNumberedVcdName(vcdName, nameLength)) {
+        // 编号前缀：boot芯=前11字符，显示title=其后至.VCD前
+        titleLength = nameLength - 16; // 11编号 + 1点 + 4(.VCD)
+        if (titleLength <= 0 || titleLength > APP_TITLE_MAX) {
+            LOG("APPSUPPORT POPS numbered VCD title is invalid: %s\n", vcdName);
+            return 1;
+        }
 
-    memcpy(title, vcdName, titleLength);
-    title[titleLength] = '\0';
+        memcpy(startup, vcdName, 11);
+        startup[11] = '\0';
+        memcpy(title, &vcdName[12], titleLength);
+        title[titleLength] = '\0';
 
-    if (snprintf(boot, sizeof(boot), "%s%s.ELF", elfPrefix, title) >= sizeof(boot)) {
-        LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
-        return 1;
+        // boot = {elfPrefix}{boot芯}.{显示title}.ELF；封面下/ART KEY = boot芯
+        if (snprintf(boot, sizeof(boot), "%s%s.%s.ELF", elfPrefix, startup, title) >= sizeof(boot)) {
+            LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
+            return 1;
+        }
+    } else {
+        titleLength = nameLength - 4; // Remove the .VCD extension.
+        if (titleLength <= 0 || titleLength > APP_TITLE_MAX) {
+            LOG("APPSUPPORT POPS VCD filename is too long: %s\n", vcdName);
+            return 1;
+        }
+
+        memcpy(title, vcdName, titleLength);
+        title[titleLength] = '\0';
+
+        if (snprintf(boot, sizeof(boot), "%s%s.ELF", elfPrefix, title) >= sizeof(boot)) {
+            LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
+            return 1;
+        }
+        // 无前缀：封面下方/ART KEY 与boot一致
+        strncpy(startup, boot, sizeof(startup));
+        startup[sizeof(startup) - 1] = '\0';
     }
 
     if (*appsLinkedList == NULL) {
@@ -324,6 +359,7 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
 
     strcpy(app->app.title, title);
     strcpy(app->app.boot, boot);
+    strcpy(app->app.startup, startup);
     strcpy(app->app.path, path);
     pathLength = strlen(app->app.path);
     if (pathLength > 0 && app->app.path[pathLength - 1] == '/')
@@ -385,6 +421,7 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
     title[titleLength] = '\0';
     strcpy(app->app.title, title);
     strcpy(app->app.boot, elfName);
+    strcpy(app->app.startup, elfName);
     strcpy(app->app.path, path);
     app->app.argv1[0] = '\0';
     app->app.legacy = 0;
@@ -488,15 +525,14 @@ static int appGetItemNameLength(item_list_t *itemList, int id)
     return CONFIG_KEY_NAME_LEN;
 }
 
-/* appGetItemStartup() is called to get the startup path for display & for the art assets.
-   The path is used immediately, before a subsequent call to appGetItemStartup(). */
+/* appGetItemStartup()：封面下方文字，同时作为 ART KEY。 */
 static char *appGetItemStartup(item_list_t *itemList, int id)
 {
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
         return appGetELFName(cur->val);
     } else {
-        return appsList[id].boot;
+        return appsList[id].startup;
     }
 }
 
@@ -760,7 +796,7 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
                 appGetBoot(device, sizeof(device), cur->val);
                 break;
             }
-        } else if (value == appsList[id].boot) {
+        } else if (value == appsList[id].startup) {
             appGetBoot(device, sizeof(device), appsList[id].path);
             break;
         }
