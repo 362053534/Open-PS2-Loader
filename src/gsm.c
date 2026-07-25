@@ -74,7 +74,7 @@ void PrepareGSM(char *cmdline, struct GsmConfig_t *config)
     static const predef_vmode_struct predef_vmode[29] = {
         //                                                            DH    DW   MAGV MAGH  DY   DX              VS  VDP  VBPE  VBP VFPE  VFP
         {GS_INTERLACED,    GS_MODE_NTSC,        GS_FIELD, makeDISPLAY(447,  2559, 0,   3,   46,  700), makeSYNCV(6,  480,  6,    26,  6,   1)},
-        {GS_INTERLACED,    GS_MODE_NTSC,        GS_FIELD, makeDISPLAY(447,  2559, 0,   3,   46,  700), makeSYNCV(6,  480,  6,    26,  6,   1)},
+        {GS_INTERLACED,    GS_MODE_NTSC,        GS_FIELD, makeDISPLAY(447,  1919, 0,   0,   54,  948), makeSYNCV(6,  480,  6,    26,  6,   1)},
         {GS_INTERLACED,    GS_MODE_PAL,         GS_FIELD, makeDISPLAY(511,  2559, 0,   3,   70,  720), makeSYNCV(5,  576,  5,    33,  5,   1)},
         {GS_INTERLACED,    GS_MODE_PAL,         GS_FRAME, makeDISPLAY(255,  2559, 0,   3,   37,  720), makeSYNCV(5,  576,  5,    33,  5,   4)},
         {GS_INTERLACED,    GS_MODE_PAL,         GS_FIELD, makeDISPLAY(447,  2559, 0,   3,   46,  700), makeSYNCV(6,  480,  6,    26,  6,   1)},
@@ -165,7 +165,5 @@ void PrepareGSM(char *cmdline, struct GsmConfig_t *config)
         config->k576P_fix = k576p_fix;
         config->kGsDxDyOffsetSupported = kGsDxDyOffsetSupported;
         config->FIELD_fix = FIELD_fix;
-        /* Mode 1 is a compositor mode. Its scanout timing stays normal 480i. */
-        config->AspectFix14_15 = (gGSMVMode == 1);
     }
 }

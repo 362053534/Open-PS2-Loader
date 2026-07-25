@@ -12,7 +12,6 @@
 #include "util.h"
 #include "syshook.h"
 #include "gsm_api.h"
-#include "aspectfix.h"
 #include "cheat_api.h"
 #include "coreconfig.h"
 
@@ -107,8 +106,6 @@ static int eecoreInit(int argc, char **argv)
             config->GsmConfig.kGsDxDyOffsetSupported,
             config->GsmConfig.FIELD_fix);
         EnableGSM();
-        if (config->GsmConfig.AspectFix14_15)
-            AspectFixInit();
     }
 
     set_ipconfig();

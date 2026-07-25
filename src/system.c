@@ -935,7 +935,6 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
         config->GsmConfig.k576P_fix = gsm_config.k576P_fix;
         config->GsmConfig.kGsDxDyOffsetSupported = gsm_config.kGsDxDyOffsetSupported;
         config->GsmConfig.FIELD_fix = gsm_config.FIELD_fix;
-        config->GsmConfig.AspectFix14_15 = gsm_config.AspectFix14_15;
     }
 
 #ifdef PADEMU

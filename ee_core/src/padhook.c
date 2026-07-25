@@ -29,7 +29,6 @@
 #include "syshook.h"
 #include "tlb.h"
 #include "gsm_api.h"
-#include "aspectfix.h"
 #ifdef IGS
 #include "igs_api.h"
 #endif
@@ -200,7 +199,6 @@ static void IGR_Thread(void *arg)
             if (EnableDebug)
                 DBGCOL(0x00FF00, IGR, "Stopping GSM");
             DPRINTF("Stopping GSM...\n");
-            AspectFixShutdown();
             DisableGSM();
         }
 

@@ -382,7 +382,7 @@ void guiGameShowGSConfig(void)
     // clang-format off
     const char *gsmvmodeNames[] = {
         "480i常规模式(CRT适用)",
-        "480i 4:3精确校正(实验性)",
+        "480i收缩模式(现代电视可横向拉伸到4比3)",
         "PAL",
         "PAL Non Interlaced",
         "PAL @60Hz",
