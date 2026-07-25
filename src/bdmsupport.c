@@ -851,6 +851,8 @@ void bdmInitDevicesData()
             // Setup the per-device data.
             bdm_device_data_t *pDeviceData = (bdm_device_data_t *)malloc(sizeof(bdm_device_data_t));
             memset(pDeviceData, 0, sizeof(bdm_device_data_t));
+            // memset后为0，会误判为BDM_TYPE_USB，需显式设为未知
+            pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
             pDeviceSupport->priv = pDeviceData;
         }
     }
@@ -1067,17 +1069,11 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             pDeviceData->DeviceRemoved = 1;
             return -1;
         }
-        // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
-        // as we don't know if the data is being used asynchronously.
-        // 先注释掉这段代码，让已打开的页面保留，不会自动隐藏
-        //if (itemList->owner != NULL) {
-        //    LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
-        //    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-        //}
-
-        //LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
-        //pDeviceData->DeviceRemoved = 1;
-        //return -1;
+        // 从未挂上过的空槽：隐藏页面，避免误显示成USB空页
+        if (itemList->owner != NULL) {
+            LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
+            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+        }
     }
     return 0;
 }
