@@ -17,7 +17,6 @@
 #include <usbhdfsd-common.h>
 
 #include <ps2sdkapi.h>
-#include <stdio.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioIoctl, fileXioDevctl
 
@@ -579,25 +578,6 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             EnablePS2Logo = CheckPS2Logo(fd, 0);
 
         close(fd);
-    }
-
-    if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcasecmp(game->extension, ".zso")) {
-        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "ab+");
-        if (debugFile) {
-            u64 fileSector = 0;
-
-            // 记录APA/PFS转换后的ZSO碎片表，用于排查随机读取是否落入错误碎片。
-            fprintf(debugFile, "\r\nZSO:%s\r\nPART:%s N:%d F:%d 512:%u\r\n", partname, gOPLPart, hddPartCount, iso_frag->frag_count, settings->fragsAre512ByteSectors);
-            for (i = 0; i < hddPartCount; i++)
-                fprintf(debugFile, "P%d S:%08X L:%08X\r\n", i, parts[i].start, parts[i].length);
-            for (i = 0; i < iso_frag->frag_count; i++) {
-                bd_fragment_t *frag = &settings->frags[iso_frag->frag_start + i];
-
-                fprintf(debugFile, "F%d O:%08X%08X S:%08X%08X C:%08X\r\n", i, (unsigned int)(fileSector >> 32), (unsigned int)fileSector, (unsigned int)(frag->sector >> 32), (unsigned int)frag->sector, frag->count);
-                fileSector += frag->count;
-            }
-            fclose(debugFile);
-        }
     }
 
     // Initialize layer 1 information.
