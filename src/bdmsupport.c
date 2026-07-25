@@ -316,11 +316,17 @@ static int bdmUpdateGameList(item_list_t *itemList)
             pDeviceData->bdmModifiedDVDPrev = 0;
             pDeviceData->bdmPrefix[0] = '\0';
             pDeviceData->bdmDriver[0] = '\0';
-            pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
+            // 保留bdmDeviceType，拔出后仍按原类型与开关保留空页
             pDeviceData->massDeviceIndex = -1;
             pDeviceData->ThemesLoaded = 0;
             pDeviceData->LanguagesLoaded = 0;
             pDeviceData->DeviceRemoved = 0;
+            return 0;
+        }
+
+        // 已拔出的空页：不扫列表
+        if (pDeviceData->bdmPrefix[0] == '\0') {
+            pDeviceData->bdmGameCount = 0;
             return 0;
         }
 
@@ -1069,10 +1075,22 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             pDeviceData->DeviceRemoved = 1;
             return -1;
         }
-        // 从未挂上过的空槽：隐藏页面，避免误显示成USB空页
+        // 无挂载时：未知空槽隐藏；曾识别过的按开关保留空页
         if (itemList->owner != NULL) {
-            LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
-            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN) {
+                LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+            } else if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
+            } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableILK;
+            } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableMX4SIO;
+            } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableBdmHDD;
+            } else {
+                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+            }
         }
     }
     return 0;
