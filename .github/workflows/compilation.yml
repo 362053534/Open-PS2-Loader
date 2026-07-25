@@ -162,7 +162,7 @@ jobs:
           delete-merged: true
 
   release:
-    needs: [build, build-variants, build-lang]
+    needs: [build, merge-variants, build-lang]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/362053534-patch-1'
     env:
@@ -178,8 +178,30 @@ jobs:
       run: |
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
-    - name: Download all artifacts
+    # 只下载发布所需产物，避免无过滤下载全部（含debug/矩阵中间产物）导致超时失败
+    - name: Download OPNPS2LD
       uses: actions/download-artifact@v8
+      with:
+        name: OPNPS2LD
+        path: OPNPS2LD
+
+    - name: Download INFO
+      uses: actions/download-artifact@v8
+      with:
+        name: INFO
+        path: INFO
+
+    - name: Download OPNPS2LD-VARIANTS
+      uses: actions/download-artifact@v8
+      with:
+        name: OPNPS2LD-VARIANTS
+        path: OPNPS2LD-VARIANTS
+
+    - name: Download OPNPS2LD-LANGS
+      uses: actions/download-artifact@v8
+      with:
+        name: OPNPS2LD-LANGS
+        path: OPNPS2LD-LANGS
 
     - name: Prepare artifacts for release
       run: |
