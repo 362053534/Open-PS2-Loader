@@ -262,6 +262,8 @@ static int bdmNeedsUpdate(item_list_t *itemList)
         sfxPlay(SFX_BD_DISCONNECT);
         return result;
     }
+    if (greetingAlpha <= 0)
+        sfxPlay(SFX_BD_CONNECT);
 
     sprintf(path, "%sCD", pDeviceData->bdmPrefix);
     if (stat(path, &st) != 0)
@@ -1243,16 +1245,23 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             return result;
         }
     } else if (dir < 0 && visible == 1) {
+        // 如果是真实设备被移除，才走移除路径，播放移除音效等
+        if (pDeviceData->bdmPrefix[0] != '\0') {
+            LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
+            pDeviceData->DeviceRemoved = 1;
+            return -1;
+        }
         // Device has been removed, make the menu item invisible. We can't really cleanup resources (like the game list) just yet
         // as we don't know if the data is being used asynchronously.
-        if (itemList->owner != NULL) {
-            LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
-            ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
-        }
+        // 先注释掉这段代码，让已打开的页面保留，不会自动隐藏
+        //if (itemList->owner != NULL) {
+        //    LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
+        //    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+        //}
 
-        LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
-        pDeviceData->DeviceRemoved = 1;
-        return -1;
+        //LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
+        //pDeviceData->DeviceRemoved = 1;
+        //return -1;
     }
     return 0;
 }

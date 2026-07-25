@@ -55,6 +55,7 @@ static clock_t popupTimer;
 static void guiShow();
 
 int mainScreenInitDone = 0;
+int greetingAlpha = 0x80;
 int bdmManualTrigger = 0;
 int usbFound = 0;
 int ILKFound = 0;
@@ -1708,7 +1709,6 @@ void reFindBDM()
 
 void guiMainLoop(void)
 {
-    int greetingAlpha = 0x80;
     endIntroDelayFrame = defaultDelayFrame;
 
     // 所有设备准备就绪，或BDM关闭或手动模式，就给最低启动延迟，为了预加载背景图和封面

@@ -507,6 +507,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
                     mod->menuItem.visible = gEnableMX4SIO;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
                     mod->menuItem.visible = gEnableBdmHDD;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)
+                    mod->menuItem.visible = 0;
             }
         }
 
