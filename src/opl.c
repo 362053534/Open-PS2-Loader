@@ -480,6 +480,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support = itemList;
             mod->support->owner = mod;
             initMenuForListSupport(mod);
+        } else if (mode == ETH_MODE || mode == HDD_MODE || mode == APP_MODE) {
+            // 关闭后再开：support已存在不会走initMenuForListSupport，须恢复页面可见
+            mod->menuItem.visible = 1;
         }
         //// 根据开关，提前隐藏不需要的设备，开启设备由BDM负责
         //if (mode >= BDM_MODE && mode < ETH_MODE) {
