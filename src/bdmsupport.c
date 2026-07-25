@@ -924,6 +924,10 @@ void bdmInitDevicesData()
             LOG("bdmInitDevicesData: setting device %d %s\n", i, (pOwner->menuItem.visible != 0 ? "visible" : "invisible"));
         }
     }
+
+    // applyConfig/initSupport会把UNKNOWN槽强制隐藏；主界面已就绪时需重新拉起保底页
+    if (mainScreenInitDone)
+        bdmTryActivateStartupPlaceholder();
 }
 
 void bdmEnumerateDevices()
@@ -1102,7 +1106,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             fileXioDclose(dir);
             return result;
         }
-    } else if (dir < 0 && visible == 1) {
+    } else if (dir < 0 && (visible == 1 || (bdmKeepPlaceholder && itemList->mode == 0))) {
         // 如果是真实设备被移除，才走移除路径，播放移除音效等
         if (pDeviceData->bdmPrefix[0] != '\0') {
             LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
@@ -1110,6 +1114,7 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             return -1;
         }
         // 无挂载时：未知空槽隐藏；曾识别过的按开关保留空页
+        // 注：applyConfig后保底页可能已被设为不可见，故上面条件允许在visible==0时仍进入以恢复BDM0
         if (itemList->owner != NULL) {
             if (pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN) {
                 // 启动保底期间不隐藏空的BDM0
