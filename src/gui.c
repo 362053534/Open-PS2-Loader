@@ -1872,7 +1872,9 @@ void guiMainLoop(void)
 
         // if not transiting, handle input
         // done here so we can use renderman if needed
-        if (!screenHandlerTarget && screenHandler && mainScreenInitDone)
+        // 须等ART预载结束且欢迎页淡出完毕再处理输入：
+        // init()里为检测START曾readPads，若当时按住方向键，在未再读键时handleInput会让getKeyOn每帧恒为真，造成欢迎结束后集中爆发
+        if (!screenHandlerTarget && screenHandler && mainScreenInitDone && artLoadDelayTime <= 0 && greetingAlpha <= 0)
             screenHandler->handleInput();
 
         if (gFrameHook)
