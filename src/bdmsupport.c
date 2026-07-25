@@ -607,9 +607,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             u8 *pfsData = memalign(64, 4096);
             u8 *rawData = memalign(64, 4096 + 512);
             if (testFd >= 0 && pfsData && rawData) {
-                u64 testOffsets[7];
-                u32 testSizes[7];
-                const char *testNames[7];
+                u64 testOffsets[10];
+                u32 testSizes[10];
+                const char *testNames[10];
                 int testCount = 0;
 
                 if (lseek64(testFd, 0, SEEK_SET) >= 0 && read(testFd, pfsData, 24) == 24) {
@@ -628,6 +628,15 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                     testNames[testCount] = "INDEX0";
                     testOffsets[testCount] = headerSize;
                     testSizes[testCount++] = 4096;
+                    testNames[testCount] = "OFFSET7F0";
+                    testOffsets[testCount] = 0x7F0;
+                    testSizes[testCount++] = 32;
+                    testNames[testCount] = "OFFSET800";
+                    testOffsets[testCount] = 0x800;
+                    testSizes[testCount++] = 512;
+                    testNames[testCount] = "OFFSETA00";
+                    testOffsets[testCount] = 0xA00;
+                    testSizes[testCount++] = 512;
 
                     if (boundaryOffset >= 2048) {
                         testNames[testCount] = "BOUNDARY";
@@ -661,7 +670,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             blockNumbers[blockCount++] = low > 0 ? low - 1 : 0;
                         }
 
-                        for (i = 0; i < blockCount && testCount < 7; i++) {
+                        for (i = 0; i < blockCount && testCount < 10; i++) {
                             u32 indexValues[2];
                             u64 blockOffset;
                             u64 blockEnd;
@@ -719,9 +728,12 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             }
 
                             u32 sectorsToRead = fragmentOffset + frag->count - logicalSector;
+                            int readResult;
                             if (sectorsToRead > sectorsRemaining)
                                 sectorsToRead = sectorsRemaining;
-                            if (hddReadSectors((u32)(frag->sector + (logicalSector - fragmentOffset)), sectorsToRead, rawData + rawBytes) != 0) {
+                            readResult = hddReadSectors((u32)(frag->sector + (logicalSector - fragmentOffset)), sectorsToRead, rawData + rawBytes);
+                            fprintf(debugFile, "%s RAW F:%d L:%08X%08X S:%08X%08X N:%u R:%d\r\n", testNames[i], fragmentIndex, (unsigned int)(logicalSector >> 32), (unsigned int)logicalSector, (unsigned int)((frag->sector + (logicalSector - fragmentOffset)) >> 32), (unsigned int)(frag->sector + (logicalSector - fragmentOffset)), sectorsToRead, readResult);
+                            if (readResult != 0) {
                                 rawResult = -1;
                                 break;
                             }
