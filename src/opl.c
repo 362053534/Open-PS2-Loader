@@ -348,7 +348,7 @@ static void itemExecRefresh(struct menu_item *curMenu)
                 (deviceType == BDM_TYPE_USB && !gEnableUSB) ||
                 (deviceType == BDM_TYPE_ILINK && !gEnableILK) ||
                 (deviceType == BDM_TYPE_SDC && !gEnableMX4SIO) ||
-                (deviceType == BDM_TYPE_ATA && !gEnableBdmHDD))))
+                (deviceType == BDM_TYPE_ATA && !gEnableBdmHDD)))))
             ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     }
     sfxPlay(SFX_CONFIRM);
