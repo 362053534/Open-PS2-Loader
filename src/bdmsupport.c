@@ -582,7 +582,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     }
 
     if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcasecmp(game->extension, ".zso")) {
-        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "ab+");
+        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "wb");
         if (debugFile) {
             u64 fileSector = 0;
             u64 boundaryOffset = 0;
