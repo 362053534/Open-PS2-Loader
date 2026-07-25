@@ -161,12 +161,12 @@ static int initializePad(struct pad_data_t *pad)
     padSetMainMode(pad->port, pad->slot, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
 
     waitPadReady(pad);
-    tmp = padInfoPressMode(pad->port, pad->slot);
-    LOG("PAD infoPressMode: %d\n", tmp);
-
-    waitPadReady(pad);
-    tmp = padEnterPressMode(pad->port, pad->slot);
-    LOG("PAD enterPressMode: %d\n", tmp);
+    // 菜单只用数字键btns，不进入压力模式，避免部分手柄需重压才置位
+    //tmp = padInfoPressMode(pad->port, pad->slot);
+    //LOG("PAD infoPressMode: %d\n", tmp);
+    //waitPadReady(pad);
+    //tmp = padEnterPressMode(pad->port, pad->slot);
+    //LOG("PAD enterPressMode: %d\n", tmp);
 
     waitPadReady(pad);
     pad->actuators = padInfoAct(pad->port, pad->slot, -1, 0);
