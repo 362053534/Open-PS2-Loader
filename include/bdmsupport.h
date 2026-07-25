@@ -56,6 +56,8 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData);
 int bdmUpdateDeviceData(item_list_t *itemList);
 int bdmHasDeviceEvent(item_list_t *itemList);
 void bdmRequestDeviceCheck(item_list_t *itemList);
+// fallbackCheck非0：周期兜底全查；否则按最近mount/umount事件收窄探测槽
+int bdmNeedHotplugUpdate(item_list_t *itemList, int fallbackCheck);
 int bdmGetDeviceType(int mode);
 
 #endif

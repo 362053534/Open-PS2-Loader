@@ -17,6 +17,7 @@
 #include <usbhdfsd-common.h>
 
 #include <ps2sdkapi.h>
+#include <sifcmd.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioIoctl, fileXioDevctl
 
@@ -73,9 +74,16 @@ int bdmFindPartition(char *target, const char *name, int write)
 }
 
 static unsigned int BdmGeneration = 0;
+// bdmevent 传入：1=mount，0=umount；-1表示尚未收到或未知
+static int BdmLastEventCause = -1;
 
 static void bdmEventHandler(void *packet, void *opt)
 {
+    SifCmdHeader_t *header = (SifCmdHeader_t *)packet;
+
+    (void)opt;
+    if (header)
+        BdmLastEventCause = (int)header->opt;
     BdmGeneration++;
 }
 
@@ -84,6 +92,45 @@ int bdmHasDeviceEvent(item_list_t *itemList)
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
     return pDeviceData != NULL && pDeviceData->bdmDeviceTick != BdmGeneration;
+}
+
+int bdmNeedHotplugUpdate(item_list_t *itemList, int fallbackCheck)
+{
+    bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
+    int hasPrefix;
+
+    if (!pDeviceData)
+        return 0;
+
+    // 周期兜底：已挂载与空槽都查，避免漏掉事件
+    if (fallbackCheck)
+        return 1;
+
+    if (pDeviceData->bdmDeviceTick == BdmGeneration)
+        return 0;
+
+    hasPrefix = (pDeviceData->bdmPrefix[0] != '\0');
+
+    // umount：只探测当前仍记录为已挂载的槽，跳过空槽避免多余dopen
+    if (BdmLastEventCause == 0) {
+        if (!hasPrefix) {
+            pDeviceData->bdmDeviceTick = BdmGeneration;
+            return 0;
+        }
+        return 1;
+    }
+
+    // mount：只探测空槽，跳过已挂载槽
+    if (BdmLastEventCause == 1) {
+        if (hasPrefix) {
+            pDeviceData->bdmDeviceTick = BdmGeneration;
+            return 0;
+        }
+        return 1;
+    }
+
+    // 未知事件类型：保守探测
+    return 1;
 }
 
 int bdmGetDeviceType(int mode)

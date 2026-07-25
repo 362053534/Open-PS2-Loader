@@ -1093,19 +1093,22 @@ static void menuUpdateHook()
     frameCounter++;
 
     // Treat automatic refresh as BDM hotplug detection. BDM events are handled
-    // immediately, while a low-frequency probe catches any missed event. The probe
-    // only opens massN:/ for already connected devices; it does not rescan ISO files.
+    // immediately, while a low-frequency probe catches any missed event.
+    // umount只探已挂载槽，mount只探空槽，避免5槽全dopen。
     if (gAutoRefresh && mainScreenInitDone && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
         const int fallbackCheck = frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0;
 
         for (i = BDM_MODE; i <= BDM_MODE4; i++) {
             item_list_t *support = list_support[i].support;
 
-            if (support != NULL && support->enabled && (bdmHasDeviceEvent(support) || fallbackCheck)) {
-                if (fallbackCheck)
-                    bdmRequestDeviceCheck(support);
+            if (support == NULL || !support->enabled)
+                continue;
+
+            if (fallbackCheck)
+                bdmRequestDeviceCheck(support);
+
+            if (bdmNeedHotplugUpdate(support, fallbackCheck))
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
-            }
         }
     }
 
