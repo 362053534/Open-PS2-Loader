@@ -1798,6 +1798,9 @@ void guiMainLoop(void)
             } else {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
+                    // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页
+                    if (gBDMStartMode == START_MODE_AUTO)
+                        bdmTryActivateStartupPlaceholder();
                     if (gBDMStartMode || gHDDStartMode || gETHStartMode) {
                         // 第一次启动，或手动启动BDM时，从全黑开始过度
                         if (greetingAlpha > 0x00 || bdmManualTrigger) {
@@ -1808,9 +1811,6 @@ void guiMainLoop(void)
                         }
                     }
                     mainScreenInitDone = 1;
-                    // 自动模式且启动时无BDM设备：激活BDM0保底空页
-                    if (gBDMStartMode == START_MODE_AUTO)
-                        bdmTryActivateStartupPlaceholder();
                     // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
                     if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {
                         item_list_t *ethSupport = ethGetObject(1);
