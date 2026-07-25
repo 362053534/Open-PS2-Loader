@@ -1808,6 +1808,9 @@ void guiMainLoop(void)
                         }
                     }
                     mainScreenInitDone = 1;
+                    // 自动模式且启动时无BDM设备：激活BDM0保底空页
+                    if (gBDMStartMode == START_MODE_AUTO)
+                        bdmTryActivateStartupPlaceholder();
                     // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
                     if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {
                         item_list_t *ethSupport = ethGetObject(1);

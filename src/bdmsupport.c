@@ -73,6 +73,8 @@ int bdmFindPartition(char *target, const char *name, int write)
 }
 
 static unsigned int BdmGeneration = 0;
+// 启动保底：自动模式零设备时为1，任一槽挂上真设备后清0
+static int bdmKeepPlaceholder = 0;
 
 static void bdmEventHandler(void *packet, void *opt)
 {
@@ -103,6 +105,29 @@ void bdmRequestDeviceCheck(item_list_t *itemList)
 
     if (pDeviceData != NULL)
         pDeviceData->bdmDeviceTick = -1;
+}
+
+void bdmTryActivateStartupPlaceholder(void)
+{
+    int i;
+
+    if (gBDMStartMode != START_MODE_AUTO)
+        return;
+    if (!gEnableUSB && !gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD)
+        return;
+    if (!bdmDeviceListInitialized)
+        return;
+
+    // 任一槽已有挂载则不启用保底
+    for (i = 0; i < MAX_BDM_DEVICES; i++) {
+        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)bdmDeviceList[i].priv;
+        if (pDeviceData && pDeviceData->bdmPrefix[0] != '\0')
+            return;
+    }
+
+    bdmKeepPlaceholder = 1;
+    if (bdmDeviceList[0].owner != NULL)
+        ((opl_io_module_t *)bdmDeviceList[0].owner)->menuItem.visible = 1;
 }
 
 static void bdmLoadBlockDeviceModules(void)
@@ -1032,6 +1057,15 @@ int bdmUpdateDeviceData(item_list_t *itemList)
 
             // Make the menu item visible.
             if (itemList->owner != NULL) {
+                // 任一真设备挂上后结束启动保底；若BDM0仍为空则藏掉保底页
+                if (bdmKeepPlaceholder) {
+                    bdmKeepPlaceholder = 0;
+                    if (itemList->mode != 0 && bdmDeviceList[0].owner != NULL) {
+                        bdm_device_data_t *pSlot0 = (bdm_device_data_t *)bdmDeviceList[0].priv;
+                        if (pSlot0 && pSlot0->bdmPrefix[0] == '\0' && pSlot0->bdmDeviceType == BDM_TYPE_UNKNOWN)
+                            ((opl_io_module_t *)bdmDeviceList[0].owner)->menuItem.visible = 0;
+                    }
+                }
                 // 设备初始化完成后，根据BDM设备开关，来决定visible的值
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                     ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
@@ -1078,8 +1112,13 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         // 无挂载时：未知空槽隐藏；曾识别过的按开关保留空页
         if (itemList->owner != NULL) {
             if (pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN) {
-                LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
-                ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                // 启动保底期间不隐藏空的BDM0
+                if (bdmKeepPlaceholder && itemList->mode == 0) {
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 1;
+                } else {
+                    LOG("bdmUpdateDeviceData: setting device %d invisible\n", itemList->mode);
+                    ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+                }
             } else if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
                 ((opl_io_module_t *)itemList->owner)->menuItem.visible = gEnableUSB;
             } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
