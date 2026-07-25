@@ -339,6 +339,13 @@ static void itemExecRefresh(struct menu_item *curMenu)
     //    sfxPlay(SFX_CONFIRM);
     //}
 
+    // 停留在SMB/ETH页时强制重建当前列表（SMB目录mtime常不可靠）
+    if (curMenu && curMenu->userdata) {
+        item_list_t *support = curMenu->userdata;
+        if (support->enabled && support->mode == ETH_MODE)
+            forcedMenuUpdates[ETH_MODE] = 1;
+    }
+
     // 刷新所有页面
     for (int i = 0; i < MODE_COUNT; i++) {
         int deviceType = bdmGetDeviceType(i);
