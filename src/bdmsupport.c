@@ -731,6 +731,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             int readResult;
                             if (sectorsToRead > sectorsRemaining)
                                 sectorsToRead = sectorsRemaining;
+                            // fileXioDevctl单次返回缓冲区限制为2048字节，调试时逐扇区读取。
+                            if (sectorsToRead > 1)
+                                sectorsToRead = 1;
                             readResult = hddReadSectors((u32)(frag->sector + (logicalSector - fragmentOffset)), sectorsToRead, rawData + rawBytes);
                             fprintf(debugFile, "%s RAW F:%d L:%08X%08X S:%08X%08X N:%u R:%d\r\n", testNames[i], fragmentIndex, (unsigned int)(logicalSector >> 32), (unsigned int)logicalSector, (unsigned int)((frag->sector + (logicalSector - fragmentOffset)) >> 32), (unsigned int)(frag->sector + (logicalSector - fragmentOffset)), sectorsToRead, readResult);
                             if (readResult != 0) {
