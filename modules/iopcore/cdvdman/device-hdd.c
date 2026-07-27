@@ -113,8 +113,11 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     u32 offset = 0;
     while (sectors) {
         if (!((lsn >= cdvdman_partspecs[CurrentPart].part_offset) && (lsn < (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048))))) {
-            if (cdvdman_get_part_specs(lsn) != 0)
-                return SCECdErTRMOPN;
+            if (cdvdman_get_part_specs(lsn) != 0) {
+                // 超出HDL数据段的读取补零返回，保留有效范围内的真实ATA错误。
+                memset((u8 *)buffer + offset, 0, sectors * 2048);
+                return SCECdErNO;
+            }
         }
         u32 nsectors = (cdvdman_partspecs[CurrentPart].part_offset + (cdvdman_partspecs[CurrentPart].part_size / 2048)) - lsn;
         if (sectors < nsectors)
