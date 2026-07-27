@@ -50,13 +50,14 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
         return 0; // can't seek beyond file
     }
 
-    if (lsn + count > ziso_total_block) {
+    if (count > ziso_total_block - lsn) {
         count = ziso_total_block - lsn; // adjust oob reads
     }
 
     // refresh index table if needed
     if (ziso_idx_start_block < 0 || lsn < ziso_idx_start_block || lsn + count >= ziso_idx_start_block + ZISO_IDX_MAX_ENTRIES - 1) {
-        read_raw_data((u8 *)ziso_idx_cache, ZISO_IDX_MAX_ENTRIES * sizeof(u32), lsn * 4 + sizeof(ZISO_header), 0);
+        if (read_raw_data((u8 *)ziso_idx_cache, ZISO_IDX_MAX_ENTRIES * sizeof(u32), lsn * 4 + sizeof(ZISO_header), 0) != ZISO_IDX_MAX_ENTRIES * sizeof(u32))
+            return 0;
         ziso_idx_start_block = lsn;
     }
 
@@ -67,7 +68,8 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
     // read all compressed data to the end of provided buffer to reduce IO
     // there should be no overflow or overrun, as long as compressed data is smaller, and it should be
     u8 *c_buff = addr + (count * 2048) - compressed_size;
-    read_raw_data(c_buff, compressed_size, o_start, ziso_align);
+    if (read_raw_data(c_buff, compressed_size, o_start, ziso_align) != compressed_size)
+        return 0;
 
     // process each sector
     for (unsigned int i = 0; i < count; i++) {
@@ -86,7 +88,8 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
         // check top bit to determine if block is compressed or raw
         if (topbit == 0) {                                                 // block is compressed
             memcpy(ziso_tmp_buf, c_buff, r);                               // read compressed block into temp buffer
-            LZ4_decompress_fast((char *)ziso_tmp_buf, (char *)addr, 2048); // decompress block
+            if (LZ4_decompress_fast((char *)ziso_tmp_buf, (char *)addr, 2048) < 0)
+                return cur_block - lsn;
         } else {
             // move block to its correct position in the buffer
             memcpy(addr, c_buff, r);

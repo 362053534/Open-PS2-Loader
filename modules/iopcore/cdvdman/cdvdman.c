@@ -205,7 +205,8 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
     // read first block if not aligned to sector size
     if (pos) {
         int r = MIN(size, (2048 - pos));
-        ReadSectors(lba, ziso_tmp_buf, 1);
+        if (ReadSectors(lba, ziso_tmp_buf, 1) != SCECdErNO)
+            return o_size - size;
         memcpy(addr, ziso_tmp_buf + pos, r);
         size -= r;
         lba++;
@@ -218,7 +219,8 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
         n_blocks++;
     if (n_blocks > 1) {
         int r = 2048 * (n_blocks - 1);
-        ReadSectors(lba, addr, n_blocks - 1);
+        if (ReadSectors(lba, addr, n_blocks - 1) != SCECdErNO)
+            return o_size - size;
         size -= r;
         addr += r;
         lba += n_blocks - 1;
@@ -226,7 +228,8 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
 
     // read remaining data
     if (size) {
-        ReadSectors(lba, ziso_tmp_buf, 1);
+        if (ReadSectors(lba, ziso_tmp_buf, 1) != SCECdErNO)
+            return o_size - size;
         memcpy(addr, ziso_tmp_buf, size);
         size = 0;
     }
@@ -237,7 +240,10 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
 
 int DeviceReadSectorsCompressed(u32 lsn, void *addr, unsigned int count)
 {
-    return (ziso_read_sector(addr, lsn, count) == count) ? SCECdErNO : SCECdErEOM;
+    if (ziso_read_sector(addr, lsn, count) == count)
+        return SCECdErNO;
+
+    return (lsn >= ziso_total_block || count > ziso_total_block - lsn) ? SCECdErEOM : SCECdErREAD;
 }
 
 static int probed = 0;
@@ -265,24 +271,16 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 
     DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p\n", lsn, sectors, buf);
 
-    // 这段校验代码，会引起D9转D5的游戏读取异常(如D5战神)，但注释掉后不知道会不会影响别的游戏
-    //if (mediaLsnCount) {
-
-    //    // If lsn to read is already bigger error already.
-    //    if (lsn >= mediaLsnCount) {
-    //        DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
-    //        cdvdman_stat.err = SCECdErIPI;
-    //        return 1;
-    //    }
-
-    //    // As per PS2 mecha code continue to read what you can and then signal end of media error.
-    //    if ((lsn + sectors) > mediaLsnCount) {
-    //        DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
-    //        endOfMedia = 1;
-    //        // Limit how much sectors we can read.
-    //        sectors = mediaLsnCount - lsn;
-    //    }
-    //}
+    // PVD容量仅作为辅助边界，底层能够完整读取时兼容D9转D5等魔改镜像。
+    if (mediaLsnCount) {
+        if (lsn >= mediaLsnCount) {
+            DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
+            endOfMedia = 2;
+        } else if (sectors > mediaLsnCount - lsn) {
+            DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
+            endOfMedia = 1;
+        }
+    }
 
     if (probed == 0) { // Probe for ZSO before first read
         // check for ZSO
@@ -311,7 +309,7 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
         }
 
         cdvdman_stat.err = DeviceReadSectorsPtr(lsn, ptr, SectorsToRead);
-        if (cdvdman_stat.err == SCECdErTRMOPN) {
+        if (cdvdman_stat.err != SCECdErNO) {
             if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS)
                 CancelAlarm(&cdvdemu_read_end_cb, NULL);
             break;
@@ -348,9 +346,8 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     }
 
     // If we had a read that went past the end of media, after reading what we can, set the end of media error.
-    if (endOfMedia) {
-        cdvdman_stat.err = SCECdErEOM;
-    }
+    if (endOfMedia && cdvdman_stat.err != SCECdErNO)
+        cdvdman_stat.err = endOfMedia == 2 ? SCECdErIPI : SCECdErEOM;
 
     return (cdvdman_stat.err == SCECdErNO ? 0 : 1);
 }
