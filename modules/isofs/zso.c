@@ -46,6 +46,9 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
 
     u32 cur_block = lsn;
 
+    if (!addr || !count || !ziso_tmp_buf || !ziso_idx_cache || ziso_align > 11)
+        return 0;
+
     if (lsn >= ziso_total_block) {
         return 0; // can't seek beyond file
     }
@@ -54,8 +57,28 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
         count = ziso_total_block - lsn; // adjust oob reads
     }
 
+    // 索引缓存最多容纳256个数据块，大请求需要分段处理。
+    if (count >= ZISO_IDX_MAX_ENTRIES) {
+        unsigned int total = 0;
+
+        while (count > 0) {
+            unsigned int blocks = MIN(count, ZISO_IDX_MAX_ENTRIES - 1);
+            int result = ziso_read_sector(addr, lsn, blocks);
+
+            total += result;
+            if (result != blocks)
+                break;
+
+            addr += blocks * 2048;
+            lsn += blocks;
+            count -= blocks;
+        }
+
+        return total;
+    }
+
     // refresh index table if needed
-    if (ziso_idx_start_block < 0 || lsn < ziso_idx_start_block || lsn + count >= ziso_idx_start_block + ZISO_IDX_MAX_ENTRIES - 1) {
+    if (ziso_idx_start_block < 0 || lsn < ziso_idx_start_block || lsn + count > ziso_idx_start_block + ZISO_IDX_MAX_ENTRIES - 1) {
         if (read_raw_data((u8 *)ziso_idx_cache, ZISO_IDX_MAX_ENTRIES * sizeof(u32), lsn * 4 + sizeof(ZISO_header), 0) != ZISO_IDX_MAX_ENTRIES * sizeof(u32))
             return 0;
         ziso_idx_start_block = lsn;
@@ -63,6 +86,8 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
 
     u32 o_start = (ziso_idx_cache[cur_block - ziso_idx_start_block] & 0x7FFFFFFF);
     u32 o_end = (ziso_idx_cache[cur_block + count - ziso_idx_start_block] & 0x7FFFFFFF);
+    if (o_end < o_start || o_end - o_start > ((count * 2048) >> ziso_align))
+        return 0;
     u32 compressed_size = (o_end - o_start) << ziso_align;
 
     // read all compressed data to the end of provided buffer to reduce IO
@@ -76,23 +101,29 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
 
         // read block offset and size from cache
         u32 b_offset = ziso_idx_cache[cur_block - ziso_idx_start_block];
-        u32 b_size = ziso_idx_cache[cur_block - ziso_idx_start_block + 1];
+        u32 b_end = ziso_idx_cache[cur_block - ziso_idx_start_block + 1] & 0x7FFFFFFF;
         u32 topbit = b_offset & 0x80000000;         // extract top bit
         b_offset = (b_offset & 0x7FFFFFFF);         // remove top bit
-        b_size = (b_size & 0x7FFFFFFF);             // remove top bit
-        b_size = (b_size - b_offset) << ziso_align; // calculate size of compressed block
+        if (b_end < b_offset || b_end - b_offset > (2048 >> ziso_align))
+            return i;
+        u32 b_size = (b_end - b_offset) << ziso_align; // calculate size of compressed block
+        if (!b_size)
+            return i;
 
         // prevent reading more than a sector (eliminates padding if any)
-        int r = MIN(b_size, 2048);
+        int r = b_size;
 
         // check top bit to determine if block is compressed or raw
         if (topbit == 0) {                                                 // block is compressed
             memcpy(ziso_tmp_buf, c_buff, r);                               // read compressed block into temp buffer
-            if (LZ4_decompress_fast((char *)ziso_tmp_buf, (char *)addr, 2048) < 0)
-                return cur_block - lsn;
+            int result = LZ4_decompress_fast((char *)ziso_tmp_buf, (char *)addr, 2048);
+            if (result <= 0 || result > r)
+                return i;
         } else {
+            if (b_size != 2048)
+                return i;
             // move block to its correct position in the buffer
-            memcpy(addr, c_buff, r);
+            memcpy(addr, c_buff, 2048);
         }
 
         cur_block++;
