@@ -799,15 +799,12 @@ static void ethShutdown(item_list_t *itemList)
     }
 
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
-    // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9
-    {
-        int ethOwnedDev9 = ethModulesLoaded;
+    ethDeinitModules();
 
-        ethDeinitModules();
-
-        if (ethOwnedDev9)
-            sysShutdownDev9();
-    }
+    // ethDeinitModules 已清 ethModulesLoaded，此处不会关 DEV9。
+    // USB 启游戏时的断电改由 deinit 之后的 oplShutdownUnusedDev9 安全处理。
+    if (ethModulesLoaded)
+        sysShutdownDev9();
 }
 
 static int ethCheckVMC(item_list_t *itemList, char *name, int createSize)

@@ -2119,6 +2119,17 @@ void deinit(int exception, int modeSelected)
     ioEnd();
 }
 
+void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
+{
+    // ETH / APA / BDM-ATA 仍需要网卡，不能关
+    if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
+        return;
+
+    // deinit 已结束：各设备 Shutdown/CleanUp 已跑完，再尝试让硬盘休眠并关 DEV9
+    hddSetIdleImmediate();
+    sysForceShutdownDev9();
+}
+
 void setDefaultColors(void)
 {
     gDefaultBgColor[0] = 0x28;

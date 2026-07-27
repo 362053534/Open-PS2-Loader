@@ -694,9 +694,12 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         settings->hddIsLBA48 = pDeviceData->bdmHddIsLBA48;
     }
 
-    if (gAutoLaunchBDMGame == NULL)
+    if (gAutoLaunchBDMGame == NULL) {
+        int bdmType = pDeviceData->bdmDeviceType;
+
         deinit(NO_EXCEPTION, itemList->mode); // CAREFUL: deinit will call bdmCleanUp, so bdmGames/game will be freed
-    else {
+        oplShutdownUnusedDev9(itemList->mode, bdmType);
+    } else {
         miniDeinit(configSet);
 
         free(gAutoLaunchBDMGame);

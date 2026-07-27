@@ -90,6 +90,8 @@ void menuDeferredUpdate(void *data);
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged);
 void handleLwnbdSrv();
 void deinit(int exception, int modeSelected);
+// 启动目标不需要 DEV9 时，在 deinit 之后断电（当前 DDIOC_OFF 为死等）
+void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType);
 
 // Shutdown minimal services initiated for auto loading.
 void miniDeinit(config_set_t *configSet);
