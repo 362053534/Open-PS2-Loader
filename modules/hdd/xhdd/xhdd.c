@@ -15,6 +15,7 @@ IRX_ID(MODNAME, 1, 2);
 static int isHDPro;
 
 static IDENTIFY_DEVICE_DATA deviceIdentifyData;
+static unsigned char hashBuffer[16 * 1024] __attribute__((aligned(64)));
 
 static int xhddInit(iop_device_t *device)
 {
@@ -53,6 +54,40 @@ static int xhddDevctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsi
                 return -EINVAL;
 
             return sceAtaDmaTransfer(fd->unit, buf, 0, buflen / 512, ATA_DIR_READ);
+        }
+
+        case ATA_DEVCTL_HASH_SECTORS: {
+            hddAtaHashSectors_t *request = (hddAtaHashSectors_t *)arg;
+            u32 lba;
+            u32 sectors;
+            u32 bytes;
+            u32 hash;
+
+            if (arglen != sizeof(hddAtaHashSectors_t) || buflen < sizeof(u32) || request->bytes > request->sectors * 512)
+                return -EINVAL;
+
+            lba = request->lba;
+            sectors = request->sectors;
+            bytes = request->bytes;
+            hash = request->hash;
+            while (sectors > 0) {
+                u32 sectorsToRead = sectors > 32 ? 32 : sectors;
+                u32 bytesToHash = sectorsToRead * 512;
+
+                if (sceAtaDmaTransfer(fd->unit, hashBuffer, lba, sectorsToRead, ATA_DIR_READ) != 0)
+                    return -EIO;
+                if (bytesToHash > bytes)
+                    bytesToHash = bytes;
+                for (u32 i = 0; i < bytesToHash; i++)
+                    hash = (hash ^ hashBuffer[i]) * 16777619;
+
+                lba += sectorsToRead;
+                sectors -= sectorsToRead;
+                bytes -= bytesToHash;
+            }
+
+            *(u32 *)buf = hash;
+            return 0;
         }
 
         case ATA_DEVCTL_GET_HIGHEST_UDMA_MODE: {

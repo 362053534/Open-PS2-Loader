@@ -6,6 +6,7 @@
 #define ATA_DEVCTL_SET_TRANSFER_MODE     0x6841
 #define ATA_DEVCTL_READ_PARTITION_SECTOR 0x6842
 #define ATA_DEVCTL_GET_HIGHEST_UDMA_MODE 0x6843
+#define ATA_DEVCTL_HASH_SECTORS           0x6844
 
 #define ATA_XFER_MODE_MDMA 0x20
 #define ATA_XFER_MODE_UDMA 0x40
@@ -17,5 +18,13 @@ typedef struct
     int type;
     int mode;
 } hddAtaSetMode_t;
+
+typedef struct
+{
+    u32 lba;
+    u32 sectors;
+    u32 bytes;
+    u32 hash;
+} hddAtaHashSectors_t;
 
 #endif

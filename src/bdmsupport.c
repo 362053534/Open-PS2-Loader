@@ -13,6 +13,7 @@
 #include "include/cheatman.h"
 #include "include/sound.h"
 #include "modules/iopcore/common/cdvd_config.h"
+#include "modules/hdd/common/opl-hdd-ioctl.h"
 
 #include <usbhdfsd-common.h>
 
@@ -771,12 +772,13 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
                     s64 fileSizeResult = lseek64(testFd, 0, SEEK_END);
                     u64 fileSize = fileSizeResult < 0 ? 0 : fileSizeResult;
+                    u8 *fullData = memalign(64, 1024 * 1024);
                     u64 bytesChecked = 0;
                     u64 fragmentOffset = 0;
                     u32 pfsHash = 2166136261;
                     u32 rawHash = 2166136261;
                     int fragmentIndex = 0;
-                    int fullResult = 0;
+                    int fullResult = fullData ? 0 : -1;
 
                     fprintf(debugFile, "FULL BEGIN SIZE:%08X%08X\r\n", (unsigned int)(fileSize >> 32), (unsigned int)fileSize);
                     if (fileSizeResult < 0 || lseek64(testFd, 0, SEEK_SET) < 0)
@@ -785,9 +787,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                     while (!fullResult && bytesChecked < fileSize) {
                         bd_fragment_t *frag;
                         u64 logicalSector = bytesChecked >> 9;
-                        u32 sectorOffset = bytesChecked & 0x1FF;
                         u32 sectorsToRead;
                         u32 bytesToCompare;
+                        hddAtaHashSectors_t hashRequest;
                         int readResult;
 
                         while (fragmentIndex < iso_frag->frag_count && logicalSector >= fragmentOffset + settings->frags[iso_frag->frag_start + fragmentIndex].count) {
@@ -802,33 +804,35 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
                         frag = &settings->frags[iso_frag->frag_start + fragmentIndex];
                         sectorsToRead = fragmentOffset + frag->count - logicalSector;
-                        if (sectorsToRead > 4)
-                            sectorsToRead = 4;
-                        bytesToCompare = (sectorsToRead << 9) - sectorOffset;
+                        if (sectorsToRead > 2048)
+                            sectorsToRead = 2048;
+                        bytesToCompare = sectorsToRead << 9;
                         if (bytesToCompare > fileSize - bytesChecked)
                             bytesToCompare = fileSize - bytesChecked;
 
-                        if (read(testFd, pfsData, bytesToCompare) != (int)bytesToCompare) {
+                        if (read(testFd, fullData, bytesToCompare) != (int)bytesToCompare) {
                             fprintf(debugFile, "FULL PFS_READ_ERROR AT:%08X%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked);
                             fullResult = -1;
                             break;
                         }
 
-                        readResult = hddReadSectors((u32)(frag->sector + (logicalSector - fragmentOffset)), sectorsToRead, rawData);
+                        for (u32 j = 0; j < bytesToCompare; j++)
+                            pfsHash = (pfsHash ^ fullData[j]) * 16777619;
+
+                        hashRequest.lba = frag->sector + (logicalSector - fragmentOffset);
+                        hashRequest.sectors = sectorsToRead;
+                        hashRequest.bytes = bytesToCompare;
+                        hashRequest.hash = rawHash;
+                        readResult = fileXioDevctl("xhdd0:", ATA_DEVCTL_HASH_SECTORS, &hashRequest, sizeof(hashRequest), &rawHash, sizeof(rawHash));
                         if (readResult != 0) {
                             fprintf(debugFile, "FULL RAW_READ_ERROR AT:%08X%08X F:%d R:%d\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, fragmentIndex, readResult);
                             fullResult = -1;
                             break;
                         }
 
-                        for (u32 j = 0; j < bytesToCompare; j++) {
-                            pfsHash = (pfsHash ^ pfsData[j]) * 16777619;
-                            rawHash = (rawHash ^ rawData[sectorOffset + j]) * 16777619;
-                            if (pfsData[j] != rawData[sectorOffset + j]) {
-                                fprintf(debugFile, "FULL MISMATCH AT:%08X%08X F:%d P:%02X R:%02X PH:%08X RH:%08X\r\n", (unsigned int)((bytesChecked + j) >> 32), (unsigned int)(bytesChecked + j), fragmentIndex, (unsigned int)pfsData[j], (unsigned int)rawData[sectorOffset + j], pfsHash, rawHash);
-                                fullResult = 1;
-                                break;
-                            }
+                        if (pfsHash != rawHash) {
+                            fprintf(debugFile, "FULL MISMATCH AT:%08X%08X F:%d PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, fragmentIndex, pfsHash, rawHash);
+                            fullResult = 1;
                         }
 
                         bytesChecked += bytesToCompare;
@@ -836,6 +840,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
                     if (!fullResult)
                         fprintf(debugFile, "FULL MATCH SIZE:%08X%08X PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, pfsHash, rawHash);
+                    else if (fullResult < 0)
+                        fprintf(debugFile, "FULL ERROR SIZE:%08X%08X PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, pfsHash, rawHash);
+                    free(fullData);
                 } else
                     fprintf(debugFile, "HEADER PFS_READ_ERROR\r\n");
             } else
