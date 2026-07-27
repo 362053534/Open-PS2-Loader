@@ -554,6 +554,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
             if (iFragCount > 0) {
                 int j;
+                int iMergedFragCount = 0;
 
                 iFragCount--;
                 for (j = 0; j < iFragCount; j++) {
@@ -563,7 +564,18 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                     }
                     settings->frags[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
                     settings->frags[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
+
+                    // 合并物理连续的APA/PFS碎片，减少ZSO随机读取跨碎片时的切换。
+                    if (iMergedFragCount > 0 && settings->frags[iTotalFragCount + iMergedFragCount - 1].sector + settings->frags[iTotalFragCount + iMergedFragCount - 1].count == settings->frags[iTotalFragCount + j].sector)
+                        settings->frags[iTotalFragCount + iMergedFragCount - 1].count += settings->frags[iTotalFragCount + j].count;
+                    else {
+                        if (iMergedFragCount != j)
+                            settings->frags[iTotalFragCount + iMergedFragCount] = settings->frags[iTotalFragCount + j];
+                        iMergedFragCount++;
+                    }
                 }
+                if (iFragCount >= 0)
+                    iFragCount = iMergedFragCount;
                 settings->fragsAre512ByteSectors = 1;
             }
         } else
@@ -895,7 +907,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     }
 
     // adjust ZSO cache
-    settings->common.zso_cache = bdmCacheSize;
+    settings->common.zso_cache = (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcasecmp(game->extension, ".zso")) ? 0 : bdmCacheSize;
 
     if ((result = sbLoadCheats(pDeviceData->bdmPrefix, game->startup)) < 0) {
         if (gAutoLaunchBDMGame == NULL) {
