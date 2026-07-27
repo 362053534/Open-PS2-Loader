@@ -286,8 +286,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         return DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
 
     WaitSema(bdm_io_sema);
-    if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4) != (sectors * 4))
-        rv = SCECdErREAD;
+    bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4); // 出错了也继续推进
     SignalSema(bdm_io_sema);
 
     return rv;
