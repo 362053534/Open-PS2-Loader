@@ -704,8 +704,11 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
         toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
 
         result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
-        if (result <= 0)
-            return result;
+        if (result <= 0) {
+            if (!result)
+                result = nbytes - remaining;
+            break;
+        }
 
         //Check for and handle overflow.
         if (offsetlow + result < offsetlow)
@@ -717,7 +720,7 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
 
     SIGNALIOSEMA(smb_io_sema);
 
-    return nbytes;
+    return remaining > 0 ? result : nbytes;
 }
 
 //-------------------------------------------------------------------------
