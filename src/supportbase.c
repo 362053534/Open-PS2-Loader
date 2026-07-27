@@ -300,7 +300,7 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 }
 
 static int _txtFileRebuilded = 0;
-static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *file, int txtFileChanged, u32 txtFileSize)
+static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **pFile, const char *txtPath, int txtFileChanged, u32 txtFileSize)
 {
     int count = 0;
     struct game_cache_list cache = {0, NULL};
@@ -332,6 +332,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
 
         char indexNameBuffer[256];
         while ((dirent = readdir(dir)) != NULL) {
+            FILE *file = pFile ? *pFile : NULL;
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
             int format = isValidIsoName(dirent->d_name, &NameLen);
@@ -441,10 +442,25 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
             } else {
                 // need to mount and read SYSTEM.CNF
                 char startup[GAME_STARTUP_MAX];
+                int reopenApaTxt = 0;
+
+                // APA PFS：挂载前临时关闭同分区 txt，避免多开导致挂载失败；BDM/SMB 不改
+                if (file && pFile && txtPath && strncmp(path, "pfs", 3) == 0) {
+                    fclose(file);
+                    *pFile = NULL;
+                    file = NULL;
+                    reopenApaTxt = 1;
+                }
+
                 int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
 
                 if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
                     fileXioUmount("iso:");
+                    // 挂载失败也要重开，保证后续缓存回填/追加仍能写 txt
+                    if (reopenApaTxt) {
+                        *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
+                        file = *pFile;
+                    }
                     *glist = next->next;
                     free(next);
                     continue;
@@ -456,6 +472,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE *f
                 strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
                 fileXioUmount("iso:");
+                if (reopenApaTxt) {
+                    *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
+                    file = *pFile;
+                }
             }
 
             game->parts = 1;
@@ -790,11 +810,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
         // count iso games in "cd" directory
         snprintf(path, sizeof(path), "%sCD", prefix);
-        count = scanForISO(path, SCECdPS2CD, &dlist_head, file, txtFileChanged, curTxtFileSize);
+        count = scanForISO(path, SCECdPS2CD, &dlist_head, &file, txtPath, txtFileChanged, curTxtFileSize);
 
         // count iso games in "dvd" directory
         snprintf(path, sizeof(path), "%sDVD", prefix);
-        if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, file, txtFileChanged, curTxtFileSize)) >= 0) {
+        if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, &file, txtPath, txtFileChanged, curTxtFileSize)) >= 0) {
             count = count < 0 ? result : count + result;
         }
 
@@ -940,11 +960,11 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 
         // count iso games in "cd" directory
         snprintf(path, sizeof(path), "%sCD", prefix);
-        count = scanForISO(path, SCECdPS2CD, &dlist_head, NULL, 0, 1);
+        count = scanForISO(path, SCECdPS2CD, &dlist_head, NULL, NULL, 0, 1);
 
         // count iso games in "dvd" directory
         snprintf(path, sizeof(path), "%sDVD", prefix);
-        if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, NULL, 0, 1)) >= 0) {
+        if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, NULL, NULL, 0, 1)) >= 0) {
             count = count < 0 ? result : count + result;
         }
 
