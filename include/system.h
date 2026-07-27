@@ -11,7 +11,6 @@ unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
 void sysInitDev9(void);
 void sysShutdownDev9(void);
-void sysForceShutdownDev9(void);
 void sysReset(int modload_mask);
 void sysExecExit(void);
 void sysPowerOff(void);

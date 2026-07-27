@@ -90,8 +90,6 @@ void menuDeferredUpdate(void *data);
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged);
 void handleLwnbdSrv();
 void deinit(int exception, int modeSelected);
-// 启动目标不依赖 DEV9（网卡）时强制断电，避免风扇空转。bdmDeviceType 须在 deinit 前取好。
-void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType);
 
 // Shutdown minimal services initiated for auto loading.
 void miniDeinit(config_set_t *configSet);
