@@ -504,9 +504,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     void *irx = NULL;
     char filename[32];
     hdl_game_info_t *game;
-    struct cdvdman_settings_bdm *settings;
-    hdl_apa_header *hdl_header;
-    struct cdvdman_fragfile *iso_frag;
+    struct cdvdman_settings_hdd *settings;
 
     if (id >= hddGames.count) {
         item_list_t bdmItemList;
@@ -650,19 +648,13 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
     hddSetIdleTimeout(gHDDSpindown * 12);
 
-    if (hddReadSectors(game->start_sector, 2, IOBuffer) != 0) {
-        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
-        return;
+    if (hddHDProKitDetected) {
+        size_irx = size_hdd_hdpro_cdvdman_irx;
+        irx = &hdd_hdpro_cdvdman_irx;
+    } else {
+        size_irx = size_hdd_cdvdman_irx;
+        irx = &hdd_cdvdman_irx;
     }
-
-    hdl_header = (hdl_apa_header *)IOBuffer;
-    if (hdl_header->num_partitions <= 0 || hdl_header->num_partitions > BDM_MAX_FRAGS) {
-        guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
-        return;
-    }
-
-    size_irx = size_bdm_ata_cdvdman_irx;
-    irx = &bdm_ata_cdvdman_irx;
 
     sbPrepare(NULL, configSet, size_irx, irx, &i);
 
@@ -679,21 +671,13 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             LOG("Cheats error\n");
     }
 
-    settings = (struct cdvdman_settings_bdm *)((u8 *)irx + i);
+    settings = (struct cdvdman_settings_hdd *)((u8 *)irx + i);
 
-    memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
-    iso_frag = &settings->fragfile[0];
-    iso_frag->frag_start = 0;
-    iso_frag->frag_count = hdl_header->num_partitions;
-    for (i = 0; i < hdl_header->num_partitions; i++) {
-        settings->frags[i].sector = hdl_header->part_specs[i].data_start;
-        settings->frags[i].count = hdl_header->part_specs[i].part_size >> 9;
-    }
-    settings->bdDeviceId = 0;
-    settings->hddIsLBA48 = hddIs48bit();
-    settings->fragsAre512ByteSectors = 1;
-    settings->common.NumParts = 1;
-    settings->common.media = hdl_header->discType;
+    // 设置48位LBA标记
+    settings->common.media = hddIs48bit() & 0xff;
+
+    // 设置APA头起始扇区
+    settings->lba_start = game->start_sector;
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         strcpy(filename, game->startup);
@@ -702,7 +686,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
 
     // Check for ZSO to correctly adjust layer1 start
-    settings->common.layer1_start = hdl_header->layer1_start;
+    settings->common.layer1_start = 0; // cdvdman会从APA头读取第二层起始位置
     hddReadSectors(game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET, 1, IOBuffer);
     if (*(u32 *)IOBuffer == ZSO_MAGIC) {
         probed_fd = 0;
