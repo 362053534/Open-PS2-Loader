@@ -187,7 +187,11 @@ void sysShutdownDev9(void)
 
 void sysForceShutdownDev9(void)
 {
-    // 引用计数清零并尝试断电（供 USB 等不需要 DEV9 的启动路径）
+    // deinit 里 hddShutdown 可能已把计数减到 0 并成功 DDIOC_OFF；
+    // 若再关一次，第二次 OFF 常失败并在 while 里死等（卡在“处理中”）。
+    if (dev9InitCount == 0)
+        return;
+
     dev9InitCount = 0;
     sysDev9PowerOffOnce();
 }
