@@ -118,7 +118,7 @@ void DeviceStop(void)
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     register u32 r, sectors_to_read, lbound, ubound, nlsn, offslsn;
-    register int i, esc_flag = 0;
+    register int i, esc_flag = 0, result, bytes_to_read;
     u8 *p = (u8 *)buffer;
     int rv = SCECdErNO;
 
@@ -138,12 +138,16 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             } else
                 esc_flag = 1;
 
-            if (smb_ReadCD(offslsn, sectors_to_read, &p[r], i) != sectors_to_read * 2048) {
+            bytes_to_read = sectors_to_read * 2048;
+            result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
+            if (result < 0) {
                 rv = SCECdErREAD;
                 break;
             }
+            if (result < bytes_to_read)
+                memset(&p[r + result], 0, bytes_to_read - result);
 
-            r += sectors_to_read * 2048;
+            r += bytes_to_read;
             offslsn += sectors_to_read;
             sectors_to_read = sectors;
             lsn = nlsn;
