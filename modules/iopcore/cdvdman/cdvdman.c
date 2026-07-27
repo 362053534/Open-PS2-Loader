@@ -240,10 +240,22 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
 
 int DeviceReadSectorsCompressed(u32 lsn, void *addr, unsigned int count)
 {
-    if (ziso_read_sector(addr, lsn, count) == count)
-        return SCECdErNO;
+    unsigned int sectors;
 
-    return (lsn >= ziso_total_block || count > ziso_total_block - lsn) ? SCECdErEOM : SCECdErREAD;
+    if (lsn >= ziso_total_block) {
+        memset(addr, 0, count * 2048);
+        return SCECdErNO;
+    }
+
+    sectors = MIN(count, ziso_total_block - lsn);
+    if (ziso_read_sector(addr, lsn, sectors) != sectors)
+        return SCECdErREAD;
+
+    // 超出ZSO逻辑末尾的部分补零，兼容游戏的末尾探测读取。
+    if (sectors < count)
+        memset((u8 *)addr + sectors * 2048, 0, (count - sectors) * 2048);
+
+    return SCECdErNO;
 }
 
 static int probed = 0;
