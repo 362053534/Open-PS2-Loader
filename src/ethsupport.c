@@ -799,11 +799,15 @@ static void ethShutdown(item_list_t *itemList)
     }
 
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
-    ethDeinitModules();
+    // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9
+    {
+        int ethOwnedDev9 = ethModulesLoaded;
 
-    // Only shut down dev9 from here, if it was initialized from here before.
-    if (ethModulesLoaded)
-        sysShutdownDev9();
+        ethDeinitModules();
+
+        if (ethOwnedDev9)
+            sysShutdownDev9();
+    }
 }
 
 static int ethCheckVMC(item_list_t *itemList, char *name, int createSize)
