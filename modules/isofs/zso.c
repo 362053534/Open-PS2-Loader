@@ -89,6 +89,8 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
     if (o_end < o_start || o_end - o_start > (UINT_MAX >> ziso_align))
         return 0;
     u32 compressed_size = (o_end - o_start) << ziso_align;
+    if (compressed_size > count * 2048)
+        return 0;
 
     // read all compressed data to the end of provided buffer to reduce IO
     // there should be no overflow or overrun, as long as compressed data is smaller, and it should be
