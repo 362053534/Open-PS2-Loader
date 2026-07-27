@@ -1106,9 +1106,17 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
     if (game->media == SCECdPS2DVD) { // Only DVDs can have multiple layers.
         if ((fd = open(path, O_RDONLY, 0666)) >= 0) {
             if (ProbeZISO(fd)) {
-                if (ziso_read_sector(IOBuffer, layer1_offset, 1) == 1 &&
-                    ((IOBuffer[0x00] == 1) && (!strncmp((char *)(&IOBuffer[0x01]), "CD001", 5)))) {
-                    result = 0;
+                if (ziso_read_sector(IOBuffer, layer1_offset, 1) == 1) {
+                    if (!strncmp(path, "pfs", 3)) {
+                        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "ab");
+                        if (debugFile) {
+                            fprintf(debugFile, "DL DATA:%02X %02X %02X %02X %02X %02X\r\n", IOBuffer[0], IOBuffer[1], IOBuffer[2], IOBuffer[3], IOBuffer[4], IOBuffer[5]);
+                            fclose(debugFile);
+                        }
+                    }
+
+                    if ((IOBuffer[0x00] == 1) && (!strncmp((char *)(&IOBuffer[0x01]), "CD001", 5)))
+                        result = 0;
                 }
             } else {
                 if (lseek64(fd, (u64)layer1_offset * 2048, SEEK_SET) == (u64)layer1_offset * 2048) {

@@ -409,12 +409,13 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     int i, fd, iop_fd, index, compatmask = 0;
     int EnablePS2Logo = 0;
     int result;
+    int layer1ProbeResult;
     u64 startingLBA;
     unsigned int startCluster;
     char partname[256], filename[32];
     base_game_info_t *game;
     struct cdvdman_settings_bdm *settings;
-    u32 layer1_start, layer1_offset;
+    u32 layer1_start, layer1_offset, layer1MaxLBA;
     unsigned short int layer1_part;
     apa_sub_t parts[APA_MAXSUB + 1];
     pfs_blockinfo_t blocks[BDM_MAX_FRAGS];
@@ -850,6 +851,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     // Initialize layer 1 information.
     sbCreatePath(game, partname, pDeviceData->bdmPrefix, "/", 0);
     layer1_start = sbGetISO9660MaxLBA(partname);
+    layer1MaxLBA = layer1_start;
 
     switch (game->format) {
         case GAME_FORMAT_USBLD:
@@ -862,7 +864,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             layer1_offset = layer1_start;
     }
 
-    if (sbProbeISO9660(partname, game, layer1_offset) != 0) {
+    layer1ProbeResult = sbProbeISO9660(partname, game, layer1_offset);
+    if (layer1ProbeResult != 0) {
         layer1_start = 0;
         LOG("DVD detected.\n");
     } else {
@@ -870,6 +873,15 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         LOG("DVD-DL layer 1 @ part %u sector 0x%lx.\n", layer1_part, layer1_offset);
     }
     settings->common.layer1_start = layer1_start;
+
+    if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcasecmp(game->extension, ".zso")) {
+        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "ab");
+        if (debugFile) {
+            // 记录ZSO双层检测结果，用于确认是否误判第二层。
+            fprintf(debugFile, "DL MAX:%08X OFF:%08X PROBE:%d FINAL:%08X MEDIA:%02X MODE5:%d\r\n", layer1MaxLBA, layer1_offset, layer1ProbeResult, settings->common.layer1_start, game->media, (compatmask & COMPAT_MODE_5) != 0);
+            fclose(debugFile);
+        }
+    }
 
     // adjust ZSO cache
     settings->common.zso_cache = bdmCacheSize;
