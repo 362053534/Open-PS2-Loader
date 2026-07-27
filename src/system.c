@@ -178,6 +178,16 @@ void sysShutdownDev9(void)
     }
 }
 
+void sysForceShutdownDev9(void)
+{
+    // 启动不依赖网卡的应用前强制断电，避免引用计数残留导致风扇空转
+    if (dev9Loaded) {
+        while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
+        };
+    }
+    dev9InitCount = 0;
+}
+
 void sysReset(int modload_mask)
 {
 #ifdef PADEMU

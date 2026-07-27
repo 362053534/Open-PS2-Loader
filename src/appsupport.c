@@ -666,8 +666,13 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (mode < 0)
             mode = APP_MODE;
 
-        deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromMemory(popstarter_elf, 1, argv);
+        {
+            int popsBdmType = appGetPOPSBDMDeviceType(&appsList[id]);
+
+            deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
+            oplShutdownUnusedDev9(mode, popsBdmType);
+            LoadELFFromMemory(popstarter_elf, 1, argv);
+        }
         if (mode == HDD_MODE)
             oplRestoreHDDOPLPartition();
         return;
@@ -732,8 +737,16 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             argc = 1;
         }
 
-        deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromFileWithPartition(filename, partition, argc, argv);
+        {
+            int bdmType = BDM_TYPE_UNKNOWN;
+
+            if (mode >= BDM_MODE && mode <= BDM_MODE4)
+                bdmType = bdmGetDeviceType(mode);
+
+            deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
+            oplShutdownUnusedDev9(mode, bdmType);
+            LoadELFFromFileWithPartition(filename, partition, argc, argv);
+        }
     } else {
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
     }

@@ -2119,6 +2119,15 @@ void deinit(int exception, int modeSelected)
     ioEnd();
 }
 
+void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
+{
+    // ETH / APA HDD / BDM-ATA 启动仍需要网卡（DEV9）
+    if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
+        return;
+
+    sysForceShutdownDev9();
+}
+
 void setDefaultColors(void)
 {
     gDefaultBgColor[0] = 0x28;
