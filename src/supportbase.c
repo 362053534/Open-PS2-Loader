@@ -1051,6 +1051,7 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
 extern int probed_fd;
 extern u32 probed_lba;
 extern u8 IOBuffer[2048];
+static char sbZsoDebugPath[256];
 
 static int ProbeZISO(int fd)
 {
@@ -1108,7 +1109,7 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
             if (ProbeZISO(fd)) {
                 if (ziso_read_sector(IOBuffer, layer1_offset, 1) == 1) {
                     if (!strncmp(path, "pfs", 3)) {
-                        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "ab");
+                        FILE *debugFile = fopen(sbZsoDebugPath, "ab");
                         if (debugFile) {
                             fprintf(debugFile, "DL DATA:%02X %02X %02X %02X %02X %02X\r\n", IOBuffer[0], IOBuffer[1], IOBuffer[2], IOBuffer[3], IOBuffer[4], IOBuffer[5]);
                             fclose(debugFile);
@@ -1143,6 +1144,7 @@ int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman,
 
     int compatmask = 0;
     configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatmask);
+    snprintf(sbZsoDebugPath, sizeof(sbZsoDebugPath), "mass0:%s-MODE5-%s.txt", game ? game->name : "APA-ZSO-debug", (compatmask & COMPAT_MODE_5) ? "ON" : "OFF");
 
     char gameid[5];
     configGetDiscIDBinary(configSet, gameid);

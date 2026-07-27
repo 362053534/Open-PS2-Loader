@@ -412,7 +412,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     int layer1ProbeResult;
     u64 startingLBA;
     unsigned int startCluster;
-    char partname[256], filename[32];
+    char partname[256], filename[32], debugPath[256];
     base_game_info_t *game;
     struct cdvdman_settings_bdm *settings;
     u32 layer1_start, layer1_offset, layer1MaxLBA;
@@ -519,6 +519,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         hddPartCount = hddGetPartitionInfo(gOPLPart, parts);
 
     compatmask = sbPrepare(game, configSet, irx_size, irx, &index);
+    snprintf(debugPath, sizeof(debugPath), "mass0:%s-MODE5-%s.txt", game->name, (compatmask & COMPAT_MODE_5) ? "ON" : "OFF");
     settings = (struct cdvdman_settings_bdm *)((u8 *)irx + index);
     if (settings == NULL) {
         return;
@@ -583,7 +584,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     }
 
     if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcasecmp(game->extension, ".zso")) {
-        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "wb");
+        FILE *debugFile = fopen(debugPath, "wb");
         if (debugFile) {
             u64 fileSector = 0;
             u64 boundaryOffset = 0;
@@ -875,7 +876,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.layer1_start = layer1_start;
 
     if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcasecmp(game->extension, ".zso")) {
-        FILE *debugFile = fopen("mass0:APA-ZSO-debug.txt", "ab");
+        FILE *debugFile = fopen(debugPath, "ab");
         if (debugFile) {
             // 记录ZSO双层检测结果，用于确认是否误判第二层。
             fprintf(debugFile, "DL MAX:%08X OFF:%08X PROBE:%d FINAL:%08X MEDIA:%02X MODE5:%d\r\n", layer1MaxLBA, layer1_offset, layer1ProbeResult, settings->common.layer1_start, game->media, (compatmask & COMPAT_MODE_5) != 0);
