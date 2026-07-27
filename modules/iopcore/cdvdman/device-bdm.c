@@ -288,7 +288,10 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     WaitSema(bdm_io_sema);
     //if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4) != (sectors * 4))
     //    rv = SCECdErREAD;
-    bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4); // 出错了也继续推进
+    //bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4, buffer, sectors * 4); // 出错了也继续推进
+    // 临时逐个读取512字节扇区，用于排查多扇区读取是否导致ZSO黑屏。
+    for (unsigned int i = 0; i < sectors * 4; i++)
+        bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start], ((u64)lsn) * 4 + i, (u8 *)buffer + (i * 512), 1);
     SignalSema(bdm_io_sema);
 
     return rv;
