@@ -774,13 +774,14 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                     u64 fileSize = fileSizeResult < 0 ? 0 : fileSizeResult;
                     u8 *fullData = memalign(64, 1024 * 1024);
                     u64 bytesChecked = 0;
+                    u64 sampleStep = 64 * 1024 * 1024;
                     u64 fragmentOffset = 0;
                     u32 pfsHash = 2166136261;
                     u32 rawHash = 2166136261;
                     int fragmentIndex = 0;
                     int fullResult = fullData ? 0 : -1;
 
-                    fprintf(debugFile, "FULL BEGIN SIZE:%08X%08X\r\n", (unsigned int)(fileSize >> 32), (unsigned int)fileSize);
+                    fprintf(debugFile, "SAMPLE BEGIN SIZE:%08X%08X STEP:%08X%08X\r\n", (unsigned int)(fileSize >> 32), (unsigned int)fileSize, (unsigned int)(sampleStep >> 32), (unsigned int)sampleStep);
                     if (fileSizeResult < 0 || lseek64(testFd, 0, SEEK_SET) < 0)
                         fullResult = -1;
 
@@ -797,7 +798,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             fragmentIndex++;
                         }
                         if (fragmentIndex >= iso_frag->frag_count) {
-                            fprintf(debugFile, "FULL FRAGMENT_END AT:%08X%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked);
+                            fprintf(debugFile, "SAMPLE FRAGMENT_END AT:%08X%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked);
                             fullResult = -1;
                             break;
                         }
@@ -811,7 +812,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                             bytesToCompare = fileSize - bytesChecked;
 
                         if (read(testFd, fullData, bytesToCompare) != (int)bytesToCompare) {
-                            fprintf(debugFile, "FULL PFS_READ_ERROR AT:%08X%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked);
+                            fprintf(debugFile, "SAMPLE PFS_READ_ERROR AT:%08X%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked);
                             fullResult = -1;
                             break;
                         }
@@ -825,23 +826,25 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
                         hashRequest.hash = rawHash;
                         readResult = fileXioDevctl("xhdd0:", ATA_DEVCTL_HASH_SECTORS, &hashRequest, sizeof(hashRequest), &rawHash, sizeof(rawHash));
                         if (readResult != 0) {
-                            fprintf(debugFile, "FULL RAW_READ_ERROR AT:%08X%08X F:%d R:%d\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, fragmentIndex, readResult);
+                            fprintf(debugFile, "SAMPLE RAW_READ_ERROR AT:%08X%08X F:%d R:%d\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, fragmentIndex, readResult);
                             fullResult = -1;
                             break;
                         }
 
                         if (pfsHash != rawHash) {
-                            fprintf(debugFile, "FULL MISMATCH AT:%08X%08X F:%d PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, fragmentIndex, pfsHash, rawHash);
+                            fprintf(debugFile, "SAMPLE MISMATCH AT:%08X%08X F:%d PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, fragmentIndex, pfsHash, rawHash);
                             fullResult = 1;
                         }
 
-                        bytesChecked += bytesToCompare;
+                        bytesChecked += sampleStep;
+                        if (!fullResult && bytesChecked < fileSize && lseek64(testFd, bytesChecked, SEEK_SET) < 0)
+                            fullResult = -1;
                     }
 
                     if (!fullResult)
-                        fprintf(debugFile, "FULL MATCH SIZE:%08X%08X PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, pfsHash, rawHash);
+                        fprintf(debugFile, "SAMPLE MATCH PH:%08X RH:%08X\r\n", pfsHash, rawHash);
                     else if (fullResult < 0)
-                        fprintf(debugFile, "FULL ERROR SIZE:%08X%08X PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, pfsHash, rawHash);
+                        fprintf(debugFile, "SAMPLE ERROR AT:%08X%08X PH:%08X RH:%08X\r\n", (unsigned int)(bytesChecked >> 32), (unsigned int)bytesChecked, pfsHash, rawHash);
                     free(fullData);
                 } else
                     fprintf(debugFile, "HEADER PFS_READ_ERROR\r\n");
