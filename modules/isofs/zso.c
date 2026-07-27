@@ -86,7 +86,7 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
 
     u32 o_start = (ziso_idx_cache[cur_block - ziso_idx_start_block] & 0x7FFFFFFF);
     u32 o_end = (ziso_idx_cache[cur_block + count - ziso_idx_start_block] & 0x7FFFFFFF);
-    if (o_end < o_start || o_end - o_start > ((count * 2048) >> ziso_align))
+    if (o_end < o_start || o_end - o_start > (UINT_MAX >> ziso_align))
         return 0;
     u32 compressed_size = (o_end - o_start) << ziso_align;
 
@@ -104,14 +104,14 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
         u32 b_end = ziso_idx_cache[cur_block - ziso_idx_start_block + 1] & 0x7FFFFFFF;
         u32 topbit = b_offset & 0x80000000;         // extract top bit
         b_offset = (b_offset & 0x7FFFFFFF);         // remove top bit
-        if (b_end < b_offset || b_end - b_offset > (2048 >> ziso_align))
+        if (b_end < b_offset || b_end - b_offset > (UINT_MAX >> ziso_align))
             return i;
         u32 b_size = (b_end - b_offset) << ziso_align; // calculate size of compressed block
         if (!b_size)
             return i;
 
         // prevent reading more than a sector (eliminates padding if any)
-        int r = b_size;
+        int r = MIN(b_size, 2048);
 
         // check top bit to determine if block is compressed or raw
         if (topbit == 0) {                                                 // block is compressed
@@ -120,7 +120,7 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
             if (result <= 0 || result > r)
                 return i;
         } else {
-            if (b_size != 2048)
+            if (b_size < 2048)
                 return i;
             // move block to its correct position in the buffer
             memcpy(addr, c_buff, 2048);
