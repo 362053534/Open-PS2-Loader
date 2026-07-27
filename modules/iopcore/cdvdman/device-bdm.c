@@ -191,8 +191,29 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
             if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
                           &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
                           file_sector, destination, block_count) != block_count) {
-                SignalSema(bdm_io_sema);
-                return SCECdErREAD;
+                u64 totalSectorCount = 0;
+                unsigned int i;
+
+                for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
+                    totalSectorCount += cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start + i].count;
+
+                // 仅将超出碎片表逻辑末尾的部分补零，范围内的真实读取错误仍然返回失败。
+                if (file_sector >= totalSectorCount)
+                    memset(destination, 0, block_count * sector_size);
+                else if (block_count > totalSectorCount - file_sector) {
+                    u32 validBlockCount = totalSectorCount - file_sector;
+
+                    if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                                  &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
+                                  file_sector, destination, validBlockCount) != validBlockCount) {
+                        SignalSema(bdm_io_sema);
+                        return SCECdErREAD;
+                    }
+                    memset(destination + validBlockCount * sector_size, 0, (block_count - validBlockCount) * sector_size);
+                } else {
+                    SignalSema(bdm_io_sema);
+                    return SCECdErREAD;
+                }
             }
 
             destination += sectors_to_read * 2048;
@@ -227,8 +248,28 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
             if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
                           &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
                           file_sector, destination, block_count) != block_count) {
-                SignalSema(bdm_io_sema);
-                return SCECdErREAD;
+                u64 totalSectorCount = 0;
+                unsigned int i;
+
+                for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
+                    totalSectorCount += cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start + i].count;
+
+                if (file_sector >= totalSectorCount)
+                    memset(destination, 0, block_count * sector_size);
+                else if (block_count > totalSectorCount - file_sector) {
+                    u32 validBlockCount = totalSectorCount - file_sector;
+
+                    if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                                  &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
+                                  file_sector, destination, validBlockCount) != validBlockCount) {
+                        SignalSema(bdm_io_sema);
+                        return SCECdErREAD;
+                    }
+                    memset(destination + validBlockCount * sector_size, 0, (block_count - validBlockCount) * sector_size);
+                } else {
+                    SignalSema(bdm_io_sema);
+                    return SCECdErREAD;
+                }
             }
 
             sectors_to_read = block_count * iso_sectors_per_sector;
@@ -256,11 +297,20 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
             if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count,
                           &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
                           file_sector, g_bd_generic_sector_buffer_2, 1) != 1) {
-                SignalSema(bdm_io_sema);
-                return SCECdErREAD;
-            }
+                u64 totalSectorCount = 0;
+                unsigned int i;
 
-            memcpy(destination, g_bd_generic_sector_buffer_2 + iso_sector_offset * 2048, sectors_to_read * 2048);
+                for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
+                    totalSectorCount += cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start + i].count;
+
+                if (file_sector >= totalSectorCount)
+                    memset(destination, 0, sectors_to_read * 2048);
+                else {
+                    SignalSema(bdm_io_sema);
+                    return SCECdErREAD;
+                }
+            } else
+                memcpy(destination, g_bd_generic_sector_buffer_2 + iso_sector_offset * 2048, sectors_to_read * 2048);
             destination += sectors_to_read * 2048;
             file_sector++;
         }
