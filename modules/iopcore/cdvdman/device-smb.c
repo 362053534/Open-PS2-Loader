@@ -29,6 +29,12 @@ int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, sockl
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 static u32 ServerCapabilities;
+static OplSmbPwHashFunc_t smbHashCallback;
+static volatile int smbConnectionState = 2;
+static volatile int smbReconnectEnabled;
+
+static int smbOpenGame(void);
+static void smbReconnectThread(void *arg);
 
 static void ps2ip_init(void)
 {
@@ -46,15 +52,91 @@ static void ps2ip_init(void)
     pinet_addr = info.exports[24];
 }
 
+static int smbOpenGame(void)
+{
+    int i = 0;
+    char tmp_str[256];
+
+    // 建立SMB会话
+    if (smb_SessionSetupAndX(ServerCapabilities) <= 0)
+        return -1;
+
+    // 连接共享目录
+    sprintf(tmp_str, "\\\\%s\\%s", cdvdman_settings.smb_ip, cdvdman_settings.smb_share);
+    if (smb_TreeConnectAndX(tmp_str) <= 0)
+        return -1;
+
+    if (!(cdvdman_settings.common.flags & IOPCORE_SMB_FORMAT_USBLD)) {
+        if (cdvdman_settings.smb_prefix[0]) {
+            sprintf(tmp_str, "\\%s\\%s\\%s", cdvdman_settings.smb_prefix, cdvdman_settings.common.media == 0x12 ? "CD" : "DVD", cdvdman_settings.filename);
+        } else {
+            sprintf(tmp_str, "\\%s\\%s", cdvdman_settings.common.media == 0x12 ? "CD" : "DVD", cdvdman_settings.filename);
+        }
+
+        if (smb_OpenAndX(tmp_str, (u8 *)&cdvdman_settings.FIDs[i++], 0) <= 0)
+            return -1;
+    } else {
+        // 打开全部分片文件
+        for (i = 0; i < cdvdman_settings.common.NumParts; i++) {
+            if (cdvdman_settings.smb_prefix[0])
+                sprintf(tmp_str, "\\%s\\%s.%02x", cdvdman_settings.smb_prefix, cdvdman_settings.filename, i);
+            else
+                sprintf(tmp_str, "\\%s.%02x", cdvdman_settings.filename, i);
+
+            if (smb_OpenAndX(tmp_str, (u8 *)&cdvdman_settings.FIDs[i], 0) <= 0)
+                return -1;
+        }
+    }
+
+    return 1;
+}
+
+static void smbReconnectThread(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        if (smbReconnectEnabled && smbConnectionState == 0) {
+            smbConnectionState = 2;
+
+            if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
+                smbOpenGame() > 0 && smbReconnectEnabled) {
+                sceCdTrayReq(SCECdTrayClose, NULL);
+                smbConnectionState = 1;
+                continue;
+            }
+
+            smb_Disconnect();
+            smbConnectionState = 0;
+        }
+
+        DelayThread(2000000);
+    }
+}
+
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
 {
     ps2ip_init();
-    smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback);
+    smbHashCallback = hash_callback;
+    while (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback) <= 0) {
+        smb_Disconnect();
+        DelayThread(2000000);
+    }
 }
 
 void DeviceInit(void)
 {
+    iop_thread_t thread;
+
     RegisterLibraryEntries(&_exp_oplsmb);
+
+    thread.attr = TH_C;
+    thread.option = 0;
+    thread.thread = smbReconnectThread;
+    thread.stacksize = 0x1000;
+    thread.priority = 40;
+
+    StartThread(CreateThread(&thread), NULL);
 }
 
 void DeviceDeinit(void)
@@ -64,39 +146,18 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
-    return SCECdComplete;
+    return smbConnectionState == 1 ? SCECdComplete : SCECdNotReady;
 }
 
 void DeviceFSInit(void)
 {
-    int i = 0;
-    char tmp_str[256];
-
-    // open a session
-    smb_SessionSetupAndX(ServerCapabilities);
-
-    // Then tree connect on the share resource
-    sprintf(tmp_str, "\\\\%s\\%s", cdvdman_settings.smb_ip, cdvdman_settings.smb_share);
-    smb_TreeConnectAndX(tmp_str);
-
-    if (!(cdvdman_settings.common.flags & IOPCORE_SMB_FORMAT_USBLD)) {
-        if (cdvdman_settings.smb_prefix[0]) {
-            sprintf(tmp_str, "\\%s\\%s\\%s", cdvdman_settings.smb_prefix, cdvdman_settings.common.media == 0x12 ? "CD" : "DVD", cdvdman_settings.filename);
-        } else {
-            sprintf(tmp_str, "\\%s\\%s", cdvdman_settings.common.media == 0x12 ? "CD" : "DVD", cdvdman_settings.filename);
-        }
-
-        smb_OpenAndX(tmp_str, (u8 *)&cdvdman_settings.FIDs[i++], 0);
+    smbReconnectEnabled = 1;
+    if (smbOpenGame() > 0) {
+        smbConnectionState = 1;
     } else {
-        // Open all parts files
-        for (i = 0; i < cdvdman_settings.common.NumParts; i++) {
-            if (cdvdman_settings.smb_prefix[0])
-                sprintf(tmp_str, "\\%s\\%s.%02x", cdvdman_settings.smb_prefix, cdvdman_settings.filename, i);
-            else
-                sprintf(tmp_str, "\\%s.%02x", cdvdman_settings.filename, i);
-
-            smb_OpenAndX(tmp_str, (u8 *)&cdvdman_settings.FIDs[i], 0);
-        }
+        smb_Disconnect();
+        sceCdTrayReq(SCECdTrayOpen, NULL);
+        smbConnectionState = 0;
     }
 }
 
@@ -107,7 +168,10 @@ void DeviceLock(void)
 
 void DeviceUnmount(void)
 {
-    smb_CloseAll();
+    smbReconnectEnabled = 0;
+    if (smbConnectionState == 1)
+        smb_CloseAll();
+    smbConnectionState = 2;
     smb_Disconnect();
 }
 
@@ -121,6 +185,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     register int i, esc_flag = 0, result, bytes_to_read;
     u8 *p = (u8 *)buffer;
     int rv = SCECdErNO;
+
+    if (smbConnectionState != 1)
+        return SCECdErTRMOPN;
 
     lbound = 0;
     ubound = (cdvdman_settings.common.NumParts > 1) ? 0x80000 : 0xFFFFFFFF;
@@ -141,7 +208,11 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             bytes_to_read = sectors_to_read * 2048;
             result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
             if (result < 0) {
-                rv = SCECdErREAD;
+                smbConnectionState = 2;
+                smb_Disconnect();
+                sceCdTrayReq(SCECdTrayOpen, NULL);
+                smbConnectionState = 0;
+                rv = SCECdErTRMOPN;
                 break;
             }
             if (result < bytes_to_read)

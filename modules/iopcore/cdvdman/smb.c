@@ -135,11 +135,10 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_port = htons(dst_port);
 
-    while (1) {
-        ret = plwip_connect(sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
-        if (ret >= 0)
-            break;
-        DelayThread(500);
+    ret = plwip_connect(sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
+    if (ret < 0) {
+        plwip_close(sock);
+        return -2;
     }
 
     return sock;
@@ -293,14 +292,15 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smp.max = 1;
     smp.option = 0;
     smp.attr = 1;
-    smb_io_sema = CreateSema(&smp);
+    if (smb_io_sema < 0)
+        smb_io_sema = CreateSema(&smp);
 
     dst_addr.s_addr = pinet_addr(SMBServerIP);
 
     // Opening TCP session
     main_socket = OpenTCPSession(dst_addr, SMBServerPort);
-
-negotiate_retry:
+    if (main_socket < 0)
+        return main_socket;
 
     ZERO_PKT_ALIGNED(NPR, sizeof(NegotiateProtocolRequest_t));
 
@@ -314,18 +314,20 @@ negotiate_retry:
     strcpy(NPR->DialectName, dialect);
 
     nb_SetSessionMessage(sizeof(NegotiateProtocolRequest_t) + length + 1);
-    GetSMBServerReply(0, NULL, 0);
+    length = GetSMBServerReply(0, NULL, 0);
+    if (length <= 0)
+        return length;
 
     // check sanity of SMB header
     if (NPRsp->smbH.Magic != SMB_MAGIC)
-        goto negotiate_retry;
+        return -1;
 
     // check there's no error
     if (NPRsp->smbH.Eclass != STATUS_SUCCESS)
-        goto negotiate_retry;
+        return -1;
 
     if (NPRsp->smbWordcount != 17)
-        goto negotiate_retry;
+        return -1;
 
     *capabilities = NPRsp->Capabilities & (CLIENT_CAP_LARGE_WRITEX | CLIENT_CAP_LARGE_READX | CLIENT_CAP_UNICODE | CLIENT_CAP_LARGE_FILES | CLIENT_CAP_STATUS32);
 
@@ -424,7 +426,8 @@ lbl_session_setup:
     SSR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(SessionSetupAndXRequest_t) + offset);
-    GetSMBServerReply(0, NULL, 0);
+    if (GetSMBServerReply(0, NULL, 0) <= 0)
+        return -1;
 
     // check sanity of SMB header
     if (SSRsp->smbH.Magic != SMB_MAGIC)
@@ -493,7 +496,8 @@ int smb_TreeConnectAndX(char *ShareName)
     TCR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(TreeConnectAndXRequest_t) + offset);
-    GetSMBServerReply(0, NULL, 0);
+    if (GetSMBServerReply(0, NULL, 0) <= 0)
+        return -1;
 
     // check sanity of SMB header
     if (TCRsp->smbH.Magic != SMB_MAGIC)
@@ -545,7 +549,10 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write)
     OR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(OpenAndXRequest_t) + offset + 1);
-    GetSMBServerReply(0, NULL, 0);
+    if (GetSMBServerReply(0, NULL, 0) <= 0) {
+        SIGNALIOSEMA(smb_io_sema);
+        return -1;
+    }
 
     // check sanity of SMB header
     if (ORsp->smbH.Magic != SMB_MAGIC) {
@@ -660,6 +667,8 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     // Handle fragmented packets
     while (rcv_size < expected_size) {
         r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL); // - rcv_size
+        if (r <= 0)
+            return -2;
         rcv_size += r;
     }
 #else
@@ -777,7 +786,7 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
 
         result = smb_WriteAndX(FID, offsetlow, offsethigh, ptr, toWrite);
         if (result <= 0)
-            return result;
+            break;
 
         //Check for and handle overflow.
         if (offsetlow + result < offsetlow)
@@ -789,7 +798,7 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
 
     SIGNALIOSEMA(smb_io_sema);
 
-    return nbytes;
+    return remaining > 0 ? result : nbytes;
 }
 
 //-------------------------------------------------------------------------
