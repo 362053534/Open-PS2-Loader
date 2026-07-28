@@ -159,6 +159,8 @@ struct
     conn->socket = 0;
     conn->callback = callback;
     conn->recv_avail = 0;
+    conn->recv_timeout = 0;
+    conn->send_timeout = 0;
 
     if ((msg = memp_malloc(MEMP_API_MSG)) == NULL) {
         memp_free(MEMP_NETCONN, conn);
@@ -308,7 +310,6 @@ err_t netconn_bind(struct netconn *conn, struct ip_addr *addr,
     return conn->err;
 }
 
-
 err_t netconn_connect(struct netconn *conn, struct ip_addr *addr,
                       u16_t port)
 {
@@ -432,7 +433,11 @@ netconn_recv(struct netconn *conn)
             return NULL;
         }
 
-        sys_mbox_fetch(conn->recvmbox, (void **)&p);
+        if (sys_arch_mbox_fetch(conn->recvmbox, (void **)&p, conn->recv_timeout) == SYS_ARCH_TIMEOUT) {
+            memp_free(MEMP_NETBUF, buf);
+            conn->err = ERR_ABRT;
+            return NULL;
+        }
 
         if (p != NULL) {
             len = p->tot_len;
@@ -474,7 +479,10 @@ netconn_recv(struct netconn *conn)
 
         memp_free(MEMP_API_MSG, msg);
     } else {
-        sys_mbox_fetch(conn->recvmbox, (void **)&buf);
+        if (sys_arch_mbox_fetch(conn->recvmbox, (void **)&buf, conn->recv_timeout) == SYS_ARCH_TIMEOUT) {
+            conn->err = ERR_ABRT;
+            return NULL;
+        }
         SYS_ARCH_DEC(conn->recv_avail, buf->p->tot_len);
         /* Register event with callback */
         if (conn->callback)
@@ -536,7 +544,10 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
 
         if (conn->type == NETCONN_TCP) {
             while ((sndbuf = tcp_sndbuf(conn->pcb.tcp)) == 0) {
-                sys_sem_wait(conn->sem);
+                if (sys_arch_sem_wait(conn->sem, conn->send_timeout) == SYS_ARCH_TIMEOUT) {
+                    conn->err = ERR_ABRT;
+                    goto ret;
+                }
                 if (conn->err != ERR_OK) {
                     goto ret;
                 }
@@ -560,7 +571,10 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
             size -= len;
         } else if (conn->err == ERR_MEM) {
             conn->err = ERR_OK;
-            sys_sem_wait(conn->sem);
+            if (sys_arch_sem_wait(conn->sem, conn->send_timeout) == SYS_ARCH_TIMEOUT) {
+                conn->err = ERR_ABRT;
+                goto ret;
+            }
         } else {
             goto ret;
         }
