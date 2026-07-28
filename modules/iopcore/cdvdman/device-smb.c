@@ -26,12 +26,14 @@ int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen, unsig
 int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
+int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 static u32 ServerCapabilities;
 static OplSmbPwHashFunc_t smbHashCallback;
 static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
+static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static int smbOpenGame(void);
 static void smbReconnectThread(void *arg);
@@ -49,7 +51,11 @@ static void ps2ip_init(void)
     plwip_send = info.exports[11];
     plwip_socket = info.exports[13];
     plwip_setsockopt = info.exports[19];
+    plwip_shutdown = info.exports[46];
     pinet_addr = info.exports[24];
+
+    if (getModInfo("netman\0\0", &info))
+        pNetManGetGlobalNetIFLinkState = info.exports[14];
 }
 
 static int smbOpenGame(void)
@@ -96,7 +102,18 @@ static void smbReconnectThread(void *arg)
     (void)arg;
 
     while (1) {
-        if (smbReconnectEnabled && smbConnectionState == 0) {
+        if (smbReconnectEnabled && smbConnectionState == 1 && pNetManGetGlobalNetIFLinkState && !pNetManGetGlobalNetIFLinkState()) {
+            if (smb_io_sema >= 0 && PollSema(smb_io_sema) == 0) {
+                smb_AbortConnection();
+                smb_Disconnect();
+                SignalSema(smb_io_sema);
+                smbConnectionState = 0;
+            } else
+                smb_AbortConnection();
+        }
+
+        if (smbReconnectEnabled && smbConnectionState == 0 &&
+            (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
             smbConnectionState = 2;
 
             if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
