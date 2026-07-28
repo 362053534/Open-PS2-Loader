@@ -777,7 +777,7 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
 
         result = smb_WriteAndX(FID, offsetlow, offsethigh, ptr, toWrite);
         if (result <= 0)
-            return result;
+            break;
 
         //Check for and handle overflow.
         if (offsetlow + result < offsetlow)
@@ -789,7 +789,7 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
 
     SIGNALIOSEMA(smb_io_sema);
 
-    return nbytes;
+    return remaining > 0 ? result : nbytes;
 }
 
 //-------------------------------------------------------------------------
