@@ -95,6 +95,8 @@ struct netconn
     sys_sem_t sem;
     int socket;
     s16_t recv_avail;
+    u32_t recv_timeout;
+    u32_t send_timeout;
     void (*callback)(struct netconn *, enum netconn_evt, u16_t len);
 };
 

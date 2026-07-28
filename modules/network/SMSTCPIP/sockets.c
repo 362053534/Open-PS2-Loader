@@ -1186,6 +1186,8 @@ int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t
 /* UNIMPL case SO_SNDBUF: */
 /* UNIMPL case SO_RCVLOWAT: */
 /* UNIMPL case SO_SNDLOWAT: */
+                case SO_SNDTIMEO:
+                case SO_RCVTIMEO:
 #ifdef SO_REUSE
                 case SO_REUSEADDR:
                 case SO_REUSEPORT:
@@ -1282,6 +1284,12 @@ int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t
                         sock->conn->pcb.tcp->so_options &= ~optname;
                     }
                     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_setsockopt(%d, SOL_SOCKET, optname=0x%x, ..) -> %s\n", s, optname, (*(int *)optval ? "on" : "off")));
+                    break;
+                case SO_SNDTIMEO:
+                    sock->conn->send_timeout = *(int *)optval;
+                    break;
+                case SO_RCVTIMEO:
+                    sock->conn->recv_timeout = *(int *)optval;
                     break;
             } /* switch */
             break;

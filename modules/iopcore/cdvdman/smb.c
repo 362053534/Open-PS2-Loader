@@ -32,6 +32,11 @@
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
+#define SMB_IO_TIMEOUT         30000
+#define SMB_KEEPALIVE_TIME     60000
+#ifndef SHUT_RDWR
+#define SHUT_RDWR 2
+#endif
 
 int smb_io_sema = -1;
 
@@ -46,6 +51,7 @@ extern int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen
 extern int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 extern int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
+extern int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 extern u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -86,6 +92,7 @@ static struct
         WriteAndXResponse_t writeAndXResponse;
         CloseRequest_t closeRequest;
         CloseResponse_t closeResponse;
+        EchoRequest_t echoRequest;
     } smb;
 } __attribute__((packed)) SMB_buf;
 
@@ -129,17 +136,22 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
+    plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
+    opt = SMB_KEEPALIVE_TIME;
+    plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
+    opt = SMB_IO_TIMEOUT;
+    plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
+    plwip_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
 
     memset(&sock_addr, 0, sizeof(sock_addr));
     sock_addr.sin_addr = dst_IP;
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_port = htons(dst_port);
 
-    while (1) {
-        ret = plwip_connect(sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
-        if (ret >= 0)
-            break;
-        DelayThread(500);
+    ret = plwip_connect(sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
+    if (ret < 0) {
+        plwip_close(sock);
+        return -2;
     }
 
     return sock;
@@ -293,14 +305,15 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smp.max = 1;
     smp.option = 0;
     smp.attr = 1;
-    smb_io_sema = CreateSema(&smp);
+    if (smb_io_sema < 0)
+        smb_io_sema = CreateSema(&smp);
 
     dst_addr.s_addr = pinet_addr(SMBServerIP);
 
     // Opening TCP session
     main_socket = OpenTCPSession(dst_addr, SMBServerPort);
-
-negotiate_retry:
+    if (main_socket < 0)
+        return main_socket;
 
     ZERO_PKT_ALIGNED(NPR, sizeof(NegotiateProtocolRequest_t));
 
@@ -314,18 +327,20 @@ negotiate_retry:
     strcpy(NPR->DialectName, dialect);
 
     nb_SetSessionMessage(sizeof(NegotiateProtocolRequest_t) + length + 1);
-    GetSMBServerReply(0, NULL, 0);
+    length = GetSMBServerReply(0, NULL, 0);
+    if (length <= 0)
+        return length;
 
     // check sanity of SMB header
     if (NPRsp->smbH.Magic != SMB_MAGIC)
-        goto negotiate_retry;
+        return -1;
 
     // check there's no error
     if (NPRsp->smbH.Eclass != STATUS_SUCCESS)
-        goto negotiate_retry;
+        return -1;
 
     if (NPRsp->smbWordcount != 17)
-        goto negotiate_retry;
+        return -1;
 
     *capabilities = NPRsp->Capabilities & (CLIENT_CAP_LARGE_WRITEX | CLIENT_CAP_LARGE_READX | CLIENT_CAP_UNICODE | CLIENT_CAP_LARGE_FILES | CLIENT_CAP_STATUS32);
 
@@ -424,7 +439,8 @@ lbl_session_setup:
     SSR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(SessionSetupAndXRequest_t) + offset);
-    GetSMBServerReply(0, NULL, 0);
+    if (GetSMBServerReply(0, NULL, 0) <= 0)
+        return -1;
 
     // check sanity of SMB header
     if (SSRsp->smbH.Magic != SMB_MAGIC)
@@ -493,7 +509,8 @@ int smb_TreeConnectAndX(char *ShareName)
     TCR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(TreeConnectAndXRequest_t) + offset);
-    GetSMBServerReply(0, NULL, 0);
+    if (GetSMBServerReply(0, NULL, 0) <= 0)
+        return -1;
 
     // check sanity of SMB header
     if (TCRsp->smbH.Magic != SMB_MAGIC)
@@ -545,7 +562,10 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write)
     OR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(OpenAndXRequest_t) + offset + 1);
-    GetSMBServerReply(0, NULL, 0);
+    if (GetSMBServerReply(0, NULL, 0) <= 0) {
+        SIGNALIOSEMA(smb_io_sema);
+        return -1;
+    }
 
     // check sanity of SMB header
     if (ORsp->smbH.Magic != SMB_MAGIC) {
@@ -660,6 +680,8 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     // Handle fragmented packets
     while (rcv_size < expected_size) {
         r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL); // - rcv_size
+        if (r <= 0)
+            return -2;
         rcv_size += r;
     }
 #else
@@ -798,6 +820,34 @@ int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
     return smb_ReadFile(cdvdman_settings.FIDs[part_num], lsn * 2048, lsn >> 21, buf, (int)(nsectors * 2048));
 }
 
+int smb_Echo(void)
+{
+    EchoRequest_t *ER = &SMB_buf.smb.echoRequest;
+    int result;
+
+    if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
+        return 0;
+
+    ZERO_PKT_ALIGNED(ER, sizeof(EchoRequest_t));
+
+    ER->smbH.Magic = SMB_MAGIC;
+    ER->smbH.Cmd = SMB_COM_ECHO;
+    ER->smbH.Flags = SMB_FLAGS_CANONICAL_PATHNAMES;
+    ER->smbH.Flags2 = SMB_FLAGS2_KNOWS_LONG_NAMES | SMB_FLAGS2_32BIT_STATUS;
+    ER->smbH.UID = (u16)UID;
+    ER->smbH.TID = (u16)TID;
+    ER->smbWordcount = 1;
+    ER->EchoCount = 1;
+    ER->ByteCount = 0;
+
+    nb_SetSessionMessage(sizeof(EchoRequest_t));
+    result = GetSMBServerReply(0, NULL, 0) > 0 ? 1 : -1;
+
+    SIGNALIOSEMA(smb_io_sema);
+
+    return result;
+}
+
 void smb_CloseAll(void)
 {
     int i, fd;
@@ -820,4 +870,12 @@ int smb_Disconnect(void)
     }
 
     return 1;
+}
+
+int smb_AbortConnection(void)
+{
+    if (main_socket >= 0 && plwip_shutdown)
+        return plwip_shutdown(main_socket, SHUT_RDWR);
+
+    return -1;
 }
