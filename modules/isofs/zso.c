@@ -15,6 +15,7 @@ u32 ziso_total_block;
 
 // block buffers
 u8 *ziso_tmp_buf = NULL;
+u8 *ziso_dec_buf = NULL;
 
 void ziso_init(ZISO_header *header, u32 first_block)
 {
@@ -26,11 +27,12 @@ void ziso_init(ZISO_header *header, u32 first_block)
     ziso_total_block = (total_bytes_p[0] >> 11) | ((total_bytes_p[1] & 0x7ff) << 21);
     // allocate memory
     if (ziso_tmp_buf == NULL) {
-        ziso_tmp_buf = ziso_alloc(2048 + sizeof(u32) * ZISO_IDX_MAX_ENTRIES + 64);
+        ziso_tmp_buf = ziso_alloc(2048 * 2 + sizeof(u32) * ZISO_IDX_MAX_ENTRIES + 64);
         if ((u32)ziso_tmp_buf & 63) // align 64
             ziso_tmp_buf = (void *)(((u32)ziso_tmp_buf & (~63)) + 64);
         if (ziso_tmp_buf) {
-            ziso_idx_cache = (u32 *)(ziso_tmp_buf + 2048);
+            ziso_dec_buf = ziso_tmp_buf + 2048;
+            ziso_idx_cache = (u32 *)(ziso_dec_buf + 2048);
         }
     }
 }
@@ -46,7 +48,7 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
 
     u32 cur_block = lsn;
 
-    if (!addr || !count || !ziso_tmp_buf || !ziso_idx_cache || ziso_align > 11)
+    if (!addr || !count || !ziso_tmp_buf || !ziso_dec_buf || !ziso_idx_cache || ziso_align > 11)
         return 0;
 
     if (lsn >= ziso_total_block) {
@@ -89,14 +91,17 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
     if (o_end < o_start || o_end - o_start > (UINT_MAX >> ziso_align))
         return 0;
     u32 compressed_size = (o_end - o_start) << ziso_align;
-    if (compressed_size > count * 2048)
-        return 0;
 
     // read all compressed data to the end of provided buffer to reduce IO
     // there should be no overflow or overrun, as long as compressed data is smaller, and it should be
-    u8 *c_buff = addr + (count * 2048) - compressed_size;
-    if (read_raw_data(c_buff, compressed_size, o_start, ziso_align) != compressed_size)
-        return 0;
+    u8 *c_buff = NULL;
+    u8 *c_buff_end = NULL;
+    if (compressed_size <= count * 2048) {
+        c_buff = addr + (count * 2048) - compressed_size;
+        c_buff_end = addr + count * 2048;
+        if (read_raw_data(c_buff, compressed_size, o_start, ziso_align) != compressed_size)
+            return 0;
+    }
 
     // process each sector
     for (unsigned int i = 0; i < count; i++) {
@@ -114,23 +119,40 @@ int ziso_read_sector(u8 *addr, u32 lsn, unsigned int count)
 
         // prevent reading more than a sector (eliminates padding if any)
         int r = MIN(b_size, 2048);
+        int buffered = c_buff && c_buff >= addr && c_buff <= c_buff_end && b_size <= (u32)(c_buff_end - c_buff);
+        u8 *block_buf = ziso_dec_buf;
 
         // check top bit to determine if block is compressed or raw
-        if (topbit == 0) {                                                 // block is compressed
-            memcpy(ziso_tmp_buf, c_buff, r);                               // read compressed block into temp buffer
-            int result = LZ4_decompress_fast((char *)ziso_tmp_buf, (char *)addr, 2048);
-            if (result <= 0 || result > r)
+        if (topbit == 0) { // block is compressed
+            if (buffered)
+                memcpy(ziso_tmp_buf, c_buff, r);
+            else if (read_raw_data(ziso_dec_buf, r, b_offset, ziso_align) != r)
+                return i;
+
+            block_buf = buffered ? ziso_dec_buf : ziso_tmp_buf;
+            int result = LZ4_decompress_safe_partial((char *)(buffered ? ziso_tmp_buf : ziso_dec_buf), (char *)block_buf, r, 2048, 2048);
+            if (result != 2048)
                 return i;
         } else {
             if (b_size < 2048)
                 return i;
-            // move block to its correct position in the buffer
-            memcpy(addr, c_buff, 2048);
+
+            if (buffered)
+                memcpy(ziso_dec_buf, c_buff, 2048);
+            else if (read_raw_data(ziso_dec_buf, 2048, b_offset, ziso_align) != 2048)
+                return i;
         }
 
+        if (buffered)
+            c_buff += b_size;
+        else
+            c_buff = NULL;
+
+        memcpy(addr, block_buf, 2048);
         cur_block++;
         addr += 2048;
-        c_buff += b_size;
+        if (c_buff && c_buff < addr)
+            c_buff = NULL;
     }
     return cur_block - lsn;
 }

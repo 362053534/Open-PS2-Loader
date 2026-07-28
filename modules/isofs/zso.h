@@ -37,6 +37,7 @@ extern u32 ziso_total_block;
 
 // temp block buffer (2048 bytes)
 extern u8 *ziso_tmp_buf;
+extern u8 *ziso_dec_buf;
 
 void ziso_init(ZISO_header *header, u32 first_block);
 int ziso_read_sector(u8 *buf, u32 sector, unsigned int count);

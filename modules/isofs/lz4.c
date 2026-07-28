@@ -497,6 +497,11 @@ _output_error:
     return (int)(-(((char *)ip) - source)) - 1;
 }
 
+int LZ4_decompress_safe_partial(const char *source, char *dest, int inputSize, int targetOutputSize, int maxOutputSize)
+{
+    return LZ4_decompress_generic(source, dest, inputSize, maxOutputSize, endOnInputSize, noPrefix, partial, targetOutputSize);
+}
+
 int LZ4_decompress_fast(const char *source, char *dest, int outputSize)
 {
 #ifdef _MSC_VER /* This version is faster with Visual */
