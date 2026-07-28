@@ -357,16 +357,12 @@ static int bdmUpdateGameList(item_list_t *itemList)
 
         int bdmDeviceOn = 0;
         if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
-            usbFound = 1;
             bdmDeviceOn = gEnableUSB;
         } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
-            ILKFound = 1;
             bdmDeviceOn = gEnableILK;
         } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-            MX4SIOFound = 1;
             bdmDeviceOn = gEnableMX4SIO;
         } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-            GptFound = 1;
             bdmDeviceOn = gEnableBdmHDD;
         } else { // 未初始化，或未知设备
             return 0;
@@ -375,8 +371,21 @@ static int bdmUpdateGameList(item_list_t *itemList)
         if (!bdmDeviceOn) {
             pDeviceData->bdmGameCount = -1;
             return 0;
-        } else
-            return sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
+        } else {
+            int result = sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
+
+            // 游戏列表生成完成后，再标记对应的BDM设备已完成初始化。
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                usbFound = 1;
+            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                ILKFound = 1;
+            else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                MX4SIOFound = 1;
+            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                GptFound = 1;
+
+            return result;
+        }
     } else
         return 0;
 }

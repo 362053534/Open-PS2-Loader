@@ -64,9 +64,9 @@ int GptFound = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 
-static int defaultDelayFrame = 360;
+static int defaultDelayFrame = 600;
 // static int LongDelayTime = 18000;
-static int ShortDelayTime = 100;
+static int ShortDelayTime = 360;
 static int endIntroDelayFrame = 0;
 static int bdmTimeOut = 0;
 static int artLoadDelayTime = 200;
