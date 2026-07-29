@@ -75,6 +75,7 @@ int bdmFindPartition(char *target, const char *name, int write)
 static unsigned int BdmGeneration = 0;
 // 启动保底：自动模式零设备时为1，任一槽挂上真设备后清0
 static int bdmKeepPlaceholder = 0;
+int bdmDefaultNeedsCorrection = 0;
 
 static void bdmEventHandler(void *packet, void *opt)
 {
@@ -278,7 +279,15 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
     // Check if the device has been connected or removed.
-    if ((result = bdmUpdateDeviceData(itemList)) == 0)
+    result = bdmUpdateDeviceData(itemList);
+    if (bdmDefaultNeedsCorrection && gInitComplete && !mainScreenInitDone && itemList->owner &&
+        pDeviceData->bdmPrefix[0] != '\0' && ((opl_io_module_t *)itemList->owner)->menuItem.visible) {
+        struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
+        bdmDefaultNeedsCorrection = 0;
+        id->menu.menu = &((opl_io_module_t *)itemList->owner)->menuItem;
+        guiDeferUpdate(id);
+    }
+    if (result == 0)
         return 0;
 
     // If a device was added or removed play the appropriate UI sound.

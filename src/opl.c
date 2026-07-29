@@ -2324,12 +2324,15 @@ static void deferredInit(void)
 
     // 尝试让BDM页面，停留在已开启的第一个页面上。
     int defaultDeviceIndex = gDefaultDevice;
+    bdmDefaultNeedsCorrection = 0;
     if (defaultDeviceIndex == BDM_MODE) {
+        bdmDefaultNeedsCorrection = 1;
         for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
             if (list_support[i].support && list_support[i].menuItem.visible) {
                 bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
                 if (pDeviceData && pDeviceData->bdmPrefix[0] != '\0') {
                     defaultDeviceIndex = i;
+                    bdmDefaultNeedsCorrection = 0;
                     break;
                 }
             }
@@ -2340,8 +2343,10 @@ static void deferredInit(void)
         struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
         id->menu.menu = &list_support[defaultDeviceIndex].menuItem;
         guiDeferUpdate(id);
-    } else
+    } else {
+        bdmDefaultNeedsCorrection = 0;
         gInitComplete = 1; // 如果默认设备初始化失败，不要卡住主进程
+    }
 }
 
 static void deferredAudioInit(void)

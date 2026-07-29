@@ -1810,6 +1810,7 @@ void guiMainLoop(void)
                             refreshMenuPosition(); // 纠正一下菜单位置，更保险。先切换screen，再刷新BDM菜单的停留位置才有效
                         }
                     }
+                    bdmDefaultNeedsCorrection = 0;
                     mainScreenInitDone = 1;
                     // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
                     if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {

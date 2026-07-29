@@ -57,6 +57,7 @@ int bdmUpdateDeviceData(item_list_t *itemList);
 int bdmHasDeviceEvent(item_list_t *itemList);
 void bdmRequestDeviceCheck(item_list_t *itemList);
 int bdmGetDeviceType(int mode);
+extern int bdmDefaultNeedsCorrection;
 // 自动模式启动探测结束且无设备时，激活BDM0保底空页
 void bdmTryActivateStartupPlaceholder(void);
 
