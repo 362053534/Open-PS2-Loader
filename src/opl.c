@@ -2161,9 +2161,9 @@ static void setDefaults(void)
     gHDDPrefix = "pfs0:";
     gBaseMCDir = "mc?:OPL";
 
-    bdmCacheSize = 0;
+    bdmCacheSize = 8;
     hddCacheSize = 8;
-    smbCacheSize = 0;
+    smbCacheSize = 8;
     gAutoDetectPS1Apps = 1;
 
     ps2_ip_use_dhcp = 1;
