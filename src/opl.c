@@ -2325,8 +2325,15 @@ static void deferredInit(void)
     // 尝试让BDM页面，停留在已开启的第一个页面上。
     int defaultDeviceIndex = gDefaultDevice;
     if (defaultDeviceIndex == BDM_MODE) {
-        if (!gEnableUSB)
-            defaultDeviceIndex += (gEnableILK || gEnableMX4SIO || gEnableBdmHDD);
+        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+            if (list_support[i].support && list_support[i].menuItem.visible) {
+                bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
+                if (pDeviceData && pDeviceData->bdmPrefix[0] != '\0') {
+                    defaultDeviceIndex = i;
+                    break;
+                }
+            }
+        }
     }
     // 尝试优化初始化流程，预防卡住主进程
     if (list_support[defaultDeviceIndex].support) {
