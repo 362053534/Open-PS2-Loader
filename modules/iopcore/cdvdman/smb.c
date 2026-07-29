@@ -92,6 +92,7 @@ static struct
         WriteAndXResponse_t writeAndXResponse;
         CloseRequest_t closeRequest;
         CloseResponse_t closeResponse;
+        EchoRequest_t echoRequest;
     } smb;
 } __attribute__((packed)) SMB_buf;
 
@@ -817,6 +818,34 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
 int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
 {
     return smb_ReadFile(cdvdman_settings.FIDs[part_num], lsn * 2048, lsn >> 21, buf, (int)(nsectors * 2048));
+}
+
+int smb_Echo(void)
+{
+    EchoRequest_t *ER = &SMB_buf.smb.echoRequest;
+    int result;
+
+    if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
+        return 0;
+
+    ZERO_PKT_ALIGNED(ER, sizeof(EchoRequest_t));
+
+    ER->smbH.Magic = SMB_MAGIC;
+    ER->smbH.Cmd = SMB_COM_ECHO;
+    ER->smbH.Flags = SMB_FLAGS_CANONICAL_PATHNAMES;
+    ER->smbH.Flags2 = SMB_FLAGS2_KNOWS_LONG_NAMES | SMB_FLAGS2_32BIT_STATUS;
+    ER->smbH.UID = (u16)UID;
+    ER->smbH.TID = (u16)TID;
+    ER->smbWordcount = 1;
+    ER->EchoCount = 1;
+    ER->ByteCount = 0;
+
+    nb_SetSessionMessage(sizeof(EchoRequest_t));
+    result = GetSMBServerReply(0, NULL, 0) > 0 ? 1 : -1;
+
+    SIGNALIOSEMA(smb_io_sema);
+
+    return result;
 }
 
 void smb_CloseAll(void)

@@ -33,10 +33,13 @@ static u32 ServerCapabilities;
 static OplSmbPwHashFunc_t smbHashCallback;
 static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
+static volatile int smbPhysicalLinkDown;
+static volatile int smbTrayOpen;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static int smbOpenGame(void);
 static void smbReconnectThread(void *arg);
+static void smbLinkMonitorThread(void *arg);
 
 static void ps2ip_init(void)
 {
@@ -99,13 +102,24 @@ static int smbOpenGame(void)
 
 static void smbReconnectThread(void *arg)
 {
+    int keepAliveCounter = 0;
+    int result;
+
     (void)arg;
 
     while (1) {
-        if (smbReconnectEnabled && smbConnectionState == 1 && pNetManGetGlobalNetIFLinkState && !pNetManGetGlobalNetIFLinkState()) {
-            // 先报告光盘已取出，等正在执行的SMB读写释放信号量后再安全关闭连接。
-            sceCdTrayReq(SCECdTrayOpen, NULL);
-            smbConnectionState = 2;
+        if (smbReconnectEnabled && smbConnectionState == 1 && !smbPhysicalLinkDown) {
+            // 每30秒发送一次SMB保活请求，防止服务器回收长时间空闲的会话。
+            if (++keepAliveCounter >= 15) {
+                result = smb_Echo();
+                if (result) {
+                    keepAliveCounter = 0;
+                    if (result < 0)
+                        smbConnectionState = 2;
+                }
+            }
+        } else {
+            keepAliveCounter = 0;
         }
 
         if (smbReconnectEnabled && smbConnectionState == 2) {
@@ -119,14 +133,18 @@ static void smbReconnectThread(void *arg)
             }
         }
 
-        if (smbReconnectEnabled && smbConnectionState == 0 &&
+        if (smbReconnectEnabled && smbConnectionState == 0 && !smbPhysicalLinkDown &&
             (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
             smbConnectionState = 2;
 
             if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
-                smbOpenGame() > 0 && smbReconnectEnabled) {
-                sceCdTrayReq(SCECdTrayClose, NULL);
+                smbOpenGame() > 0 && smbReconnectEnabled && !smbPhysicalLinkDown &&
+                (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
                 smbConnectionState = 1;
+                if (smbTrayOpen) {
+                    sceCdTrayReq(SCECdTrayClose, NULL);
+                    smbTrayOpen = 0;
+                }
                 continue;
             }
 
@@ -135,6 +153,29 @@ static void smbReconnectThread(void *arg)
         }
 
         DelayThread(2000000);
+    }
+}
+
+static void smbLinkMonitorThread(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        if (smbReconnectEnabled && pNetManGetGlobalNetIFLinkState) {
+            if (!pNetManGetGlobalNetIFLinkState()) {
+                if (!smbPhysicalLinkDown) {
+                    smbPhysicalLinkDown = 1;
+                    smbTrayOpen = 1;
+                    sceCdTrayReq(SCECdTrayOpen, NULL);
+                    if (smbConnectionState == 1)
+                        smbConnectionState = 2;
+                }
+            } else {
+                smbPhysicalLinkDown = 0;
+            }
+        }
+
+        DelayThread(500000);
     }
 }
 
@@ -161,6 +202,9 @@ void DeviceInit(void)
     thread.priority = 40;
 
     StartThread(CreateThread(&thread), NULL);
+
+    thread.thread = smbLinkMonitorThread;
+    StartThread(CreateThread(&thread), NULL);
 }
 
 void DeviceDeinit(void)
@@ -180,7 +224,6 @@ void DeviceFSInit(void)
         smbConnectionState = 1;
     } else {
         smb_Disconnect();
-        sceCdTrayReq(SCECdTrayOpen, NULL);
         smbConnectionState = 0;
     }
 }
@@ -210,9 +253,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     u8 *p = (u8 *)buffer;
     int rv = SCECdErNO;
 
-    if (smbConnectionState != 1)
-        return SCECdErTRMOPN;
-
     lbound = 0;
     ubound = (cdvdman_settings.common.NumParts > 1) ? 0x80000 : 0xFFFFFFFF;
     offslsn = lsn;
@@ -230,10 +270,24 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 esc_flag = 1;
 
             bytes_to_read = sectors_to_read * 2048;
-            result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
-            if (result < 0) {
+            for (;;) {
+                while (smbReconnectEnabled && !smbPhysicalLinkDown && smbConnectionState != 1)
+                    DelayThread(100000);
+
+                if (!smbReconnectEnabled || smbPhysicalLinkDown) {
+                    result = -1;
+                    break;
+                }
+
+                result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
+                if (result >= 0)
+                    break;
+
+                // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
                 smbConnectionState = 2;
-                sceCdTrayReq(SCECdTrayOpen, NULL);
+            }
+
+            if (result < 0) {
                 rv = SCECdErTRMOPN;
                 break;
             }
