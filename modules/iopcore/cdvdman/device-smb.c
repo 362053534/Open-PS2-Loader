@@ -103,13 +103,20 @@ static void smbReconnectThread(void *arg)
 
     while (1) {
         if (smbReconnectEnabled && smbConnectionState == 1 && pNetManGetGlobalNetIFLinkState && !pNetManGetGlobalNetIFLinkState()) {
-            if (smb_io_sema >= 0 && PollSema(smb_io_sema) == 0) {
-                smb_AbortConnection();
+            // 先报告光盘已取出，等正在执行的SMB读写释放信号量后再安全关闭连接。
+            sceCdTrayReq(SCECdTrayOpen, NULL);
+            smbConnectionState = 2;
+        }
+
+        if (smbReconnectEnabled && smbConnectionState == 2) {
+            if (smb_io_sema < 0) {
+                smb_Disconnect();
+                smbConnectionState = 0;
+            } else if (PollSema(smb_io_sema) == 0) {
                 smb_Disconnect();
                 SignalSema(smb_io_sema);
                 smbConnectionState = 0;
-            } else
-                smb_AbortConnection();
+            }
         }
 
         if (smbReconnectEnabled && smbConnectionState == 0 &&
@@ -226,9 +233,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
             if (result < 0) {
                 smbConnectionState = 2;
-                smb_Disconnect();
                 sceCdTrayReq(SCECdTrayOpen, NULL);
-                smbConnectionState = 0;
                 rv = SCECdErTRMOPN;
                 break;
             }
