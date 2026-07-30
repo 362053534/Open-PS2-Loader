@@ -105,6 +105,29 @@ int lwip_socket(int domain, int type, int protocol)
     return plwip_socket(domain, type, protocol);
 }
 
+int lwip_bind(int s, const struct sockaddr *name, socklen_t namelen)
+{
+    (void)s;
+    (void)name;
+    (void)namelen;
+    return -1;
+}
+
+int lwip_listen(int s, int backlog)
+{
+    (void)s;
+    (void)backlog;
+    return -1;
+}
+
+int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+{
+    (void)s;
+    (void)addr;
+    (void)addrlen;
+    return -1;
+}
+
 int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout)
 {
     return plwip_select(maxfdp1, readset, writeset, exceptset, timeout);
