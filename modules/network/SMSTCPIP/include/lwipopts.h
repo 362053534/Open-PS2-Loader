@@ -97,7 +97,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* ---------- Pbuf options ---------- */
 /* PBUF_POOL_SIZE: the number of buffers in the pbuf pool. */
 #ifdef INGAME_DRIVER
-#define PBUF_POOL_SIZE 8
+#define PBUF_POOL_SIZE 16
 #else
 #define PBUF_POOL_SIZE 25
 #endif
@@ -143,7 +143,7 @@ a lot of data that needs to be copied, this should be set high. */
 
 /* TCP receive window. */
 #ifdef INGAME_DRIVER
-#define TCP_WND 10240
+#define TCP_WND 20480
 #else
 #define TCP_WND 32768
 #endif
