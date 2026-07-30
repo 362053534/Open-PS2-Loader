@@ -712,73 +712,6 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     return DataLength;
 }
 
-//-------------------------------------------------------------------------
-static int smb_ReadAndX2(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
-{
-    ReadAndXRequest_t *RR = &SMB_buf.smb.readAndXRequest;
-    ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
-    const int blockSize = nbytes / 2;
-    u16 mids[2];
-    int receivedResponses = 0;
-    int i, r, rcv_size, expected_size, DataLength, response, total = 0;
-
-    // 先连续发送两个读取请求，使服务器可以连续返回两块数据。
-    for (i = 0; i < 2; i++) {
-        u32 requestOffsetLow = offsetlow + i * blockSize;
-        u32 requestOffsetHigh = offsethigh + (requestOffsetLow < offsetlow);
-
-        ZERO_PKT_ALIGNED(RR, sizeof(ReadAndXRequest_t));
-
-        RR->smbH.Magic = SMB_MAGIC;
-        RR->smbH.Flags2 = SMB_FLAGS2_32BIT_STATUS;
-        RR->smbH.Cmd = SMB_COM_READ_ANDX;
-        RR->smbH.UID = (u16)UID;
-        RR->smbH.TID = (u16)TID;
-        RR->smbH.MID = mids[i] = i + 1;
-        RR->smbWordcount = 12;
-        RR->smbAndxCmd = SMB_COM_NONE;
-        RR->FID = FID;
-        RR->OffsetLow = requestOffsetLow;
-        RR->OffsetHigh = requestOffsetHigh;
-        RR->MaxCountLow = (u16)blockSize;
-        RR->MaxCountHigh = (u16)(blockSize >> 16);
-
-        nb_SetSessionMessage(sizeof(ReadAndXRequest_t));
-        if (SendData(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4) <= 0)
-            return -1;
-    }
-
-    // 根据回复中的MID，把数据写入对应的目标位置。
-    for (i = 0; i < 2; i++) {
-        do {
-            rcv_size = plwip_recvfrom(main_socket, &SMB_buf, 49, readbuf, 0, 0, NULL, NULL);
-            if (rcv_size <= 0)
-                return -2;
-        } while (nb_GetPacketType() != 0);
-
-        expected_size = nb_GetSessionMessageLength() + 4;
-        DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
-        response = RRsp->smbH.MID == mids[0] ? 0 : (RRsp->smbH.MID == mids[1] ? 1 : -1);
-        if (response < 0 || (receivedResponses & (1 << response)))
-            return -2;
-
-        while (rcv_size < expected_size) {
-            r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[response * blockSize + rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL);
-            if (r <= 0)
-                return -2;
-            rcv_size += r;
-        }
-
-        if (DataLength != blockSize)
-            return -2;
-
-        receivedResponses |= 1 << response;
-        total += DataLength;
-    }
-
-    return total;
-}
-
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
     int result, remaining, toRead;
@@ -790,13 +723,9 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
     WAITIOSEMA(smb_io_sema);
 
     while (remaining > 0) {
-        if (remaining >= CLIENT_MAX_RECV_SIZE && server_specs.MaxMpxCount >= 2) {
-            toRead = CLIENT_MAX_RECV_SIZE;
-            result = smb_ReadAndX2(FID, offsetlow, offsethigh, ptr, toRead);
-        } else {
-            toRead = remaining >= CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : (remaining > 8192 ? 8192 : remaining);
-            result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
-        }
+        toRead = remaining >= CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : (remaining > 8192 ? 8192 : remaining);
+
+        result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
         if (result <= 0) {
             if (!result)
                 result = nbytes - remaining;
