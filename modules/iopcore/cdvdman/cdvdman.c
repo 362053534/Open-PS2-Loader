@@ -43,7 +43,7 @@ static u8 MAX_SECTOR_CACHE = 0;
 static u8 *sector_cache = NULL;
 static u32 cur_sector = 0xFFFFFFFF;
 #ifdef SMB_DRIVER
-#define SMB_SECTOR_CACHE_SIZE 16
+#define SMB_SECTOR_CACHE_SIZE 8
 #endif
 
 struct cdvdman_cb_data
@@ -275,7 +275,7 @@ static int ProbeZSO(u8 *buffer)
         DeviceReadSectorsPtr = &DeviceReadSectorsCompressed;
 #ifdef SMB_DRIVER
     } else {
-        // 普通SMB ISO固定预读16个扇区，不使用用户设置中的ZSO缓存参数。
+        // 普通SMB ISO固定预读8个扇区，不使用用户设置中的ZSO缓存参数。
         initCache(SMB_SECTOR_CACHE_SIZE);
         if (sector_cache)
             DeviceReadSectorsPtr = &DeviceReadSectorsCached;
