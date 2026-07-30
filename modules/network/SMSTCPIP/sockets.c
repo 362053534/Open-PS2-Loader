@@ -980,6 +980,8 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
                 /* UNIMPL case SO_DONTROUTE: */
                 case SO_ERROR:
                 case SO_KEEPALIVE:
+                case SO_SNDTIMEO:
+                case SO_RCVTIMEO:
 /* UNIMPL case SO_OOBINLINE: */
 /* UNIMPL case SO_RCVBUF: */
 /* UNIMPL case SO_SNDBUF: */
@@ -1107,6 +1109,14 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
                     *(int *)optval = sock->err;
                     sock->err = 0;
                     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_getsockopt(%d, SOL_SOCKET, SO_ERROR) = %d\n", s, *(int *)optval));
+                    break;
+
+                case SO_SNDTIMEO:
+                    *(int *)optval = sock->conn->send_timeout;
+                    break;
+
+                case SO_RCVTIMEO:
+                    *(int *)optval = sock->conn->recv_timeout;
                     break;
             } /* switch */
             break;
