@@ -25,6 +25,9 @@ int (*plwip_recv)(int s, void *mem, int len, unsigned int flags);               
 int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen, unsigned int flags, struct sockaddr *from, socklen_t *fromlen); // #10
 int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
+int (*plwip_select)(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout);                           // #14
+int (*plwip_ioctl)(int s, long cmd, void *argp);                                                                                            // #15
+int (*plwip_getsockopt)(int s, int level, int optname, void *optval, socklen_t *optlen);                                                    // #18
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
 int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
@@ -53,6 +56,9 @@ static void ps2ip_init(void)
     plwip_recvfrom = info.exports[10];
     plwip_send = info.exports[11];
     plwip_socket = info.exports[13];
+    plwip_select = info.exports[14];
+    plwip_ioctl = info.exports[15];
+    plwip_getsockopt = info.exports[18];
     plwip_setsockopt = info.exports[19];
     plwip_shutdown = info.exports[46];
     pinet_addr = info.exports[24];

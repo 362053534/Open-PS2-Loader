@@ -5,6 +5,8 @@ ioman_IMPORTS_end
 
 stdio_IMPORTS_start
 I_printf
+I_putchar
+I_puts
 stdio_IMPORTS_end
 
 dmacman_IMPORTS_start
@@ -38,15 +40,23 @@ I_QueryBootMode
 loadcore_IMPORTS_end
 
 sysclib_IMPORTS_start
+I_look_ctype_table
+I_memset
+I_memcmp
+I_memmove
 I_strcpy
+I_strcat
 I_strlen
 I_strncmp
+I_strcmp
 I_strchr
 I_strrchr
 I_strstr
 I_strncpy
+I_strtol
 I_sprintf
 I_memcpy
+I_toupper
 sysclib_IMPORTS_end
 
 thsemap_IMPORTS_start
@@ -61,11 +71,14 @@ thsemap_IMPORTS_end
 thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
+I_DeleteThread
 I_DelayThread
 I_SetAlarm
 I_iSetAlarm
 I_CancelAlarm
 I_USec2SysClock
+I_SysClock2USec
+I_GetSystemTime
 I_SleepThread
 I_iWakeupThread
 thbase_IMPORTS_end

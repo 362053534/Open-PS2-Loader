@@ -22,10 +22,11 @@ endif
 ifeq ($(USE_SMB),1)
 IOP_BIN  = smb_cdvdman.irx
 IOP_OBJS_DIR = obj.smb/
-IOP_OBJS += device-smb.o smb.o
+IOP_OBJS += device-smb.o smb2.o
 IOP_CFLAGS += -DSMB_DRIVER
 USE_DEV9 = 1
-IOP_INCS += -I../../network/common
+IOP_INCS += -I../../network/common -I$(PS2SDK)/ports/include
+IOP_LIBS += -L$(PS2SDK)/ports_iop/lib -lsmb2 -lgcc
 endif
 
 ifeq ($(USE_BDM),1)
