@@ -105,7 +105,7 @@ int lwip_socket(int domain, int type, int protocol)
     return plwip_socket(domain, type, protocol);
 }
 
-int lwip_bind(int s, const struct sockaddr *name, socklen_t namelen)
+int lwip_bind(int s, struct sockaddr *name, socklen_t namelen)
 {
     (void)s;
     (void)name;
