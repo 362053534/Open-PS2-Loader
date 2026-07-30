@@ -590,97 +590,143 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // 将bdm hdd的txt优先在U盘进行读写
         bdmHddTxtPath[0] = '0';
         if (strncmp(prefix, "mass", 4) == 0) {
-            if (prefix[4] == '0') {
-                // 如果找到usb，且usb开关为关闭，则跳过扫描，不生成任何东西
-                if (usbFound && !gEnableUSB)
-                    return 0;
-            } else if (usbFound && prefix[4] != '0') {
-                // 如果插了U盘，那么寻找bdm hdd硬盘
-                char bdmType[32];
-                sprintf(bdmType, "%s/", prefix);
-                int massDir = fileXioDopen(bdmType);
-                if (massDir >= 0) {
-                    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
-                    // 找到bdmhdd后的处理。
-                    if (strncmp(bdmType, "ata", 3) == 0) {
-                        strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
-                        char curTxtPath[256];
-                        sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
-                        FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
-                        FILE *curTxt = fopen(curTxtPath, "rb");
-                        // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
-                        if ((bdmTxt == NULL) && (curTxt != NULL)) {
-                            bdmTxt = fopen(bdmHddTxtPath, "wb");
-                            if ((bdmTxt != NULL) && (curTxt != NULL)) {
-                                fseek(curTxt, 0, SEEK_END);
-                                u32 curTxtFileSize = ftell(curTxt);
-                                rewind(curTxt);
-                                char *buf = malloc(curTxtFileSize * sizeof(char));
-                                if (buf != NULL) {
-                                    fread(buf, curTxtFileSize, 1, curTxt);
-                                    fwrite(buf, curTxtFileSize, 1, bdmTxt);
-                                    // 删除硬盘txt之前备份一个，以防万一。
-                                    char BackupTxtPath[256];
-                                    sprintf(BackupTxtPath, "%sBackup.txt", prefix);
-                                    FILE *bakTxt = fopen(BackupTxtPath, "wb");
-                                    if (bakTxt != NULL) {
-                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                        fclose(bakTxt);
+            char bdmType[32] = "";
+            char bdmPath[256];
+            int massDir;
+
+            sprintf(bdmPath, "%s/", prefix);
+            massDir = fileXioDopen(bdmPath);
+            if (massDir >= 0) {
+                if (fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1) >= 0) {
+                    bdmType[sizeof(bdmType) - 1] = '\0';
+                    // 找到bdmhdd后，再按实际驱动类型寻找U盘，不依赖USB开关或固定mass编号。
+                    if (!strcmp(bdmType, "ata")) {
+                        char usbPrefix[8] = "";
+
+                        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                            char usbPath[16];
+                            char usbType[32] = "";
+                            int usbDir;
+
+                            snprintf(usbPath, sizeof(usbPath), "mass%d:/", i);
+                            usbDir = fileXioDopen(usbPath);
+                            if (usbDir >= 0) {
+                                if (fileXioIoctl2(usbDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, usbType, sizeof(usbType) - 1) >= 0) {
+                                    usbType[sizeof(usbType) - 1] = '\0';
+                                    if (!strcmp(usbType, "usb"))
+                                        snprintf(usbPrefix, sizeof(usbPrefix), "mass%d:", i);
+                                }
+                                fileXioDclose(usbDir);
+                            }
+
+                            if (usbPrefix[0])
+                                break;
+                        }
+
+                        if (usbPrefix[0]) {
+                            char curTxtPath[256];
+                            FILE *bdmTxt;
+                            FILE *curTxt;
+
+                            snprintf(bdmHddTxtPath, sizeof(bdmHddTxtPath), "%sGameListTranslator_BdmHdd.txt", usbPrefix);
+                            sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
+                            bdmTxt = fopen(bdmHddTxtPath, "rb");
+                            curTxt = fopen(curTxtPath, "rb");
+
+                            // U盘里没有txt、硬盘里有时，成功复制后才删除硬盘原文件。
+                            if (!bdmTxt && curTxt) {
+                                int copySucceeded = 0;
+                                int backupSucceeded = 0;
+
+                                bdmTxt = fopen(bdmHddTxtPath, "wb");
+                                if (bdmTxt) {
+                                    fseek(curTxt, 0, SEEK_END);
+                                    u32 curTxtFileSize = ftell(curTxt);
+                                    rewind(curTxt);
+                                    char *buf = curTxtFileSize > 0 ? malloc(curTxtFileSize) : NULL;
+
+                                    if (curTxtFileSize == 0 || (buf && fread(buf, 1, curTxtFileSize, curTxt) == curTxtFileSize)) {
+                                        if (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bdmTxt) == curTxtFileSize)
+                                            copySucceeded = 1;
+
+                                        if (copySucceeded) {
+                                            char BackupTxtPath[256];
+                                            FILE *bakTxt;
+
+                                            sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                                            bakTxt = fopen(BackupTxtPath, "wb");
+                                            if (bakTxt) {
+                                                if (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bakTxt) == curTxtFileSize)
+                                                    backupSucceeded = 1;
+                                                fclose(bakTxt);
+                                            }
+                                        }
                                     }
+
                                     free(buf);
-                                }
-                                fclose(bdmTxt);
-                                fclose(curTxt);
-                                remove(curTxtPath);
-                                forceUpdateCache = 1;
-                            } else {
-                                fclose(curTxt);
-                            }
-                            // 检测是否同时存在两个txt，把较大的txt保留在U盘，并删除硬盘里的txt
-                        } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
-                            fseek(bdmTxt, 0, SEEK_END);
-                            fseek(curTxt, 0, SEEK_END);
-                            u32 bdmTxtFileSize = ftell(bdmTxt);
-                            u32 curTxtFileSize = ftell(curTxt);
-                            rewind(bdmTxt);
-                            rewind(curTxt);
-                            char *buf = malloc(curTxtFileSize * sizeof(char));
-                            if (buf != NULL) {
-                                char BackupTxtPath[256];
-                                sprintf(BackupTxtPath, "%sBackup.txt", prefix);
-                                FILE *bakTxt = fopen(BackupTxtPath, "wb");
-                                fread(buf, curTxtFileSize, 1, curTxt);
-                                // 比较两个txt文件的大小
-                                if (bdmTxtFileSize < curTxtFileSize) {
                                     fclose(bdmTxt);
-                                    bdmTxt = fopen(bdmHddTxtPath, "wb");
-                                    fwrite(buf, curTxtFileSize, 1, bdmTxt);
-                                    // 删除硬盘txt之前备份一个，以防万一。
-                                    if (bakTxt != NULL) {
-                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                }
+                                fclose(curTxt);
+
+                                if (copySucceeded) {
+                                    forceUpdateCache = 1;
+                                    if (backupSucceeded)
+                                        remove(curTxtPath);
+                                } else
+                                    bdmHddTxtPath[0] = '0';
+                                // 两边同时存在时保留较大的文件，备份和目标文件都有效后才删除硬盘原文件。
+                            } else if (bdmTxt && curTxt) {
+                                int backupSucceeded = 0;
+                                int usbReady;
+
+                                fseek(bdmTxt, 0, SEEK_END);
+                                fseek(curTxt, 0, SEEK_END);
+                                u32 bdmTxtFileSize = ftell(bdmTxt);
+                                u32 curTxtFileSize = ftell(curTxt);
+                                rewind(bdmTxt);
+                                rewind(curTxt);
+                                usbReady = bdmTxtFileSize >= curTxtFileSize;
+                                char *buf = curTxtFileSize > 0 ? malloc(curTxtFileSize) : NULL;
+
+                                if (curTxtFileSize == 0 || (buf && fread(buf, 1, curTxtFileSize, curTxt) == curTxtFileSize)) {
+                                    char BackupTxtPath[256];
+                                    FILE *bakTxt;
+
+                                    sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                                    bakTxt = fopen(BackupTxtPath, "wb");
+                                    if (bakTxt) {
+                                        if (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bakTxt) == curTxtFileSize)
+                                            backupSucceeded = 1;
                                         fclose(bakTxt);
                                     }
-                                } else {
-                                    // 删除硬盘txt之前备份一个，以防万一。
-                                    if (bakTxt != NULL) {
-                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                        fclose(bakTxt);
+
+                                    if (!usbReady) {
+                                        fclose(bdmTxt);
+                                        bdmTxt = fopen(bdmHddTxtPath, "wb");
+                                        if (bdmTxt && (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bdmTxt) == curTxtFileSize)) {
+                                            usbReady = 1;
+                                            forceUpdateCache = 1;
+                                        }
                                     }
                                 }
+
                                 free(buf);
-                            }
-                            fclose(bdmTxt);
-                            fclose(curTxt);
-                            remove(curTxtPath);
-                            forceUpdateCache = 1;
-                        } else {
-                            if (bdmTxt != NULL) {
+                                if (bdmTxt)
+                                    fclose(bdmTxt);
+                                fclose(curTxt);
+
+                                if (usbReady && backupSucceeded) {
+                                    remove(curTxtPath);
+                                    forceUpdateCache = 1;
+                                } else if (!usbReady)
+                                    bdmHddTxtPath[0] = '0';
+                            } else if (bdmTxt) {
                                 fclose(bdmTxt);
                             }
                         }
                     }
-                    fileXioDclose(massDir);
                 }
+                fileXioDclose(massDir);
             }
         }
         //// debug  在smb目录下打印debug信息，方便调试
