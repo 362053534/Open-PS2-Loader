@@ -42,6 +42,9 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 static u8 MAX_SECTOR_CACHE = 0;
 static u8 *sector_cache = NULL;
 static u32 cur_sector = 0xFFFFFFFF;
+#ifdef SMB_DRIVER
+#define SMB_SECTOR_CACHE_SIZE 16
+#endif
 
 struct cdvdman_cb_data
 {
@@ -78,9 +81,8 @@ static int POFFThreadID;
 typedef void (*oplShutdownCb_t)(void);
 static oplShutdownCb_t vmcShutdownCb = NULL;
 
-void initCache()
+void initCache(u8 cache_size)
 {
-    u8 cache_size = cdvdman_settings.common.zso_cache;
     if (cache_size && sector_cache == NULL) {
         sector_cache = AllocSysMemory(ALLOC_FIRST, cache_size * 2048, NULL);
         if (sector_cache)
@@ -268,9 +270,16 @@ static int ProbeZSO(u8 *buffer)
         // initialize ZSO
         ziso_init((ZISO_header *)buffer, *(u32 *)(buffer + sizeof(ZISO_header)));
         // initialize cache
-        initCache();
+        initCache(cdvdman_settings.common.zso_cache);
         // redirect sector reader
         DeviceReadSectorsPtr = &DeviceReadSectorsCompressed;
+#ifdef SMB_DRIVER
+    } else {
+        // 普通SMB ISO固定预读16个扇区，不使用用户设置中的ZSO缓存参数。
+        initCache(SMB_SECTOR_CACHE_SIZE);
+        if (sector_cache)
+            DeviceReadSectorsPtr = &DeviceReadSectorsCached;
+#endif
     }
     return 1;
 }
