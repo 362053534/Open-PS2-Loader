@@ -28,10 +28,10 @@
 /* Limit the maximum chunk size of receiving operations, to avoid triggering the congestion avoidance algorithm of the SMB server.
    This is because the IOP cannot clear the received frames fast enough, causing the number of bytes in flight to grow exponentially.
    The TCP congestion avoidence algorithm may induce some latency, causing extremely poor performance.
-   该值应小于TCP窗口，当前游戏内TCP窗口为65535字节。 */
-#define CLIENT_MAX_BUFFER_SIZE 61440     // 最多允许接收61440字节。
+   该值应小于TCP窗口，当前游戏内TCP窗口为10240字节。 */
+#define CLIENT_MAX_BUFFER_SIZE 8192      // 最多允许接收8192字节。
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
-#define CLIENT_MAX_RECV_SIZE   61440     // 最多允许单次接收61440字节。
+#define CLIENT_MAX_RECV_SIZE   8192      // 最多允许单次接收8192字节。
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
 #ifndef SHUT_RDWR
@@ -723,7 +723,7 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
     WAITIOSEMA(smb_io_sema);
 
     while (remaining > 0) {
-        toRead = remaining >= CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : (remaining >= 32768 ? 32768 : (remaining >= 16384 ? 16384 : (remaining > 8192 ? 8192 : remaining)));
+        toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
 
         result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
         if (result <= 0) {
