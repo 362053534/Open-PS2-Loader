@@ -1,9 +1,27 @@
 #include "smstcpip.h"
 #include "internal.h"
 
+#include <stdint.h>
+#include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
 
 #define SMB2_HANDLE_COUNT (ISO_MAX_PARTS + 2)
+
+#define WAITIOSEMA(x)   WaitSema(x)
+#define SIGNALIOSEMA(x) SignalSema(x)
+
+#ifndef F_GETFL
+#define F_GETFL 3
+#endif
+#ifndef F_SETFL
+#define F_SETFL 4
+#endif
+#ifndef O_NONBLOCK
+#define O_NONBLOCK 1
+#endif
+#ifndef SHUT_RDWR
+#define SHUT_RDWR 2
+#endif
 
 extern int (*plwip_close)(int s);
 extern int (*plwip_connect)(int s, struct sockaddr *name, socklen_t namelen);
