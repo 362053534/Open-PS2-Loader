@@ -89,7 +89,7 @@ a lot of data that needs to be copied, this should be set high. */
    for sequential API communication and incoming packets. Used in
    src/api/tcpip.c. */
 #ifdef INGAME_DRIVER
-#define MEMP_NUM_TCPIP_MSG 15
+#define MEMP_NUM_TCPIP_MSG 32
 #else
 #define MEMP_NUM_TCPIP_MSG 40
 #endif
@@ -97,7 +97,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* ---------- Pbuf options ---------- */
 /* PBUF_POOL_SIZE: the number of buffers in the pbuf pool. */
 #ifdef INGAME_DRIVER
-#define PBUF_POOL_SIZE 16
+#define PBUF_POOL_SIZE 32
 #else
 #define PBUF_POOL_SIZE 25
 #endif
@@ -143,7 +143,7 @@ a lot of data that needs to be copied, this should be set high. */
 
 /* TCP receive window. */
 #ifdef INGAME_DRIVER
-#define TCP_WND 20480
+#define TCP_WND 40960
 #else
 #define TCP_WND 32768
 #endif
