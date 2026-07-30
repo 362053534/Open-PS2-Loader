@@ -1006,7 +1006,7 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         }
     } else {
-        const char *dmaModes[] = {NULL};
+        const char *dmaModes[] = {"HDD才能开启", NULL};
         diaSetEnum(diaCompatConfig, COMPAT_DMASOURCE, dmaModes);
         diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
     }
