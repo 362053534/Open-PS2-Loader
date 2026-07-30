@@ -274,7 +274,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
 
     if (mode == ETH_MODE) {
         u8 ipAddress[4], netmask[4], gateway[4];
-        char ipconfig[48], smbconfig[128];
+        char ipconfig[48], smbconfig[144], smbPath[sizeof(gPCShareName) + sizeof(gETHPrefix)];
         int ipconfigSize, smbconfigSize;
         const char *filenames[] = {
             POPSTARTER_SMB_POWEROFF_FILENAME,
@@ -318,7 +318,33 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
         if (popstarterWriteDriver(path, ipconfig, ipconfigSize, 1) < 0)
             result = -1;
 
-        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s%s%s%s%s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], gPCShareName, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCUserName, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCPassword);
+        const char *prefix = gETHPrefix;
+        size_t pos;
+
+        strcpy(smbPath, gPCShareName);
+        pos = strlen(smbPath);
+
+        // 跳过SMB前缀开头的所有斜杠。
+        while (*prefix == '/' || *prefix == '\\')
+            prefix++;
+
+        if (*prefix) {
+            smbPath[pos++] = '\\';
+            while (*prefix) {
+                if (*prefix == '/' || *prefix == '\\') {
+                    // 将中间连续的斜杠统一为一个反斜杠，结尾斜杠不写入。
+                    while (prefix[1] == '/' || prefix[1] == '\\')
+                        prefix++;
+                    if (prefix[1])
+                        smbPath[pos++] = '\\';
+                } else
+                    smbPath[pos++] = *prefix;
+                prefix++;
+            }
+        }
+        smbPath[pos] = '\0';
+
+        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s%s%s%s%s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], smbPath, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCUserName, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCPassword);
         snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_SMB_SMBCONFIG_FILENAME);
         if (popstarterWriteDriver(path, smbconfig, smbconfigSize, 1) < 0)
             result = -1;
