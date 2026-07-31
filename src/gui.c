@@ -1748,10 +1748,32 @@ void guiMainLoop(void)
             }
             if (bdmTimeOut) {
                 bdmTimeOut = 0; // 防止重复弹窗
-                if (lngGetValue()[0] == 'E')
-                    guiMsgBox("Please close non-existent block devices!", 0, NULL);
-                else
-                    guiMsgBox("BDM块设备检测超时！", 0, NULL);
+                char timeoutDevices[64] = "";
+                char timeoutMessage[96];
+                const int english = lngGetValue()[0] == 'E';
+                const char *separator = english ? ", " : "、";
+                if (gEnableUSB && !usbFound)
+                    strcat(timeoutDevices, "USB");
+                if (gEnableILK && !ILKFound) {
+                    if (timeoutDevices[0])
+                        strcat(timeoutDevices, separator);
+                    strcat(timeoutDevices, "iLink");
+                }
+                if (gEnableMX4SIO && !MX4SIOFound) {
+                    if (timeoutDevices[0])
+                        strcat(timeoutDevices, separator);
+                    strcat(timeoutDevices, "MX4SIO");
+                }
+                if (gEnableBdmHDD && !GptFound) {
+                    if (timeoutDevices[0])
+                        strcat(timeoutDevices, separator);
+                    strcat(timeoutDevices, "HDD(exFAT)");
+                }
+
+                if (timeoutDevices[0]) {
+                    snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "%s检测超时！", timeoutDevices);
+                    guiMsgBox(timeoutMessage, 0, NULL);
+                }
             }
         }
 
