@@ -330,6 +330,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
 
         if (*prefix) {
             smbPath[pos++] = '\\';
+            smbPath[pos++] = '\\';
             while (*prefix) {
                 if (*prefix == '/' || *prefix == '\\') {
                     // 将中间连续的斜杠统一为一个反斜杠，结尾斜杠不写入。
