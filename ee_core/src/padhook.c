@@ -206,6 +206,7 @@ static void IGR_Thread(void *arg)
         if (EnableDebug)
             DBGCOL(0xFF8000, IGR, "oplIGRShutdown()");
 
+        BGCOLND(0xFFFFFF);
         if (oplIGRGetSMB2Diag(&SMB2Diag) == 0 && SMB2Diag.valid) {
             // 紫色代表读取卡住，红色代表读取失败，黄色代表短读取。
             BGCOLND(SMB2Diag.result == SMB2_DIAG_RESULT_PENDING ? 0xFF00FF : (SMB2Diag.result < 0 ? 0x0000FF : 0x00FFFF));

@@ -11,6 +11,7 @@
 #include "modmgr.h"
 #include "util.h"
 #include "syshook.h"
+#include "padhook.h"
 #include "gsm_api.h"
 #include "cheat_api.h"
 #include "coreconfig.h"
@@ -113,6 +114,7 @@ static int eecoreInit(int argc, char **argv)
     /* installing kernel hooks */
     DPRINTF("Installing Kernel Hooks...\n");
     Install_Kernel_Hooks();
+    Install_IGR();
 
     if (config->EnableDebug)
         DBGCOL(0xFF0000, MAIN, "Reached end of eecoreinit()");
