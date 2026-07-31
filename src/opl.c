@@ -761,6 +761,9 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
         listSupport = list_support[i].support;
         if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
+            if (!prefix || !prefix[0])
+                continue;
+
             snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
             count += scanApps(callback, arg, appsPath, 0);
         }
@@ -950,6 +953,9 @@ config_set_t *oplGetLegacyAppsConfig(void)
         listSupport = list_support[i].support;
         if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
+            if (!prefix || !prefix[0])
+                continue;
+
             snprintf(appsPath, sizeof(appsPath), "%sconf_apps.cfg", prefix);
 
             fd = openFile(appsPath, O_RDONLY);
@@ -973,7 +979,7 @@ config_set_t *oplGetLegacyAppsInfo(char *name)
     int i, fd;
     item_list_t *listSupport;
     config_set_t *appConfig;
-    char appsPath[128];
+    char appsPath[128] = "";
 
     for (i = MODE_COUNT - 1; i >= 0; i--) {
         listSupport = list_support[i].support;
