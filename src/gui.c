@@ -66,7 +66,7 @@ int txtFileRebuilded = 0;
 
 static int defaultDelayFrame = 600;
 // static int LongDelayTime = 18000;
-static int ShortDelayTime = 360;
+static int ShortDelayTime = 300;
 static int endIntroDelayFrame = 0;
 static int bdmTimeOut = 0;
 static int artLoadDelayTime = 200;
@@ -1771,7 +1771,7 @@ void guiMainLoop(void)
                 }
 
                 if (timeoutDevices[0]) {
-                    snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "%s检测超时！", timeoutDevices);
+                    snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "%s检测超时！请检查是否正确连接！", timeoutDevices);
                     guiMsgBox(timeoutMessage, 0, NULL);
                 }
             }
