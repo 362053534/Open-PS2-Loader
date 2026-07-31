@@ -61,6 +61,17 @@ static smb2_diag_t SMB2Diag __attribute__((aligned(64)));
 extern void *_gp;
 extern void *_end;
 
+static void smb2DiagAppendHex(char *text, u32 value, int digits)
+{
+    char *output = &text[strlen(text)];
+
+    while (digits > 0) {
+        digits--;
+        *output++ = "0123456789ABCDEF"[(value >> (digits * 4)) & 0x0F];
+    }
+    *output = '\0';
+}
+
 // Load home ELF
 static void t_loadElf(void)
 {
@@ -93,7 +104,23 @@ static void t_loadElf(void)
         int fd;
         int length;
 
-        length = sprintf(text, "FID:%u\r\nOFFSET:%08X%08X\r\nREQUEST:%u\r\nRESULT:%d\r\nDIALECT:%04X\r\nMAX_READ:%u\r\nERROR:%s\r\n", SMB2Diag.fid, SMB2Diag.offset_high, SMB2Diag.offset_low, SMB2Diag.request_size, SMB2Diag.result, SMB2Diag.dialect, SMB2Diag.max_read_size, SMB2Diag.error);
+        _strcpy(text, "FID:");
+        smb2DiagAppendHex(text, SMB2Diag.fid, 4);
+        _strcat(text, "\r\nOFFSET:");
+        smb2DiagAppendHex(text, SMB2Diag.offset_high, 8);
+        smb2DiagAppendHex(text, SMB2Diag.offset_low, 8);
+        _strcat(text, "\r\nREQUEST:");
+        smb2DiagAppendHex(text, SMB2Diag.request_size, 8);
+        _strcat(text, "\r\nRESULT:");
+        smb2DiagAppendHex(text, SMB2Diag.result, 8);
+        _strcat(text, "\r\nDIALECT:");
+        smb2DiagAppendHex(text, SMB2Diag.dialect, 4);
+        _strcat(text, "\r\nMAX_READ:");
+        smb2DiagAppendHex(text, SMB2Diag.max_read_size, 8);
+        _strcat(text, "\r\nERROR:");
+        _strcat(text, SMB2Diag.error);
+        _strcat(text, "\r\n");
+        length = strlen(text);
         fd = fioOpen("mc0:/SMB2-DIAG.TXT", O_CREAT | O_TRUNC | O_WRONLY);
         if (fd < 0)
             fd = fioOpen("mc1:/SMB2-DIAG.TXT", O_CREAT | O_TRUNC | O_WRONLY);
