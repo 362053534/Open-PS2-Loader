@@ -10,10 +10,13 @@ sifcmd_IMPORTS_end
 
 stdio_IMPORTS_start
 I_printf
+I_putchar
+I_puts
 stdio_IMPORTS_end
 
 sysclib_IMPORTS_start
 I_look_ctype_table
+I_memcmp
 I_memcpy
 I_memmove
 I_memset
