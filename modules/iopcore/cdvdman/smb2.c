@@ -46,6 +46,7 @@ static char smb2Server[24];
 static char smb2Share[32];
 static char smb2User[32];
 static char smb2Password[32];
+smb2_diag_t smb2Diag;
 
 struct addrinfo
 {
@@ -345,16 +346,73 @@ int smb_Close(int FID)
 
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
+    int remaining = nbytes;
+    u8 *ptr = readbuf;
+    int diagPending = 0;
     int result;
 
-    if (!smb2Context || FID >= SMB2_HANDLE_COUNT || !smb2Handles[FID])
+    if (!smb2Context || FID >= SMB2_HANDLE_COUNT || !smb2Handles[FID]) {
+        if (!smb2Diag.valid) {
+            smb2Diag.valid = 1;
+            smb2Diag.result = -EIO;
+            smb2Diag.fid = FID;
+            smb2Diag.offset_low = offsetlow;
+            smb2Diag.offset_high = offsethigh;
+            smb2Diag.request_size = nbytes;
+            smb2Diag.dialect = smb2Context ? smb2_get_dialect(smb2Context) : 0;
+            smb2Diag.max_read_size = smb2Context ? smb2_get_max_read_size(smb2Context) : 0;
+            strcpy(smb2Diag.error, "Invalid SMB2 context or handle");
+        }
         return -EIO;
+    }
 
     WAITIOSEMA(smb_io_sema);
-    result = smb2_pread(smb2Context, smb2Handles[FID], readbuf, nbytes, ((u64)offsethigh << 32) | offsetlow);
+    if (!smb2Diag.valid) {
+        smb2Diag.valid = 1;
+        smb2Diag.result = SMB2_DIAG_RESULT_PENDING;
+        smb2Diag.fid = FID;
+        smb2Diag.offset_low = offsetlow;
+        smb2Diag.offset_high = offsethigh;
+        smb2Diag.request_size = nbytes;
+        smb2Diag.dialect = smb2_get_dialect(smb2Context);
+        smb2Diag.max_read_size = smb2_get_max_read_size(smb2Context);
+        smb2Diag.error[0] = '\0';
+        diagPending = 1;
+    }
+
+    while (remaining > 0) {
+        if (diagPending) {
+            smb2Diag.result = SMB2_DIAG_RESULT_PENDING;
+            smb2Diag.offset_low = offsetlow;
+            smb2Diag.offset_high = offsethigh;
+            smb2Diag.request_size = remaining;
+        }
+
+        result = smb2_pread(smb2Context, smb2Handles[FID], ptr, remaining, ((u64)offsethigh << 32) | offsetlow);
+        if (result <= 0)
+            break;
+
+        if (offsetlow + result < offsetlow)
+            offsethigh++;
+        offsetlow += result;
+        ptr += result;
+        remaining -= result;
+    }
+
+    if (diagPending && remaining == 0) {
+        smb2Diag.valid = 0;
+    } else if (diagPending) {
+        const char *error = smb2_get_error(smb2Context);
+
+        smb2Diag.result = result;
+        if (error) {
+            strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
+            smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
+        }
+    }
     SIGNALIOSEMA(smb_io_sema);
 
-    return result;
+    return remaining > 0 ? result : nbytes;
 }
 
 int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nbytes)

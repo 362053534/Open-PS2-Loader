@@ -44,6 +44,7 @@ static u8 *sector_cache = NULL;
 static u32 cur_sector = 0xFFFFFFFF;
 #ifdef SMB_DRIVER
 #define SMB_SECTOR_CACHE_SIZE 16
+extern smb2_diag_t smb2Diag;
 #endif
 
 struct cdvdman_cb_data
@@ -609,6 +610,13 @@ int sceCdSC(int code, int *param)
         case CDSC_GET_DEBUG_STATUS:
             *param = (int)&cdvdman_debug_print_flag;
             result = 0xFF;
+            break;
+        case CDSC_GET_SMB2_DIAG:
+#ifdef SMB_DRIVER
+            result = (int)&smb2Diag;
+#else
+            result = 0;
+#endif
             break;
         case CDSC_SET_ERROR:
             result = cdvdman_stat.err = *param;

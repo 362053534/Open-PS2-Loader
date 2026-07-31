@@ -18,6 +18,8 @@
 
 #include <ee_regs.h>
 #include <iopcontrol.h>
+#define NEWLIB_PORT_AWARE
+#include <fileio.h>
 #include "asm.h"
 #include "ee_core.h"
 #include "iopmgr.h"
@@ -53,6 +55,7 @@ static int IGR_Intc_ID = -1;
 /* IGR thread stack & stack size */
 #define IGR_STACK_SIZE (4 * 1024)
 static u8 IGR_Stack[IGR_STACK_SIZE] __attribute__((aligned(16)));
+static smb2_diag_t SMB2Diag __attribute__((aligned(64)));
 
 /* Extern symbol */
 extern void *_gp;
@@ -84,6 +87,21 @@ static void t_loadElf(void)
     // Load basic modules
     LoadModule("rom0:SIO2MAN", 0, NULL);
     LoadModule("rom0:MCMAN", 0, NULL);
+
+    if (SMB2Diag.valid) {
+        char text[256];
+        int fd;
+        int length;
+
+        length = sprintf(text, "FID:%u\r\nOFFSET:%08X%08X\r\nREQUEST:%u\r\nRESULT:%d\r\nDIALECT:%04X\r\nMAX_READ:%u\r\nERROR:%s\r\n", SMB2Diag.fid, SMB2Diag.offset_high, SMB2Diag.offset_low, SMB2Diag.request_size, SMB2Diag.result, SMB2Diag.dialect, SMB2Diag.max_read_size, SMB2Diag.error);
+        fd = fioOpen("mc0:/SMB2-DIAG.TXT", O_CREAT | O_TRUNC | O_WRONLY);
+        if (fd < 0)
+            fd = fioOpen("mc1:/SMB2-DIAG.TXT", O_CREAT | O_TRUNC | O_WRONLY);
+        if (fd >= 0) {
+            fioWrite(fd, text, length);
+            fioClose(fd);
+        }
+    }
 
     if (config->ExitPath[1] == 'a') { // ie mass:
         ret = LoadModule("mc0:SYS-CONF/USBD.IRX", 0, NULL);
@@ -160,6 +178,13 @@ static void IGR_Thread(void *arg)
 
         if (EnableDebug)
             DBGCOL(0xFF8000, IGR, "oplIGRShutdown()");
+
+        if (oplIGRGetSMB2Diag(&SMB2Diag) == 0 && SMB2Diag.valid) {
+            // 紫色代表读取卡住，红色代表读取失败，黄色代表短读取。
+            BGCOLND(SMB2Diag.result == SMB2_DIAG_RESULT_PENDING ? 0xFF00FF : (SMB2Diag.result < 0 ? 0x0000FF : 0x00FFFF));
+            delay(3);
+            BGCOLND(0x000000);
+        }
 
         oplIGRShutdown(0);
 
