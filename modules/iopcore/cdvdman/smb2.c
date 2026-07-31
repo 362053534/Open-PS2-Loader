@@ -249,8 +249,14 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smb2_set_user(smb2Context, smb2User);
     smb2_set_password(smb2Context, smb2Password);
     *capabilities = 0;
+    smb2Diag.error[0] = '\0';
 
     if (smb2_connect_share(smb2Context, smb2Server, smb2Share, smb2User) != 0) {
+        const char *error = smb2_get_error(smb2Context);
+        if (error) {
+            strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
+            smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
+        }
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;

@@ -121,7 +121,11 @@ static void runTest(const struct smb2test_request *request)
     rpcResult.stage = SMB2TEST_STAGE_CONNECT;
     rpcResult.result = smb_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, NULL);
     if (rpcResult.result <= 0) {
-        strcpy(rpcResult.error, "SMB2 share connection failed");
+        if (smb2Diag.error[0]) {
+            strncpy(rpcResult.error, smb2Diag.error, sizeof(rpcResult.error));
+            rpcResult.error[sizeof(rpcResult.error) - 1] = '\0';
+        } else
+            strcpy(rpcResult.error, "SMB2 share connection failed");
         goto cleanup;
     }
 
