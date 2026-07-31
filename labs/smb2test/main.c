@@ -7,6 +7,7 @@
 #include <sifrpc.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "smb2test.h"
 #include "smb2test_config.h"
@@ -98,7 +99,7 @@ int main(int argc, char *argv[])
     for (i = 0; i < 100; i++) {
         if (SifBindRpc(&rpcClient, SMB2TEST_RPC_ID, 0) >= 0 && rpcClient.server)
             break;
-        DelayThread(10000);
+        usleep(10000);
     }
     if (!rpcClient.server) {
         scr_printf("RPC bind failed.\n");
