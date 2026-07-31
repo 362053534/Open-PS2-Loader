@@ -89,6 +89,7 @@ int main(int argc, char *argv[])
     scr_printf("SMAP: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
         goto end;
+    usleep(2000000);
 
     moduleID = SifExecModuleBuffer(smb2test_irx, size_smb2test_irx, 0, NULL, &moduleResult);
     scr_printf("SMB2TEST.IRX: id=%d result=%d\n\n", moduleID, moduleResult);
