@@ -88,7 +88,12 @@ int lwip_close(int s)
 
 int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 {
-    return plwip_connect(s, name, namelen);
+    int result = plwip_connect(s, name, namelen);
+
+    if (result < 0)
+        errno = EINPROGRESS;
+
+    return result;
 }
 
 int lwip_recv(int s, void *mem, int len, unsigned int flags)
