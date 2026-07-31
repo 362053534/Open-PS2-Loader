@@ -46,6 +46,12 @@ static char smb2Server[24];
 static char smb2Share[32];
 static char smb2User[32];
 static char smb2Password[32];
+static int smb2DiagConnectResult;
+static int smb2DiagSocketError;
+static int smb2DiagFcntlResult;
+static int smb2DiagSelectResult;
+static int smb2DiagSendResult;
+static int smb2DiagRecvResult;
 smb2_diag_t smb2Diag;
 
 struct addrinfo
@@ -90,6 +96,7 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 {
     int result = plwip_connect(s, name, namelen);
 
+    smb2DiagConnectResult = result;
     if (result < 0)
         errno = EINPROGRESS;
 
@@ -98,12 +105,14 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 
 int lwip_recv(int s, void *mem, int len, unsigned int flags)
 {
-    return plwip_recv(s, mem, len, flags);
+    smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
+    return smb2DiagRecvResult;
 }
 
 int lwip_send(int s, void *dataptr, int size, unsigned int flags)
 {
-    return plwip_send(s, dataptr, size, flags);
+    smb2DiagSendResult = plwip_send(s, dataptr, size, flags);
+    return smb2DiagSendResult;
 }
 
 int lwip_socket(int domain, int type, int protocol)
@@ -136,12 +145,18 @@ int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 
 int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout)
 {
-    return plwip_select(maxfdp1, readset, writeset, exceptset, timeout);
+    smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, exceptset, timeout);
+    return smb2DiagSelectResult;
 }
 
 int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
 {
-    return plwip_getsockopt(s, level, optname, optval, optlen);
+    int result = plwip_getsockopt(s, level, optname, optval, optlen);
+
+    if (result == 0 && level == SOL_SOCKET && optname == SO_ERROR)
+        smb2DiagSocketError = *(int *)optval;
+
+    return result;
 }
 
 int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t optlen)
@@ -165,7 +180,8 @@ int lwip_fcntl(int s, int cmd, int val)
         return -1;
 
     nonblocking = val & O_NONBLOCK;
-    return plwip_ioctl(s, FIONBIO, &nonblocking);
+    smb2DiagFcntlResult = plwip_ioctl(s, FIONBIO, &nonblocking);
+    return smb2DiagFcntlResult;
 }
 
 u32 inet_addr(const char *cp)
@@ -254,14 +270,21 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smb2_set_user(smb2Context, smb2User);
     smb2_set_password(smb2Context, smb2Password);
     *capabilities = 0;
+    smb2DiagConnectResult = 0;
+    smb2DiagSocketError = 0;
+    smb2DiagFcntlResult = 0;
+    smb2DiagSelectResult = 0;
+    smb2DiagSendResult = 0;
+    smb2DiagRecvResult = 0;
     smb2Diag.error[0] = '\0';
 
     if (smb2_connect_share(smb2Context, smb2Server, smb2Share, smb2User) != 0) {
         const char *error = smb2_get_error(smb2Context);
-        if (error) {
+        if (error && error[0]) {
             strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
             smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
-        }
+        } else
+            sprintf(smb2Diag.error, "C%X O%X F%X S%X T%X R%X", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagFcntlResult, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult);
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;
