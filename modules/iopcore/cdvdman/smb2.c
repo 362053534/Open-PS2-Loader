@@ -52,6 +52,8 @@ static int smb2DiagFcntlResult;
 static int smb2DiagSelectResult;
 static int smb2DiagSendResult;
 static int smb2DiagRecvResult;
+static int smb2DiagRecvAvailable;
+static u8 smb2DiagSendHeader[8];
 smb2_diag_t smb2Diag;
 
 struct addrinfo
@@ -111,6 +113,9 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
 
 int lwip_send(int s, void *dataptr, int size, unsigned int flags)
 {
+    if (size >= (int)sizeof(smb2DiagSendHeader))
+        memcpy(smb2DiagSendHeader, dataptr, sizeof(smb2DiagSendHeader));
+
     smb2DiagSendResult = plwip_send(s, dataptr, size, flags);
     return smb2DiagSendResult;
 }
@@ -145,7 +150,25 @@ int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 
 int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout)
 {
+    fd_set pendingReadSet;
+    int i;
+
+    if (readset)
+        pendingReadSet = *readset;
+
     smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, exceptset, timeout);
+    if (smb2DiagSelectResult == 0 && readset) {
+        for (i = 0; i < maxfdp1; i++) {
+            if (FD_ISSET(i, &pendingReadSet)) {
+                u16 available = 0;
+
+                if (plwip_ioctl && plwip_ioctl(i, FIONREAD, &available) == 0)
+                    smb2DiagRecvAvailable = available;
+                break;
+            }
+        }
+    }
+
     return smb2DiagSelectResult;
 }
 
@@ -276,6 +299,8 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smb2DiagSelectResult = 0;
     smb2DiagSendResult = 0;
     smb2DiagRecvResult = 0;
+    smb2DiagRecvAvailable = 0;
+    memset(smb2DiagSendHeader, 0, sizeof(smb2DiagSendHeader));
     smb2Diag.error[0] = '\0';
 
     if (smb2_connect_share(smb2Context, smb2Server, smb2Share, smb2User) != 0) {
@@ -284,7 +309,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
             strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
             smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
         } else
-            sprintf(smb2Diag.error, "C%X O%X F%X S%X T%X R%X", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagFcntlResult, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult);
+            sprintf(smb2Diag.error, "C%X S%X T%X R%X A%X H%02X%02X%02X%02X%02X%02X%02X%02X", smb2DiagConnectResult, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, smb2DiagRecvAvailable, smb2DiagSendHeader[0], smb2DiagSendHeader[1], smb2DiagSendHeader[2], smb2DiagSendHeader[3], smb2DiagSendHeader[4], smb2DiagSendHeader[5], smb2DiagSendHeader[6], smb2DiagSendHeader[7]);
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;
