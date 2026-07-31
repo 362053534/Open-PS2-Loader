@@ -8,7 +8,7 @@
 #define SMB2TEST_SERVER       "192.168.5.4"
 #define SMB2TEST_PORT         445
 #define SMB2TEST_SHARE        "ps2smb"
-#define SMB2TEST_USER         "GUEST"
+#define SMB2TEST_USER         "1"
 #define SMB2TEST_PASSWORD     ""
 #define SMB2TEST_FILE         "DVD/test.iso"
 #define SMB2TEST_OFFSET_LOW   0
