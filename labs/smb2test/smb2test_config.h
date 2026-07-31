@@ -1,0 +1,19 @@
+#ifndef SMB2TEST_CONFIG_H
+#define SMB2TEST_CONFIG_H
+
+// 修改这些参数后重新编译 SMB2TEST.ELF。
+#define SMB2TEST_PS2_IP       "192.168.0.10"
+#define SMB2TEST_NETMASK      "255.255.255.0"
+#define SMB2TEST_GATEWAY      "192.168.0.1"
+#define SMB2TEST_SERVER       "192.168.0.2"
+#define SMB2TEST_PORT         445
+#define SMB2TEST_SHARE        "PS2SMB"
+#define SMB2TEST_USER         "GUEST"
+#define SMB2TEST_PASSWORD     ""
+#define SMB2TEST_FILE         "DVD/test.iso"
+#define SMB2TEST_OFFSET_LOW   0
+#define SMB2TEST_OFFSET_HIGH  0
+#define SMB2TEST_READ_SIZE    16384
+#define SMB2TEST_READ_COUNT   1024
+
+#endif

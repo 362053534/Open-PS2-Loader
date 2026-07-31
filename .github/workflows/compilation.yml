@@ -22,6 +22,9 @@ jobs:
     - name: Compile -> make clean release
       run: make --trace clean release
 
+    - name: Compile SMB2TEST.ELF
+      run: make -C labs/smb2test clean all
+
     - name: Create detailed changelog
       run: sh ./make_changelog.sh
 
@@ -43,6 +46,13 @@ jobs:
           CREDITS
           LICENSE
           README.md
+
+    - name: Upload SMB2TEST artifact
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: SMB2TEST
+        path: labs/smb2test/SMB2TEST.ELF
 
   build-variants:
     strategy:
