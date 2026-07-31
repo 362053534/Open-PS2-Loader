@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <ioman.h>
 #include <loadcore.h>
+#include <sifcmd.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
