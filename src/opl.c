@@ -1098,7 +1098,11 @@ void menuUpdateBDMSupport(void)
     for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
         if (list_support[i].support) {
             bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-            if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
+            int bdmDeviceOn = (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB) ||
+                              (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK && gEnableILK) ||
+                              (pDeviceData->bdmDeviceType == BDM_TYPE_SDC && gEnableMX4SIO) ||
+                              (pDeviceData->bdmDeviceType == BDM_TYPE_ATA && gEnableBdmHDD);
+            if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (bdmDeviceOn && pDeviceData->bdmGameCount == -1)))
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
         }
     }

@@ -376,11 +376,39 @@ static int bdmUpdateGameList(item_list_t *itemList)
         } else { // 未初始化，或未知设备
             return 0;
         }
-        // 已知设备没开就返回0，开了就生成列表（只有USB会出现已知但未开的情况）
+        // 已加载的设备，没开就返回0，开了就返回生成列表后的游戏数量（只有USB会走进已加载但没开的这个分支条件）
         if (!bdmDeviceOn) {
             pDeviceData->bdmGameCount = -1;
             return 0;
         } else {
+            enum { BDMFS_NO_PATH = -5 };
+            char isoPath[256];
+            int rootDir, cdDir, dvdDir;
+
+            rootDir = fileXioDopen(pDeviceData->bdmPrefix);
+            if (rootDir < 0) {
+                pDeviceData->bdmGameCount = -1;
+                return 0;
+            }
+            fileXioDclose(rootDir);
+
+            snprintf(isoPath, sizeof(isoPath), "%sCD", pDeviceData->bdmPrefix);
+            cdDir = fileXioDopen(isoPath);
+            if (cdDir >= 0)
+                fileXioDclose(cdDir);
+
+            snprintf(isoPath, sizeof(isoPath), "%sDVD", pDeviceData->bdmPrefix);
+            dvdDir = fileXioDopen(isoPath);
+            if (dvdDir >= 0)
+                fileXioDclose(dvdDir);
+
+            // bdmfs_fatfs会将FatFs的FRESULT取负后原样返回。
+            if ((cdDir < 0 && cdDir != BDMFS_NO_PATH) ||
+                (dvdDir < 0 && dvdDir != BDMFS_NO_PATH)) {
+                pDeviceData->bdmGameCount = -1;
+                return 0;
+            }
+
             int result = sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
 
             // 游戏列表生成完成后，再标记对应的BDM设备已完成初始化。
