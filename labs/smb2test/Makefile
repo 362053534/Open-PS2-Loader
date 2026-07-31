@@ -25,7 +25,7 @@ smsutils.c: ../../modules/network/SMSUTILS/SMSUTILS.irx
 	$(BIN2C) $< $@ smsutils_irx
 
 smstcpip.c:
-	$(MAKE) INGAME_DRIVER=1 FULL_LWIP=1 -C ../../modules/network/SMSTCPIP rebuild
+	$(MAKE) FULL_LWIP=1 -C ../../modules/network/SMSTCPIP rebuild
 	$(BIN2C) ../../modules/network/SMSTCPIP/SMSTCPIP.irx $@ smstcpip_irx
 
 ../../modules/network/smap-ingame/smap.irx:
