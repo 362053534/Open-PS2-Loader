@@ -333,6 +333,13 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                     continue;
                 FD_SET(i, writeset);
             }
+            /*
+             * libsmb2 NEED_POLL 在调 select 前会把 fd 预置进 exceptset。
+             * 此处早退未真正 select，若不清空，poll 会误报 POLLHUP，
+             * 表现为 TCP 已通（S1）却秒失败且 T0（从未 send）。
+             */
+            if (exceptset)
+                FD_ZERO(exceptset);
             smb2DiagSelectResult = writeReady;
             return writeReady;
         }
@@ -361,6 +368,8 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             writeReady++;
         }
         if (writeReady) {
+            if (exceptset)
+                FD_ZERO(exceptset);
             smb2DiagSelectResult = writeReady;
             return writeReady;
         }
