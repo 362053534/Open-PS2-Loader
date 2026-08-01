@@ -766,6 +766,28 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
 
 #ifdef SMB2TEST_BUILD
 int __real_smb2_service(struct smb2_context *smb2, int revents);
+struct smb2_iovec;
+struct smb2_io_vectors;
+void __real_smb2_free_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v);
+struct smb2_iovec *__real_smb2_add_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v, u8 *buf, size_t len, void (*free_fn)(void *));
+
+void __wrap_smb2_free_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v)
+{
+    printf("SMB2TEST: free_iov enter\n");
+    __real_smb2_free_iovector(smb2, v);
+    printf("SMB2TEST: free_iov leave\n");
+}
+
+struct smb2_iovec *__wrap_smb2_add_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v, u8 *buf, size_t len, void (*free_fn)(void *))
+{
+    struct smb2_iovec *result;
+
+    printf("SMB2TEST: add_iov enter len=%u\n", (unsigned int)len);
+    result = __real_smb2_add_iovector(smb2, v, buf, len, free_fn);
+    printf("SMB2TEST: add_iov leave\n");
+    return result;
+}
+
 int __wrap_smb2_service(struct smb2_context *smb2, int revents)
 {
     printf("SMB2TEST: smb2_service rev=0x%x stack=%d\n", revents, CheckThreadStack());
