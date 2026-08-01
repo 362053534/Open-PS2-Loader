@@ -281,15 +281,10 @@ int lwip_fcntl(int s, int cmd, int val)
     return -1;
 }
 
-/* libsmb2 IOP 侧可能直接链到 POSIX 名，而不是 lwip_* */
+/* libsmb2 set_nonblocking() 通过 fcntl 调进来；勿再导出 ioctl（与 ioman.h 冲突） */
 int fcntl(int s, int cmd, int val)
 {
     return lwip_fcntl(s, cmd, val);
-}
-
-int ioctl(int s, long cmd, void *argp)
-{
-    return lwip_ioctl(s, cmd, argp);
 }
 
 u32 inet_addr(const char *cp)
