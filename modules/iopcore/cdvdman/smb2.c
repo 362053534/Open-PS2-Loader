@@ -575,6 +575,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             if (writeReady > 0) {
                 smb2DiagSelectResult = writeReady;
 #ifdef SMB2TEST_BUILD
+#if 0 // 禁用提前收包，直接让libsmb2读取socket。
                 {
                     int fd;
 
@@ -610,6 +611,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                         break;
                     }
                 }
+#endif
                 printf("SMB2TEST: select slice-read ready=%d waited=%d stack=%d\n",
                        writeReady, waited, CheckThreadStack());
                 printf("SMB2TEST: select return to libsmb2\n");
