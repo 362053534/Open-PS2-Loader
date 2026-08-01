@@ -13,6 +13,8 @@ PCSX2「端口/Sockets」常用：
 - PS2 / 网关：`192.0.2.100` / `192.0.2.1`
 - SMB 服务器：本机局域网 IP（如 `192.168.5.4`）
 
+PCSX2 调试 SMB2 时请关闭 IOP 动态重编译（`EnableIOP = false`），否则在 NEGOTIATE 收包后易宿主崩溃（`c0000005` / `IP_ON_HEAP`）。
+
 ## 编译
 
 ```sh

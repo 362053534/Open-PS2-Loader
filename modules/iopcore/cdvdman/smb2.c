@@ -309,6 +309,79 @@ int lwip_send(int s, void *dataptr, int size, unsigned int flags)
     return smb2DiagSendResult;
 }
 
+/*
+ * 覆盖 libsmb2 NEED_READV/WRITEV。
+ * 库内实现经 read()/write() 宏变成 lwip_recv/send(..., MSG_DONTWAIT)；
+ * 在 ps2ip-nm 上收包刚就绪时 DONTWAIT 易踩 PCSX2 IOP JIT。
+ * 这里改为直接、阻塞地走我们已挂钩的 lwip_recv/lwip_send。
+ */
+struct iovec {
+    void *iov_base;
+    size_t iov_len;
+};
+
+int readv(int fd, const struct iovec *vector, int count)
+{
+    int i;
+    int total = 0;
+
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: readv enter count=%d\n", count);
+#endif
+    if (!vector || count <= 0)
+        return -1;
+
+    for (i = 0; i < count; i++) {
+        int n;
+
+        if (!vector[i].iov_base || !vector[i].iov_len)
+            continue;
+        n = lwip_recv(fd, vector[i].iov_base, (int)vector[i].iov_len, 0);
+        if (n < 0) {
+            if (total > 0)
+                return total;
+            return n;
+        }
+        if (n == 0)
+            break;
+        total += n;
+        if ((size_t)n < vector[i].iov_len)
+            break;
+    }
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: readv r=%d\n", total);
+#endif
+    return total;
+}
+
+int writev(int fd, const struct iovec *vector, int count)
+{
+    int i;
+    int total = 0;
+
+    if (!vector || count <= 0)
+        return -1;
+
+    for (i = 0; i < count; i++) {
+        int n;
+
+        if (!vector[i].iov_base || !vector[i].iov_len)
+            continue;
+        n = lwip_send(fd, vector[i].iov_base, (int)vector[i].iov_len, 0);
+        if (n < 0) {
+            if (total > 0)
+                return total;
+            return n;
+        }
+        if (n == 0)
+            break;
+        total += n;
+        if ((size_t)n < vector[i].iov_len)
+            break;
+    }
+    return total;
+}
+
 int lwip_bind(int s, struct sockaddr *name, socklen_t namelen)
 {
     (void)s;
@@ -420,6 +493,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                 smb2DiagSelectResult = writeReady;
 #ifdef SMB2TEST_BUILD
                 printf("SMB2TEST: select slice-read ready=%d waited=%d\n", writeReady, waited);
+                printf("SMB2TEST: select return to libsmb2\n");
 #endif
                 return writeReady;
             }
