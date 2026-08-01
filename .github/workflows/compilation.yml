@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew@sha256:605588abb2381b713c267986a9a65dd84be948ca9e6559253d961d18f3164684
     steps:
     - name: git checkout
       uses: actions/checkout@v6
@@ -51,7 +51,7 @@ jobs:
         extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
         pademu: [PADEMU=0, PADEMU=1]
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew@sha256:605588abb2381b713c267986a9a65dd84be948ca9e6559253d961d18f3164684
     steps:
     - name: git checkout
       uses: actions/checkout@v6
@@ -91,7 +91,7 @@ jobs:
 
   build-lang:
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew@sha256:605588abb2381b713c267986a9a65dd84be948ca9e6559253d961d18f3164684
     steps:
     - name: git checkout
       uses: actions/checkout@v6
@@ -119,8 +119,8 @@ jobs:
       fail-fast: false
       matrix:
         debug: [iopcore_debug, ingame_debug, eesio_debug, iopcore_ppctty_debug, ingame_ppctty_debug, DTL_T10000=1]
-        # container_commit: [":main", "@sha256:7df074b3007f918b81f911e8b21fce1f297eff73ca03508064651ce2c8713570"] Replace with desired docker image hash or tag
-        container_commit: [":main"]
+        # container_commit: ["@sha256:605588abb2381b713c267986a9a65dd84be948ca9e6559253d961d18f3164684", "@sha256:7df074b3007f918b81f911e8b21fce1f297eff73ca03508064651ce2c8713570"] Replace with desired docker image hash or tag
+        container_commit: ["@sha256:605588abb2381b713c267986a9a65dd84be948ca9e6559253d961d18f3164684"]
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew${{ matrix.container_commit }}
     steps:
