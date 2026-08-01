@@ -394,10 +394,13 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     }
 
     /*
-     * 纯读等待：不用阻塞 select（PCSX2 上收包时易触发 IOP JIT 崩在 select 内）。
-     * 改为短周期 FIONREAD 轮询。
+     * 纯读等待：避免长时间阻塞在 select 内（PCSX2 IOP JIT 易崩）。
+     * 但必须调用 plwip_select 才能让 lwIP/SMAP 把收包泵进套接字；
+     * 仅 FIONREAD+DelayThread 不会处理入站报文，会一直 R0 超时。
      */
     if (readset && !writeset) {
+        struct timeval slice;
+
         wait_ms = 5000;
         if (timeout)
             wait_ms = (int)(timeout->tv_sec * 1000 + timeout->tv_usec / 1000);
@@ -406,34 +409,27 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
         if (wait_ms > 30000)
             wait_ms = 30000;
 
-        for (waited = 0; waited <= wait_ms; waited += 20) {
-            writeReady = 0;
-            FD_ZERO(readset);
-            for (i = 0; i < maxfdp1; i++) {
-                u16 available = 0;
+        for (waited = 0; waited <= wait_ms; waited += 100) {
+            fd_set rs = pendingReadSet;
 
-                if (!FD_ISSET(i, &pendingReadSet))
-                    continue;
-                if (plwip_ioctl && plwip_ioctl(i, FIONREAD, &available) == 0 && available > 0) {
-                    FD_SET(i, readset);
-                    smb2DiagRecvAvailable = available;
-                    writeReady++;
-                }
-            }
-            if (writeReady) {
+            slice.tv_sec = 0;
+            slice.tv_usec = 100000; /* 100ms，泵送协议栈并等待可读 */
+            writeReady = plwip_select(maxfdp1, &rs, NULL, NULL, &slice);
+            if (writeReady > 0) {
+                *readset = rs;
                 smb2DiagSelectResult = writeReady;
 #ifdef SMB2TEST_BUILD
-                printf("SMB2TEST: select poll-read ready=%d avail=%u waited=%d\n",
-                       writeReady, smb2DiagRecvAvailable, waited);
+                printf("SMB2TEST: select slice-read ready=%d waited=%d\n", writeReady, waited);
 #endif
                 return writeReady;
             }
-            DelayThread(20000);
         }
 
+        if (readset)
+            FD_ZERO(readset);
         smb2DiagSelectResult = 0;
 #ifdef SMB2TEST_BUILD
-        printf("SMB2TEST: select poll-read timeout %d ms\n", wait_ms);
+        printf("SMB2TEST: select slice-read timeout %d ms\n", wait_ms);
 #endif
         return 0;
     }
@@ -475,7 +471,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     if (smb2DiagSelectResult == 0 && readset) {
         for (i = 0; i < maxfdp1; i++) {
             if (FD_ISSET(i, &pendingReadSet)) {
-                u16 available = 0;
+                int available = 0;
 
                 if (plwip_ioctl && plwip_ioctl(i, FIONREAD, &available) == 0)
                     smb2DiagRecvAvailable = available;
