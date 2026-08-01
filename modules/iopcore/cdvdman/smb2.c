@@ -340,6 +340,8 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     int so_error;
     socklen_t so_error_len;
     int writeReady;
+    int wait_ms;
+    int waited;
 
 #ifdef SMB2TEST_BUILD
     printf("SMB2TEST: select enter max=%d r=%d w=%d e=%d\n",
@@ -350,6 +352,10 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
         pendingReadSet = *readset;
     if (writeset)
         pendingWriteSet = *writeset;
+
+    /* libsmb2 NEED_POLL 会预置 exceptset；ps2ip 上易误报，一律忽略 */
+    if (exceptset)
+        FD_ZERO(exceptset);
 
     /* 连接已完成时立刻报写就绪，避免再空等完整 timeout */
     if (writeset) {
@@ -379,19 +385,66 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                     continue;
                 FD_SET(i, writeset);
             }
-            /*
-             * libsmb2 NEED_POLL 在调 select 前会把 fd 预置进 exceptset。
-             * 此处早退未真正 select，若不清空，poll 会误报 POLLHUP，
-             * 表现为 TCP 已通（S1）却秒失败且 T0（从未 send）。
-             */
-            if (exceptset)
-                FD_ZERO(exceptset);
             smb2DiagSelectResult = writeReady;
+#ifdef SMB2TEST_BUILD
+            printf("SMB2TEST: select early-write %d\n", writeReady);
+#endif
             return writeReady;
         }
     }
 
-    smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, exceptset, timeout);
+    /*
+     * 纯读等待：不用阻塞 select（PCSX2 上收包时易触发 IOP JIT 崩在 select 内）。
+     * 改为短周期 FIONREAD 轮询。
+     */
+    if (readset && !writeset) {
+        wait_ms = 5000;
+        if (timeout)
+            wait_ms = (int)(timeout->tv_sec * 1000 + timeout->tv_usec / 1000);
+        if (wait_ms < 0)
+            wait_ms = 5000;
+        if (wait_ms > 30000)
+            wait_ms = 30000;
+
+        for (waited = 0; waited <= wait_ms; waited += 20) {
+            writeReady = 0;
+            FD_ZERO(readset);
+            for (i = 0; i < maxfdp1; i++) {
+                u16 available = 0;
+
+                if (!FD_ISSET(i, &pendingReadSet))
+                    continue;
+                if (plwip_ioctl && plwip_ioctl(i, FIONREAD, &available) == 0 && available > 0) {
+                    FD_SET(i, readset);
+                    smb2DiagRecvAvailable = available;
+                    writeReady++;
+                }
+            }
+            if (writeReady) {
+                smb2DiagSelectResult = writeReady;
+#ifdef SMB2TEST_BUILD
+                printf("SMB2TEST: select poll-read ready=%d avail=%u waited=%d\n",
+                       writeReady, smb2DiagRecvAvailable, waited);
+#endif
+                return writeReady;
+            }
+            DelayThread(20000);
+        }
+
+        smb2DiagSelectResult = 0;
+#ifdef SMB2TEST_BUILD
+        printf("SMB2TEST: select poll-read timeout %d ms\n", wait_ms);
+#endif
+        return 0;
+    }
+
+    smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, NULL, timeout);
+    if (exceptset)
+        FD_ZERO(exceptset);
+
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: select leave r=%d\n", smb2DiagSelectResult);
+#endif
 
     /*
      * ps2ip-nm 上已完成的 TCP 连接常不触发写就绪，libsmb2 会一直卡在 connecting。
@@ -414,8 +467,6 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             writeReady++;
         }
         if (writeReady) {
-            if (exceptset)
-                FD_ZERO(exceptset);
             smb2DiagSelectResult = writeReady;
             return writeReady;
         }
