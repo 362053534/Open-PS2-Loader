@@ -25,7 +25,8 @@ smsutils.c: ../../modules/network/SMSUTILS/SMSUTILS.irx
 	$(BIN2C) $< $@ smsutils_irx
 
 smstcpip.c:
-	$(MAKE) INGAME_DRIVER=1 FULL_LWIP=1 -C ../../modules/network/SMSTCPIP rebuild
+	# 独立测试勿用 INGAME_DRIVER：其 MEM/PCB 池过小，易出现“假连接成功、本机 netstat 无会话”
+	$(MAKE) FULL_LWIP=1 -C ../../modules/network/SMSTCPIP rebuild
 	$(BIN2C) ../../modules/network/SMSTCPIP/SMSTCPIP.irx $@ smstcpip_irx
 
 ../../modules/network/smap-ingame/smap.irx:
