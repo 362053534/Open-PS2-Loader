@@ -45,6 +45,7 @@ I_CreateThread
 I_StartThread
 I_GetSystemTime
 I_SysClock2USec
+I_DelayThread
 thbase_IMPORTS_end
 
 thsemap_IMPORTS_start

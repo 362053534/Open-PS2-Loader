@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
     scr_printf("File: %s\n", rpcRequest.path);
     scr_printf("Read: %u x %u bytes\n\n", rpcRequest.read_count, rpcRequest.read_size);
     scr_printf("Testing...\n");
-    scr_printf("(During test: netstat -an | findstr 192.168.5.100)\n\n");
+    scr_printf("First 8s: TCP hold - run: netstat -an | findstr \":445\"\n\n");
 
     memset(&rpcResult, 0, sizeof(rpcResult));
     i = SifCallRpc(&rpcClient, SMB2TEST_CMD_RUN, 0, &rpcRequest, sizeof(rpcRequest), &rpcResult, sizeof(rpcResult), NULL, NULL);

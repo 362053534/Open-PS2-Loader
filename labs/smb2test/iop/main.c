@@ -118,8 +118,44 @@ static void runTest(const struct smb2test_request *request)
     strncpy(cdvdman_settings.smb_share, request->share, sizeof(cdvdman_settings.smb_share));
     cdvdman_settings.smb_share[sizeof(cdvdman_settings.smb_share) - 1] = '\0';
 
-    /* 不再先做阻塞 TCP 探测：lwIP 默认可空等约 1 分钟，PCSX2 常在返回错误前直接崩溃 */
-    rpcResult.stage = SMB2TEST_STAGE_CONNECT;
+    /* 先做真实阻塞 TCP，并保持数秒，方便本机 netstat 核对是否出现 ESTABLISHED */
+    {
+        int socketID;
+        int socketError;
+        socklen_t socketErrorLength;
+        struct sockaddr_in serverAddress;
+        u32 serverIP;
+
+        rpcResult.stage = SMB2TEST_STAGE_CONNECT;
+        serverIP = pinet_addr(request->server);
+        printf("SMB2TEST: TCP probe %s (%08lX):%u\n", request->server, (unsigned long)serverIP, request->port);
+
+        socketID = plwip_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (socketID < 0) {
+            rpcResult.result = socketID;
+            sprintf(rpcResult.error, "TCP socket failed: %d", socketID);
+            goto cleanup;
+        }
+
+        memset(&serverAddress, 0, sizeof(serverAddress));
+        serverAddress.sin_family = AF_INET;
+        serverAddress.sin_port = htons(request->port);
+        serverAddress.sin_addr.s_addr = serverIP;
+        rpcResult.result = plwip_connect(socketID, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+        if (rpcResult.result < 0) {
+            socketError = 0;
+            socketErrorLength = sizeof(socketError);
+            plwip_getsockopt(socketID, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength);
+            plwip_close(socketID);
+            sprintf(rpcResult.error, "TCP connect fail r=%d so=%d ip=%08lX", rpcResult.result, socketError, (unsigned long)serverIP);
+            goto cleanup;
+        }
+
+        printf("SMB2TEST: TCP OK, hold 8s for netstat :445\n");
+        DelayThread(8000000);
+        plwip_close(socketID);
+    }
+
     printf("SMB2TEST: SMB2 connect %s:%u share=%s\n", request->server, request->port, request->share);
     rpcResult.result = smb_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, NULL);
     if (rpcResult.result <= 0) {
