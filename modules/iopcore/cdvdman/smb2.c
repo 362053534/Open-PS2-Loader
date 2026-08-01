@@ -58,6 +58,8 @@ static u8 smb2DiagSendHeader[8];
 /* libsmb2 iop_connect 失败后会再读 SO_ERROR；若仍为 EINPROGRESS 会覆盖 errno。记住失败码供 getsockopt 改写。 */
 static int smb2ConnectFailedFd = -1;
 static int smb2ConnectFailedErrno;
+static u32 smb2DiagConnectIP;
+static u16 smb2DiagConnectPort;
 smb2_diag_t smb2Diag;
 
 struct addrinfo
@@ -100,8 +102,14 @@ int lwip_close(int s)
 
 int lwip_socket(int domain, int type, int protocol)
 {
-    int s = plwip_socket(domain, type, protocol);
     unsigned int nonblocking = 0;
+    int s;
+
+    /* 与 TCP probe 一致：SOCK_STREAM 显式用 IPPROTO_TCP（libsmb2 常传 protocol=0） */
+    if (type == SOCK_STREAM && protocol == 0)
+        protocol = IPPROTO_TCP;
+
+    s = plwip_socket(domain, type, protocol);
 
     /* 新建套接字立即清非阻塞，避免随后 fcntl/ioctl 竞态 */
     if (s >= 0 && plwip_ioctl)
@@ -134,12 +142,36 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     int so_error = 0;
     socklen_t so_error_len = sizeof(so_error);
     unsigned int nonblocking = 0;
+    struct sockaddr_in clean;
+    struct sockaddr *connectName = name;
+    socklen_t connectLen = namelen;
+
+    smb2DiagConnectIP = 0;
+    smb2DiagConnectPort = 0;
+
+    /*
+     * 始终重建干净的 sockaddr_in（含 sin_len），与已成功的 TCP probe 完全一致。
+     * libsmb2 经 sockaddr_storage 拷贝后偶发缺 sin_len / 脏填充，ps2ip 会报 EHOSTUNREACH(113)。
+     */
+    if (name && name->sa_family == AF_INET && namelen >= (socklen_t)sizeof(struct sockaddr_in)) {
+        struct sockaddr_in *in = (struct sockaddr_in *)name;
+
+        memset(&clean, 0, sizeof(clean));
+        clean.sin_len = sizeof(clean);
+        clean.sin_family = AF_INET;
+        clean.sin_port = in->sin_port;
+        clean.sin_addr = in->sin_addr;
+        connectName = (struct sockaddr *)&clean;
+        connectLen = sizeof(clean);
+        smb2DiagConnectIP = clean.sin_addr.s_addr;
+        smb2DiagConnectPort = ntohs(clean.sin_port);
+    }
 
     /* 连接前强制阻塞：与已成功的 TCP probe / smbman 一致 */
     if (plwip_ioctl)
         plwip_ioctl(s, FIONBIO, &nonblocking);
 
-    result = plwip_connect(s, name, namelen);
+    result = plwip_connect(s, connectName, connectLen);
     smb2DiagConnectResult = result;
 
     if (result == 0) {
@@ -483,7 +515,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
             strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
             smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
         } else
-            sprintf(smb2Diag.error, "C%d E%d S%d T%d R%d A%d", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, smb2DiagRecvAvailable);
+            sprintf(smb2Diag.error, "C%d E%d S%d D%08lX:%u", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, (unsigned long)smb2DiagConnectIP, smb2DiagConnectPort);
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;
