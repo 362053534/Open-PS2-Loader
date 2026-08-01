@@ -55,6 +55,9 @@ static int smb2DiagSendResult;
 static int smb2DiagRecvResult;
 static int smb2DiagRecvAvailable;
 static u8 smb2DiagSendHeader[8];
+/* libsmb2 iop_connect 失败后会再读 SO_ERROR；若仍为 EINPROGRESS 会覆盖 errno。记住失败码供 getsockopt 改写。 */
+static int smb2ConnectFailedFd = -1;
+static int smb2ConnectFailedErrno;
 smb2_diag_t smb2Diag;
 
 struct addrinfo
@@ -139,8 +142,11 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     result = plwip_connect(s, name, namelen);
     smb2DiagConnectResult = result;
 
-    if (result == 0)
+    if (result == 0) {
+        if (smb2ConnectFailedFd == s)
+            smb2ConnectFailedFd = -1;
         return 0;
+    }
 
     if (result == -EINPROGRESS || result == -EALREADY)
         so_error = EINPROGRESS;
@@ -165,6 +171,8 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
             smb2DiagSelectResult = waited + 1;
             if (so_error == 0 || so_error == EISCONN) {
                 smb2DiagConnectResult = 0;
+                if (smb2ConnectFailedFd == s)
+                    smb2ConnectFailedFd = -1;
                 errno = 0;
                 return 0;
             }
@@ -177,6 +185,8 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     }
 
     errno = so_error ? so_error : ECONNREFUSED;
+    smb2ConnectFailedFd = s;
+    smb2ConnectFailedErrno = errno;
     smb2DiagConnectResult = -1;
     return -1;
 }
@@ -313,6 +323,17 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
 {
     int result = plwip_getsockopt(s, level, optname, optval, optlen);
 
+    /*
+     * 覆盖 libsmb2 iop_connect 的二次 SO_ERROR 读取：若仍为 EINPROGRESS，
+     * 会把我们已设好的 ETIMEDOUT 盖掉。勿再定义 iop_connect（与 libsmb2.a 多重定义）。
+     */
+    if (result == 0 && level == SOL_SOCKET && optname == SO_ERROR && optval && s == smb2ConnectFailedFd) {
+        *(int *)optval = smb2ConnectFailedErrno;
+        smb2DiagSocketError = smb2ConnectFailedErrno;
+        smb2ConnectFailedFd = -1;
+        return 0;
+    }
+
     if (result == 0 && level == SOL_SOCKET && optname == SO_ERROR)
         smb2DiagSocketError = *(int *)optval;
 
@@ -353,20 +374,6 @@ int lwip_fcntl(int s, int cmd, int val)
 int fcntl(int s, int cmd, int val)
 {
     return lwip_fcntl(s, cmd, val);
-}
-
-/*
- * 覆盖 libsmb2/compat.c 的 iop_connect：原实现在 lwip_connect 失败后用 SO_ERROR
- * 覆盖 errno，常把 ETIMEDOUT 改回 EINPROGRESS，导致 connect_async 误判为“连接中”
- * 并 smb2_set_error("")，最终只剩 CFFFFFFF。
- */
-int iop_connect(int sockfd, struct sockaddr *addr, socklen_t addrlen)
-{
-    int rc = lwip_connect(sockfd, addr, addrlen);
-
-    if (rc < 0 && (errno == EINPROGRESS || errno == EALREADY || !errno))
-        errno = ETIMEDOUT;
-    return rc;
 }
 
 u32 inet_addr(const char *cp)
