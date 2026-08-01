@@ -768,25 +768,29 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
 
 #ifdef SMB2TEST_BUILD
 int __real_smb2_service(struct smb2_context *smb2, int revents);
-struct smb2_iovec;
-struct smb2_io_vectors;
+struct smb2_io_vectors {
+    size_t num_done;
+    size_t total_size;
+    int niov;
+    struct smb2_iovec iov[256];
+};
 void __real_smb2_free_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v);
 struct smb2_iovec *__real_smb2_add_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v, u8 *buf, size_t len, void (*free_fn)(void *));
 
 void __wrap_smb2_free_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v)
 {
-    printf("SMB2TEST: free_iov enter\n");
+    printf("SMB2TEST: free_iov enter n=%d d=%u t=%u f=%u\n", v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size, v->niov > 0 ? (unsigned int)v->iov[0].len : 0);
     __real_smb2_free_iovector(smb2, v);
-    printf("SMB2TEST: free_iov leave\n");
+    printf("SMB2TEST: free_iov leave n=%d d=%u t=%u\n", v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size);
 }
 
 struct smb2_iovec *__wrap_smb2_add_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v, u8 *buf, size_t len, void (*free_fn)(void *))
 {
     struct smb2_iovec *result;
 
-    printf("SMB2TEST: add_iov enter len=%u\n", (unsigned int)len);
+    printf("SMB2TEST: add_iov enter len=%u n=%d d=%u t=%u\n", (unsigned int)len, v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size);
     result = __real_smb2_add_iovector(smb2, v, buf, len, free_fn);
-    printf("SMB2TEST: add_iov leave\n");
+    printf("SMB2TEST: add_iov leave n=%d d=%u t=%u f=%u\n", v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size, v->niov > 0 ? (unsigned int)v->iov[0].len : 0);
     return result;
 }
 
