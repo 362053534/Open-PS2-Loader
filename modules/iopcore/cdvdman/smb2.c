@@ -99,8 +99,11 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     int result = plwip_connect(s, name, namelen);
 
     smb2DiagConnectResult = result;
-    if (result < 0)
+    /* 仅把“连接进行中”标成 EINPROGRESS；真实失败勿伪装，否则 libsmb2 会空等超时 */
+    if (result == -EINPROGRESS || result == -EALREADY)
         errno = EINPROGRESS;
+    else if (result < 0 && result != -1)
+        errno = -result;
 
     return result;
 }
@@ -289,7 +292,11 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     if (!smb2Context)
         return -ENOMEM;
 
+#ifdef SMB2TEST_BUILD
+    smb2_set_timeout(smb2Context, 5);
+#else
     smb2_set_timeout(smb2Context, 30);
+#endif
     smb2_set_user(smb2Context, smb2User);
     smb2_set_password(smb2Context, smb2Password);
     *capabilities = 0;

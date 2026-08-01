@@ -89,9 +89,6 @@ static void runTest(const struct smb2test_request *request)
     u32 i, j;
     u16 fid = 0xFFFF;
     int closeResult;
-    int socketID, socketError;
-    socklen_t socketErrorLength;
-    struct sockaddr_in serverAddress;
     unsigned char *readBuffer = NULL;
 
     memset(&rpcResult, 0, sizeof(rpcResult));
@@ -121,29 +118,9 @@ static void runTest(const struct smb2test_request *request)
     strncpy(cdvdman_settings.smb_share, request->share, sizeof(cdvdman_settings.smb_share));
     cdvdman_settings.smb_share[sizeof(cdvdman_settings.smb_share) - 1] = '\0';
 
+    /* 不再先做阻塞 TCP 探测：lwIP 默认可空等约 1 分钟，PCSX2 常在返回错误前直接崩溃 */
     rpcResult.stage = SMB2TEST_STAGE_CONNECT;
-    socketID = plwip_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (socketID < 0) {
-        rpcResult.result = socketID;
-        sprintf(rpcResult.error, "TCP socket failed: %d", socketID);
-        goto cleanup;
-    }
-
-    memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(request->port);
-    serverAddress.sin_addr.s_addr = pinet_addr(request->server);
-    rpcResult.result = plwip_connect(socketID, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
-    if (rpcResult.result < 0) {
-        socketError = 0;
-        socketErrorLength = sizeof(socketError);
-        plwip_getsockopt(socketID, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength);
-        plwip_close(socketID);
-        sprintf(rpcResult.error, "TCP connect: r=%d so=%d", rpcResult.result, socketError);
-        goto cleanup;
-    }
-    plwip_close(socketID);
-
+    printf("SMB2TEST: SMB2 connect %s:%u share=%s\n", request->server, request->port, request->share);
     rpcResult.result = smb_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, NULL);
     if (rpcResult.result <= 0) {
         if (smb2Diag.error[0]) {
@@ -248,7 +225,7 @@ int _start(int argc, char *argv[])
     thread.option = SMB2TEST_RPC_ID;
     thread.thread = rpcThread;
     thread.priority = 0x20;
-    thread.stacksize = 0x6000;
+    thread.stacksize = 0x10000;
     threadID = CreateThread(&thread);
     if (threadID < 0)
         return MODULE_NO_RESIDENT_END;
