@@ -222,12 +222,78 @@ int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout)
 {
     fd_set pendingReadSet;
+    fd_set pendingWriteSet;
     int i;
+    int so_error;
+    socklen_t so_error_len;
+    int writeReady;
 
     if (readset)
         pendingReadSet = *readset;
+    if (writeset)
+        pendingWriteSet = *writeset;
+
+    /* 连接已完成时立刻报写就绪，避免再空等完整 timeout */
+    if (writeset) {
+        writeReady = 0;
+        for (i = 0; i < maxfdp1; i++) {
+            if (!FD_ISSET(i, &pendingWriteSet))
+                continue;
+            so_error = 0;
+            so_error_len = sizeof(so_error);
+            if (plwip_getsockopt)
+                plwip_getsockopt(i, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
+            if (so_error == EINPROGRESS || so_error == EALREADY)
+                continue;
+            writeReady++;
+        }
+        if (writeReady && !readset) {
+            FD_ZERO(writeset);
+            for (i = 0; i < maxfdp1; i++) {
+                if (!FD_ISSET(i, &pendingWriteSet))
+                    continue;
+                so_error = 0;
+                so_error_len = sizeof(so_error);
+                if (plwip_getsockopt)
+                    plwip_getsockopt(i, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
+                smb2DiagSocketError = so_error;
+                if (so_error == EINPROGRESS || so_error == EALREADY)
+                    continue;
+                FD_SET(i, writeset);
+            }
+            smb2DiagSelectResult = writeReady;
+            return writeReady;
+        }
+    }
 
     smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, exceptset, timeout);
+
+    /*
+     * ps2ip-nm 上已完成的 TCP 连接常不触发写就绪，libsmb2 会一直卡在 connecting。
+     * 超时后用 SO_ERROR 补判：已连接或已失败都唤醒，仍 EINPROGRESS 则保持超时。
+     */
+    if (smb2DiagSelectResult == 0 && writeset) {
+        writeReady = 0;
+        FD_ZERO(writeset);
+        for (i = 0; i < maxfdp1; i++) {
+            if (!FD_ISSET(i, &pendingWriteSet))
+                continue;
+            so_error = 0;
+            so_error_len = sizeof(so_error);
+            if (plwip_getsockopt)
+                plwip_getsockopt(i, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
+            smb2DiagSocketError = so_error;
+            if (so_error == EINPROGRESS || so_error == EALREADY)
+                continue;
+            FD_SET(i, writeset);
+            writeReady++;
+        }
+        if (writeReady) {
+            smb2DiagSelectResult = writeReady;
+            return writeReady;
+        }
+    }
+
     if (smb2DiagSelectResult == 0 && readset) {
         for (i = 0; i < maxfdp1; i++) {
             if (FD_ISSET(i, &pendingReadSet)) {
@@ -287,6 +353,20 @@ int lwip_fcntl(int s, int cmd, int val)
 int fcntl(int s, int cmd, int val)
 {
     return lwip_fcntl(s, cmd, val);
+}
+
+/*
+ * 覆盖 libsmb2/compat.c 的 iop_connect：原实现在 lwip_connect 失败后用 SO_ERROR
+ * 覆盖 errno，常把 ETIMEDOUT 改回 EINPROGRESS，导致 connect_async 误判为“连接中”
+ * 并 smb2_set_error("")，最终只剩 CFFFFFFF。
+ */
+int iop_connect(int sockfd, struct sockaddr *addr, socklen_t addrlen)
+{
+    int rc = lwip_connect(sockfd, addr, addrlen);
+
+    if (rc < 0 && (errno == EINPROGRESS || errno == EALREADY || !errno))
+        errno = ETIMEDOUT;
+    return rc;
 }
 
 u32 inet_addr(const char *cp)
@@ -396,7 +476,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
             strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
             smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
         } else
-            sprintf(smb2Diag.error, "C%X S%X T%X R%X A%X H%02X%02X%02X%02X%02X%02X%02X%02X", smb2DiagConnectResult, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, smb2DiagRecvAvailable, smb2DiagSendHeader[0], smb2DiagSendHeader[1], smb2DiagSendHeader[2], smb2DiagSendHeader[3], smb2DiagSendHeader[4], smb2DiagSendHeader[5], smb2DiagSendHeader[6], smb2DiagSendHeader[7]);
+            sprintf(smb2Diag.error, "C%d E%d S%d T%d R%d A%d", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, smb2DiagRecvAvailable);
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;
