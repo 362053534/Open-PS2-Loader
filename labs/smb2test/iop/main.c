@@ -165,7 +165,9 @@ static void runTest(const struct smb2test_request *request)
     }
 
     printf("SMB2TEST: SMB2 connect %s:%u share=%s\n", request->server, request->port, request->share);
+    printf("SMB2TEST: before NegotiateProtocol\n");
     rpcResult.result = smb_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, NULL);
+    printf("SMB2TEST: after NegotiateProtocol r=%d\n", rpcResult.result);
     if (rpcResult.result <= 0) {
         if (smb2Diag.error[0]) {
             strncpy(rpcResult.error, smb2Diag.error, sizeof(rpcResult.error));
