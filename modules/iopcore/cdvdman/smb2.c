@@ -131,8 +131,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     int so_error = 0;
     socklen_t so_error_len = sizeof(so_error);
     unsigned int nonblocking = 0;
-    fd_set wset;
-    struct timeval tv;
 
     /* 连接前强制阻塞：与已成功的 TCP probe / smbman 一致 */
     if (plwip_ioctl)
@@ -153,24 +151,28 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
         smb2DiagSocketError = so_error;
     }
 
-    /* 若仍落入“连接中”，用 select 等到可写，再查 SO_ERROR（兼容偶发非阻塞） */
+    /* 若仍落入“连接中”，轮询 SO_ERROR（不用 select 写就绪——在 ps2ip-nm 上不可靠） */
     if (so_error == EINPROGRESS || so_error == EALREADY || so_error == 0) {
-        FD_ZERO(&wset);
-        FD_SET(s, &wset);
-        tv.tv_sec = 5;
-        tv.tv_usec = 0;
-        smb2DiagSelectResult = plwip_select(s + 1, NULL, &wset, NULL, &tv);
-        so_error = 0;
-        so_error_len = sizeof(so_error);
-        if (plwip_getsockopt)
-            plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
-        smb2DiagSocketError = so_error;
-        if (smb2DiagSelectResult > 0 && so_error == 0) {
-            smb2DiagConnectResult = 0;
-            errno = 0;
-            return 0;
+        int waited;
+
+        for (waited = 0; waited < 50; waited++) {
+            DelayThread(100000); /* 100ms，最多约 5s */
+            so_error = 0;
+            so_error_len = sizeof(so_error);
+            if (plwip_getsockopt)
+                plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
+            smb2DiagSocketError = so_error;
+            smb2DiagSelectResult = waited + 1;
+            if (so_error == 0 || so_error == EISCONN) {
+                smb2DiagConnectResult = 0;
+                errno = 0;
+                return 0;
+            }
+            if (so_error != EINPROGRESS && so_error != EALREADY)
+                break;
         }
-        if (!so_error)
+        /* 绝不能把 EINPROGRESS 交回 libsmb2，否则会当成连接中继续空等 */
+        if (so_error == EINPROGRESS || so_error == EALREADY || !so_error)
             so_error = ETIMEDOUT;
     }
 
