@@ -122,6 +122,35 @@ int asprintf(char **strp, const char *fmt, ...)
     return len;
 }
 
+/*
+ * 覆盖 libsmb2 的 SHA512 preauth（USHA*）。
+ * negotiate_cb 在收到 NEGOTIATE 响应后总会算 preauthhash；抓包显示此前在
+ * 3.1.1 响应后、SESSION_SETUP 前崩溃。SMB 2.0.2 不依赖该哈希即可建会话。
+ * 需与 -Wl,--allow-multiple-definition 联用。
+ */
+int USHAReset(void *ctx, int whichSha)
+{
+    (void)ctx;
+    (void)whichSha;
+    return 0;
+}
+
+int USHAInput(void *ctx, const unsigned char *bytes, unsigned int bytecount)
+{
+    (void)ctx;
+    (void)bytes;
+    (void)bytecount;
+    return 0;
+}
+
+int USHAResult(void *ctx, unsigned char *digest)
+{
+    (void)ctx;
+    if (digest)
+        memset(digest, 0, 64);
+    return 0;
+}
+
 int lwip_close(int s)
 {
     return plwip_close(s);
@@ -256,6 +285,9 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 int lwip_recv(int s, void *mem, int len, unsigned int flags)
 {
     smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: recv r=%d want=%d\n", smb2DiagRecvResult, len);
+#endif
     return smb2DiagRecvResult;
 }
 
@@ -265,6 +297,12 @@ int lwip_send(int s, void *dataptr, int size, unsigned int flags)
         memcpy(smb2DiagSendHeader, dataptr, sizeof(smb2DiagSendHeader));
 
     smb2DiagSendResult = plwip_send(s, dataptr, size, flags);
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: send r=%d size=%d hdr=%02X%02X%02X%02X\n",
+           smb2DiagSendResult, size,
+           smb2DiagSendHeader[0], smb2DiagSendHeader[1],
+           smb2DiagSendHeader[2], smb2DiagSendHeader[3]);
+#endif
     return smb2DiagSendResult;
 }
 
@@ -567,7 +605,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smb2Diag.error[0] = '\0';
 
 #ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: smb2_connect_share %s/%s\n", smb2Server, smb2Share);
+    printf("SMB2TEST: dialect lock 0202, connect %s/%s\n", smb2Server, smb2Share);
 #endif
     if (smb2_connect_share(smb2Context, smb2Server, smb2Share, smb2User) != 0) {
 #ifdef SMB2TEST_BUILD

@@ -161,7 +161,10 @@ static void runTest(const struct smb2test_request *request)
         }
 
         plwip_close(socketID);
-        printf("SMB2TEST: TCP OK, start SMB2\n");
+        printf("SMB2TEST: TCP OK, pause 1.5s for pcap\n");
+        /* 给 Wireshark 留时间刷出 probe 握手，并与后续 SMB SYN 分开 */
+        DelayThread(1500000);
+        printf("SMB2TEST: start SMB2\n");
     }
 
     printf("SMB2TEST: SMB2 connect %s:%u share=%s\n", request->server, request->port, request->share);
@@ -271,7 +274,8 @@ int _start(int argc, char *argv[])
     thread.option = SMB2TEST_RPC_ID;
     thread.thread = rpcThread;
     thread.priority = 0x20;
-    thread.stacksize = 0x10000;
+    /* libsmb2 socket 路径有 iovec[256]，再加 SHA/NTLM，64KB 偏紧 */
+    thread.stacksize = 0x20000;
     threadID = CreateThread(&thread);
     if (threadID < 0)
         return MODULE_NO_RESIDENT_END;
