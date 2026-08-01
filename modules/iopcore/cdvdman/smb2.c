@@ -310,6 +310,19 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
         return n;
     }
 #endif
+    /* libsmb2 按非阻塞语义使用 recv；无数据时返回 EAGAIN，避免阻塞死等 */
+    if (plwip_ioctl) {
+        int available = 0;
+
+        if (plwip_ioctl(s, FIONREAD, &available) == 0 && available <= 0) {
+            errno = EAGAIN;
+#ifdef SMB2TEST_BUILD
+            printf("SMB2TEST: recv EAGAIN\n");
+#endif
+            smb2DiagRecvResult = -1;
+            return -1;
+        }
+    }
     smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
 #ifdef SMB2TEST_BUILD
     printf("SMB2TEST: recv r=%d want=%d\n", smb2DiagRecvResult, len);
@@ -753,9 +766,16 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
 
 #ifdef SMB2TEST_BUILD
 int __real_smb2_service(struct smb2_context *smb2, int revents);
+int smb2_polllin_safe(struct smb2_context *smb2);
 int __wrap_smb2_service(struct smb2_context *smb2, int revents)
 {
     printf("SMB2TEST: smb2_service rev=0x%x stack=%d\n", revents, CheckThreadStack());
+    /* POLLIN 走 static-iovec 安全读，避开库内 smb2_read_data 栈数组导致的 IOP 跑飞 */
+    if (revents & POLLIN) {
+        int r = smb2_polllin_safe(smb2);
+        printf("SMB2TEST: smb2_service polllin_safe r=%d\n", r);
+        return (r < 0) ? -1 : 0;
+    }
     return __real_smb2_service(smb2, revents);
 }
 #endif
