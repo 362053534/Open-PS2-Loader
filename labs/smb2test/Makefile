@@ -1,7 +1,7 @@
 EE_BIN = SMB2TEST.ELF
-EE_OBJS = main.o ps2dev9.o smsutils.o smstcpip.o smap.o smb2test_irx.o
+EE_OBJS = main.o ps2dev9.o netman.o smsutils.o smap.o ps2ip.o ps2ips.o smb2test_irx.o
 
-EE_LIBS = -lpatches -ldebug -lc -lkernel
+EE_LIBS = -lnetman -lps2ips -lpatches -ldebug -lc -lkernel
 EE_CFLAGS = -G0 -O2 -Wall
 EE_LDFLAGS = -s
 
@@ -11,12 +11,16 @@ all: $(EE_BIN)
 
 clean:
 	$(MAKE) -C iop clean
-	rm -f $(EE_BIN) $(EE_OBJS) ps2dev9.c smsutils.c smstcpip.c smap.c smb2test_irx.c
+	rm -f $(EE_BIN) $(EE_OBJS) ps2dev9.c netman.c smsutils.c smap.c ps2ip.c ps2ips.c smb2test_irx.c
+	$(MAKE) -C ../../modules/network/SMSUTILS clean
 
 rebuild: clean all
 
 ps2dev9.c: $(PS2SDK)/iop/irx/ps2dev9.irx
 	$(BIN2C) $< $@ ps2dev9_irx
+
+netman.c: $(PS2SDK)/iop/irx/netman.irx
+	$(BIN2C) $< $@ netman_irx
 
 ../../modules/network/SMSUTILS/SMSUTILS.irx:
 	$(MAKE) -C ../../modules/network/SMSUTILS
@@ -24,16 +28,15 @@ ps2dev9.c: $(PS2SDK)/iop/irx/ps2dev9.irx
 smsutils.c: ../../modules/network/SMSUTILS/SMSUTILS.irx
 	$(BIN2C) $< $@ smsutils_irx
 
-smstcpip.c:
-	# 独立测试勿用 INGAME_DRIVER：其 MEM/PCB 池过小，易出现“假连接成功、本机 netstat 无会话”
-	$(MAKE) FULL_LWIP=1 -C ../../modules/network/SMSTCPIP rebuild
-	$(BIN2C) ../../modules/network/SMSTCPIP/SMSTCPIP.irx $@ smstcpip_irx
-
-../../modules/network/smap-ingame/smap.irx:
-	$(MAKE) -C ../../modules/network/smap-ingame
-
-smap.c: ../../modules/network/smap-ingame/smap.irx
+smap.c: $(PS2SDK)/iop/irx/smap.irx
 	$(BIN2C) $< $@ smap_irx
+
+# 与 OPL 菜单 ETH 相同：netman + smsutils + smap + ps2ip-nm + ps2ips
+ps2ip.c: $(PS2SDK)/iop/irx/ps2ip-nm.irx
+	$(BIN2C) $< $@ ps2ip_irx
+
+ps2ips.c: $(PS2SDK)/iop/irx/ps2ips.irx
+	$(BIN2C) $< $@ ps2ips_irx
 
 iop/smb2test.irx:
 	$(MAKE) -C iop

@@ -3,6 +3,8 @@
 #include <iopheap.h>
 #include <kernel.h>
 #include <loadfile.h>
+#include <netman.h>
+#include <ps2ip.h>
 #include <sbv_patches.h>
 #include <sifrpc.h>
 #include <stdio.h>
@@ -14,24 +16,79 @@
 
 extern unsigned char ps2dev9_irx[];
 extern unsigned int size_ps2dev9_irx;
+extern unsigned char netman_irx[];
+extern unsigned int size_netman_irx;
 extern unsigned char smsutils_irx[];
 extern unsigned int size_smsutils_irx;
-extern unsigned char smstcpip_irx[];
-extern unsigned int size_smstcpip_irx;
 extern unsigned char smap_irx[];
 extern unsigned int size_smap_irx;
+extern unsigned char ps2ip_irx[];
+extern unsigned int size_ps2ip_irx;
+extern unsigned char ps2ips_irx[];
+extern unsigned int size_ps2ips_irx;
 extern unsigned char smb2test_irx[];
 extern unsigned int size_smb2test_irx;
 
 static SifRpcClientData_t rpcClient;
 static struct smb2test_request rpcRequest __attribute__((aligned(64)));
 static struct smb2test_result rpcResult __attribute__((aligned(64)));
-static char ipConfig[64] __attribute__((aligned(64)));
+
+static int parse_ipv4(const char *text, unsigned char out[4])
+{
+    int a, b, c, d;
+
+    if (sscanf(text, "%d.%d.%d.%d", &a, &b, &c, &d) != 4)
+        return -1;
+    if (a < 0 || a > 255 || b < 0 || b > 255 || c < 0 || c > 255 || d < 0 || d > 255)
+        return -1;
+    out[0] = (unsigned char)a;
+    out[1] = (unsigned char)b;
+    out[2] = (unsigned char)c;
+    out[3] = (unsigned char)d;
+    return 0;
+}
+
+static int apply_static_ip(void)
+{
+    t_ip_info ip_info;
+    unsigned char ip[4], mask[4], gw[4];
+    int result;
+
+    if (parse_ipv4(SMB2TEST_PS2_IP, ip) < 0 ||
+        parse_ipv4(SMB2TEST_NETMASK, mask) < 0 ||
+        parse_ipv4(SMB2TEST_GATEWAY, gw) < 0) {
+        scr_printf("Bad IP config strings.\n");
+        return -1;
+    }
+
+    result = ps2ip_getconfig("sm0", &ip_info);
+    if (result < 0) {
+        scr_printf("ps2ip_getconfig failed: %d\n", result);
+        return result;
+    }
+
+    memset(&ip_info.ipaddr, 0, sizeof(ip_info.ipaddr));
+    memset(&ip_info.netmask, 0, sizeof(ip_info.netmask));
+    memset(&ip_info.gw, 0, sizeof(ip_info.gw));
+    memcpy(&ip_info.ipaddr, ip, 4);
+    memcpy(&ip_info.netmask, mask, 4);
+    memcpy(&ip_info.gw, gw, 4);
+    ip_info.dhcp_enabled = 0;
+
+    result = ps2ip_setconfig(&ip_info);
+    if (result < 0) {
+        scr_printf("ps2ip_setconfig failed: %d\n", result);
+        return result;
+    }
+
+    scr_printf("IP %u.%u.%u.%u gw %u.%u.%u.%u\n",
+               ip[0], ip[1], ip[2], ip[3], gw[0], gw[1], gw[2], gw[3]);
+    return 0;
+}
 
 int main(int argc, char *argv[])
 {
     int i, moduleID, moduleResult = 0;
-    int ipConfigLength = 0;
     u32 speed = 0;
     const char *stage;
 
@@ -40,7 +97,7 @@ int main(int argc, char *argv[])
 
     init_scr();
     scr_clear();
-    scr_printf("SMB2TEST - OPL IOP SMB2 sequential read\n\n");
+    scr_printf("SMB2TEST - OPL IOP SMB2 (netman/ps2ip stack)\n\n");
 
     SifInitRpc(0);
     scr_printf("Resetting IOP... ");
@@ -63,33 +120,43 @@ int main(int argc, char *argv[])
     sbv_patch_disable_prefix_check();
     scr_printf("OK\n");
 
-    strcpy(&ipConfig[ipConfigLength], SMB2TEST_PS2_IP);
-    ipConfigLength += strlen(SMB2TEST_PS2_IP) + 1;
-    strcpy(&ipConfig[ipConfigLength], SMB2TEST_NETMASK);
-    ipConfigLength += strlen(SMB2TEST_NETMASK) + 1;
-    strcpy(&ipConfig[ipConfigLength], SMB2TEST_GATEWAY);
-    ipConfigLength += strlen(SMB2TEST_GATEWAY) + 1;
-
     moduleID = SifExecModuleBuffer(ps2dev9_irx, size_ps2dev9_irx, 0, NULL, &moduleResult);
     scr_printf("DEV9: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
         goto end;
+
+    /* 加载顺序与 OPL ethLoadModules 对齐 */
+    moduleID = SifExecModuleBuffer(netman_irx, size_netman_irx, 0, NULL, &moduleResult);
+    scr_printf("NETMAN: id=%d result=%d\n", moduleID, moduleResult);
+    if (moduleID < 0)
+        goto end;
+    NetManInit();
 
     moduleID = SifExecModuleBuffer(smsutils_irx, size_smsutils_irx, 0, NULL, &moduleResult);
     scr_printf("SMSUTILS: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
         goto end;
 
-    moduleID = SifExecModuleBuffer(smstcpip_irx, size_smstcpip_irx, 0, NULL, &moduleResult);
+    moduleID = SifExecModuleBuffer(smap_irx, size_smap_irx, 0, NULL, &moduleResult);
+    scr_printf("SMAP: id=%d result=%d\n", moduleID, moduleResult);
+    if (moduleID < 0)
+        goto end;
+
+    moduleID = SifExecModuleBuffer(ps2ip_irx, size_ps2ip_irx, 0, NULL, &moduleResult);
     scr_printf("PS2IP: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
         goto end;
 
-    moduleID = SifExecModuleBuffer(smap_irx, size_smap_irx, ipConfigLength, ipConfig, &moduleResult);
-    scr_printf("SMAP: id=%d result=%d\n", moduleID, moduleResult);
+    moduleID = SifExecModuleBuffer(ps2ips_irx, size_ps2ips_irx, 0, NULL, &moduleResult);
+    scr_printf("PS2IPS: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
         goto end;
-    usleep(2000000);
+    ps2ip_init();
+
+    usleep(500000);
+    if (apply_static_ip() < 0)
+        goto end;
+    usleep(1500000);
 
     moduleID = SifExecModuleBuffer(smb2test_irx, size_smb2test_irx, 0, NULL, &moduleResult);
     scr_printf("SMB2TEST.IRX: id=%d result=%d\n\n", moduleID, moduleResult);

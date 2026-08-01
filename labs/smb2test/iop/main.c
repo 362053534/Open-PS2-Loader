@@ -65,6 +65,7 @@ static int initPS2IP(void)
     if (!getModInfo("ps2ip\0\0\0", &info))
         return -ENXIO;
 
+    /* 与 PS2SDK ps2ip-nm / SMSTCPIP 的 socket 导出口径一致 */
     plwip_close = info.exports[6];
     plwip_connect = info.exports[7];
     plwip_recv = info.exports[9];
@@ -74,7 +75,7 @@ static int initPS2IP(void)
     plwip_ioctl = info.exports[15];
     plwip_getsockopt = info.exports[18];
     plwip_setsockopt = info.exports[19];
-    pinet_addr = info.exports[24];
+    pinet_addr = info.exports[24]; /* SMSTCPIP: inet_addr；ps2ip-nm: ipaddr_addr */
     plwip_shutdown = info.exports[46];
     return 0;
 }
