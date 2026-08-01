@@ -545,6 +545,12 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
 #else
     smb2_set_timeout(smb2Context, 30);
 #endif
+    /*
+     * 抓包显示服务器会选 SMB 3.1.1（含 preauth/negotiate context）。
+     * 在 IOP 上该路径易在收到 NEGOTIATE 响应后崩溃且尚无 SESSION_SETUP。
+     * 先限制为 SMB2.x，便于验证连接与读写。
+     */
+    smb2_set_version(smb2Context, SMB2_VERSION_ANY2);
     smb2_set_user(smb2Context, smb2User);
     smb2_set_password(smb2Context, smb2Password);
     *capabilities = 0;
