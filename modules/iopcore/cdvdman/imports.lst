@@ -55,6 +55,7 @@ I_strstr
 I_strncpy
 I_strtol
 I_sprintf
+I_vsprintf
 I_memcpy
 I_toupper
 sysclib_IMPORTS_end

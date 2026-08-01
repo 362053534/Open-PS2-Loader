@@ -1,6 +1,7 @@
 #include "smstcpip.h"
 #include "internal.h"
 
+#include <stdarg.h>
 #include <stdint.h>
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
@@ -94,6 +95,31 @@ void *calloc(size_t nmemb, size_t size)
         memset(ptr, 0, nmemb * size);
 
     return ptr;
+}
+
+/*
+ * 覆盖 libsmb2/compat.c 的损坏实现：原代码用 sprintf(str, fmt, va_list) 而非 vsprintf，
+ * UNC 会变成垃圾，TCP 通了也会在 share 连接阶段瞬间失败。
+ * 与 libsmb2.a 可能多重定义，SMB 链接需 -Wl,--allow-multiple-definition。
+ */
+int asprintf(char **strp, const char *fmt, ...)
+{
+    va_list args;
+    char *str;
+    int len;
+
+    if (!strp)
+        return -1;
+
+    str = malloc(256);
+    if (!str)
+        return -1;
+
+    va_start(args, fmt);
+    len = vsprintf(str, fmt, args);
+    va_end(args);
+    *strp = str;
+    return len;
 }
 
 int lwip_close(int s)
@@ -480,8 +506,11 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     }
 
     if (!smb2Server[0]) {
-        /* 始终带端口，避免 getaddrinfo 依赖默认 "445" 却写出 sin_port=0 */
-        sprintf(smb2Server, "%s:%d", SMBServerIP, SMBServerPort);
+        /* server 只能是 IP/主机名：带 :port 会把 UNC 弄成 \\ip:port\share */
+        if (SMBServerPort == 445)
+            strcpy(smb2Server, SMBServerIP);
+        else
+            sprintf(smb2Server, "%s:%d", SMBServerIP, SMBServerPort);
         smb2DefaultPort = (u16)(SMBServerPort ? SMBServerPort : 445);
 
         strncpy(smb2User, Username, sizeof(smb2User));
@@ -526,7 +555,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
             strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
             smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
         } else
-            sprintf(smb2Diag.error, "C%d E%d S%d D%08lX:%u", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, (unsigned long)smb2DiagConnectIP, smb2DiagConnectPort);
+            sprintf(smb2Diag.error, "C%d E%d S%d T%d R%d D%08lX:%u", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, (unsigned long)smb2DiagConnectIP, smb2DiagConnectPort);
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;

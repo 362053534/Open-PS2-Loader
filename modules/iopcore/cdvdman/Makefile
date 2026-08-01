@@ -27,6 +27,8 @@ IOP_CFLAGS += -DSMB_DRIVER
 USE_DEV9 = 1
 IOP_INCS += -I../../network/common -I$(PS2SDK)/ports/include
 IOP_LIBS += -L$(PS2SDK)/ports_iop/lib -lsmb2 -lgcc
+# 允许覆盖 libsmb2 compat.c 中损坏的 asprintf
+IOP_LDFLAGS += -Wl,--allow-multiple-definition
 endif
 
 ifeq ($(USE_BDM),1)
