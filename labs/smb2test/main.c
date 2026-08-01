@@ -48,10 +48,34 @@ static int parse_ipv4(const char *text, unsigned char out[4])
     return 0;
 }
 
+static int link_is_up(void)
+{
+    return NetManIoctl(NETMAN_NETIF_IOCTL_GET_LINK_STATUS, NULL, 0, NULL, 0) == NETMAN_NETIF_ETH_LINK_STATE_UP;
+}
+
+/* 与 OPL ethWaitValidNetIFLinkState 同思路：最多等约 30 秒 */
+static int wait_for_link(void)
+{
+    int i;
+
+    scr_printf("Waiting link... ");
+    for (i = 0; i < 300; i++) {
+        if (link_is_up()) {
+            scr_printf("UP\n");
+            return 0;
+        }
+        usleep(100000);
+    }
+
+    scr_printf("FAIL\n");
+    return -1;
+}
+
 static int apply_static_ip(void)
 {
     t_ip_info ip_info;
     unsigned char ip[4], mask[4], gw[4];
+    struct ip4_addr ipaddr, netmask, gateway;
     int result;
 
     if (parse_ipv4(SMB2TEST_PS2_IP, ip) < 0 ||
@@ -67,12 +91,12 @@ static int apply_static_ip(void)
         return result;
     }
 
-    memset(&ip_info.ipaddr, 0, sizeof(ip_info.ipaddr));
-    memset(&ip_info.netmask, 0, sizeof(ip_info.netmask));
-    memset(&ip_info.gw, 0, sizeof(ip_info.gw));
-    memcpy(&ip_info.ipaddr, ip, 4);
-    memcpy(&ip_info.netmask, mask, 4);
-    memcpy(&ip_info.gw, gw, 4);
+    IP4_ADDR(&ipaddr, ip[0], ip[1], ip[2], ip[3]);
+    IP4_ADDR(&netmask, mask[0], mask[1], mask[2], mask[3]);
+    IP4_ADDR(&gateway, gw[0], gw[1], gw[2], gw[3]);
+    ip_addr_set((struct ip4_addr *)&ip_info.ipaddr, &ipaddr);
+    ip_addr_set((struct ip4_addr *)&ip_info.netmask, &netmask);
+    ip_addr_set((struct ip4_addr *)&ip_info.gw, &gateway);
     ip_info.dhcp_enabled = 0;
 
     result = ps2ip_setconfig(&ip_info);
@@ -142,6 +166,11 @@ int main(int argc, char *argv[])
     if (moduleID < 0)
         goto end;
 
+    /* 与 OPL ethApplyNetIFConfig：先设链路模式，再装 TCP/IP */
+    NetManSetLinkMode(NETMAN_NETIF_ETH_LINK_MODE_AUTO);
+    if (wait_for_link() < 0)
+        goto end;
+
     moduleID = SifExecModuleBuffer(ps2ip_irx, size_ps2ip_irx, 0, NULL, &moduleResult);
     scr_printf("PS2IP: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
@@ -153,10 +182,11 @@ int main(int argc, char *argv[])
         goto end;
     ps2ip_init();
 
-    usleep(500000);
+    if (wait_for_link() < 0)
+        goto end;
     if (apply_static_ip() < 0)
         goto end;
-    usleep(1500000);
+    usleep(500000);
 
     moduleID = SifExecModuleBuffer(smb2test_irx, size_smb2test_irx, 0, NULL, &moduleResult);
     scr_printf("SMB2TEST.IRX: id=%d result=%d\n\n", moduleID, moduleResult);
