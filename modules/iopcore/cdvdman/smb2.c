@@ -95,33 +95,88 @@ int lwip_close(int s)
     return plwip_close(s);
 }
 
-int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
+int lwip_socket(int domain, int type, int protocol)
 {
-    int result = plwip_connect(s, name, namelen);
-    int so_error = 0;
-    socklen_t so_error_len = sizeof(so_error);
+    int s = plwip_socket(domain, type, protocol);
+    unsigned int nonblocking = 0;
 
-    smb2DiagConnectResult = result;
-    /*
-     * ps2ip-nm 的 errno 与本 IRX 的 errno 不是同一变量。
-     * 仅在明确“连接进行中”时置 EINPROGRESS；真实失败用 SO_ERROR，勿伪装。
-     */
-    if (result == -EINPROGRESS || result == -EALREADY) {
-        errno = EINPROGRESS;
-    } else if (result < 0 && result != -1) {
-        errno = -result;
-    } else if (result == -1 && plwip_getsockopt) {
-        if (plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len) == 0)
-            smb2DiagSocketError = so_error;
-        if (so_error == EINPROGRESS || so_error == EALREADY)
-            errno = EINPROGRESS;
-        else if (so_error)
-            errno = so_error;
-        else
-            errno = ECONNREFUSED;
+    /* 新建套接字立即清非阻塞，避免随后 fcntl/ioctl 竞态 */
+    if (s >= 0 && plwip_ioctl)
+        plwip_ioctl(s, FIONBIO, &nonblocking);
+
+    return s;
+}
+
+int lwip_ioctl(int s, long cmd, void *argp)
+{
+    /* 忽略开启非阻塞；FIONREAD 等其它命令照常 */
+    if (cmd == FIONBIO) {
+        unsigned int off = 0;
+
+        if (argp && *(unsigned int *)argp)
+            return 0;
+        if (plwip_ioctl)
+            return plwip_ioctl(s, FIONBIO, &off);
+        return 0;
     }
 
-    return result;
+    if (!plwip_ioctl)
+        return -1;
+    return plwip_ioctl(s, cmd, argp);
+}
+
+int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
+{
+    int result;
+    int so_error = 0;
+    socklen_t so_error_len = sizeof(so_error);
+    unsigned int nonblocking = 0;
+    fd_set wset;
+    struct timeval tv;
+
+    /* 连接前强制阻塞：与已成功的 TCP probe / smbman 一致 */
+    if (plwip_ioctl)
+        plwip_ioctl(s, FIONBIO, &nonblocking);
+
+    result = plwip_connect(s, name, namelen);
+    smb2DiagConnectResult = result;
+
+    if (result == 0)
+        return 0;
+
+    if (result == -EINPROGRESS || result == -EALREADY)
+        so_error = EINPROGRESS;
+    else if (result < 0 && result != -1)
+        so_error = -result;
+    else if (result == -1 && plwip_getsockopt) {
+        plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
+        smb2DiagSocketError = so_error;
+    }
+
+    /* 若仍落入“连接中”，用 select 等到可写，再查 SO_ERROR（兼容偶发非阻塞） */
+    if (so_error == EINPROGRESS || so_error == EALREADY || so_error == 0) {
+        FD_ZERO(&wset);
+        FD_SET(s, &wset);
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        smb2DiagSelectResult = plwip_select(s + 1, NULL, &wset, NULL, &tv);
+        so_error = 0;
+        so_error_len = sizeof(so_error);
+        if (plwip_getsockopt)
+            plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
+        smb2DiagSocketError = so_error;
+        if (smb2DiagSelectResult > 0 && so_error == 0) {
+            smb2DiagConnectResult = 0;
+            errno = 0;
+            return 0;
+        }
+        if (!so_error)
+            so_error = ETIMEDOUT;
+    }
+
+    errno = so_error ? so_error : ECONNREFUSED;
+    smb2DiagConnectResult = -1;
+    return -1;
 }
 
 int lwip_recv(int s, void *mem, int len, unsigned int flags)
@@ -137,11 +192,6 @@ int lwip_send(int s, void *dataptr, int size, unsigned int flags)
 
     smb2DiagSendResult = plwip_send(s, dataptr, size, flags);
     return smb2DiagSendResult;
-}
-
-int lwip_socket(int domain, int type, int protocol)
-{
-    return plwip_socket(domain, type, protocol);
 }
 
 int lwip_bind(int s, struct sockaddr *name, socklen_t namelen)
@@ -218,8 +268,7 @@ int lwip_fcntl(int s, int cmd, int val)
 
     /*
      * 阻塞 TCP probe 已能连上 :445；libsmb2 默认会 F_SETFL|O_NONBLOCK，
-     * 在 ps2ip-nm 上非阻塞 connect/select 当前得到 CFFFFFFF/S0（从未发出 SMB）。
-     * 强制保持阻塞：与 smbman 相同路径，connect 直接完成或失败。
+     * 非阻塞 connect 会得到 CFFFFFFF/S0。强制保持阻塞。
      */
     if (cmd == F_GETFL)
         return 0;
@@ -230,6 +279,17 @@ int lwip_fcntl(int s, int cmd, int val)
     }
 
     return -1;
+}
+
+/* libsmb2 IOP 侧可能直接链到 POSIX 名，而不是 lwip_* */
+int fcntl(int s, int cmd, int val)
+{
+    return lwip_fcntl(s, cmd, val);
+}
+
+int ioctl(int s, long cmd, void *argp)
+{
+    return lwip_ioctl(s, cmd, argp);
 }
 
 u32 inet_addr(const char *cp)
@@ -254,9 +314,10 @@ int lwip_getaddrinfo(const char *node, const char *service, const struct addrinf
         return -1;
     }
 
+    address->sin_len = sizeof(struct sockaddr_in);
     address->sin_family = AF_INET;
     address->sin_addr.s_addr = pinet_addr(node);
-    address->sin_port = service ? htons(strtol(service, NULL, 10)) : 0;
+    address->sin_port = service ? htons(strtol(service, NULL, 10)) : htons(445);
     (*res)->ai_family = AF_INET;
     (*res)->ai_socktype = SOCK_STREAM;
     (*res)->ai_protocol = IPPROTO_TCP;
