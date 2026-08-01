@@ -60,6 +60,7 @@ static int smb2ConnectFailedFd = -1;
 static int smb2ConnectFailedErrno;
 static u32 smb2DiagConnectIP;
 static u16 smb2DiagConnectPort;
+static u16 smb2DefaultPort = 445;
 smb2_diag_t smb2Diag;
 
 struct addrinfo
@@ -161,6 +162,9 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
         clean.sin_family = AF_INET;
         clean.sin_port = in->sin_port;
         clean.sin_addr = in->sin_addr;
+        /* libsmb2/getaddrinfo 在 IOP 上常留下 sin_port=0（如 atoi 无效），会变成 D…:0 / E113 */
+        if (!clean.sin_port)
+            clean.sin_port = htons(smb2DefaultPort ? smb2DefaultPort : 445);
         connectName = (struct sockaddr *)&clean;
         connectLen = sizeof(clean);
         smb2DiagConnectIP = clean.sin_addr.s_addr;
@@ -433,7 +437,15 @@ int lwip_getaddrinfo(const char *node, const char *service, const struct addrinf
     address->sin_len = sizeof(struct sockaddr_in);
     address->sin_family = AF_INET;
     address->sin_addr.s_addr = pinet_addr(node);
-    address->sin_port = service ? htons(strtol(service, NULL, 10)) : htons(445);
+    {
+        u16 port = 0;
+
+        if (service && service[0])
+            port = (u16)strtol(service, NULL, 10);
+        if (!port)
+            port = smb2DefaultPort ? smb2DefaultPort : 445;
+        address->sin_port = htons(port);
+    }
     (*res)->ai_family = AF_INET;
     (*res)->ai_socktype = SOCK_STREAM;
     (*res)->ai_protocol = IPPROTO_TCP;
@@ -468,10 +480,9 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     }
 
     if (!smb2Server[0]) {
-        if (SMBServerPort == 445)
-            strcpy(smb2Server, SMBServerIP);
-        else
-            sprintf(smb2Server, "%s:%d", SMBServerIP, SMBServerPort);
+        /* 始终带端口，避免 getaddrinfo 依赖默认 "445" 却写出 sin_port=0 */
+        sprintf(smb2Server, "%s:%d", SMBServerIP, SMBServerPort);
+        smb2DefaultPort = (u16)(SMBServerPort ? SMBServerPort : 445);
 
         strncpy(smb2User, Username, sizeof(smb2User));
         smb2User[sizeof(smb2User) - 1] = '\0';
