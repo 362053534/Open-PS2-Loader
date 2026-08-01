@@ -4,7 +4,7 @@
 #include <kernel.h>
 #include <loadfile.h>
 #include <netman.h>
-#include <ps2ip.h>
+#include <ps2ips.h>
 #include <sbv_patches.h>
 #include <sifrpc.h>
 #include <stdio.h>
