@@ -121,10 +121,12 @@ static void runTest(const struct smb2test_request *request)
     strncpy(cdvdman_settings.smb_share, request->share, sizeof(cdvdman_settings.smb_share));
     cdvdman_settings.smb_share[sizeof(cdvdman_settings.smb_share) - 1] = '\0';
 
-    /* 先做真实阻塞 TCP，并保持数秒，方便本机 netstat 核对是否出现 ESTABLISHED */
+    /* 阻塞 TCP 探测：仅 TCP_NODELAY（与 smbman 一致的核心选项）。
+     * 不要对 ps2ip-nm 传 int 型 SO_*TIMEO——lwIP2 默认要 struct timeval，会破坏套接字。 */
     {
         int socketID;
         int socketError;
+        int opt;
         socklen_t socketErrorLength;
         struct sockaddr_in serverAddress;
         u32 serverIP;
@@ -140,18 +142,11 @@ static void runTest(const struct smb2test_request *request)
             goto cleanup;
         }
 
-        /* 与 smbman/OpenTCPSession 一致的套接字选项，排除与 SMB1 路径的行为差 */
-        {
-            int opt = 1;
-
-            plwip_setsockopt(socketID, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-            plwip_setsockopt(socketID, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
-            opt = 10000;
-            plwip_setsockopt(socketID, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
-            plwip_setsockopt(socketID, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
-        }
+        opt = 1;
+        plwip_setsockopt(socketID, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
 
         memset(&serverAddress, 0, sizeof(serverAddress));
+        serverAddress.sin_len = sizeof(serverAddress);
         serverAddress.sin_family = AF_INET;
         serverAddress.sin_port = htons(request->port);
         serverAddress.sin_addr.s_addr = serverIP;
@@ -161,13 +156,12 @@ static void runTest(const struct smb2test_request *request)
             socketErrorLength = sizeof(socketError);
             plwip_getsockopt(socketID, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength);
             plwip_close(socketID);
-            sprintf(rpcResult.error, "TCP connect fail r=%d so=%d ip=%08lX", rpcResult.result, socketError, (unsigned long)serverIP);
+            sprintf(rpcResult.error, "TCP fail r=%d so=%d", rpcResult.result, socketError);
             goto cleanup;
         }
 
-        printf("SMB2TEST: TCP OK, hold 8s for netstat :445\n");
-        DelayThread(8000000);
         plwip_close(socketID);
+        printf("SMB2TEST: TCP OK, start SMB2\n");
     }
 
     printf("SMB2TEST: SMB2 connect %s:%u share=%s\n", request->server, request->port, request->share);

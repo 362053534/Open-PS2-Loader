@@ -219,8 +219,7 @@ int main(int argc, char *argv[])
     scr_printf("Server: %s:%u/%s\n", rpcRequest.server, rpcRequest.port, rpcRequest.share);
     scr_printf("File: %s\n", rpcRequest.path);
     scr_printf("Read: %u x %u bytes\n\n", rpcRequest.read_count, rpcRequest.read_size);
-    scr_printf("Testing...\n");
-    scr_printf("First 8s: TCP hold - run: netstat -an | findstr \":445\"\n\n");
+    scr_printf("Testing...\n\n");
 
     memset(&rpcResult, 0, sizeof(rpcResult));
     i = SifCallRpc(&rpcClient, SMB2TEST_CMD_RUN, 0, &rpcRequest, sizeof(rpcRequest), &rpcResult, sizeof(rpcResult), NULL, NULL);
@@ -255,17 +254,15 @@ int main(int argc, char *argv[])
             stage = "UNKNOWN";
     }
 
+    /* Error 紧跟 Stage，避免屏上刷太多行后被挤掉 */
+    scr_printf("Stage: %s  Result: %d\n", stage, rpcResult.result);
+    scr_printf("Error: %s\n", rpcResult.error[0] ? rpcResult.error : "(none)");
+
     if (rpcResult.elapsed_ms)
         speed = (rpcResult.bytes_read / 1024) * 1000 / rpcResult.elapsed_ms;
 
-    scr_printf("\nStage: %s\n", stage);
-    scr_printf("Result: %d  Last read: %d\n", rpcResult.result, rpcResult.last_read_size);
-    scr_printf("Bytes: %u  Time: %u ms\n", rpcResult.bytes_read, rpcResult.elapsed_ms);
-    scr_printf("Speed: %u KiB/s\n", speed);
-    scr_printf("Checksum: %08X\n", rpcResult.checksum);
-    scr_printf("Dialect: %04X  MaxRead: %u\n", rpcResult.dialect, rpcResult.max_read_size);
-    if (rpcResult.error[0])
-        scr_printf("Error: %s\n", rpcResult.error);
+    scr_printf("Bytes: %u  Time: %u ms  Speed: %u KiB/s\n", rpcResult.bytes_read, rpcResult.elapsed_ms, speed);
+    scr_printf("Checksum: %08X  Dialect: %04X  MaxRead: %u\n", rpcResult.checksum, rpcResult.dialect, rpcResult.max_read_size);
 
 end:
     scr_printf("\nTest stopped. Reset the console to run again.\n");
