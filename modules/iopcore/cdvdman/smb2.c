@@ -64,6 +64,14 @@ static u16 smb2DiagConnectPort;
 static u16 smb2DefaultPort = 445;
 smb2_diag_t smb2Diag;
 
+#ifdef SMB2TEST_BUILD
+/* select 返回前先把可读数据收到 bounce，避免随后在 libsmb2 收包路径上踩 IOP 异常 */
+static u8 smb2RxBounce[2048];
+static int smb2RxBounceLen;
+static int smb2RxBouncePos;
+static int smb2RxBounceFd = -1;
+#endif
+
 struct addrinfo
 {
     int ai_flags;
@@ -286,6 +294,21 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
 {
 #ifdef SMB2TEST_BUILD
     printf("SMB2TEST: recv enter want=%d fl=%u\n", len, flags);
+    if (s == smb2RxBounceFd && smb2RxBouncePos < smb2RxBounceLen && mem && len > 0) {
+        int left = smb2RxBounceLen - smb2RxBouncePos;
+        int n = (len < left) ? len : left;
+
+        memcpy(mem, smb2RxBounce + smb2RxBouncePos, n);
+        smb2RxBouncePos += n;
+        if (smb2RxBouncePos >= smb2RxBounceLen) {
+            smb2RxBounceFd = -1;
+            smb2RxBounceLen = 0;
+            smb2RxBouncePos = 0;
+        }
+        smb2DiagRecvResult = n;
+        printf("SMB2TEST: recv bounce r=%d want=%d\n", n, len);
+        return n;
+    }
 #endif
     smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
 #ifdef SMB2TEST_BUILD
@@ -539,6 +562,41 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             if (writeReady > 0) {
                 smb2DiagSelectResult = writeReady;
 #ifdef SMB2TEST_BUILD
+                {
+                    int fd;
+
+                    smb2RxBounceFd = -1;
+                    smb2RxBounceLen = 0;
+                    smb2RxBouncePos = 0;
+                    for (fd = 0; fd < maxfdp1; fd++) {
+                        int available = 0;
+                        int n;
+
+                        if (!FD_ISSET(fd, readset))
+                            continue;
+                        if (plwip_ioctl)
+                            plwip_ioctl(fd, FIONREAD, &available);
+                        if (available <= 0)
+                            available = (int)sizeof(smb2RxBounce);
+                        if (available > (int)sizeof(smb2RxBounce))
+                            available = (int)sizeof(smb2RxBounce);
+                        printf("SMB2TEST: pre-recv fd=%d avail=%d stack=%d\n",
+                               fd, available, CheckThreadStack());
+                        n = plwip_recv(fd, smb2RxBounce, available, 0);
+                        printf("SMB2TEST: pre-recv r=%d hdr=%02X%02X%02X%02X\n",
+                               n,
+                               n > 0 ? smb2RxBounce[0] : 0,
+                               n > 1 ? smb2RxBounce[1] : 0,
+                               n > 2 ? smb2RxBounce[2] : 0,
+                               n > 3 ? smb2RxBounce[3] : 0);
+                        if (n > 0) {
+                            smb2RxBounceFd = fd;
+                            smb2RxBounceLen = n;
+                            smb2RxBouncePos = 0;
+                        }
+                        break;
+                    }
+                }
                 printf("SMB2TEST: select slice-read ready=%d waited=%d stack=%d\n",
                        writeReady, waited, CheckThreadStack());
                 printf("SMB2TEST: select return to libsmb2\n");
@@ -602,6 +660,105 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
 
     return smb2DiagSelectResult;
 }
+
+#ifndef POLLIN
+#define POLLIN  0x0001
+#define POLLPRI 0x0002
+#define POLLOUT 0x0004
+#define POLLERR 0x0008
+#define POLLHUP 0x0010
+#endif
+
+#ifndef SMB2_POLLFD_DEFINED
+#define SMB2_POLLFD_DEFINED
+struct pollfd {
+    int fd;
+    short events;
+    short revents;
+};
+#endif
+
+/* 覆盖 libsmb2 NEED_POLL：不使用 exceptset（ps2ip 易误报 POLLHUP），并打点定位卡死位置 */
+int poll(struct pollfd *fds, unsigned int nfds, int timo)
+{
+    struct timeval timeout, *toptr;
+    fd_set ifds, ofds;
+    fd_set *ip, *op;
+    unsigned int i;
+    int maxfd = 0;
+    int rc;
+
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: poll enter nfds=%u ev=%x timo=%d\n",
+           nfds, (nfds && fds) ? (unsigned)fds[0].events : 0, timo);
+#endif
+
+    FD_ZERO(&ifds);
+    FD_ZERO(&ofds);
+    ip = NULL;
+    op = NULL;
+    for (i = 0; i < nfds; ++i) {
+        fds[i].revents = 0;
+        if (fds[i].fd < 0)
+            continue;
+        if (fds[i].events & (POLLIN | POLLPRI)) {
+            ip = &ifds;
+            FD_SET(fds[i].fd, ip);
+        }
+        if (fds[i].events & POLLOUT) {
+            op = &ofds;
+            FD_SET(fds[i].fd, op);
+        }
+        if (fds[i].fd > maxfd)
+            maxfd = fds[i].fd;
+    }
+
+    if (timo < 0) {
+        toptr = NULL;
+    } else {
+        toptr = &timeout;
+        timeout.tv_sec = timo / 1000;
+        timeout.tv_usec = (timo % 1000) * 1000;
+    }
+
+    rc = lwip_select(maxfd + 1, ip, op, NULL, toptr);
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: poll after-select rc=%d\n", rc);
+#endif
+    if (rc <= 0)
+        return rc;
+
+    rc = 0;
+    for (i = 0; i < nfds; ++i) {
+        int fd = fds[i].fd;
+        short revents = 0;
+
+        if (fd < 0)
+            continue;
+        if ((fds[i].events & (POLLIN | POLLPRI)) && ip && FD_ISSET(fd, ip))
+            revents |= POLLIN;
+        if ((fds[i].events & POLLOUT) && op && FD_ISSET(fd, op))
+            revents |= POLLOUT;
+        if (revents) {
+            fds[i].revents = revents;
+            rc++;
+        }
+    }
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: poll leave rc=%d rev=%x stack=%d\n",
+           rc, (nfds && fds) ? (unsigned)fds[0].revents : 0, CheckThreadStack());
+#endif
+    return rc;
+}
+
+#ifdef SMB2TEST_BUILD
+int __real_smb2_service(struct smb2_context *smb2, int revents);
+int __wrap_smb2_service(struct smb2_context *smb2, int revents)
+{
+    printf("SMB2TEST: smb2_service rev=0x%x stack=%d\n", revents, CheckThreadStack());
+    return __real_smb2_service(smb2, revents);
+}
+#endif
 
 int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
 {
