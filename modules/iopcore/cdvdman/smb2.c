@@ -766,17 +766,44 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
 
 #ifdef SMB2TEST_BUILD
 int __real_smb2_service(struct smb2_context *smb2, int revents);
-int smb2_polllin_safe(struct smb2_context *smb2);
+
+static struct smb2_context *smb2AltCtx;
+static int smb2AltRevents;
+static int smb2AltResult;
+static u32 smb2AltSavedSp;
+static u8 smb2AltStack[0x20000] __attribute__((aligned(16)));
+
+static void smb2ServiceAltEntry(void)
+{
+    smb2AltResult = __real_smb2_service(smb2AltCtx, smb2AltRevents);
+}
+
 int __wrap_smb2_service(struct smb2_context *smb2, int revents)
 {
     printf("SMB2TEST: smb2_service rev=0x%x stack=%d\n", revents, CheckThreadStack());
-    /* POLLIN 走 static-iovec 安全读，避开库内 smb2_read_data 栈数组导致的 IOP 跑飞 */
-    if (revents & POLLIN) {
-        int r = smb2_polllin_safe(smb2);
-        printf("SMB2TEST: smb2_service polllin_safe r=%d\n", r);
-        return (r < 0) ? -1 : 0;
-    }
-    return __real_smb2_service(smb2, revents);
+
+    if (!(revents & POLLIN))
+        return __real_smb2_service(smb2, revents);
+
+    /* POLLIN 换到独立栈再进 libsmb2，避免 smb2_read_data 的 iovec[256] 砸坏 worker 栈 */
+    printf("SMB2TEST: service POLLIN on alt-stack\n");
+    smb2AltCtx = smb2;
+    smb2AltRevents = revents;
+    smb2AltResult = -1;
+    __asm__ __volatile__(
+        "move %0, $sp\n\t"
+        "move $sp, %1\n\t"
+        : "=r"(smb2AltSavedSp)
+        : "r"(smb2AltStack + sizeof(smb2AltStack) - 64)
+        : "memory");
+    smb2ServiceAltEntry();
+    __asm__ __volatile__(
+        "move $sp, %0\n\t"
+        :
+        : "r"(smb2AltSavedSp)
+        : "memory");
+    printf("SMB2TEST: service POLLIN done r=%d stack=%d\n", smb2AltResult, CheckThreadStack());
+    return smb2AltResult;
 }
 #endif
 
