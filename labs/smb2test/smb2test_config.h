@@ -2,9 +2,9 @@
 #define SMB2TEST_CONFIG_H
 
 // 修改这些参数后重新编译 SMB2TEST.ELF。
-#define SMB2TEST_PS2_IP       "192.0.2.100"
+#define SMB2TEST_PS2_IP       "192.168.5.100"
 #define SMB2TEST_NETMASK      "255.255.255.0"
-#define SMB2TEST_GATEWAY      "192.0.2.1"
+#define SMB2TEST_GATEWAY      "192.168.5.4"
 #define SMB2TEST_SERVER       "192.168.5.4"
 #define SMB2TEST_PORT         445
 #define SMB2TEST_SHARE        "ps2smb"
