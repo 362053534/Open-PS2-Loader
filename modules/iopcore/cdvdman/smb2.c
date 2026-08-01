@@ -356,11 +356,27 @@ int readv(int fd, const struct iovec *vector, int count)
 
 int writev(int fd, const struct iovec *vector, int count)
 {
+    static u8 combined[512];
     int i;
     int total = 0;
+    int offset = 0;
 
     if (!vector || count <= 0)
         return -1;
+
+    /* 小包合并成一次 send，避免把 NEGOTIATE 拆成多段 TCP */
+    for (i = 0; i < count; i++) {
+        if (!vector[i].iov_base || !vector[i].iov_len)
+            continue;
+        if (offset + (int)vector[i].iov_len > (int)sizeof(combined)) {
+            offset = -1;
+            break;
+        }
+        memcpy(combined + offset, vector[i].iov_base, vector[i].iov_len);
+        offset += (int)vector[i].iov_len;
+    }
+    if (offset > 0)
+        return lwip_send(fd, combined, offset, 0);
 
     for (i = 0; i < count; i++) {
         int n;
@@ -405,10 +421,26 @@ int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
     return -1;
 }
 
+/*
+ * 切勿对调用方的 fd_set 做结构体赋值 / FD_ZERO：
+ * 我们编进的 sizeof(fd_set)（smstcpip FD_SETSIZE=16）可能与 libsmb2/ps2ip
+ * 不一致；整结构写回会砸坏 poll() 栈 → IOP PC 跑飞（ffffffff / f0000102）。
+ * 只按 bit 操作 0 .. maxfdp1-1。
+ */
+static void smb2FdClearRange(fd_set *set, int maxfdp1)
+{
+    int i;
+
+    if (!set)
+        return;
+    for (i = 0; i < maxfdp1; i++)
+        FD_CLR(i, set);
+}
+
 int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout)
 {
-    fd_set pendingReadSet;
-    fd_set pendingWriteSet;
+    u32 readInterest = 0;
+    u32 writeInterest = 0;
     int i;
     int so_error;
     socklen_t so_error_len;
@@ -421,20 +453,30 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
            maxfdp1, readset ? 1 : 0, writeset ? 1 : 0, exceptset ? 1 : 0);
 #endif
 
-    if (readset)
-        pendingReadSet = *readset;
-    if (writeset)
-        pendingWriteSet = *writeset;
+    if (maxfdp1 > 32)
+        maxfdp1 = 32;
+
+    if (readset) {
+        for (i = 0; i < maxfdp1; i++) {
+            if (FD_ISSET(i, readset))
+                readInterest |= (1u << i);
+        }
+    }
+    if (writeset) {
+        for (i = 0; i < maxfdp1; i++) {
+            if (FD_ISSET(i, writeset))
+                writeInterest |= (1u << i);
+        }
+    }
 
     /* libsmb2 NEED_POLL 会预置 exceptset；ps2ip 上易误报，一律忽略 */
-    if (exceptset)
-        FD_ZERO(exceptset);
+    smb2FdClearRange(exceptset, maxfdp1);
 
     /* 连接已完成时立刻报写就绪，避免再空等完整 timeout */
     if (writeset) {
         writeReady = 0;
         for (i = 0; i < maxfdp1; i++) {
-            if (!FD_ISSET(i, &pendingWriteSet))
+            if (!(writeInterest & (1u << i)))
                 continue;
             so_error = 0;
             so_error_len = sizeof(so_error);
@@ -445,9 +487,10 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             writeReady++;
         }
         if (writeReady && !readset) {
-            FD_ZERO(writeset);
+            smb2FdClearRange(writeset, maxfdp1);
+            writeReady = 0;
             for (i = 0; i < maxfdp1; i++) {
-                if (!FD_ISSET(i, &pendingWriteSet))
+                if (!(writeInterest & (1u << i)))
                     continue;
                 so_error = 0;
                 so_error_len = sizeof(so_error);
@@ -457,6 +500,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                 if (so_error == EINPROGRESS || so_error == EALREADY)
                     continue;
                 FD_SET(i, writeset);
+                writeReady++;
             }
             smb2DiagSelectResult = writeReady;
 #ifdef SMB2TEST_BUILD
@@ -483,24 +527,27 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             wait_ms = 30000;
 
         for (waited = 0; waited <= wait_ms; waited += 100) {
-            fd_set rs = pendingReadSet;
+            smb2FdClearRange(readset, maxfdp1);
+            for (i = 0; i < maxfdp1; i++) {
+                if (readInterest & (1u << i))
+                    FD_SET(i, readset);
+            }
 
             slice.tv_sec = 0;
             slice.tv_usec = 100000; /* 100ms，泵送协议栈并等待可读 */
-            writeReady = plwip_select(maxfdp1, &rs, NULL, NULL, &slice);
+            writeReady = plwip_select(maxfdp1, readset, NULL, NULL, &slice);
             if (writeReady > 0) {
-                *readset = rs;
                 smb2DiagSelectResult = writeReady;
 #ifdef SMB2TEST_BUILD
-                printf("SMB2TEST: select slice-read ready=%d waited=%d\n", writeReady, waited);
+                printf("SMB2TEST: select slice-read ready=%d waited=%d stack=%d\n",
+                       writeReady, waited, CheckThreadStack());
                 printf("SMB2TEST: select return to libsmb2\n");
 #endif
                 return writeReady;
             }
         }
 
-        if (readset)
-            FD_ZERO(readset);
+        smb2FdClearRange(readset, maxfdp1);
         smb2DiagSelectResult = 0;
 #ifdef SMB2TEST_BUILD
         printf("SMB2TEST: select slice-read timeout %d ms\n", wait_ms);
@@ -509,8 +556,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     }
 
     smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, NULL, timeout);
-    if (exceptset)
-        FD_ZERO(exceptset);
+    smb2FdClearRange(exceptset, maxfdp1);
 
 #ifdef SMB2TEST_BUILD
     printf("SMB2TEST: select leave r=%d\n", smb2DiagSelectResult);
@@ -522,9 +568,9 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
      */
     if (smb2DiagSelectResult == 0 && writeset) {
         writeReady = 0;
-        FD_ZERO(writeset);
+        smb2FdClearRange(writeset, maxfdp1);
         for (i = 0; i < maxfdp1; i++) {
-            if (!FD_ISSET(i, &pendingWriteSet))
+            if (!(writeInterest & (1u << i)))
                 continue;
             so_error = 0;
             so_error_len = sizeof(so_error);
@@ -542,9 +588,9 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
         }
     }
 
-    if (smb2DiagSelectResult == 0 && readset) {
+    if (smb2DiagSelectResult == 0 && readInterest) {
         for (i = 0; i < maxfdp1; i++) {
-            if (FD_ISSET(i, &pendingReadSet)) {
+            if (readInterest & (1u << i)) {
                 int available = 0;
 
                 if (plwip_ioctl && plwip_ioctl(i, FIONREAD, &available) == 0)

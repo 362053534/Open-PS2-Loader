@@ -49,6 +49,8 @@ I_ExitDeleteThread
 I_GetSystemTime
 I_SysClock2USec
 I_DelayThread
+I_CheckThreadStack
+I_ReferThreadStatus
 thbase_IMPORTS_end
 
 thsemap_IMPORTS_start

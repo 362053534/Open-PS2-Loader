@@ -246,7 +246,12 @@ cleanup:
  * 在 send 返回后跑飞（PCSX2：宿主崩溃 / 解释器 Unimplemented op f0000102）。 */
 static void smbWorkerThread(void *arg)
 {
+    iop_thread_info_t info;
+
     printf("SMB2TEST: worker begin\n");
+    memset(&info, 0, sizeof(info));
+    if (ReferThreadStatus(TH_SELF, &info) == 0)
+        printf("SMB2TEST: worker stack=%d remain=%d\n", info.stackSize, CheckThreadStack());
     runTest((const struct smb2test_request *)arg);
     printf("SMB2TEST: worker end\n");
     SignalSema(smbWorkerSema);
