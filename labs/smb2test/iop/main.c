@@ -34,6 +34,7 @@ static SifRpcDataQueue_t rpcQueue;
 static SifRpcServerData_t rpcServer;
 static unsigned char rpcBuffer[sizeof(struct smb2test_request)] __attribute__((aligned(16)));
 static struct smb2test_result rpcResult __attribute__((aligned(16)));
+static int smbWorkerSema = -1;
 
 static int getModInfo(char *modname, modinfo_t *info)
 {
@@ -111,13 +112,7 @@ static void runTest(const struct smb2test_request *request)
         goto cleanup;
     }
 
-    readBuffer = AllocSysMemory(ALLOC_FIRST, request->read_size, NULL);
-    if (!readBuffer) {
-        rpcResult.result = -ENOMEM;
-        strcpy(rpcResult.error, "IOP read buffer allocation failed");
-        goto cleanup;
-    }
-
+    /* 读缓冲延后到 SMB 连接成功后再分配，减轻协商阶段 IOP 内存压力 */
     strncpy(cdvdman_settings.smb_share, request->share, sizeof(cdvdman_settings.smb_share));
     cdvdman_settings.smb_share[sizeof(cdvdman_settings.smb_share) - 1] = '\0';
 
@@ -177,6 +172,13 @@ static void runTest(const struct smb2test_request *request)
             rpcResult.error[sizeof(rpcResult.error) - 1] = '\0';
         } else
             strcpy(rpcResult.error, "SMB2 share connection failed");
+        goto cleanup;
+    }
+
+    readBuffer = AllocSysMemory(ALLOC_FIRST, request->read_size, NULL);
+    if (!readBuffer) {
+        rpcResult.result = -ENOMEM;
+        strcpy(rpcResult.error, "IOP read buffer allocation failed");
         goto cleanup;
     }
 
@@ -240,11 +242,38 @@ cleanup:
         FreeSysMemory(readBuffer);
 }
 
+/* libsmb2 在 smb2_write/read_to_socket 里有 iovec[256] 栈数组；RPC 线程栈不够会
+ * 在 send 返回后跑飞（PCSX2：宿主崩溃 / 解释器 Unimplemented op f0000102）。 */
+static void smbWorkerThread(void *arg)
+{
+    printf("SMB2TEST: worker begin\n");
+    runTest((const struct smb2test_request *)arg);
+    printf("SMB2TEST: worker end\n");
+    SignalSema(smbWorkerSema);
+    ExitDeleteThread();
+}
+
 static void *rpcHandler(int function, void *buffer, int size)
 {
-    if (function == SMB2TEST_CMD_RUN && (unsigned int)size >= sizeof(struct smb2test_request))
-        runTest((const struct smb2test_request *)buffer);
-    else {
+    iop_thread_t thread;
+    int threadID;
+
+    if (function == SMB2TEST_CMD_RUN && (unsigned int)size >= sizeof(struct smb2test_request)) {
+        thread.attr = TH_C;
+        thread.option = SMB2TEST_RPC_ID;
+        thread.thread = smbWorkerThread;
+        thread.priority = 0x21;
+        thread.stacksize = 0x40000; /* 256KB：避开 libsmb2 iovec[256] 栈溢出 */
+        threadID = CreateThread(&thread);
+        if (threadID < 0) {
+            memset(&rpcResult, 0, sizeof(rpcResult));
+            rpcResult.result = threadID;
+            strcpy(rpcResult.error, "SMB worker thread create failed");
+            return &rpcResult;
+        }
+        StartThread(threadID, buffer);
+        WaitSema(smbWorkerSema);
+    } else {
         memset(&rpcResult, 0, sizeof(rpcResult));
         rpcResult.result = -EINVAL;
         strcpy(rpcResult.error, "Invalid SMB2TEST RPC request");
@@ -265,17 +294,25 @@ static void rpcThread(void *arg)
 int _start(int argc, char *argv[])
 {
     iop_thread_t thread;
+    iop_sema_t sema;
     int threadID;
 
     (void)argc;
     (void)argv;
 
+    sema.attr = 1;
+    sema.option = 0;
+    sema.initial = 0;
+    sema.max = 1;
+    smbWorkerSema = CreateSema(&sema);
+    if (smbWorkerSema < 0)
+        return MODULE_NO_RESIDENT_END;
+
     thread.attr = TH_C;
     thread.option = SMB2TEST_RPC_ID;
     thread.thread = rpcThread;
     thread.priority = 0x20;
-    /* libsmb2 socket 路径有 iovec[256]，再加 SHA/NTLM，64KB 偏紧 */
-    thread.stacksize = 0x20000;
+    thread.stacksize = 0x4000;
     threadID = CreateThread(&thread);
     if (threadID < 0)
         return MODULE_NO_RESIDENT_END;

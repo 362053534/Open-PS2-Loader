@@ -44,6 +44,8 @@ thbase_IMPORTS_start
 I_GetThreadId
 I_CreateThread
 I_StartThread
+I_DeleteThread
+I_ExitDeleteThread
 I_GetSystemTime
 I_SysClock2USec
 I_DelayThread
@@ -54,4 +56,5 @@ I_CreateSema
 I_SignalSema
 I_WaitSema
 I_PollSema
+I_DeleteSema
 thsemap_IMPORTS_end

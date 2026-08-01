@@ -284,6 +284,9 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 
 int lwip_recv(int s, void *mem, int len, unsigned int flags)
 {
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: recv enter want=%d fl=%u\n", len, flags);
+#endif
     smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
 #ifdef SMB2TEST_BUILD
     printf("SMB2TEST: recv r=%d want=%d\n", smb2DiagRecvResult, len);
@@ -337,6 +340,11 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     int so_error;
     socklen_t so_error_len;
     int writeReady;
+
+#ifdef SMB2TEST_BUILD
+    printf("SMB2TEST: select enter max=%d r=%d w=%d e=%d\n",
+           maxfdp1, readset ? 1 : 0, writeset ? 1 : 0, exceptset ? 1 : 0);
+#endif
 
     if (readset)
         pendingReadSet = *readset;
