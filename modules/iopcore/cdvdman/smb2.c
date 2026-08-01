@@ -104,19 +104,21 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     smb2DiagConnectResult = result;
     /*
      * ps2ip-nm 的 errno 与本 IRX 的 errno 不是同一变量。
-     * 返回 -1 时必须用 SO_ERROR 把状态拷到 libsmb2 可见的 errno，
-     * 否则非阻塞 connect/poll 会空等超时（C0 S0 TB4）。
+     * 仅在明确“连接进行中”时置 EINPROGRESS；真实失败用 SO_ERROR，勿伪装。
      */
     if (result == -EINPROGRESS || result == -EALREADY) {
         errno = EINPROGRESS;
     } else if (result < 0 && result != -1) {
         errno = -result;
     } else if (result == -1 && plwip_getsockopt) {
-        if (plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len) == 0 && so_error)
-            errno = so_error;
-        else if (!errno)
+        if (plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len) == 0)
+            smb2DiagSocketError = so_error;
+        if (so_error == EINPROGRESS || so_error == EALREADY)
             errno = EINPROGRESS;
-        smb2DiagSocketError = so_error ? so_error : errno;
+        else if (so_error)
+            errno = so_error;
+        else
+            errno = ECONNREFUSED;
     }
 
     return result;
@@ -211,23 +213,23 @@ int lwip_shutdown(int s, int how)
 
 int lwip_fcntl(int s, int cmd, int val)
 {
-    unsigned int nonblocking;
+    (void)s;
+    (void)val;
 
-    /* ps2ip-nm 提供真实 lwip_fcntl（导出口 47）；优先使用，与 libsmb2 非阻塞语义一致 */
-    if (plwip_fcntl) {
-        smb2DiagFcntlResult = plwip_fcntl(s, cmd, val);
-        return smb2DiagFcntlResult;
-    }
-
+    /*
+     * 阻塞 TCP probe 已能连上 :445；libsmb2 默认会 F_SETFL|O_NONBLOCK，
+     * 在 ps2ip-nm 上非阻塞 connect/select 当前得到 CFFFFFFF/S0（从未发出 SMB）。
+     * 强制保持阻塞：与 smbman 相同路径，connect 直接完成或失败。
+     */
     if (cmd == F_GETFL)
         return 0;
 
-    if (cmd != F_SETFL || !plwip_ioctl)
-        return -1;
+    if (cmd == F_SETFL) {
+        smb2DiagFcntlResult = 0;
+        return 0;
+    }
 
-    nonblocking = val & O_NONBLOCK;
-    smb2DiagFcntlResult = plwip_ioctl(s, FIONBIO, &nonblocking);
-    return smb2DiagFcntlResult;
+    return -1;
 }
 
 u32 inet_addr(const char *cp)
