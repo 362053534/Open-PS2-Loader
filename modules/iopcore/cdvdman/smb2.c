@@ -547,11 +547,11 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
 #endif
     /*
      * 抓包：服务器曾回 SMB 3.1.1，IOP 在 NEGOTIATE 响应后、SESSION_SETUP 前崩溃。
-     * 先锁死 2.0.2，关闭 seal，强制 NTLMSSP，降低密码学/上下文解析复杂度。
+     * 先锁死 2.0.2，关闭 seal，降低密码学/上下文解析复杂度。
+     * （IOP 无 KRB5 时 libsmb2 会自然走 NTLMSSP，勿依赖 SMB2_SEC_* 枚举——旧 ports 可能没有）
      */
     smb2_set_version(smb2Context, SMB2_VERSION_0202);
     smb2_set_seal(smb2Context, 0);
-    smb2_set_authentication(smb2Context, SMB2_SEC_NTLMSSP);
     smb2_set_security_mode(smb2Context, 0);
     smb2_set_user(smb2Context, smb2User);
     smb2_set_password(smb2Context, smb2Password);
