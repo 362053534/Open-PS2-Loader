@@ -5,7 +5,8 @@
 #define SMB2TEST_PS2_IP       "192.168.5.100"
 #define SMB2TEST_NETMASK      "255.255.255.0"
 #define SMB2TEST_GATEWAY      "192.168.5.4"
-#define SMB2TEST_SERVER       "192.168.5.4"
+/* PCAP 测局域网用 192.168.5.4；PCSX2 Socket 连本机共享请改成 127.0.0.1 */
+#define SMB2TEST_SERVER       "127.0.0.1"
 #define SMB2TEST_PORT         445
 #define SMB2TEST_SHARE        "ps2smb"
 #define SMB2TEST_USER         "1"

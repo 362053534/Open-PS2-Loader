@@ -150,6 +150,9 @@ void tcpip_apimsg(struct api_msg *apimsg)
         msg->msg.apimsg = apimsg;
         sys_mbox_post(g_TCPIPMBox, msg);
         sys_mbox_fetch(apimsg->msg.conn->mbox, NULL);
+    } else if (apimsg && apimsg->msg.conn) {
+        /* 分配失败时绝不能假装成功，否则上层会认为 TCP 已连通 */
+        apimsg->msg.conn->err = ERR_MEM;
     }
 #endif /* LWIP_TCPIP_CORE_LOCKING */
 
