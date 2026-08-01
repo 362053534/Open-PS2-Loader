@@ -30,6 +30,7 @@ int (*plwip_ioctl)(int s, long cmd, void *argp);                                
 int (*plwip_getsockopt)(int s, int level, int optname, void *optval, socklen_t *optlen);                                                    // #18
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
 int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
+int (*plwip_fcntl)(int s, int cmd, int val);                                                                                                // #47（仅 ps2ip-nm；SMSTCPIP 无此口）
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 static u32 ServerCapabilities;
@@ -62,6 +63,8 @@ static void ps2ip_init(void)
     plwip_setsockopt = info.exports[19];
     plwip_shutdown = info.exports[46];
     pinet_addr = info.exports[24];
+    /* 游戏内 SMSTCPIP 无 #47；保持 NULL，smb2.c 回退 FIONBIO */
+    plwip_fcntl = NULL;
 
     if (getModInfo("netman\0\0", &info))
         pNetManGetGlobalNetIFLinkState = info.exports[14];

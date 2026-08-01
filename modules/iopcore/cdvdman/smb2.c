@@ -33,6 +33,7 @@ extern int (*plwip_ioctl)(int s, long cmd, void *argp);
 extern int (*plwip_getsockopt)(int s, int level, int optname, void *optval, socklen_t *optlen);
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);
 extern int (*plwip_shutdown)(int s, int how);
+extern int (*plwip_fcntl)(int s, int cmd, int val);
 extern u32 (*pinet_addr)(const char *cp);
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -97,13 +98,26 @@ int lwip_close(int s)
 int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 {
     int result = plwip_connect(s, name, namelen);
+    int so_error = 0;
+    socklen_t so_error_len = sizeof(so_error);
 
     smb2DiagConnectResult = result;
-    /* 仅把“连接进行中”标成 EINPROGRESS；真实失败勿伪装，否则 libsmb2 会空等超时 */
-    if (result == -EINPROGRESS || result == -EALREADY)
+    /*
+     * ps2ip-nm 的 errno 与本 IRX 的 errno 不是同一变量。
+     * 返回 -1 时必须用 SO_ERROR 把状态拷到 libsmb2 可见的 errno，
+     * 否则非阻塞 connect/poll 会空等超时（C0 S0 TB4）。
+     */
+    if (result == -EINPROGRESS || result == -EALREADY) {
         errno = EINPROGRESS;
-    else if (result < 0 && result != -1)
+    } else if (result < 0 && result != -1) {
         errno = -result;
+    } else if (result == -1 && plwip_getsockopt) {
+        if (plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len) == 0 && so_error)
+            errno = so_error;
+        else if (!errno)
+            errno = EINPROGRESS;
+        smb2DiagSocketError = so_error ? so_error : errno;
+    }
 
     return result;
 }
@@ -198,6 +212,12 @@ int lwip_shutdown(int s, int how)
 int lwip_fcntl(int s, int cmd, int val)
 {
     unsigned int nonblocking;
+
+    /* ps2ip-nm 提供真实 lwip_fcntl（导出口 47）；优先使用，与 libsmb2 非阻塞语义一致 */
+    if (plwip_fcntl) {
+        smb2DiagFcntlResult = plwip_fcntl(s, cmd, val);
+        return smb2DiagFcntlResult;
+    }
 
     if (cmd == F_GETFL)
         return 0;

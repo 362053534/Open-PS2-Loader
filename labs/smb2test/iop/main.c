@@ -23,6 +23,7 @@ int (*plwip_ioctl)(int s, long cmd, void *argp);
 int (*plwip_getsockopt)(int s, int level, int optname, void *optval, socklen_t *optlen);
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);
 int (*plwip_shutdown)(int s, int how);
+int (*plwip_fcntl)(int s, int cmd, int val);
 u32 (*pinet_addr)(const char *cp);
 
 struct cdvdman_settings_smb cdvdman_settings;
@@ -77,6 +78,7 @@ static int initPS2IP(void)
     plwip_setsockopt = info.exports[19];
     pinet_addr = info.exports[24]; /* SMSTCPIP: inet_addr；ps2ip-nm: ipaddr_addr */
     plwip_shutdown = info.exports[46];
+    plwip_fcntl = info.exports[47]; /* ps2ip-nm: lwip_fcntl */
     return 0;
 }
 
@@ -131,11 +133,22 @@ static void runTest(const struct smb2test_request *request)
         serverIP = pinet_addr(request->server);
         printf("SMB2TEST: TCP probe %s (%08lX):%u\n", request->server, (unsigned long)serverIP, request->port);
 
-        socketID = plwip_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        socketID = plwip_socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (socketID < 0) {
             rpcResult.result = socketID;
             sprintf(rpcResult.error, "TCP socket failed: %d", socketID);
             goto cleanup;
+        }
+
+        /* 与 smbman/OpenTCPSession 一致的套接字选项，排除与 SMB1 路径的行为差 */
+        {
+            int opt = 1;
+
+            plwip_setsockopt(socketID, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
+            plwip_setsockopt(socketID, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
+            opt = 10000;
+            plwip_setsockopt(socketID, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
+            plwip_setsockopt(socketID, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
         }
 
         memset(&serverAddress, 0, sizeof(serverAddress));
