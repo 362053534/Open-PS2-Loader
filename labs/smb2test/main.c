@@ -16,6 +16,8 @@
 
 extern unsigned char ps2dev9_irx[];
 extern unsigned int size_ps2dev9_irx;
+extern unsigned char ioptrap_irx[];
+extern unsigned int size_ioptrap_irx;
 extern unsigned char netman_irx[];
 extern unsigned int size_netman_irx;
 extern unsigned char smsutils_irx[];
@@ -143,6 +145,11 @@ int main(int argc, char *argv[])
     sbv_patch_enable_lmb();
     sbv_patch_disable_prefix_check();
     scr_printf("OK\n");
+
+    moduleID = SifExecModuleBuffer(ioptrap_irx, size_ioptrap_irx, 0, NULL, &moduleResult);
+    scr_printf("IOPTRAP: id=%d result=%d\n", moduleID, moduleResult);
+    if (moduleID < 0)
+        goto end;
 
     moduleID = SifExecModuleBuffer(ps2dev9_irx, size_ps2dev9_irx, 0, NULL, &moduleResult);
     scr_printf("DEV9: id=%d result=%d\n", moduleID, moduleResult);

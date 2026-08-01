@@ -1,5 +1,5 @@
 EE_BIN = SMB2TEST.ELF
-EE_OBJS = main.o ps2dev9.o netman.o smsutils.o smap.o ps2ip.o ps2ips.o smb2test_irx.o
+EE_OBJS = main.o ioptrap.o ps2dev9.o netman.o smsutils.o smap.o ps2ip.o ps2ips.o smb2test_irx.o
 
 EE_LIBS = -lnetman -lps2ips -lpatches -ldebug -lc -lkernel
 EE_CFLAGS = -G0 -O2 -Wall
@@ -11,10 +11,13 @@ all: $(EE_BIN)
 
 clean:
 	$(MAKE) -C iop clean
-	rm -f $(EE_BIN) $(EE_OBJS) ps2dev9.c netman.c smsutils.c smap.c ps2ip.c ps2ips.c smb2test_irx.c
+	rm -f $(EE_BIN) $(EE_OBJS) ioptrap.c ps2dev9.c netman.c smsutils.c smap.c ps2ip.c ps2ips.c smb2test_irx.c
 	$(MAKE) -C ../../modules/network/SMSUTILS clean
 
 rebuild: clean all
+
+ioptrap.c: $(PS2SDK)/iop/irx/ioptrap.irx
+	$(BIN2C) $< $@ ioptrap_irx
 
 ps2dev9.c: $(PS2SDK)/iop/irx/ps2dev9.irx
 	$(BIN2C) $< $@ ps2dev9_irx
