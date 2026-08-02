@@ -106,31 +106,6 @@ void *calloc(size_t nmemb, size_t size)
 }
 
 /*
- * 覆盖 libsmb2/compat.c 的损坏实现：原代码用 sprintf(str, fmt, va_list) 而非 vsprintf，
- * UNC 会变成垃圾，TCP 通了也会在 share 连接阶段瞬间失败。
- * 与 libsmb2.a 可能多重定义，SMB 链接需 -Wl,--allow-multiple-definition。
- */
-int asprintf(char **strp, const char *fmt, ...)
-{
-    va_list args;
-    char *str;
-    int len;
-
-    if (!strp)
-        return -1;
-
-    str = malloc(256);
-    if (!str)
-        return -1;
-
-    va_start(args, fmt);
-    len = vsprintf(str, fmt, args);
-    va_end(args);
-    *strp = str;
-    return len;
-}
-
-/*
  * 覆盖 libsmb2 的 SHA512 preauth（USHA*）。
  * negotiate_cb 在收到 NEGOTIATE 响应后总会算 preauthhash；抓包显示此前在
  * 3.1.1 响应后、SESSION_SETUP 前崩溃。SMB 2.0.2 不依赖该哈希即可建会话。
