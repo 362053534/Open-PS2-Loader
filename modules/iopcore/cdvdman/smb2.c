@@ -260,6 +260,35 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
     return result;
 }
 
+struct iovec
+{
+    void *iov_base;
+    size_t iov_len;
+};
+
+/* IOP没有原生readv，直接读入目标向量，避免每次收包都分配临时缓冲并再次复制。 */
+int readv(int fd, const struct iovec *vector, int count)
+{
+    int i;
+    int result;
+    int bytesRead = 0;
+
+    for (i = 0; i < count; i++) {
+        if (!vector[i].iov_len)
+            continue;
+
+        result = lwip_recv(fd, vector[i].iov_base, vector[i].iov_len, MSG_DONTWAIT);
+        if (result <= 0)
+            return bytesRead ? bytesRead : result;
+
+        bytesRead += result;
+        if ((size_t)result < vector[i].iov_len)
+            break;
+    }
+
+    return bytesRead;
+}
+
 int lwip_send(int s, void *dataptr, int size, unsigned int flags)
 {
     return plwip_send(s, dataptr, size, flags);
