@@ -20,7 +20,9 @@
 
 #include "smsutils.h"
 
+#ifndef SMB2TEST_USE_STANDARD_RECV
 #define USE_CUSTOM_RECV 1
+#endif
 
 //Round up the erasure amount, so that memset can erase memory word-by-word.
 #define ZERO_PKT_ALIGNED(hdr, hdrSize) memset((hdr), 0, ((hdrSize) + 3) & ~3)

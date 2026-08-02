@@ -33,6 +33,16 @@ struct smb2test_request
     u32 reserved;
 };
 
+struct smb2test_measurement
+{
+    s32 result;
+    u32 bytes_read;
+    u32 elapsed_ms;
+    u32 checksum;
+    s32 last_read_size;
+    char error[64];
+};
+
 struct smb2test_result
 {
     s32 result;
@@ -44,6 +54,10 @@ struct smb2test_result
     u32 max_read_size;
     s32 last_read_size;
     char error[96];
+    struct smb2test_measurement smb1_sequential;
+    struct smb2test_measurement smb1_random;
+    struct smb2test_measurement smb2_sequential;
+    struct smb2test_measurement smb2_random;
 };
 
 #endif

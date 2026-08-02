@@ -326,6 +326,8 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
     smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
 #ifdef SMB2TEST_BUILD
     printf("SMB2TEST: recv r=%d want=%d\n", smb2DiagRecvResult, len);
+    if (smb2DiagRecvResult >= 12 && ((u8 *)mem)[0] == 0xFE && ((u8 *)mem)[1] == 'S' && ((u8 *)mem)[2] == 'M' && ((u8 *)mem)[3] == 'B')
+        printf("SMB2TEST: status=%02X%02X%02X%02X\n", ((u8 *)mem)[11], ((u8 *)mem)[10], ((u8 *)mem)[9], ((u8 *)mem)[8]);
 #endif
     return smb2DiagRecvResult;
 }
@@ -990,6 +992,9 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
             smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
         } else
             sprintf(smb2Diag.error, "C%d E%d S%d T%d R%d D%08lX:%u", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, (unsigned long)smb2DiagConnectIP, smb2DiagConnectPort);
+#ifdef SMB2TEST_BUILD
+        printf("SMB2TEST: error=%s\n", smb2Diag.error);
+#endif
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
         return -1;

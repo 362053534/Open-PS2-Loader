@@ -112,18 +112,28 @@ static int apply_static_ip(void)
     return 0;
 }
 
+static void printMeasurement(const char *name, const struct smb2test_measurement *measurement)
+{
+    u32 speed = 0;
+
+    if (measurement->elapsed_ms)
+        speed = (measurement->bytes_read / 1024) * 1000 / measurement->elapsed_ms;
+
+    scr_printf("%-9s %4u KiB/s  %5u ms  %08X\n", name, speed, measurement->elapsed_ms, measurement->checksum);
+    if (measurement->result)
+        scr_printf("  Error: %s (%d)\n", measurement->error[0] ? measurement->error : "Unknown", measurement->result);
+}
+
 int main(int argc, char *argv[])
 {
     int i, moduleID, moduleResult = 0;
-    u32 speed = 0;
-    const char *stage;
 
     (void)argc;
     (void)argv;
 
     init_scr();
     scr_clear();
-    scr_printf("SMB2TEST - OPL IOP SMB2 (netman/ps2ip stack)\n\n");
+    scr_printf("SMB2TEST - OPL IOP SMB1/SMB2 (netman/ps2ip stack)\n\n");
 
     SifInitRpc(0);
     scr_printf("Resetting IOP... ");
@@ -230,46 +240,23 @@ int main(int argc, char *argv[])
 
     memset(&rpcResult, 0, sizeof(rpcResult));
     i = SifCallRpc(&rpcClient, SMB2TEST_CMD_RUN, 0, &rpcRequest, sizeof(rpcRequest), &rpcResult, sizeof(rpcResult), NULL, NULL);
+    scr_clear();
     if (i < 0) {
         scr_printf("SifCallRpc failed: %d\n", i);
         goto end;
     }
 
-    switch (rpcResult.stage) {
-        case SMB2TEST_STAGE_NETWORK:
-            stage = "NETWORK";
-            break;
-        case SMB2TEST_STAGE_MEMORY:
-            stage = "MEMORY";
-            break;
-        case SMB2TEST_STAGE_CONNECT:
-            stage = "CONNECT";
-            break;
-        case SMB2TEST_STAGE_OPEN:
-            stage = "OPEN";
-            break;
-        case SMB2TEST_STAGE_READ:
-            stage = "READ";
-            break;
-        case SMB2TEST_STAGE_CLOSE:
-            stage = "CLOSE";
-            break;
-        case SMB2TEST_STAGE_DONE:
-            stage = "DONE";
-            break;
-        default:
-            stage = "UNKNOWN";
+    if (rpcResult.stage != SMB2TEST_STAGE_DONE) {
+        scr_printf("Test failed: %s (%d)\n", rpcResult.error[0] ? rpcResult.error : "Unknown", rpcResult.result);
+        goto end;
     }
 
-    /* Error 紧跟 Stage，避免屏上刷太多行后被挤掉 */
-    scr_printf("Stage: %s  Result: %d\n", stage, rpcResult.result);
-    scr_printf("Error: %s\n", rpcResult.error[0] ? rpcResult.error : "(none)");
-
-    if (rpcResult.elapsed_ms)
-        speed = (rpcResult.bytes_read / 1024) * 1000 / rpcResult.elapsed_ms;
-
-    scr_printf("Bytes: %u  Time: %u ms  Speed: %u KiB/s\n", rpcResult.bytes_read, rpcResult.elapsed_ms, speed);
-    scr_printf("Checksum: %08X  Dialect: %04X  MaxRead: %u\n", rpcResult.checksum, rpcResult.dialect, rpcResult.max_read_size);
+    scr_printf("Protocol  Speed       Time      Checksum\n");
+    printMeasurement("SMB1 SEQ", &rpcResult.smb1_sequential);
+    printMeasurement("SMB2 SEQ", &rpcResult.smb2_sequential);
+    printMeasurement("SMB1 RND", &rpcResult.smb1_random);
+    printMeasurement("SMB2 RND", &rpcResult.smb2_random);
+    scr_printf("SMB2 dialect: %04X  MaxRead: %u\n", rpcResult.dialect, rpcResult.max_read_size);
 
 end:
     scr_printf("\nTest stopped. Reset the console to run again.\n");
