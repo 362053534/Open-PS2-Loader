@@ -29,7 +29,9 @@ u32 (*pinet_addr)(const char *cp);
 
 struct cdvdman_settings_smb cdvdman_settings;
 
-extern smb2_diag_t smb2Diag;
+extern char smb2TestError[64];
+extern u32 smb2TestDialect;
+extern u32 smb2TestMaxRead;
 
 static SifRpcDataQueue_t rpcQueue;
 static SifRpcServerData_t rpcServer;
@@ -192,16 +194,16 @@ static void runSMB2Test(const struct smb2test_request *request, unsigned char *r
     memset(measurement, 0, sizeof(*measurement));
     measurement->result = smb_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, NULL);
     if (measurement->result <= 0) {
-        if (smb2Diag.error[0]) {
-            strncpy(measurement->error, smb2Diag.error, sizeof(measurement->error));
+        if (smb2TestError[0]) {
+            strncpy(measurement->error, smb2TestError, sizeof(measurement->error));
             measurement->error[sizeof(measurement->error) - 1] = '\0';
         } else
             strcpy(measurement->error, "SMB2 connection failed");
         goto cleanup;
     }
 
-    rpcResult.dialect = smb2Diag.dialect;
-    rpcResult.max_read_size = smb2Diag.max_read_size;
+    rpcResult.dialect = smb2TestDialect;
+    rpcResult.max_read_size = smb2TestMaxRead;
     measurement->result = smb_OpenAndX((char *)request->path, (u8 *)&fid, 0);
     if (measurement->result <= 0) {
         strcpy(measurement->error, "SMB2 file open failed");
@@ -209,10 +211,6 @@ static void runSMB2Test(const struct smb2test_request *request, unsigned char *r
     }
 
     runReadTest(request, fid, readBuffer, random, smb_ReadFile, measurement);
-    if (measurement->result < 0 && smb2Diag.error[0]) {
-        strncpy(measurement->error, smb2Diag.error, sizeof(measurement->error));
-        measurement->error[sizeof(measurement->error) - 1] = '\0';
-    }
 
 cleanup:
     if (fid != 0xFFFF)
@@ -222,12 +220,6 @@ cleanup:
 
 static void runTest(const struct smb2test_request *request)
 {
-    int socketID;
-    int socketError;
-    int opt;
-    socklen_t socketErrorLength;
-    struct sockaddr_in serverAddress;
-    u32 serverIP;
     unsigned char *readBuffer = NULL;
 
     memset(&rpcResult, 0, sizeof(rpcResult));
@@ -256,43 +248,11 @@ static void runTest(const struct smb2test_request *request)
     strncpy(cdvdman_settings.smb_share, request->share, sizeof(cdvdman_settings.smb_share));
     cdvdman_settings.smb_share[sizeof(cdvdman_settings.smb_share) - 1] = '\0';
 
-    rpcResult.stage = SMB2TEST_STAGE_CONNECT;
-    serverIP = pinet_addr(request->server);
-    socketID = plwip_socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (socketID < 0) {
-        rpcResult.result = socketID;
-        sprintf(rpcResult.error, "TCP socket failed: %d", socketID);
-        goto cleanup;
-    }
-
-    opt = 1;
-    plwip_setsockopt(socketID, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-    memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_len = sizeof(serverAddress);
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(request->port);
-    serverAddress.sin_addr.s_addr = serverIP;
-    rpcResult.result = plwip_connect(socketID, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
-    if (rpcResult.result < 0) {
-        socketError = 0;
-        socketErrorLength = sizeof(socketError);
-        plwip_getsockopt(socketID, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength);
-        plwip_close(socketID);
-        sprintf(rpcResult.error, "TCP fail r=%ld so=%d", rpcResult.result, socketError);
-        goto cleanup;
-    }
-    plwip_close(socketID);
-
     rpcResult.stage = SMB2TEST_STAGE_READ;
     runSMB1Test(request, readBuffer, 0, &rpcResult.smb1_sequential);
+    runSMB1Test(request, readBuffer, 1, &rpcResult.smb1_random);
     runSMB2Test(request, readBuffer, 0, &rpcResult.smb2_sequential);
     runSMB2Test(request, readBuffer, 1, &rpcResult.smb2_random);
-    runSMB1Test(request, readBuffer, 1, &rpcResult.smb1_random);
-
-    printf("SMB2TEST: SMB1 SEQ r=%ld bytes=%lu ms=%lu sum=%08lx\n", rpcResult.smb1_sequential.result, rpcResult.smb1_sequential.bytes_read, rpcResult.smb1_sequential.elapsed_ms, rpcResult.smb1_sequential.checksum);
-    printf("SMB2TEST: SMB2 SEQ r=%ld bytes=%lu ms=%lu sum=%08lx\n", rpcResult.smb2_sequential.result, rpcResult.smb2_sequential.bytes_read, rpcResult.smb2_sequential.elapsed_ms, rpcResult.smb2_sequential.checksum);
-    printf("SMB2TEST: SMB1 RND r=%ld bytes=%lu ms=%lu sum=%08lx\n", rpcResult.smb1_random.result, rpcResult.smb1_random.bytes_read, rpcResult.smb1_random.elapsed_ms, rpcResult.smb1_random.checksum);
-    printf("SMB2TEST: SMB2 RND r=%ld bytes=%lu ms=%lu sum=%08lx\n", rpcResult.smb2_random.result, rpcResult.smb2_random.bytes_read, rpcResult.smb2_random.elapsed_ms, rpcResult.smb2_random.checksum);
 
     rpcResult.result = rpcResult.smb1_sequential.result || rpcResult.smb1_random.result ||
                        rpcResult.smb2_sequential.result || rpcResult.smb2_random.result ? -EIO : 0;
@@ -307,14 +267,7 @@ cleanup:
  * 在 send 返回后跑飞（PCSX2：宿主崩溃 / 解释器 Unimplemented op f0000102）。 */
 static void smbWorkerThread(void *arg)
 {
-    iop_thread_info_t info;
-
-    printf("SMB2TEST: worker begin\n");
-    memset(&info, 0, sizeof(info));
-    if (ReferThreadStatus(TH_SELF, &info) == 0)
-        printf("SMB2TEST: worker stack=%d remain=%d\n", info.stackSize, CheckThreadStack());
     runTest((const struct smb2test_request *)arg);
-    printf("SMB2TEST: worker end\n");
     SignalSema(smbWorkerSema);
     ExitDeleteThread();
 }

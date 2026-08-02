@@ -44,7 +44,7 @@ static u8 cdinit_rpcbuf[16];
 static u8 cddiskready_rpcbuf[16];
 static u8 cddiskready2_rpcbuf[16];
 static u8 S596_rpcbuf[16];
-static u8 shutdown_rpcbuf[sizeof(smb2_diag_t)];
+static u8 shutdown_rpcbuf[16];
 
 static int rpc0_thread_id, rpc1_thread_id, rpc2_thread_id, rpc_sd_thread_id;
 
@@ -229,15 +229,6 @@ static void *cbrpc_shutdown(int fno, void *buf, int size)
         value = *(int *)buf;
         sceCdSC(CDSC_OPL_SHUTDOWN, &value);
         *(int *)buf = 1;
-    } else if (fno == 2) {
-        smb2_diag_t *diag;
-
-        value = 0;
-        diag = (smb2_diag_t *)sceCdSC(CDSC_GET_SMB2_DIAG, &value);
-        if (diag)
-            memcpy(buf, diag, sizeof(smb2_diag_t));
-        else
-            memset(buf, 0, sizeof(smb2_diag_t));
     } else {
         *(int *)buf = 1;
     }

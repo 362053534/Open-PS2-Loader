@@ -16,8 +16,6 @@
 
 extern unsigned char ps2dev9_irx[];
 extern unsigned int size_ps2dev9_irx;
-extern unsigned char ioptrap_irx[];
-extern unsigned int size_ioptrap_irx;
 extern unsigned char netman_irx[];
 extern unsigned int size_netman_irx;
 extern unsigned char smsutils_irx[];
@@ -156,11 +154,6 @@ int main(int argc, char *argv[])
     sbv_patch_disable_prefix_check();
     scr_printf("OK\n");
 
-    moduleID = SifExecModuleBuffer(ioptrap_irx, size_ioptrap_irx, 0, NULL, &moduleResult);
-    scr_printf("IOPTRAP: id=%d result=%d\n", moduleID, moduleResult);
-    if (moduleID < 0)
-        goto end;
-
     moduleID = SifExecModuleBuffer(ps2dev9_irx, size_ps2dev9_irx, 0, NULL, &moduleResult);
     scr_printf("DEV9: id=%d result=%d\n", moduleID, moduleResult);
     if (moduleID < 0)
@@ -253,8 +246,9 @@ int main(int argc, char *argv[])
 
     scr_printf("Protocol  Speed       Time      Checksum\n");
     printMeasurement("SMB1 SEQ", &rpcResult.smb1_sequential);
-    printMeasurement("SMB2 SEQ", &rpcResult.smb2_sequential);
     printMeasurement("SMB1 RND", &rpcResult.smb1_random);
+    scr_printf("\n");
+    printMeasurement("SMB2 SEQ", &rpcResult.smb2_sequential);
     printMeasurement("SMB2 RND", &rpcResult.smb2_random);
     scr_printf("SMB2 dialect: %04X  MaxRead: %u\n", rpcResult.dialect, rpcResult.max_read_size);
 

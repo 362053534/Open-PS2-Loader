@@ -65,3 +65,8 @@ I_WaitSema
 I_PollSema
 I_DeleteSema
 thsemap_IMPORTS_end
+
+#include <ps2ip.h>
+ps2ip_IMPORTS_start
+I_lwip_select
+ps2ip_IMPORTS_end

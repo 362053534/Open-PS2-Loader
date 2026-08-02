@@ -48,28 +48,15 @@ static char smb2Server[24];
 static char smb2Share[32];
 static char smb2User[32];
 static char smb2Password[32];
-static int smb2DiagConnectResult;
-static int smb2DiagSocketError;
-static int smb2DiagFcntlResult;
-static int smb2DiagSelectResult;
-static int smb2DiagSendResult;
-static int smb2DiagRecvResult;
-static int smb2DiagRecvAvailable;
-static u8 smb2DiagSendHeader[8];
 /* libsmb2 iop_connect 失败后会再读 SO_ERROR；若仍为 EINPROGRESS 会覆盖 errno。记住失败码供 getsockopt 改写。 */
 static int smb2ConnectFailedFd = -1;
 static int smb2ConnectFailedErrno;
-static u32 smb2DiagConnectIP;
-static u16 smb2DiagConnectPort;
 static u16 smb2DefaultPort = 445;
-smb2_diag_t smb2Diag;
 
 #ifdef SMB2TEST_BUILD
-/* select 返回前先把可读数据收到 bounce，避免随后在 libsmb2 收包路径上踩 IOP 异常 */
-static u8 smb2RxBounce[2048];
-static int smb2RxBounceLen;
-static int smb2RxBouncePos;
-static int smb2RxBounceFd = -1;
+char smb2TestError[64];
+u32 smb2TestDialect;
+u32 smb2TestMaxRead;
 #endif
 
 struct addrinfo
@@ -185,9 +172,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     struct sockaddr *connectName = name;
     socklen_t connectLen = namelen;
 
-    smb2DiagConnectIP = 0;
-    smb2DiagConnectPort = 0;
-
     /*
      * 始终重建干净的 sockaddr_in（含 sin_len），与已成功的 TCP probe 完全一致。
      * libsmb2 经 sockaddr_storage 拷贝后偶发缺 sin_len / 脏填充，ps2ip 会报 EHOSTUNREACH(113)。
@@ -205,8 +189,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
             clean.sin_port = htons(smb2DefaultPort ? smb2DefaultPort : 445);
         connectName = (struct sockaddr *)&clean;
         connectLen = sizeof(clean);
-        smb2DiagConnectIP = clean.sin_addr.s_addr;
-        smb2DiagConnectPort = ntohs(clean.sin_port);
     }
 
     /* 连接前强制阻塞：与已成功的 TCP probe / smbman 一致 */
@@ -214,7 +196,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
         plwip_ioctl(s, FIONBIO, &nonblocking);
 
     result = plwip_connect(s, connectName, connectLen);
-    smb2DiagConnectResult = result;
 
     if (result == 0) {
         if (smb2ConnectFailedFd == s)
@@ -228,7 +209,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
         so_error = -result;
     else if (result == -1 && plwip_getsockopt) {
         plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
-        smb2DiagSocketError = so_error;
     }
 
     /* 若仍落入“连接中”，轮询 SO_ERROR（不用 select 写就绪——在 ps2ip-nm 上不可靠） */
@@ -241,10 +221,7 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
             so_error_len = sizeof(so_error);
             if (plwip_getsockopt)
                 plwip_getsockopt(s, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
-            smb2DiagSocketError = so_error;
-            smb2DiagSelectResult = waited + 1;
             if (so_error == 0 || so_error == EISCONN) {
-                smb2DiagConnectResult = 0;
                 if (smb2ConnectFailedFd == s)
                     smb2ConnectFailedFd = -1;
                 errno = 0;
@@ -261,154 +238,31 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     errno = so_error ? so_error : ECONNREFUSED;
     smb2ConnectFailedFd = s;
     smb2ConnectFailedErrno = errno;
-    smb2DiagConnectResult = -1;
     return -1;
 }
 
 int lwip_recv(int s, void *mem, int len, unsigned int flags)
 {
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: recv enter want=%d fl=%u\n", len, flags);
-    if (s == smb2RxBounceFd && smb2RxBouncePos < smb2RxBounceLen && mem && len > 0) {
-        int left = smb2RxBounceLen - smb2RxBouncePos;
-        int n = (len < left) ? len : left;
+    int result;
 
-        memcpy(mem, smb2RxBounce + smb2RxBouncePos, n);
-        smb2RxBouncePos += n;
-        if (smb2RxBouncePos >= smb2RxBounceLen) {
-            smb2RxBounceFd = -1;
-            smb2RxBounceLen = 0;
-            smb2RxBouncePos = 0;
-        }
-        smb2DiagRecvResult = n;
-        printf("SMB2TEST: recv bounce r=%d want=%d\n", n, len);
-        return n;
-    }
-#endif
     /* libsmb2 按非阻塞语义使用 recv；无数据时返回 EAGAIN，避免阻塞死等 */
     if (plwip_ioctl) {
         int available = 0;
 
         if (plwip_ioctl(s, FIONREAD, &available) == 0 && available <= 0) {
             errno = EAGAIN;
-#ifdef SMB2TEST_BUILD
-            printf("SMB2TEST: recv EAGAIN\n");
-#endif
-            smb2DiagRecvResult = -1;
             return -1;
         }
     }
-    smb2DiagRecvResult = plwip_recv(s, mem, len, flags);
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: recv r=%d want=%d\n", smb2DiagRecvResult, len);
-    if (smb2DiagRecvResult >= 12 && ((u8 *)mem)[0] == 0xFE && ((u8 *)mem)[1] == 'S' && ((u8 *)mem)[2] == 'M' && ((u8 *)mem)[3] == 'B')
-        printf("SMB2TEST: status=%02X%02X%02X%02X\n", ((u8 *)mem)[11], ((u8 *)mem)[10], ((u8 *)mem)[9], ((u8 *)mem)[8]);
-#endif
-    return smb2DiagRecvResult;
+    result = plwip_recv(s, mem, len, flags);
+    if (result < 0)
+        errno = EAGAIN;
+    return result;
 }
 
 int lwip_send(int s, void *dataptr, int size, unsigned int flags)
 {
-    if (size >= (int)sizeof(smb2DiagSendHeader))
-        memcpy(smb2DiagSendHeader, dataptr, sizeof(smb2DiagSendHeader));
-
-    smb2DiagSendResult = plwip_send(s, dataptr, size, flags);
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: send r=%d size=%d hdr=%02X%02X%02X%02X\n",
-           smb2DiagSendResult, size,
-           smb2DiagSendHeader[0], smb2DiagSendHeader[1],
-           smb2DiagSendHeader[2], smb2DiagSendHeader[3]);
-#endif
-    return smb2DiagSendResult;
-}
-
-/*
- * 覆盖 libsmb2 NEED_READV/WRITEV。
- * 库内实现经 read()/write() 宏变成 lwip_recv/send(..., MSG_DONTWAIT)；
- * 在 ps2ip-nm 上收包刚就绪时 DONTWAIT 易踩 PCSX2 IOP JIT。
- * 这里改为直接、阻塞地走我们已挂钩的 lwip_recv/lwip_send。
- */
-struct iovec {
-    void *iov_base;
-    size_t iov_len;
-};
-
-int readv(int fd, const struct iovec *vector, int count)
-{
-    int i;
-    int total = 0;
-
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: readv enter count=%d\n", count);
-#endif
-    if (!vector || count <= 0)
-        return -1;
-
-    for (i = 0; i < count; i++) {
-        int n;
-
-        if (!vector[i].iov_base || !vector[i].iov_len)
-            continue;
-        n = lwip_recv(fd, vector[i].iov_base, (int)vector[i].iov_len, 0);
-        if (n < 0) {
-            if (total > 0)
-                return total;
-            return n;
-        }
-        if (n == 0)
-            break;
-        total += n;
-        if ((size_t)n < vector[i].iov_len)
-            break;
-    }
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: readv r=%d\n", total);
-#endif
-    return total;
-}
-
-int writev(int fd, const struct iovec *vector, int count)
-{
-    static u8 combined[512];
-    int i;
-    int total = 0;
-    int offset = 0;
-
-    if (!vector || count <= 0)
-        return -1;
-
-    /* 小包合并成一次 send，避免把 NEGOTIATE 拆成多段 TCP */
-    for (i = 0; i < count; i++) {
-        if (!vector[i].iov_base || !vector[i].iov_len)
-            continue;
-        if (offset + (int)vector[i].iov_len > (int)sizeof(combined)) {
-            offset = -1;
-            break;
-        }
-        memcpy(combined + offset, vector[i].iov_base, vector[i].iov_len);
-        offset += (int)vector[i].iov_len;
-    }
-    if (offset > 0)
-        return lwip_send(fd, combined, offset, 0);
-
-    for (i = 0; i < count; i++) {
-        int n;
-
-        if (!vector[i].iov_base || !vector[i].iov_len)
-            continue;
-        n = lwip_send(fd, vector[i].iov_base, (int)vector[i].iov_len, 0);
-        if (n < 0) {
-            if (total > 0)
-                return total;
-            return n;
-        }
-        if (n == 0)
-            break;
-        total += n;
-        if ((size_t)n < vector[i].iov_len)
-            break;
-    }
-    return total;
+    return plwip_send(s, dataptr, size, flags);
 }
 
 int lwip_bind(int s, struct sockaddr *name, socklen_t namelen)
@@ -460,11 +314,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     int writeReady;
     int wait_ms;
     int waited;
-
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: select enter max=%d r=%d w=%d e=%d\n",
-           maxfdp1, readset ? 1 : 0, writeset ? 1 : 0, exceptset ? 1 : 0);
-#endif
+    int result;
 
     if (maxfdp1 > 32)
         maxfdp1 = 32;
@@ -509,16 +359,11 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                 so_error_len = sizeof(so_error);
                 if (plwip_getsockopt)
                     plwip_getsockopt(i, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
-                smb2DiagSocketError = so_error;
                 if (so_error == EINPROGRESS || so_error == EALREADY)
                     continue;
                 FD_SET(i, writeset);
                 writeReady++;
             }
-            smb2DiagSelectResult = writeReady;
-#ifdef SMB2TEST_BUILD
-            printf("SMB2TEST: select early-write %d\n", writeReady);
-#endif
             return writeReady;
         }
     }
@@ -549,74 +394,22 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             slice.tv_sec = 0;
             slice.tv_usec = 100000; /* 100ms，泵送协议栈并等待可读 */
             writeReady = plwip_select(maxfdp1, readset, NULL, NULL, &slice);
-            if (writeReady > 0) {
-                smb2DiagSelectResult = writeReady;
-#ifdef SMB2TEST_BUILD
-#if 0 // 禁用提前收包，直接让libsmb2读取socket。
-                {
-                    int fd;
-
-                    smb2RxBounceFd = -1;
-                    smb2RxBounceLen = 0;
-                    smb2RxBouncePos = 0;
-                    for (fd = 0; fd < maxfdp1; fd++) {
-                        int available = 0;
-                        int n;
-
-                        if (!FD_ISSET(fd, readset))
-                            continue;
-                        if (plwip_ioctl)
-                            plwip_ioctl(fd, FIONREAD, &available);
-                        if (available <= 0)
-                            available = (int)sizeof(smb2RxBounce);
-                        if (available > (int)sizeof(smb2RxBounce))
-                            available = (int)sizeof(smb2RxBounce);
-                        printf("SMB2TEST: pre-recv fd=%d avail=%d stack=%d\n",
-                               fd, available, CheckThreadStack());
-                        n = plwip_recv(fd, smb2RxBounce, available, 0);
-                        printf("SMB2TEST: pre-recv r=%d hdr=%02X%02X%02X%02X\n",
-                               n,
-                               n > 0 ? smb2RxBounce[0] : 0,
-                               n > 1 ? smb2RxBounce[1] : 0,
-                               n > 2 ? smb2RxBounce[2] : 0,
-                               n > 3 ? smb2RxBounce[3] : 0);
-                        if (n > 0) {
-                            smb2RxBounceFd = fd;
-                            smb2RxBounceLen = n;
-                            smb2RxBouncePos = 0;
-                        }
-                        break;
-                    }
-                }
-#endif
-                printf("SMB2TEST: select slice-read ready=%d waited=%d stack=%d\n",
-                       writeReady, waited, CheckThreadStack());
-                printf("SMB2TEST: select return to libsmb2\n");
-#endif
+            if (writeReady > 0)
                 return writeReady;
-            }
         }
 
         smb2FdClearRange(readset, maxfdp1);
-        smb2DiagSelectResult = 0;
-#ifdef SMB2TEST_BUILD
-        printf("SMB2TEST: select slice-read timeout %d ms\n", wait_ms);
-#endif
         return 0;
     }
 
-    smb2DiagSelectResult = plwip_select(maxfdp1, readset, writeset, NULL, timeout);
+    result = plwip_select(maxfdp1, readset, writeset, NULL, timeout);
     smb2FdClearRange(exceptset, maxfdp1);
-
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: select leave r=%d\n", smb2DiagSelectResult);
-#endif
 
     /*
      * ps2ip-nm 上已完成的 TCP 连接常不触发写就绪，libsmb2 会一直卡在 connecting。
      * 超时后用 SO_ERROR 补判：已连接或已失败都唤醒，仍 EINPROGRESS 则保持超时。
      */
-    if (smb2DiagSelectResult == 0 && writeset) {
+    if (result == 0 && writeset) {
         writeReady = 0;
         smb2FdClearRange(writeset, maxfdp1);
         for (i = 0; i < maxfdp1; i++) {
@@ -626,31 +419,16 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             so_error_len = sizeof(so_error);
             if (plwip_getsockopt)
                 plwip_getsockopt(i, SOL_SOCKET, SO_ERROR, &so_error, &so_error_len);
-            smb2DiagSocketError = so_error;
             if (so_error == EINPROGRESS || so_error == EALREADY)
                 continue;
             FD_SET(i, writeset);
             writeReady++;
         }
-        if (writeReady) {
-            smb2DiagSelectResult = writeReady;
+        if (writeReady)
             return writeReady;
-        }
     }
 
-    if (smb2DiagSelectResult == 0 && readInterest) {
-        for (i = 0; i < maxfdp1; i++) {
-            if (readInterest & (1u << i)) {
-                int available = 0;
-
-                if (plwip_ioctl && plwip_ioctl(i, FIONREAD, &available) == 0)
-                    smb2DiagRecvAvailable = available;
-                break;
-            }
-        }
-    }
-
-    return smb2DiagSelectResult;
+    return result;
 }
 
 #ifndef POLLIN
@@ -670,7 +448,7 @@ struct pollfd {
 };
 #endif
 
-/* 覆盖 libsmb2 NEED_POLL：不使用 exceptset（ps2ip 易误报 POLLHUP），并打点定位卡死位置 */
+/* 覆盖 libsmb2 NEED_POLL：不使用 exceptset，避免 ps2ip 误报 POLLHUP。 */
 int poll(struct pollfd *fds, unsigned int nfds, int timo)
 {
     struct timeval timeout, *toptr;
@@ -679,11 +457,6 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
     unsigned int i;
     int maxfd = 0;
     int rc;
-
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: poll enter nfds=%u ev=%x timo=%d\n",
-           nfds, (nfds && fds) ? (unsigned)fds[0].events : 0, timo);
-#endif
 
     FD_ZERO(&ifds);
     FD_ZERO(&ofds);
@@ -714,9 +487,6 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
     }
 
     rc = lwip_select(maxfd + 1, ip, op, NULL, toptr);
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: poll after-select rc=%d\n", rc);
-#endif
     if (rc <= 0)
         return rc;
 
@@ -736,47 +506,8 @@ int poll(struct pollfd *fds, unsigned int nfds, int timo)
             rc++;
         }
     }
-#ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: poll leave rc=%d rev=%x stack=%d\n",
-           rc, (nfds && fds) ? (unsigned)fds[0].revents : 0, CheckThreadStack());
-#endif
     return rc;
 }
-
-#ifdef SMB2TEST_BUILD
-int __real_smb2_service(struct smb2_context *smb2, int revents);
-struct smb2_io_vectors {
-    size_t num_done;
-    size_t total_size;
-    int niov;
-    struct smb2_iovec iov[256];
-};
-void __real_smb2_free_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v);
-struct smb2_iovec *__real_smb2_add_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v, u8 *buf, size_t len, void (*free_fn)(void *));
-
-void __wrap_smb2_free_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v)
-{
-    printf("SMB2TEST: free_iov enter n=%d d=%u t=%u f=%u\n", v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size, v->niov > 0 ? (unsigned int)v->iov[0].len : 0);
-    __real_smb2_free_iovector(smb2, v);
-    printf("SMB2TEST: free_iov leave n=%d d=%u t=%u\n", v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size);
-}
-
-struct smb2_iovec *__wrap_smb2_add_iovector(struct smb2_context *smb2, struct smb2_io_vectors *v, u8 *buf, size_t len, void (*free_fn)(void *))
-{
-    struct smb2_iovec *result;
-
-    printf("SMB2TEST: add_iov enter len=%u n=%d d=%u t=%u\n", (unsigned int)len, v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size);
-    result = __real_smb2_add_iovector(smb2, v, buf, len, free_fn);
-    printf("SMB2TEST: add_iov leave n=%d d=%u t=%u f=%u\n", v->niov, (unsigned int)v->num_done, (unsigned int)v->total_size, v->niov > 0 ? (unsigned int)v->iov[0].len : 0);
-    return result;
-}
-
-int __wrap_smb2_service(struct smb2_context *smb2, int revents)
-{
-    printf("SMB2TEST: smb2_service rev=0x%x stack=%d\n", revents, CheckThreadStack());
-    return __real_smb2_service(smb2, revents);
-}
-#endif
 
 int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
 {
@@ -788,13 +519,9 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
      */
     if (result == 0 && level == SOL_SOCKET && optname == SO_ERROR && optval && s == smb2ConnectFailedFd) {
         *(int *)optval = smb2ConnectFailedErrno;
-        smb2DiagSocketError = smb2ConnectFailedErrno;
         smb2ConnectFailedFd = -1;
         return 0;
     }
-
-    if (result == 0 && level == SOL_SOCKET && optname == SO_ERROR)
-        smb2DiagSocketError = *(int *)optval;
 
     return result;
 }
@@ -821,10 +548,8 @@ int lwip_fcntl(int s, int cmd, int val)
     if (cmd == F_GETFL)
         return 0;
 
-    if (cmd == F_SETFL) {
-        smb2DiagFcntlResult = 0;
+    if (cmd == F_SETFL)
         return 0;
-    }
 
     return -1;
 }
@@ -944,31 +669,21 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     smb2_set_user(smb2Context, smb2User);
     smb2_set_password(smb2Context, smb2Password);
     *capabilities = 0;
-    smb2DiagConnectResult = 0;
-    smb2DiagSocketError = 0;
-    smb2DiagFcntlResult = 0;
-    smb2DiagSelectResult = 0;
-    smb2DiagSendResult = 0;
-    smb2DiagRecvResult = 0;
-    smb2DiagRecvAvailable = 0;
-    memset(smb2DiagSendHeader, 0, sizeof(smb2DiagSendHeader));
-    smb2Diag.error[0] = '\0';
 
 #ifdef SMB2TEST_BUILD
-    printf("SMB2TEST: dialect lock 0202, connect %s/%s\n", smb2Server, smb2Share);
+    smb2TestError[0] = '\0';
+    smb2TestDialect = 0;
+    smb2TestMaxRead = 0;
 #endif
     if (smb2_connect_share(smb2Context, smb2Server, smb2Share, smb2User) != 0) {
 #ifdef SMB2TEST_BUILD
-        printf("SMB2TEST: smb2_connect_share failed\n");
-#endif
         const char *error = smb2_get_error(smb2Context);
+
         if (error && error[0]) {
-            strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
-            smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
+            strncpy(smb2TestError, error, sizeof(smb2TestError));
+            smb2TestError[sizeof(smb2TestError) - 1] = '\0';
         } else
-            sprintf(smb2Diag.error, "C%d E%d S%d T%d R%d D%08lX:%u", smb2DiagConnectResult, smb2DiagSocketError, smb2DiagSelectResult, smb2DiagSendResult, smb2DiagRecvResult, (unsigned long)smb2DiagConnectIP, smb2DiagConnectPort);
-#ifdef SMB2TEST_BUILD
-        printf("SMB2TEST: error=%s\n", smb2Diag.error);
+            strcpy(smb2TestError, "SMB2 connection failed");
 #endif
         smb2_destroy_context(smb2Context);
         smb2Context = NULL;
@@ -976,6 +691,10 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     }
 
     smb2Connected = 1;
+#ifdef SMB2TEST_BUILD
+    smb2TestDialect = smb2_get_dialect(smb2Context);
+    smb2TestMaxRead = smb2_get_max_read_size(smb2Context);
+#endif
 
     return 1;
 }
@@ -1067,46 +786,13 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
 {
     int remaining = nbytes;
     u8 *ptr = readbuf;
-    int diagPending = 0;
     int result;
 
-    if (!smb2Context || FID >= SMB2_HANDLE_COUNT || !smb2Handles[FID]) {
-        if (!smb2Diag.valid) {
-            smb2Diag.valid = 1;
-            smb2Diag.result = -EIO;
-            smb2Diag.fid = FID;
-            smb2Diag.offset_low = offsetlow;
-            smb2Diag.offset_high = offsethigh;
-            smb2Diag.request_size = nbytes;
-            smb2Diag.dialect = smb2Context ? smb2_get_dialect(smb2Context) : 0;
-            smb2Diag.max_read_size = smb2Context ? smb2_get_max_read_size(smb2Context) : 0;
-            strcpy(smb2Diag.error, "Invalid SMB2 context or handle");
-        }
+    if (!smb2Context || FID >= SMB2_HANDLE_COUNT || !smb2Handles[FID])
         return -EIO;
-    }
 
     WAITIOSEMA(smb_io_sema);
-    if (!smb2Diag.valid) {
-        smb2Diag.valid = 1;
-        smb2Diag.result = SMB2_DIAG_RESULT_PENDING;
-        smb2Diag.fid = FID;
-        smb2Diag.offset_low = offsetlow;
-        smb2Diag.offset_high = offsethigh;
-        smb2Diag.request_size = nbytes;
-        smb2Diag.dialect = smb2_get_dialect(smb2Context);
-        smb2Diag.max_read_size = smb2_get_max_read_size(smb2Context);
-        smb2Diag.error[0] = '\0';
-        diagPending = 1;
-    }
-
     while (remaining > 0) {
-        if (diagPending) {
-            smb2Diag.result = SMB2_DIAG_RESULT_PENDING;
-            smb2Diag.offset_low = offsetlow;
-            smb2Diag.offset_high = offsethigh;
-            smb2Diag.request_size = remaining;
-        }
-
         result = smb2_pread(smb2Context, smb2Handles[FID], ptr, remaining, ((u64)offsethigh << 32) | offsetlow);
         if (result <= 0)
             break;
@@ -1116,18 +802,6 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
         offsetlow += result;
         ptr += result;
         remaining -= result;
-    }
-
-    if (diagPending && remaining == 0) {
-        smb2Diag.valid = 0;
-    } else if (diagPending) {
-        const char *error = smb2_get_error(smb2Context);
-
-        smb2Diag.result = result;
-        if (error) {
-            strncpy(smb2Diag.error, error, sizeof(smb2Diag.error));
-            smb2Diag.error[sizeof(smb2Diag.error) - 1] = '\0';
-        }
     }
     SIGNALIOSEMA(smb_io_sema);
 
