@@ -210,7 +210,6 @@ static void runSMB2Test(const struct smb2test_request *request, unsigned char *r
         goto cleanup;
     }
 
-    smb_SetReadAhead(8);
     runReadTest(request, fid, readBuffer, random, smb_ReadFile, measurement);
 
 cleanup:

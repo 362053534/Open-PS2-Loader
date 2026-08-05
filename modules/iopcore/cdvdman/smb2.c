@@ -7,6 +7,7 @@
 #include <smb2/libsmb2.h>
 
 #define SMB2_HANDLE_COUNT (ISO_MAX_PARTS + 2)
+
 #define WAITIOSEMA(x)   WaitSema(x)
 #define SIGNALIOSEMA(x) SignalSema(x)
 
@@ -51,12 +52,6 @@ static char smb2Password[32];
 static int smb2ConnectFailedFd = -1;
 static int smb2ConnectFailedErrno;
 static u16 smb2DefaultPort = 445;
-static u8 *smb2ReadAheadBuffer;
-static int smb2ReadAheadSize;
-static int smb2ReadAheadFID = -1;
-static u64 smb2ReadAheadOffset;
-static int smb2ReadAheadPosition;
-static int smb2ReadAheadLength;
 
 #ifdef SMB2TEST_BUILD
 char smb2TestError[64];
@@ -259,7 +254,6 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
             return -1;
         }
     }
-
     result = plwip_recv(s, mem, len, flags);
     if (result < 0)
         errno = EAGAIN;
@@ -298,42 +292,6 @@ int readv(int fd, const struct iovec *vector, int count)
 int lwip_send(int s, void *dataptr, int size, unsigned int flags)
 {
     return plwip_send(s, dataptr, size, flags);
-}
-
-/* SMB2读取请求通常很小，优先使用栈缓冲，避免每次发送都分配临时内存。 */
-int writev(int fd, const struct iovec *vector, int count)
-{
-    unsigned char stackBuffer[256];
-    unsigned char *buffer = stackBuffer;
-    size_t bytes = 0;
-    size_t offset = 0;
-    int i;
-    int result;
-
-    for (i = 0; i < count; i++)
-        bytes += vector[i].iov_len;
-
-    if (!bytes)
-        return 0;
-
-    if (bytes > sizeof(stackBuffer)) {
-        buffer = malloc(bytes);
-        if (!buffer) {
-            errno = ENOMEM;
-            return -1;
-        }
-    }
-
-    for (i = 0; i < count; i++) {
-        memcpy(buffer + offset, vector[i].iov_base, vector[i].iov_len);
-        offset += vector[i].iov_len;
-    }
-
-    result = lwip_send(fd, buffer, bytes, MSG_DONTWAIT);
-    if (buffer != stackBuffer)
-        free(buffer);
-
-    return result;
 }
 
 int lwip_bind(int s, struct sockaddr *name, socklen_t namelen)
@@ -720,8 +678,6 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     }
 
     memset(smb2Handles, 0, sizeof(smb2Handles));
-    smb2ReadAheadFID = -1;
-    smb2ReadAheadPosition = smb2ReadAheadLength = 0;
     smb2Context = smb2_init_context();
     if (!smb2Context)
         return -ENOMEM;
@@ -833,8 +789,6 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write)
         goto cleanup;
 
     smb2Handles[i] = fh;
-    smb2ReadAheadFID = -1;
-    smb2ReadAheadPosition = smb2ReadAheadLength = 0;
     memcpy(FID, &i, sizeof(u16));
     result = 1;
 
@@ -851,78 +805,22 @@ int smb_Close(int FID)
         return -EIO;
 
     result = smb2_close(smb2Context, smb2Handles[FID]);
-    if (result == 0) {
+    if (result == 0)
         smb2Handles[FID] = NULL;
-        if (FID == smb2ReadAheadFID) {
-            smb2ReadAheadFID = -1;
-            smb2ReadAheadPosition = smb2ReadAheadLength = 0;
-        }
-    }
 
     return result;
-}
-
-void smb_SetReadAhead(unsigned int sectors)
-{
-    if (smb2ReadAheadBuffer)
-        free(smb2ReadAheadBuffer);
-
-    smb2ReadAheadBuffer = NULL;
-    smb2ReadAheadSize = sectors * 2048;
-    if (smb2ReadAheadSize) {
-        smb2ReadAheadBuffer = malloc(smb2ReadAheadSize);
-        if (!smb2ReadAheadBuffer)
-            smb2ReadAheadSize = 0;
-    }
-
-    smb2ReadAheadFID = -1;
-    smb2ReadAheadPosition = smb2ReadAheadLength = 0;
 }
 
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
     int remaining = nbytes;
     u8 *ptr = readbuf;
-    int result = 0;
-    u64 offset = ((u64)offsethigh << 32) | offsetlow;
+    int result;
 
     if (!smb2Context || FID >= SMB2_HANDLE_COUNT || !smb2Handles[FID])
         return -EIO;
 
     WAITIOSEMA(smb_io_sema);
-    if (FID == smb2ReadAheadFID && offset == smb2ReadAheadOffset) {
-        if (smb2ReadAheadLength > 0) {
-            int copySize = remaining < smb2ReadAheadLength ? remaining : smb2ReadAheadLength;
-
-            memcpy(ptr, smb2ReadAheadBuffer + smb2ReadAheadPosition, copySize);
-            smb2ReadAheadPosition += copySize;
-            smb2ReadAheadLength -= copySize;
-            smb2ReadAheadOffset += copySize;
-            ptr += copySize;
-            remaining -= copySize;
-            offsetlow += copySize;
-            if (offsetlow < (u32)copySize)
-                offsethigh++;
-        } else if (smb2ReadAheadBuffer && nbytes < smb2ReadAheadSize) {
-            result = smb2_pread(smb2Context, smb2Handles[FID], smb2ReadAheadBuffer, smb2ReadAheadSize, offset);
-            if (result <= 0)
-                goto cleanup;
-
-            remaining = result < nbytes ? nbytes - result : 0;
-            memcpy(ptr, smb2ReadAheadBuffer, nbytes - remaining);
-            ptr += nbytes - remaining;
-            offsetlow += nbytes - remaining;
-            if (offsetlow < (u32)(nbytes - remaining))
-                offsethigh++;
-            smb2ReadAheadPosition = nbytes - remaining;
-            smb2ReadAheadLength = result - smb2ReadAheadPosition;
-            smb2ReadAheadOffset = offset + smb2ReadAheadPosition;
-        }
-    } else {
-        smb2ReadAheadFID = FID;
-        smb2ReadAheadPosition = smb2ReadAheadLength = 0;
-    }
-
     while (remaining > 0) {
         result = smb2_pread(smb2Context, smb2Handles[FID], ptr, remaining, ((u64)offsethigh << 32) | offsetlow);
         if (result <= 0)
@@ -934,14 +832,6 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
         ptr += result;
         remaining -= result;
     }
-
-    if (!remaining && !smb2ReadAheadLength) {
-        smb2ReadAheadFID = FID;
-        smb2ReadAheadOffset = ((u64)offsethigh << 32) | offsetlow;
-        smb2ReadAheadPosition = 0;
-    }
-
-cleanup:
     SIGNALIOSEMA(smb_io_sema);
 
     return remaining > 0 ? result : nbytes;
@@ -955,8 +845,6 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
         return -EIO;
 
     WAITIOSEMA(smb_io_sema);
-    smb2ReadAheadFID = -1;
-    smb2ReadAheadPosition = smb2ReadAheadLength = 0;
     result = smb2_pwrite(smb2Context, smb2Handles[FID], writebuf, nbytes, ((u64)offsethigh << 32) | offsetlow);
     SIGNALIOSEMA(smb_io_sema);
 
@@ -1001,11 +889,7 @@ int smb_Disconnect(void)
         smb2Context = NULL;
         smb2Connected = 0;
         memset(smb2Handles, 0, sizeof(smb2Handles));
-        smb2ReadAheadFID = -1;
-        smb2ReadAheadPosition = smb2ReadAheadLength = 0;
     }
-
-    smb_SetReadAhead(0);
 
     return 1;
 }

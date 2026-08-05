@@ -24,7 +24,6 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
 int smb_OpenAndX(char *filename, u8 *FID, int Write);
 int smb_Close(int FID);
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
-void smb_SetReadAhead(unsigned int sectors);
 int smb_Disconnect(void);
 
 int smb1_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, char *Password, u32 *capabilities, OplSmbPwHashFunc_t hash_callback);

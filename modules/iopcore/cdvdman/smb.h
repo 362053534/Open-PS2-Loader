@@ -513,7 +513,6 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write); // process a Open AndX mes
 int smb_Close(int FID);
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
 int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nbytes);
-void smb_SetReadAhead(unsigned int sectors);
 int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num);
 int smb_Echo(void);
 void smb_CloseAll(void);
