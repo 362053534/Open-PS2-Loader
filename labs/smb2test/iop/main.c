@@ -37,7 +37,18 @@ static SifRpcDataQueue_t rpcQueue;
 static SifRpcServerData_t rpcServer;
 static unsigned char rpcBuffer[sizeof(struct smb2test_request)] __attribute__((aligned(16)));
 static struct smb2test_result rpcResult __attribute__((aligned(16)));
-static int smbWorkerSema = -1;
+static struct smb2test_request smbWorkerRequest;
+static int smbWorkerStartSema = -1;
+static int smbWorkerThreadID = -1;
+static volatile int smbWorkerBusy;
+static char smbTestPath[sizeof(smbWorkerRequest.path)];
+
+void smb2TestSetStage(u32 stage)
+{
+    rpcResult.stage = stage;
+    if (stage == SMB2TEST_STAGE_SESSION)
+        rpcResult.dialect = smb2TestDialect;
+}
 
 static int getModInfo(char *modname, modinfo_t *info)
 {
@@ -89,19 +100,32 @@ static int initPS2IP(void)
 
 typedef int (*smb_read_func_t)(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
 
-static void runReadTest(const struct smb2test_request *request, u16 fid, unsigned char *readBuffer, int random, smb_read_func_t readFunction, struct smb2test_measurement *measurement)
+static void runReadTest(const struct smb2test_request *request, u16 fid, unsigned char *readBuffer, int random, smb_read_func_t readFunction, struct smb2test_measurement *measurement, u16 sectorCacheSize)
 {
-    iop_sys_clock_t start, end, elapsed;
+    iop_sys_clock_t start, end, elapsed, segmentStart;
+    unsigned char *sectorCache = NULL;
     u32 seconds, microseconds;
     u32 offsetLow, offsetHigh;
+    u32 cacheOffsetLow = 0, cacheOffsetHigh = 0xFFFFFFFF;
+    u32 cacheSize = sectorCacheSize * 2048;
     u32 block, delta;
-    u32 i, j;
+    u32 i, j, segmentReadCount;
 
     memset(measurement, 0, sizeof(*measurement));
     measurement->result = -EIO;
     measurement->checksum = 2166136261u;
+    segmentReadCount = request->read_count / SMB2TEST_SEGMENT_COUNT;
+    if (sectorCacheSize) {
+        sectorCache = AllocSysMemory(ALLOC_FIRST, cacheSize, NULL);
+        if (!sectorCache) {
+            measurement->result = -ENOMEM;
+            strcpy(measurement->error, "Sector cache allocation failed");
+            return;
+        }
+    }
 
     GetSystemTime(&start);
+    segmentStart = start;
     for (i = 0; i < request->read_count; i++) {
         if (random) {
             block = (i * 2654435761u) % request->read_count;
@@ -113,7 +137,20 @@ static void runReadTest(const struct smb2test_request *request, u16 fid, unsigne
             offsetHigh = request->offset_high + (offsetLow < request->offset_low);
         }
 
-        measurement->last_read_size = readFunction(fid, offsetLow, offsetHigh, readBuffer, request->read_size);
+        if (sectorCache && request->read_size < cacheSize) {
+            if (cacheOffsetHigh == 0xFFFFFFFF || offsetHigh != cacheOffsetHigh || offsetLow < cacheOffsetLow || offsetLow - cacheOffsetLow + request->read_size > cacheSize) {
+                measurement->last_read_size = readFunction(fid, offsetLow, offsetHigh, sectorCache, cacheSize);
+                if (measurement->last_read_size == (s32)cacheSize) {
+                    cacheOffsetLow = offsetLow;
+                    cacheOffsetHigh = offsetHigh;
+                }
+            }
+            if (cacheOffsetHigh != 0xFFFFFFFF && offsetHigh == cacheOffsetHigh && offsetLow >= cacheOffsetLow && offsetLow - cacheOffsetLow + request->read_size <= cacheSize) {
+                memcpy(readBuffer, &sectorCache[offsetLow - cacheOffsetLow], request->read_size);
+                measurement->last_read_size = request->read_size;
+            }
+        } else
+            measurement->last_read_size = readFunction(fid, offsetLow, offsetHigh, readBuffer, request->read_size);
         if (measurement->last_read_size != (s32)request->read_size) {
             measurement->result = measurement->last_read_size;
             strcpy(measurement->error, random ? "Random read failed" : "Sequential read failed");
@@ -125,6 +162,15 @@ static void runReadTest(const struct smb2test_request *request, u16 fid, unsigne
             measurement->checksum *= 16777619u;
         }
         measurement->bytes_read += request->read_size;
+
+        if ((i + 1) % segmentReadCount == 0) {
+            GetSystemTime(&end);
+            elapsed.lo = end.lo - segmentStart.lo;
+            elapsed.hi = end.hi - segmentStart.hi - (segmentStart.lo > end.lo);
+            SysClock2USec(&elapsed, &seconds, &microseconds);
+            measurement->segment_speed[i / segmentReadCount] = (request->read_size / 1024) * segmentReadCount * 1000 / (seconds * 1000 + microseconds / 1000);
+            segmentStart = end;
+        }
     }
     if (i == request->read_count)
         measurement->result = 0;
@@ -134,6 +180,8 @@ static void runReadTest(const struct smb2test_request *request, u16 fid, unsigne
     elapsed.hi = end.hi - start.hi - (start.lo > end.lo);
     SysClock2USec(&elapsed, &seconds, &microseconds);
     measurement->elapsed_ms = seconds * 1000 + microseconds / 1000;
+    if (sectorCache)
+        FreeSysMemory(sectorCache);
 }
 
 static void runSMB1Test(const struct smb2test_request *request, unsigned char *readBuffer, int random, struct smb2test_measurement *measurement)
@@ -145,6 +193,7 @@ static void runSMB1Test(const struct smb2test_request *request, unsigned char *r
     int i;
 
     memset(measurement, 0, sizeof(*measurement));
+    rpcResult.stage = SMB2TEST_STAGE_CONNECT;
     measurement->result = smb1_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, SmbInitHashPassword);
     if (measurement->result <= 0) {
         strcpy(measurement->error, "SMB1 negotiate failed");
@@ -164,23 +213,34 @@ static void runSMB1Test(const struct smb2test_request *request, unsigned char *r
         goto cleanup;
     }
 
+    if (!smbTestPath[0]) {
+        measurement->result = smb1_FindFirstISO(request->path, smbTestPath, sizeof(smbTestPath));
+        if (measurement->result < 0) {
+            strcpy(measurement->error, "No ISO found in DVD folder");
+            goto cleanup;
+        }
+    }
+
     path[0] = '\\';
-    strncpy(&path[1], request->path, sizeof(path) - 2);
+    strncpy(&path[1], smbTestPath, sizeof(path) - 2);
     path[sizeof(path) - 1] = '\0';
     for (i = 1; path[i]; i++) {
         if (path[i] == '/')
             path[i] = '\\';
     }
 
+    rpcResult.stage = SMB2TEST_STAGE_OPEN;
     measurement->result = smb1_OpenAndX(path, (u8 *)&fid, 0);
     if (measurement->result <= 0) {
         strcpy(measurement->error, "SMB1 file open failed");
         goto cleanup;
     }
 
-    runReadTest(request, fid, readBuffer, random, smb1_ReadFile, measurement);
+    rpcResult.stage = SMB2TEST_STAGE_READ;
+    runReadTest(request, fid, readBuffer, random, smb1_ReadFile, measurement, request->sector_cache_size);
 
 cleanup:
+    rpcResult.stage = SMB2TEST_STAGE_CLOSE;
     if (fid != 0xFFFF)
         smb1_Close(fid);
     smb1_Disconnect();
@@ -192,9 +252,21 @@ static void runSMB2Test(const struct smb2test_request *request, unsigned char *r
     u16 fid = 0xFFFF;
 
     memset(measurement, 0, sizeof(*measurement));
+    rpcResult.stage = SMB2TEST_STAGE_CONNECT;
     measurement->result = smb_NegotiateProtocol((char *)request->server, request->port, (char *)request->user, (char *)request->password, &capabilities, NULL);
     if (measurement->result <= 0) {
-        if (smb2TestError[0]) {
+        rpcResult.dialect = smb2TestDialect;
+        if (rpcResult.stage == SMB2TEST_STAGE_CONNECT)
+            strcpy(measurement->error, "TCP connection failed");
+        else if (rpcResult.stage == SMB2TEST_STAGE_NEGOTIATE && !smb2TestDialect)
+            strcpy(measurement->error, "SMB2 dialect not supported");
+        else if (rpcResult.stage == SMB2TEST_STAGE_SESSION)
+            strcpy(measurement->error, "SMB2 supported, login failed");
+        else if (rpcResult.stage == SMB2TEST_STAGE_TREE)
+            strcpy(measurement->error, "SMB2 supported, share failed");
+        else if (smb2TestDialect)
+            strcpy(measurement->error, "SMB2 supported, connection failed");
+        else if (smb2TestError[0]) {
             strncpy(measurement->error, smb2TestError, sizeof(measurement->error));
             measurement->error[sizeof(measurement->error) - 1] = '\0';
         } else
@@ -204,16 +276,26 @@ static void runSMB2Test(const struct smb2test_request *request, unsigned char *r
 
     rpcResult.dialect = smb2TestDialect;
     rpcResult.max_read_size = smb2TestMaxRead;
-    measurement->result = smb_OpenAndX((char *)request->path, (u8 *)&fid, 0);
+    rpcResult.stage = SMB2TEST_STAGE_OPEN;
+    if (!smbTestPath[0]) {
+        measurement->result = smb_FindFirstISO(request->path, smbTestPath, sizeof(smbTestPath));
+        if (measurement->result < 0) {
+            strcpy(measurement->error, "No ISO found in DVD folder");
+            goto cleanup;
+        }
+    }
+    measurement->result = smb_OpenAndX(smbTestPath, (u8 *)&fid, 0);
     if (measurement->result <= 0) {
         strcpy(measurement->error, "SMB2 file open failed");
         goto cleanup;
     }
 
-    smb_SetReadAhead(8);
-    runReadTest(request, fid, readBuffer, random, smb_ReadFile, measurement);
+    smb_SetReadAhead(48);
+    rpcResult.stage = SMB2TEST_STAGE_READ;
+    runReadTest(request, fid, readBuffer, random, smb_ReadFile, measurement, request->sector_cache_size);
 
 cleanup:
+    rpcResult.stage = SMB2TEST_STAGE_CLOSE;
     if (fid != 0xFFFF)
         smb_Close(fid);
     smb_Disconnect();
@@ -222,6 +304,7 @@ cleanup:
 static void runTest(const struct smb2test_request *request)
 {
     unsigned char *readBuffer = NULL;
+    struct smb2test_measurement *measurement;
 
     memset(&rpcResult, 0, sizeof(rpcResult));
     rpcResult.result = -EIO;
@@ -233,7 +316,7 @@ static void runTest(const struct smb2test_request *request)
     }
 
     rpcResult.stage = SMB2TEST_STAGE_MEMORY;
-    if (!request->read_size || request->read_size > 65536 || !request->read_count) {
+    if (!request->read_size || request->read_size > 96 * 1024 || !request->read_count || request->test_type >= SMB2TEST_TYPE_COUNT) {
         rpcResult.result = -EINVAL;
         strcpy(rpcResult.error, "Invalid read parameters");
         goto cleanup;
@@ -249,53 +332,86 @@ static void runTest(const struct smb2test_request *request)
     strncpy(cdvdman_settings.smb_share, request->share, sizeof(cdvdman_settings.smb_share));
     cdvdman_settings.smb_share[sizeof(cdvdman_settings.smb_share) - 1] = '\0';
 
-    rpcResult.stage = SMB2TEST_STAGE_READ;
-    runSMB1Test(request, readBuffer, 0, &rpcResult.smb1_sequential);
-    runSMB1Test(request, readBuffer, 1, &rpcResult.smb1_random);
-    runSMB2Test(request, readBuffer, 0, &rpcResult.smb2_sequential);
-    runSMB2Test(request, readBuffer, 1, &rpcResult.smb2_random);
+    if (request->test_type == SMB2TEST_TYPE_SMB1_SEQUENTIAL) {
+        measurement = &rpcResult.smb1_sequential;
+        runSMB1Test(request, readBuffer, 0, measurement);
+    } else if (request->test_type == SMB2TEST_TYPE_SMB1_RANDOM) {
+        measurement = &rpcResult.smb1_random;
+        runSMB1Test(request, readBuffer, 1, measurement);
+    } else if (request->test_type == SMB2TEST_TYPE_SMB2_SEQUENTIAL) {
+        measurement = &rpcResult.smb2_sequential;
+        runSMB2Test(request, readBuffer, 0, measurement);
+    } else {
+        measurement = &rpcResult.smb2_random;
+        runSMB2Test(request, readBuffer, 1, measurement);
+    }
 
-    rpcResult.result = rpcResult.smb1_sequential.result || rpcResult.smb1_random.result ||
-                       rpcResult.smb2_sequential.result || rpcResult.smb2_random.result ? -EIO : 0;
-    rpcResult.stage = SMB2TEST_STAGE_DONE;
+    rpcResult.result = measurement->result;
 
 cleanup:
     if (readBuffer)
         FreeSysMemory(readBuffer);
+    rpcResult.stage = SMB2TEST_STAGE_DONE;
 }
 
 /* libsmb2 在 smb2_write/read_to_socket 里有 iovec[256] 栈数组；RPC 线程栈不够会
  * 在 send 返回后跑飞（PCSX2：宿主崩溃 / 解释器 Unimplemented op f0000102）。 */
 static void smbWorkerThread(void *arg)
 {
-    runTest((const struct smb2test_request *)arg);
-    SignalSema(smbWorkerSema);
-    ExitDeleteThread();
+    (void)arg;
+
+    // 常驻并复用同一个大栈线程，避免重复创建造成IOP内存碎片。
+    while (1) {
+        WaitSema(smbWorkerStartSema);
+        runTest(&smbWorkerRequest);
+        smbWorkerBusy = 0;
+    }
 }
 
 static void *rpcHandler(int function, void *buffer, int size)
 {
     iop_thread_t thread;
-    int threadID;
+    int result;
 
     if (function == SMB2TEST_CMD_RUN && (unsigned int)size >= sizeof(struct smb2test_request)) {
-        thread.attr = TH_C;
-        thread.option = SMB2TEST_RPC_ID;
-        thread.thread = smbWorkerThread;
-        thread.priority = 0x21;
-        thread.stacksize = 0x40000; /* 256KB：避开 libsmb2 iovec[256] 栈溢出 */
-        threadID = CreateThread(&thread);
-        if (threadID < 0) {
-            memset(&rpcResult, 0, sizeof(rpcResult));
-            rpcResult.result = threadID;
-            strcpy(rpcResult.error, "SMB worker thread create failed");
+        if (smbWorkerBusy)
             return &rpcResult;
+
+        if (smbWorkerThreadID < 0) {
+            thread.attr = TH_C;
+            thread.option = SMB2TEST_RPC_ID;
+            thread.thread = smbWorkerThread;
+            thread.priority = 0x21;
+            thread.stacksize = 0x40000; /* 256KB：避开 libsmb2 iovec[256] 栈溢出 */
+            smbWorkerThreadID = CreateThread(&thread);
+            if (smbWorkerThreadID < 0) {
+                memset(&rpcResult, 0, sizeof(rpcResult));
+                rpcResult.result = smbWorkerThreadID;
+                rpcResult.stage = SMB2TEST_STAGE_DONE;
+                strcpy(rpcResult.error, "SMB worker thread create failed");
+                return &rpcResult;
+            }
+            result = StartThread(smbWorkerThreadID, NULL);
+            if (result < 0) {
+                DeleteThread(smbWorkerThreadID);
+                smbWorkerThreadID = -1;
+                memset(&rpcResult, 0, sizeof(rpcResult));
+                rpcResult.result = result;
+                rpcResult.stage = SMB2TEST_STAGE_DONE;
+                strcpy(rpcResult.error, "SMB worker thread start failed");
+                return &rpcResult;
+            }
         }
-        StartThread(threadID, buffer);
-        WaitSema(smbWorkerSema);
-    } else {
+
+        memcpy(&smbWorkerRequest, buffer, sizeof(smbWorkerRequest));
+        memset(&rpcResult, 0, sizeof(rpcResult));
+        rpcResult.result = -EINPROGRESS;
+        smbWorkerBusy = 1;
+        SignalSema(smbWorkerStartSema);
+    } else if (function != SMB2TEST_CMD_STATUS) {
         memset(&rpcResult, 0, sizeof(rpcResult));
         rpcResult.result = -EINVAL;
+        rpcResult.stage = SMB2TEST_STAGE_DONE;
         strcpy(rpcResult.error, "Invalid SMB2TEST RPC request");
     }
 
@@ -324,8 +440,8 @@ int _start(int argc, char *argv[])
     sema.option = 0;
     sema.initial = 0;
     sema.max = 1;
-    smbWorkerSema = CreateSema(&sema);
-    if (smbWorkerSema < 0)
+    smbWorkerStartSema = CreateSema(&sema);
+    if (smbWorkerStartSema < 0)
         return MODULE_NO_RESIDENT_END;
 
     thread.attr = TH_C;
@@ -334,8 +450,10 @@ int _start(int argc, char *argv[])
     thread.priority = 0x20;
     thread.stacksize = 0x4000;
     threadID = CreateThread(&thread);
-    if (threadID < 0)
+    if (threadID < 0) {
+        DeleteSema(smbWorkerStartSema);
         return MODULE_NO_RESIDENT_END;
+    }
 
     StartThread(threadID, NULL);
     return MODULE_RESIDENT_END;

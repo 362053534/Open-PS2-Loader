@@ -258,7 +258,7 @@ struct UIItem diaConfig[] = {
     {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"扇区缓存(SMB)", -1}}},
     {UI_SPACER},
-    {UI_INT, CFG_SMBCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 4, 0, 32, NULL}}},
+    {UI_INT, CFG_SMBCACHE, 1, 1, -1, 0, 0, {.intvalue = {12, 4, 0, 32, NULL}}},
     {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动识别APPS & PS1", -1}}},
     {UI_SPACER},

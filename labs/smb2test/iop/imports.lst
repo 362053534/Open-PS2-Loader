@@ -3,6 +3,7 @@ I_GetLoadcoreInternalData
 loadcore_IMPORTS_end
 
 sifcmd_IMPORTS_start
+I_sceSifSendCmd
 I_sceSifSetRpcQueue
 I_sceSifRegisterRpc
 I_sceSifRpcLoop
@@ -70,3 +71,4 @@ thsemap_IMPORTS_end
 ps2ip_IMPORTS_start
 I_lwip_select
 ps2ip_IMPORTS_end
+

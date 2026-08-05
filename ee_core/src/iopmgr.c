@@ -99,8 +99,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 
 #ifdef __LOAD_DEBUG_MODULES
 #if !defined(TTY_PPC)
-    LoadOPLModule(OPL_MODULE_ID_SMSTCPIP, 0, 0, NULL);
-    LoadOPLModule(OPL_MODULE_ID_SMAP, 0, g_ipconfig_len, g_ipconfig);
+    LoadOPLModule(OPL_MODULE_ID_NETMAN, 0, 0, NULL);
+    LoadOPLModule(OPL_MODULE_ID_SMAP, 0, 0, NULL);
+    LoadOPLModule(OPL_MODULE_ID_PS2IP, 0, g_ipconfig_len, g_ipconfig);
+    LoadOPLModule(OPL_MODULE_ID_PS2IPS, 0, 0, NULL);
 #endif
 #ifdef __DECI2_DEBUG
     LoadOPLModule(OPL_MODULE_ID_DRVTIF, 0, 0, NULL);
@@ -129,8 +131,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             break;
         case ETH_MODE:
 #ifndef __LOAD_DEBUG_MODULES
-            LoadOPLModule(OPL_MODULE_ID_SMSTCPIP, 0, 0, NULL);
-            LoadOPLModule(OPL_MODULE_ID_SMAP, 0, g_ipconfig_len, g_ipconfig);
+            LoadOPLModule(OPL_MODULE_ID_NETMAN, 0, 0, NULL);
+            LoadOPLModule(OPL_MODULE_ID_SMAP, 0, 0, NULL);
+            LoadOPLModule(OPL_MODULE_ID_PS2IP, 0, g_ipconfig_len, g_ipconfig);
+            LoadOPLModule(OPL_MODULE_ID_PS2IPS, 0, 0, NULL);
 #endif
             LoadOPLModule(OPL_MODULE_ID_SMBINIT, 0, 0, NULL);
             break;

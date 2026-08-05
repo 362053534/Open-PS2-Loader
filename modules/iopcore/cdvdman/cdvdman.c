@@ -774,7 +774,11 @@ static void cdvdman_startThreads(void)
     cdvdman_stat.err = SCECdErNO;
 
     thread_param.thread = &cdvdman_cdread_Thread;
+#ifdef SMB_DRIVER
+    thread_param.stacksize = 0x40000;
+#else
     thread_param.stacksize = 0x1000;
+#endif
     thread_param.priority = 0x0f;
     thread_param.attr = TH_C;
     thread_param.option = 0xABCD0000;

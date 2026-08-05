@@ -17,10 +17,14 @@
 #include "cdvd_config.h"
 #include "cdvdman_opl.h"
 #include "oplsmb.h"
+#include "../smb2test.h"
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
+void smb2TestSetStage(u32 stage);
+
 int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, char *Password, u32 *capabilities, OplSmbPwHashFunc_t hash_callback);
+int smb_FindFirstISO(const char *directory, char *path, unsigned int pathSize);
 int smb_OpenAndX(char *filename, u8 *FID, int Write);
 int smb_Close(int FID);
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
@@ -33,6 +37,7 @@ int smb1_TreeConnectAndX(char *ShareName);
 int smb1_OpenAndX(char *filename, u8 *FID, int Write);
 int smb1_Close(int FID);
 int smb1_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
+int smb1_FindFirstISO(const char *directory, char *path, unsigned int pathSize);
 int smb1_Disconnect(void);
 void SmbInitHashPassword(server_specs_t *ss);
 

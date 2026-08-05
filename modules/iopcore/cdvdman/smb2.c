@@ -51,6 +51,8 @@ static char smb2Password[32];
 static int smb2ConnectFailedFd = -1;
 static int smb2ConnectFailedErrno;
 static u16 smb2DefaultPort = 445;
+static u8 *smb2ReadvBuffer;
+static size_t smb2ReadvBufferSize;
 static u8 *smb2ReadAheadBuffer;
 static int smb2ReadAheadSize;
 static int smb2ReadAheadFID = -1;
@@ -250,16 +252,7 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
 {
     int result;
 
-    /* libsmb2 按非阻塞语义使用 recv；无数据时返回 EAGAIN，避免阻塞死等 */
-    if (plwip_ioctl) {
-        int available = 0;
-
-        if (plwip_ioctl(s, FIONREAD, &available) == 0 && available <= 0) {
-            errno = EAGAIN;
-            return -1;
-        }
-    }
-
+    /* select 已确认套接字可读，直接执行非阻塞 recv，避免重复查询 FIONREAD。 */
     result = plwip_recv(s, mem, len, flags);
     if (result < 0)
         errno = EAGAIN;
@@ -272,27 +265,52 @@ struct iovec
     size_t iov_len;
 };
 
-/* IOP没有原生readv，直接读入目标向量，避免每次收包都分配临时缓冲并再次复制。 */
+/* 单向量直接接收；多向量保持一次recv，避免改变libsmb2的接收时序。 */
 int readv(int fd, const struct iovec *vector, int count)
 {
+    unsigned char stackBuffer[256];
+    unsigned char *buffer = stackBuffer;
+    size_t bytes = 0;
+    size_t offset = 0;
     int i;
     int result;
-    int bytesRead = 0;
 
-    for (i = 0; i < count; i++) {
-        if (!vector[i].iov_len)
-            continue;
+    for (i = 0; i < count; i++)
+        bytes += vector[i].iov_len;
 
-        result = lwip_recv(fd, vector[i].iov_base, vector[i].iov_len, MSG_DONTWAIT);
-        if (result <= 0)
-            return bytesRead ? bytesRead : result;
+    if (!bytes)
+        return 0;
 
-        bytesRead += result;
-        if ((size_t)result < vector[i].iov_len)
-            break;
+    if (count == 1)
+        return lwip_recv(fd, vector[0].iov_base, vector[0].iov_len, MSG_DONTWAIT);
+
+    if (bytes > sizeof(stackBuffer)) {
+        if (bytes > smb2ReadvBufferSize) {
+            unsigned char *newBuffer = malloc(bytes);
+
+            if (!newBuffer)
+                return -1;
+            if (smb2ReadvBuffer)
+                free(smb2ReadvBuffer);
+            smb2ReadvBuffer = newBuffer;
+            smb2ReadvBufferSize = bytes;
+        }
+        buffer = smb2ReadvBuffer;
     }
 
-    return bytesRead;
+    result = lwip_recv(fd, buffer, bytes, MSG_DONTWAIT);
+    if (result > 0) {
+        for (i = 0; i < count && offset < (size_t)result; i++) {
+            size_t copy = vector[i].iov_len;
+
+            if (copy > (size_t)result - offset)
+                copy = (size_t)result - offset;
+            memcpy(vector[i].iov_base, &buffer[offset], copy);
+            offset += copy;
+        }
+    }
+
+    return result;
 }
 
 int lwip_send(int s, void *dataptr, int size, unsigned int flags)
@@ -309,6 +327,9 @@ int writev(int fd, const struct iovec *vector, int count)
     size_t offset = 0;
     int i;
     int result;
+#ifdef SMB2TEST_BUILD
+    u16 command = 0;
+#endif
 
     for (i = 0; i < count; i++)
         bytes += vector[i].iov_len;
@@ -329,7 +350,30 @@ int writev(int fd, const struct iovec *vector, int count)
         offset += vector[i].iov_len;
     }
 
+#ifdef SMB2TEST_BUILD
+    // 根据发出的SMB2命令，细分连接阶段。
+    for (i = 0; (size_t)i + 14 <= bytes; i++) {
+        if (buffer[i] == 0xFE && buffer[i + 1] == 'S' && buffer[i + 2] == 'M' && buffer[i + 3] == 'B') {
+            command = buffer[i + 12] | (buffer[i + 13] << 8);
+
+            if (command == SMB2_NEGOTIATE) {
+                smb2TestSetStage(SMB2TEST_STAGE_NEGOTIATE);
+            } else if (command == SMB2_SESSION_SETUP) {
+                smb2TestDialect = smb2_get_dialect(smb2Context);
+                smb2TestSetStage(SMB2TEST_STAGE_SESSION);
+            } else if (command == SMB2_TREE_CONNECT) {
+                smb2TestSetStage(SMB2TEST_STAGE_TREE);
+            }
+            break;
+        }
+    }
+#endif
+
     result = lwip_send(fd, buffer, bytes, MSG_DONTWAIT);
+#ifdef SMB2TEST_BUILD
+    if (command == SMB2_SESSION_SETUP)
+        smb2TestSetStage(result < 0 ? SMB2TEST_STAGE_SESSION_RETRY : SMB2TEST_STAGE_SESSION_WAIT);
+#endif
     if (buffer != stackBuffer)
         free(buffer);
 
@@ -383,9 +427,9 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
     int so_error;
     socklen_t so_error_len;
     int writeReady;
+    int result;
     int wait_ms;
     int waited;
-    int result;
 
     if (maxfdp1 > 32)
         maxfdp1 = 32;
@@ -396,6 +440,7 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
                 readInterest |= (1u << i);
         }
     }
+
     if (writeset) {
         for (i = 0; i < maxfdp1; i++) {
             if (FD_ISSET(i, writeset))
@@ -439,23 +484,16 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
         }
     }
 
-    /*
-     * 纯读等待：避免长时间阻塞在 select 内（PCSX2 IOP JIT 易崩）。
-     * 但必须调用 plwip_select 才能让 lwIP/SMAP 把收包泵进套接字；
-     * 仅 FIONREAD+DelayThread 不会处理入站报文，会一直 R0 超时。
-     */
     if (readset && !writeset) {
-        struct timeval slice;
+        wait_ms = timeout ? timeout->tv_sec * 1000 + timeout->tv_usec / 1000 : -1;
+        waited = 0;
+        do {
+            int slice_ms = 100;
+            struct timeval slice;
 
-        wait_ms = 5000;
-        if (timeout)
-            wait_ms = (int)(timeout->tv_sec * 1000 + timeout->tv_usec / 1000);
-        if (wait_ms < 0)
-            wait_ms = 5000;
-        if (wait_ms > 30000)
-            wait_ms = 30000;
+            if (wait_ms >= 0 && wait_ms - waited < slice_ms)
+                slice_ms = wait_ms - waited;
 
-        for (waited = 0; waited <= wait_ms; waited += 100) {
             smb2FdClearRange(readset, maxfdp1);
             for (i = 0; i < maxfdp1; i++) {
                 if (readInterest & (1u << i))
@@ -463,13 +501,13 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
             }
 
             slice.tv_sec = 0;
-            slice.tv_usec = 100000; /* 100ms，泵送协议栈并等待可读 */
-            writeReady = plwip_select(maxfdp1, readset, NULL, NULL, &slice);
-            if (writeReady > 0)
-                return writeReady;
-        }
+            slice.tv_usec = slice_ms * 1000;
+            result = plwip_select(maxfdp1, readset, NULL, NULL, &slice);
+            if (result)
+                return result;
+            waited += slice_ms;
+        } while (wait_ms < 0 || waited < wait_ms);
 
-        smb2FdClearRange(readset, maxfdp1);
         return 0;
     }
 
@@ -733,10 +771,14 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
 #endif
     /*
      * 抓包：服务器曾回 SMB 3.1.1，IOP 在 NEGOTIATE 响应后、SESSION_SETUP 前崩溃。
-     * 先锁死 2.0.2，关闭 seal，降低密码学/上下文解析复杂度。
+     * 正式版锁死 2.0.2；测试版同时探测 2.0.2/2.1，以区分协议支持与后续连接失败。
      * （IOP 无 KRB5 时 libsmb2 会自然走 NTLMSSP，勿依赖 SMB2_SEC_* 枚举——旧 ports 可能没有）
      */
+#ifdef SMB2TEST_BUILD
+    smb2_set_version(smb2Context, SMB2_VERSION_ANY2);
+#else
     smb2_set_version(smb2Context, SMB2_VERSION_0202);
+#endif
     smb2_set_seal(smb2Context, 0);
     smb2_set_security_mode(smb2Context, 0);
     smb2_set_user(smb2Context, smb2User);
@@ -752,6 +794,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
 #ifdef SMB2TEST_BUILD
         const char *error = smb2_get_error(smb2Context);
 
+        smb2TestDialect = smb2_get_dialect(smb2Context);
         if (error && error[0]) {
             strncpy(smb2TestError, error, sizeof(smb2TestError));
             smb2TestError[sizeof(smb2TestError) - 1] = '\0';
@@ -803,6 +846,50 @@ int smb_TreeConnectAndX(char *ShareName)
     smb2Connected = 1;
     return 1;
 }
+
+#ifdef SMB2TEST_BUILD
+int smb_FindFirstISO(const char *directory, char *path, unsigned int pathSize)
+{
+    struct smb2dir *dir = NULL;
+    struct smb2dirent *entry;
+    int directoryLength;
+    int nameLength;
+    int result = -ENOENT;
+
+    if (!smb2Context || !directory || !path || !pathSize)
+        return -EINVAL;
+
+    WAITIOSEMA(smb_io_sema);
+    dir = smb2_opendir(smb2Context, directory);
+    if (!dir)
+        goto cleanup;
+
+    while ((entry = smb2_readdir(smb2Context, dir))) {
+        nameLength = strlen(entry->name);
+        if (nameLength >= 4 && entry->name[nameLength - 4] == '.' &&
+            (entry->name[nameLength - 3] == 'i' || entry->name[nameLength - 3] == 'I') &&
+            (entry->name[nameLength - 2] == 's' || entry->name[nameLength - 2] == 'S') &&
+            (entry->name[nameLength - 1] == 'o' || entry->name[nameLength - 1] == 'O')) {
+            directoryLength = strlen(directory);
+            if (directoryLength + 1 + nameLength + 1 > pathSize) {
+                result = -EINVAL;
+                break;
+            }
+            memcpy(path, directory, directoryLength);
+            path[directoryLength] = '/';
+            memcpy(&path[directoryLength + 1], entry->name, nameLength + 1);
+            result = 0;
+            break;
+        }
+    }
+
+cleanup:
+    if (dir)
+        smb2_closedir(smb2Context, dir);
+    SIGNALIOSEMA(smb_io_sema);
+    return result;
+}
+#endif
 
 int smb_OpenAndX(char *filename, u8 *FID, int Write)
 {
@@ -903,20 +990,25 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
             offsetlow += copySize;
             if (offsetlow < (u32)copySize)
                 offsethigh++;
-        } else if (smb2ReadAheadBuffer && nbytes < smb2ReadAheadSize) {
-            result = smb2_pread(smb2Context, smb2Handles[FID], smb2ReadAheadBuffer, smb2ReadAheadSize, offset);
+        }
+        if (remaining > 0 && smb2ReadAheadBuffer && nbytes < smb2ReadAheadSize) {
+            int copySize;
+            u64 readOffset = ((u64)offsethigh << 32) | offsetlow;
+
+            result = smb2_pread(smb2Context, smb2Handles[FID], smb2ReadAheadBuffer, smb2ReadAheadSize, readOffset);
             if (result <= 0)
                 goto cleanup;
 
-            remaining = result < nbytes ? nbytes - result : 0;
-            memcpy(ptr, smb2ReadAheadBuffer, nbytes - remaining);
-            ptr += nbytes - remaining;
-            offsetlow += nbytes - remaining;
-            if (offsetlow < (u32)(nbytes - remaining))
+            copySize = result < remaining ? result : remaining;
+            memcpy(ptr, smb2ReadAheadBuffer, copySize);
+            ptr += copySize;
+            remaining -= copySize;
+            offsetlow += copySize;
+            if (offsetlow < (u32)copySize)
                 offsethigh++;
-            smb2ReadAheadPosition = nbytes - remaining;
+            smb2ReadAheadPosition = copySize;
             smb2ReadAheadLength = result - smb2ReadAheadPosition;
-            smb2ReadAheadOffset = offset + smb2ReadAheadPosition;
+            smb2ReadAheadOffset = readOffset + smb2ReadAheadPosition;
         }
     } else {
         smb2ReadAheadFID = FID;
@@ -1006,6 +1098,11 @@ int smb_Disconnect(void)
     }
 
     smb_SetReadAhead(0);
+    if (smb2ReadvBuffer) {
+        free(smb2ReadvBuffer);
+        smb2ReadvBuffer = NULL;
+        smb2ReadvBufferSize = 0;
+    }
 
     return 1;
 }

@@ -33,7 +33,7 @@
    该值应小于TCP窗口，当前游戏内TCP窗口为10240字节。 */
 #define CLIENT_MAX_BUFFER_SIZE 8192      // 最多允许接收8192字节。
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
-#define CLIENT_MAX_RECV_SIZE   8192      // 最多允许单次接收8192字节。
+#define CLIENT_MAX_RECV_SIZE   32768     // 最多允许单次接收32768字节。
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
 #ifndef SHUT_RDWR
