@@ -31,7 +31,7 @@
    The value to use should be smaller than the TCP window size. Right now, it is 10240 (according to lwipopts.h). */
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
-#define CLIENT_MAX_RECV_SIZE   4096     // 最多允许单次接收24576字节(24KiB)。
+#define CLIENT_MAX_RECV_SIZE   8192     // 最多允许单次接收24576字节(24KiB)。
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
 #ifndef SHUT_RDWR
