@@ -65,6 +65,8 @@ static void ethSMBConnect(void)
     smbEcho_in_t echo;
     smbOpenShare_in_t openshare;
     int result;
+    int echoResult = -1;
+    int retryPS2 = !gPCUserName[0] && !gPCPassword[0];
 
     if (gETHPrefix[0] != '\0')
         sprintf(ethPrefix, "%s%s\\", ethBase, gETHPrefix);
@@ -112,36 +114,49 @@ static void ethSMBConnect(void)
         openshare.PasswordType = NO_PASSWORD;
     }
 
-    if ((result = fileXioDevctl(ethBase, SMB_DEVCTL_LOGON, (void *)&logon, sizeof(logon), NULL, 0)) >= 0) {
-        // SMB server alive test
-        strcpy(echo.echo, "ALIVE ECHO TEST");
-        echo.len = strlen("ALIVE ECHO TEST");
+    // 用户名和密码均为空时，匿名登录失败后使用PS2用户名重试。
+    while (1) {
+        if ((result = fileXioDevctl(ethBase, SMB_DEVCTL_LOGON, (void *)&logon, sizeof(logon), NULL, 0)) >= 0) {
+            // SMB server alive test
+            strcpy(echo.echo, "ALIVE ECHO TEST");
+            echo.len = strlen("ALIVE ECHO TEST");
 
-        if (gPCShareAddressIsNetBIOS) {
-            // Since the SMB server can be connected to, update the IP address.
-            pc_ip[0] = share_ip_address[0];
-            pc_ip[1] = share_ip_address[1];
-            pc_ip[2] = share_ip_address[2];
-            pc_ip[3] = share_ip_address[3];
-        }
-
-        if (fileXioDevctl(ethBase, SMB_DEVCTL_ECHO, (void *)&echo, sizeof(echo), NULL, 0) >= 0) {
-            gNetworkStartup = ERROR_ETH_SMB_OPENSHARE;
-
-            if (gPCShareName[0]) {
-                // connect to the share
-                strcpy(openshare.ShareName, gPCShareName);
-
-                if (fileXioDevctl(ethBase, SMB_DEVCTL_OPENSHARE, (void *)&openshare, sizeof(openshare), NULL, 0) >= 0) {
-                    // everything is ok
-                    gNetworkStartup = 0;
-                }
+            if (gPCShareAddressIsNetBIOS) {
+                // Since the SMB server can be connected to, update the IP address.
+                pc_ip[0] = share_ip_address[0];
+                pc_ip[1] = share_ip_address[1];
+                pc_ip[2] = share_ip_address[2];
+                pc_ip[3] = share_ip_address[3];
             }
-        } else {
+
+            echoResult = fileXioDevctl(ethBase, SMB_DEVCTL_ECHO, (void *)&echo, sizeof(echo), NULL, 0);
+            if (echoResult >= 0)
+                break;
+
             gNetworkStartup = ERROR_ETH_SMB_ECHO;
+        } else {
+            gNetworkStartup = (result == -SMB_DEVCTL_LOGON_ERR_CONN) ? ERROR_ETH_SMB_CONN : ERROR_ETH_SMB_LOGON;
         }
-    } else {
-        gNetworkStartup = (result == -SMB_DEVCTL_LOGON_ERR_CONN) ? ERROR_ETH_SMB_CONN : ERROR_ETH_SMB_LOGON;
+
+        if (!retryPS2 || (result < 0 && (result == -SMB_DEVCTL_LOGON_ERR_CONN || result == -SMB_DEVCTL_LOGON_ERR_PROT)))
+            break;
+
+        retryPS2 = 0;
+        strcpy(logon.User, "PS2");
+    }
+
+    if (echoResult >= 0) {
+        gNetworkStartup = ERROR_ETH_SMB_OPENSHARE;
+
+        if (gPCShareName[0]) {
+            // connect to the share
+            strcpy(openshare.ShareName, gPCShareName);
+
+            if (fileXioDevctl(ethBase, SMB_DEVCTL_OPENSHARE, (void *)&openshare, sizeof(openshare), NULL, 0) >= 0) {
+                // everything is ok
+                gNetworkStartup = 0;
+            }
+        }
     }
 
     // 判断是否存在ART2，提升图片读取效率
