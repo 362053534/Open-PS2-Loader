@@ -339,24 +339,42 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     u64 sector = ((u64)lsn) * 4;
     unsigned int sectorCount = sectors * 4;
     bd_fragment_t *frags = &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start];
-    if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, sectorCount) != (int)sectorCount) {
-        u64 totalSectorCount = 0;
-        unsigned int i;
+    while (sectorCount > 0) {
+        unsigned int readCount = sectorCount;
+        unsigned int readSectors;
 
-        for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
-            totalSectorCount += frags[i].count;
+        // 512字节路径按4个底层扇区对齐分段，避免超过bd_defrag的u16数量上限。
+        if (readCount > 0xfffc)
+            readCount = 0xfffc;
+        readSectors = readCount / 4;
 
-        if (sector >= totalSectorCount)
-            memset(buffer, 0, sectors * 2048);
-        else if (sectorCount > totalSectorCount - sector) {
-            unsigned int validSectorCount = totalSectorCount - sector;
+        if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, readCount) != (int)readCount) {
+            u64 totalSectorCount = 0;
+            unsigned int i;
 
-            if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, validSectorCount) == (int)validSectorCount)
-                memset((u8 *)buffer + validSectorCount * 512, 0, (sectorCount - validSectorCount) * 512);
-            else
+            for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
+                totalSectorCount += frags[i].count;
+
+            if (sector >= totalSectorCount)
+                memset(buffer, 0, readSectors * 2048);
+            else if (readCount > totalSectorCount - sector) {
+                unsigned int validSectorCount = totalSectorCount - sector;
+
+                if (bd_defrag(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, validSectorCount) == (int)validSectorCount)
+                    memset((u8 *)buffer + validSectorCount * 512, 0, (readCount - validSectorCount) * 512);
+                else {
+                    rv = SCECdErREAD;
+                    break;
+                }
+            } else {
                 rv = SCECdErREAD;
-        } else
-            rv = SCECdErREAD;
+                break;
+            }
+        }
+
+        buffer = (u8 *)buffer + readSectors * 2048;
+        sector += readCount;
+        sectorCount -= readCount;
     }
     SignalSema(bdm_io_sema);
 
