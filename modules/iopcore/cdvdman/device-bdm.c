@@ -235,6 +235,20 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
     }
 
     iso_sectors_remaining = sectors;
+    if (mediaLsnCount && (mediaLsnCount % iso_sectors_per_sector)) {
+        if (lsn >= mediaLsnCount) {
+            memset(destination, 0, sectors * 2048);
+            SignalSema(bdm_io_sema);
+            return SCECdErNO;
+        }
+
+        if (iso_sectors_remaining > mediaLsnCount - lsn) {
+            iso_sectors_remaining = mediaLsnCount - lsn;
+            // 4K/8K物理扇区的最后一块可能包含逻辑介质末尾之外的填充数据，超出部分必须补零。
+            memset(destination + iso_sectors_remaining * 2048, 0,
+                   (sectors - iso_sectors_remaining) * 2048);
+        }
+    }
     while (iso_sectors_remaining > 0) {
         u32 iso_sector_offset = lsn % iso_sectors_per_sector;
         u32 sectors_to_read;
