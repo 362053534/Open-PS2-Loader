@@ -281,7 +281,7 @@ int main(int argc, char *argv[])
     int testType;
     u32 lastStage;
     static const char *testNames[] = {"SMB1 SEQ", "SMB1 RND", "SMB2 SEQ", "SMB2 RND"};
-    static const u8 sectorCacheSizes[] = {0, 6, 12, 24, 48};
+    static const u8 sectorCacheSizes[] = {0, 12};
     struct smb2test_measurement *measurement;
 
     (void)argc;
@@ -436,9 +436,9 @@ int main(int argc, char *argv[])
             rpcRequest.read_count = SMB2TEST_READ_COUNT;
         } else {
             if (!(i & 1))
-                scr_printf("Read size: 96 KiB\n");
+                scr_printf("Read size: 64 KiB\n");
             rpcRequest.sector_cache_size = 0;
-            rpcRequest.read_size = 96 * 1024;
+            rpcRequest.read_size = 64 * 1024;
             rpcRequest.read_count = SMB2TEST_READ_SIZE * SMB2TEST_READ_COUNT / rpcRequest.read_size;
         }
 

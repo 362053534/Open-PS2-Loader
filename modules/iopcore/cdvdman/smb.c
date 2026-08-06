@@ -33,7 +33,7 @@
    该值应小于TCP窗口，当前游戏内TCP窗口为10240字节。 */
 #define CLIENT_MAX_BUFFER_SIZE 8192      // 最多允许接收8192字节。
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
-#define CLIENT_MAX_RECV_SIZE   32768     // 最多允许单次接收32768字节。
+#define CLIENT_MAX_RECV_SIZE   24576     // 最多允许单次接收24576字节。
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
 #ifndef SHUT_RDWR
@@ -70,6 +70,15 @@ static server_specs_t server_specs;
 
 static u16 UID, TID;
 static int main_socket = -1;
+
+#if CLIENT_MAX_RECV_SIZE >= 24576
+#define SMB_READ_AHEAD_SIZE CLIENT_MAX_RECV_SIZE
+static u8 smb_read_ahead_buffer[SMB_READ_AHEAD_SIZE] __attribute__((aligned(64)));
+static u16 smb_read_ahead_fid;
+static u32 smb_read_ahead_offsetlow;
+static u32 smb_read_ahead_offsethigh;
+static int smb_read_ahead_size;
+#endif
 
 static struct
 {
@@ -537,6 +546,10 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write)
 
     WAITIOSEMA(smb_io_sema);
 
+#if CLIENT_MAX_RECV_SIZE >= 24576
+    smb_read_ahead_size = 0;
+#endif
+
     ZERO_PKT_ALIGNED(OR, sizeof(OpenAndXRequest_t));
 
     OR->smbH.Magic = SMB_MAGIC;
@@ -725,6 +738,44 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
     WAITIOSEMA(smb_io_sema);
 
     while (remaining > 0) {
+#if CLIENT_MAX_RECV_SIZE >= 24576
+        if (smb_read_ahead_size > 0) {
+            if (smb_read_ahead_fid == FID && smb_read_ahead_offsetlow == offsetlow && smb_read_ahead_offsethigh == offsethigh) {
+                toRead = remaining > smb_read_ahead_size ? smb_read_ahead_size : remaining;
+                memcpy(ptr, smb_read_ahead_buffer, toRead);
+
+                if (smb_read_ahead_offsetlow + toRead < smb_read_ahead_offsetlow)
+                    smb_read_ahead_offsethigh++;
+                smb_read_ahead_offsetlow += toRead;
+                smb_read_ahead_size -= toRead;
+                if (offsetlow + toRead < offsetlow)
+                    offsethigh++;
+                offsetlow += toRead;
+                ptr += toRead;
+                remaining -= toRead;
+                if (smb_read_ahead_size > 0)
+                    memmove(smb_read_ahead_buffer, smb_read_ahead_buffer + toRead, smb_read_ahead_size);
+                continue;
+            }
+
+            smb_read_ahead_size = 0;
+        }
+
+        if (remaining < SMB_READ_AHEAD_SIZE) {
+            result = smb_ReadAndX(FID, offsetlow, offsethigh, smb_read_ahead_buffer, SMB_READ_AHEAD_SIZE);
+            if (result <= 0) {
+                if (!result)
+                    result = nbytes - remaining;
+                break;
+            }
+
+            smb_read_ahead_fid = FID;
+            smb_read_ahead_offsetlow = offsetlow;
+            smb_read_ahead_offsethigh = offsethigh;
+            smb_read_ahead_size = result;
+            continue;
+        }
+#endif
         toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
 
         result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
@@ -861,6 +912,10 @@ void smb_CloseAll(void)
             cdvdman_settings.FIDs[i] = -1;
         }
     }
+
+#if CLIENT_MAX_RECV_SIZE >= 24576
+    smb_read_ahead_size = 0;
+#endif
 }
 
 //-------------------------------------------------------------------------
@@ -870,6 +925,10 @@ int smb_Disconnect(void)
         plwip_close(main_socket);
         main_socket = -1;
     }
+
+#if CLIENT_MAX_RECV_SIZE >= 24576
+    smb_read_ahead_size = 0;
+#endif
 
     return 1;
 }

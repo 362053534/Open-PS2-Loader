@@ -60,6 +60,29 @@ static u64 smb2ReadAheadOffset;
 static int smb2ReadAheadPosition;
 static int smb2ReadAheadLength;
 
+#define SMB2_ASYNC_READ_SIZE (32 * 1024)
+
+struct smb2AsyncReadRequest
+{
+    int done;
+    int result;
+    u32 generation;
+};
+
+static u32 smb2AsyncReadGeneration;
+
+static void smb2AsyncReadCallback(struct smb2_context *smb2, int status, void *command_data, void *cb_data)
+{
+    struct smb2AsyncReadRequest *request = cb_data;
+
+    (void)smb2;
+    (void)command_data;
+    if (request && request->generation == smb2AsyncReadGeneration) {
+        request->result = status;
+        request->done = 1;
+    }
+}
+
 #ifdef SMB2TEST_BUILD
 char smb2TestError[64];
 u32 smb2TestDialect;
@@ -1013,6 +1036,86 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
     } else {
         smb2ReadAheadFID = FID;
         smb2ReadAheadPosition = smb2ReadAheadLength = 0;
+    }
+
+    /* 连续读取时让两个 32 KiB 请求同时在途，完成后仍按顺序提交给调用方。 */
+    while (remaining >= SMB2_ASYNC_READ_SIZE * 2) {
+        static struct smb2AsyncReadRequest requests[2];
+        int requestSizes[2];
+        int requestCount = 0;
+        int issuedBytes = 0;
+        int i;
+        u64 asyncOffset = ((u64)offsethigh << 32) | offsetlow;
+
+        smb2AsyncReadGeneration++;
+        if (!smb2AsyncReadGeneration)
+            smb2AsyncReadGeneration++;
+        memset(requests, 0, sizeof(requests));
+        while (requestCount < 2 && remaining - issuedBytes >= SMB2_ASYNC_READ_SIZE) {
+            requestSizes[requestCount] = SMB2_ASYNC_READ_SIZE;
+            requests[requestCount].generation = smb2AsyncReadGeneration;
+            result = smb2_pread_async(smb2Context, smb2Handles[FID], ptr + issuedBytes,
+                                      requestSizes[requestCount], asyncOffset + issuedBytes,
+                                      smb2AsyncReadCallback, &requests[requestCount]);
+            if (result < 0)
+                break;
+
+            requestCount++;
+            issuedBytes += SMB2_ASYNC_READ_SIZE;
+        }
+
+        if (!requestCount)
+            break;
+
+        while (!requests[0].done || (requestCount > 1 && !requests[1].done)) {
+            struct pollfd pollfd;
+            int fd = smb2_get_fd(smb2Context);
+
+            if (fd < 0) {
+                result = -EIO;
+                goto cleanup;
+            }
+
+            pollfd.fd = fd;
+            pollfd.events = smb2_which_events(smb2Context);
+            pollfd.revents = 0;
+            if (poll(&pollfd, 1, 1000) < 0) {
+                result = -EIO;
+                goto cleanup;
+            }
+            if (!pollfd.revents) {
+                if (smb2_service(smb2Context, 0) < 0) {
+                    result = -EIO;
+                    goto cleanup;
+                }
+                continue;
+            }
+            if (smb2_service(smb2Context, pollfd.revents) < 0) {
+                result = -EIO;
+                goto cleanup;
+            }
+        }
+
+        for (i = 0; i < requestCount; i++) {
+            if (requests[i].result <= 0) {
+                result = requests[i].result;
+                goto cleanup;
+            }
+        }
+
+        for (i = 0; i < requestCount; i++) {
+            result = requests[i].result;
+            if (offsetlow + result < offsetlow)
+                offsethigh++;
+            offsetlow += result;
+            ptr += result;
+            remaining -= result;
+            if (result < requestSizes[i])
+                break;
+        }
+
+        if (i < requestCount && result < requestSizes[i])
+            break;
     }
 
     while (remaining > 0) {
