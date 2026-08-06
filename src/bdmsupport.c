@@ -390,6 +390,17 @@ static int bdmUpdateGameList(item_list_t *itemList)
                 pDeviceData->bdmGameCount = -1;
                 return 0;
             }
+
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                iox_dirent_t dirent;
+
+                // MX4SIO根目录为空时，继续保持未完成状态，等待下一次扫描。
+                if (fileXioDread(rootDir, &dirent) <= 0) {
+                    fileXioDclose(rootDir);
+                    pDeviceData->bdmGameCount = -1;
+                    return 0;
+                }
+            }
             fileXioDclose(rootDir);
 
             snprintf(isoPath, sizeof(isoPath), "%sCD", pDeviceData->bdmPrefix);
