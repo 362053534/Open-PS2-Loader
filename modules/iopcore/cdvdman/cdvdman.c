@@ -271,6 +271,13 @@ static int ProbeZSO(u8 *buffer)
         initCache();
         // redirect sector reader
         DeviceReadSectorsPtr = &DeviceReadSectorsCompressed;
+#ifdef SMB_DRIVER
+    } else {
+        // 普通SMB ISO也使用用户设置的扇区缓存。
+        initCache();
+        if (sector_cache)
+            DeviceReadSectorsPtr = &DeviceReadSectorsCached;
+#endif
     }
     return 1;
 }
