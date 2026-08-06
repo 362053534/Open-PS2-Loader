@@ -674,6 +674,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         {
             int popsBdmType = appGetPOPSBDMDeviceType(&appsList[id]);
 
+            if (gRememberLastPlayed) {
+                configSetStr(configGetByType(CONFIG_LAST), "last_played", appsList[id].startup);
+                saveConfig(CONFIG_LAST, 0);
+            }
+
             deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
             oplShutdownUnusedDev9(mode, popsBdmType);
             LoadELFFromMemory(popstarter_elf, 1, argv);
@@ -747,6 +752,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
             if (mode >= BDM_MODE && mode <= BDM_MODE4)
                 bdmType = bdmGetDeviceType(mode);
+
+            if (gRememberLastPlayed) {
+                configSetStr(configGetByType(CONFIG_LAST), "last_played", appsList[id].startup);
+                saveConfig(CONFIG_LAST, 0);
+            }
 
             deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
             oplShutdownUnusedDev9(mode, bdmType);
