@@ -304,6 +304,10 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     for (ptr = buf, remaining = sectors; remaining > 0;) {
         unsigned int SectorsToRead = remaining;
 
+        // ATA路径限制单次读取量，避免大块DMA请求导致读取异常。
+        if ((cdvdman_settings.common.fakemodule_flags & FAKE_MODULE_FLAG_ATAD) && SectorsToRead > 8)
+            SectorsToRead = 8;
+
         if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
             // Limit transfers to a maximum length of 8, with a restricted transfer rate.
             iop_sys_clock_t TargetTime;
