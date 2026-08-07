@@ -505,6 +505,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     char filename[32];
     hdl_game_info_t *game;
     struct cdvdman_settings_hdd *settings;
+    struct cdvdman_settings_common *commonSettings;
 
     if (id >= hddGames.count) {
         item_list_t bdmItemList;
@@ -648,12 +649,13 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     // gHDDSpindown [0..20] -> spindown [0..240] -> seconds [0..1200]
     hddSetIdleTimeout(gHDDSpindown * 12);
 
-    if (hddHDProKitDetected) {
+    if (!hddHDProKitDetected) {
+        // 第二版实验：原生 APA 游戏暂时复用 BDM ATA 的读取链路。
+        size_irx = size_bdm_ata_cdvdman_irx;
+        irx = &bdm_ata_cdvdman_irx;
+    } else {
         size_irx = size_hdd_hdpro_cdvdman_irx;
         irx = &hdd_hdpro_cdvdman_irx;
-    } else {
-        size_irx = size_hdd_cdvdman_irx;
-        irx = &hdd_cdvdman_irx;
     }
 
     sbPrepare(NULL, configSet, size_irx, irx, &i);
@@ -671,13 +673,35 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             LOG("Cheats error\n");
     }
 
-    settings = (struct cdvdman_settings_hdd *)((u8 *)irx + i);
+    if (!hddHDProKitDetected) {
+        struct cdvdman_settings_bdm *bdmSettings = (struct cdvdman_settings_bdm *)((u8 *)irx + i);
+        hdl_apa_header hdlHeader;
 
-    // 设置48位LBA标记
-    settings->common.media = hddIs48bit() & 0xff;
+        memset(&bdmSettings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
+        hddReadSectors(game->start_sector, sizeof(hdlHeader) / 512, &hdlHeader);
+        bdmSettings->common.NumParts = hdlHeader.num_partitions;
+        bdmSettings->common.media = hdlHeader.discType;
+        bdmSettings->common.layer1_start = hdlHeader.layer1_start;
+        bdmSettings->bdDeviceId = 0;
+        bdmSettings->hddIsLBA48 = hddIs48bit();
+        bdmSettings->fragsAre512ByteSectors = 0;
+        bdmSettings->fragfile[0].frag_start = 0;
+        bdmSettings->fragfile[0].frag_count = hdlHeader.num_partitions;
+        for (i = 0; i < hdlHeader.num_partitions && i < BDM_MAX_FRAGS; i++) {
+            bdmSettings->frags[i].sector = hdlHeader.part_specs[i].data_start;
+            bdmSettings->frags[i].count = hdlHeader.part_specs[i].part_size * 2;
+        }
+        commonSettings = &bdmSettings->common;
+    } else {
+        settings = (struct cdvdman_settings_hdd *)((u8 *)irx + i);
 
-    // 设置APA头起始扇区
-    settings->lba_start = game->start_sector;
+        // 设置48位LBA标记
+        settings->common.media = hddIs48bit() & 0xff;
+
+        // 设置APA头起始扇区
+        settings->lba_start = game->start_sector;
+        commonSettings = &settings->common;
+    }
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         strcpy(filename, game->startup);
@@ -686,7 +710,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
 
     // Check for ZSO to correctly adjust layer1 start
-    settings->common.layer1_start = 0; // cdvdman会从APA头读取第二层起始位置
+    commonSettings->layer1_start = 0; // cdvdman会从APA头读取第二层起始位置
     hddReadSectors(game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET, 1, IOBuffer);
     if (*(u32 *)IOBuffer == ZSO_MAGIC) {
         probed_fd = 0;
@@ -695,7 +719,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         ziso_read_sector(IOBuffer, 16, 1);
         u32 maxLBA = *(u32 *)(IOBuffer + 80);
         if (maxLBA > 0 && maxLBA < ziso_total_block) {   // dual layer check
-            settings->common.layer1_start = maxLBA - 16; // adjust second layer start
+            commonSettings->layer1_start = maxLBA - 16; // adjust second layer start
         }
     }
 
@@ -711,11 +735,11 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
     }
 
-    settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
-    settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
+    commonSettings->fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
+    commonSettings->fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
 
     // adjust ZSO cache
-    settings->common.zso_cache = hddCacheSize;
+    commonSettings->zso_cache = hddCacheSize;
     sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, size_mcemu_irx, hdd_mcemu_irx, EnablePS2Logo, compatMode);
 }
 
