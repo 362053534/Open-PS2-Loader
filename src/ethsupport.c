@@ -68,6 +68,8 @@ static void ethSMBConnect(void)
     int echoResult = -1;
     int retryPS2 = !gPCUserName[0] && !gPCPassword[0];
 
+    gPCLoginUser[0] = '\0';
+
     if (gETHPrefix[0] != '\0')
         sprintf(ethPrefix, "%s%s\\", ethBase, gETHPrefix);
     else
@@ -146,6 +148,8 @@ static void ethSMBConnect(void)
     }
 
     if (echoResult >= 0) {
+        strncpy(gPCLoginUser, logon.User, sizeof(gPCLoginUser));
+        gPCLoginUser[sizeof(gPCLoginUser) - 1] = '\0';
         gNetworkStartup = ERROR_ETH_SMB_OPENSHARE;
 
         if (gPCShareName[0]) {

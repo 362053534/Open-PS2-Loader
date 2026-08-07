@@ -344,8 +344,8 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
         }
         smbPath[pos] = '\0';
 
-        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s%s%s%s%s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], smbPath, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCUserName, (gPCUserName[0] || gPCPassword[0]) ? "\n" : "", gPCPassword);
-        if (gPCUserName[0] && !gPCPassword[0]) {
+        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s%s%s%s%s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], smbPath, (gPCLoginUser[0] || gPCPassword[0]) ? "\n" : "", gPCLoginUser, (gPCLoginUser[0] || gPCPassword[0]) ? "\n" : "", gPCPassword);
+        if (gPCLoginUser[0] && !gPCPassword[0]) {
             smbconfig[smbconfigSize++] = '\n';
             smbconfig[smbconfigSize] = '\0';
             smbconfigSize++;

@@ -121,6 +121,7 @@ extern int gPCPort;
 extern char gPCShareNBAddress[17];
 extern char gPCShareName[32];
 extern char gPCUserName[32];
+extern char gPCLoginUser[32];
 extern char gPCPassword[32];
 
 //// Settings

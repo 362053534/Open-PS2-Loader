@@ -135,6 +135,7 @@ int gPCPort;
 char gPCShareNBAddress[17];
 char gPCShareName[32];
 char gPCUserName[32];
+char gPCLoginUser[32];
 char gPCPassword[32];
 int gNetworkStartup;
 int gHDDSpindown;
