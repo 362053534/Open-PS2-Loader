@@ -231,114 +231,111 @@ static int hddGetHDLGameInfo(struct GameDataEntry *game, hdl_game_info_t *ginfo,
     return ret;
 }
 
-//-------------------------------------------------------------------------
-static struct GameDataEntry *GetGameListRecord(struct GameDataEntry *head, const char *partition)
-{
-    struct GameDataEntry *current;
-
-    for (current = head; current != NULL; current = current->next) {
-        if (!strncmp(current->id, partition, APA_IDMAX)) {
-            return current;
-        }
-    }
-
-    return NULL;
-}
-
-
 //static FILE *file = NULL;
 int hddGetHDLGamelist(hdl_games_list_t *game_list)
 {
     struct GameDataEntry *head, *current, *next, *pGameEntry;
-    unsigned int count, i;
-    iox_dirent_t dirent;
-    int fd, ret;
+    unsigned int count, i, partitionCount;
+    u32 lba, totalSectors;
+    int ret;
 
     hddFreeHDLGamelist(game_list);
 
+    // 先按 rev734 之前的方式遍历 APA 分区链，排除目录枚举路径的影响。
+    head = current = NULL;
+    count = 0;
     ret = 0;
-    if ((fd = fileXioDopen("hdd0:")) >= 0) {
-        head = current = NULL;
-        count = 0;
-        while (fileXioDread(fd, &dirent) > 0) {
-            if (dirent.stat.mode == HDL_FS_MAGIC) {
-                if ((pGameEntry = GetGameListRecord(head, dirent.name)) == NULL) {
-                    if (head == NULL) {
-                        current = head = malloc(sizeof(struct GameDataEntry));
-                    } else {
-                        current = current->next = malloc(sizeof(struct GameDataEntry));
-                    }
+    lba = 0;
+    totalSectors = hddGetTotalSectors();
+    for (partitionCount = 0; partitionCount < 10000; partitionCount++) {
+        apa_header_t apaHeader;
+        u32 checksum = 0;
+        u32 size = 0;
 
-                    if (current == NULL)
-                        break;
-
-                    strncpy(current->id, dirent.name, APA_IDMAX);
-                    current->id[APA_IDMAX] = '\0';
-                    count++;
-                    current->next = NULL;
-                    current->size = 0;
-                    current->lba = 0;
-                    pGameEntry = current;
-                }
-
-                if (!(dirent.stat.attr & APA_FLAG_SUB)) {
-                    // Note: The APA specification states that there is a 4KB area used for storing the partition's information, before the extended attribute area.
-                    pGameEntry->lba = dirent.stat.private_5 + (HDL_GAME_DATA_OFFSET + 4096) / 512;
-                }
-
-                pGameEntry->size += (dirent.stat.size / 4); // size in HDD sectors * (512 / 2048) = 0.25x
-            }
+        if (hddReadSectors(lba, sizeof(apaHeader) / 512, &apaHeader) != 0) {
+            ret = -EIO;
+            break;
         }
 
-        fileXioDclose(fd);
+        for (i = 1; i < sizeof(apaHeader) / sizeof(u32); i++)
+            checksum += ((u32 *)&apaHeader)[i];
 
-        if (head != NULL) {
-            if ((game_list->games = malloc(sizeof(hdl_game_info_t) * count)) != NULL) {
-                memset(game_list->games, 0, sizeof(hdl_game_info_t) * count);
-                // 判断是否开启了txt映射
-                if (gTxtRename && gHDDPrefix) {
-                    char txtPath[256];
-                    snprintf(txtPath, 64, "%sGameListTranslator.txt", gHDDPrefix);
-                    FILE *file = fopen(txtPath, "ab+, ccs=UTF-8");
-                    if (file) {
-                        fseek(file, 0, SEEK_END);
-                        if (ftell(file) == 0) {
-                            txtFileCreated = 1;
-                            unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-                            fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
-                            fprintf(file, "注意事项：\r\n// 此OPL已支持将iso直接改为中文名！！！此功能仅作为备选方案。\r\n// 本txt主要用来把英文名映射成中文，避免因iso改成中文名后与其他OPL不兼容！\r\n--------------在“.”后面填写映射名称即可！-------------\r\n");
-                        }
-                    }
-                    for (i = 0, current = head; i < count; i++, current = current->next) {
-                        if ((ret = hddGetHDLGameInfo(current, &game_list->games[i], file)) != 0)
-                            break;
-                    }
-                    if (file)
-                        fclose(file);
-                } else {
-                    for (i = 0, current = head; i < count; i++, current = current->next) {
-                        if ((ret = hddGetHDLGameInfo(current, &game_list->games[i], NULL)) != 0)
-                            break;
-                    }
-                }
+        if (checksum != apaHeader.checksum || apaHeader.magic != 0x00415041 || apaHeader.start >= totalSectors) {
+            ret = -EIO;
+            break;
+        }
 
-                if (ret) {
-                    free(game_list->games);
-                    game_list->games = NULL;
-                } else {
-                    game_list->count = count;
-                }
-            } else {
+        if (apaHeader.flags == 0 && apaHeader.type == HDL_FS_MAGIC) {
+            if (!head)
+                current = head = malloc(sizeof(struct GameDataEntry));
+            else
+                current = current->next = malloc(sizeof(struct GameDataEntry));
+            if (!current) {
                 ret = ENOMEM;
+                break;
             }
 
-            for (current = head; current != NULL; current = next) {
-                next = current->next;
-                free(current);
-            }
+            pGameEntry = current;
+            strncpy(pGameEntry->id, apaHeader.id, APA_IDMAX);
+            pGameEntry->id[APA_IDMAX] = '\0';
+            pGameEntry->next = NULL;
+            pGameEntry->lba = apaHeader.start + (HDL_GAME_DATA_OFFSET + 4096) / 512;
+            size = apaHeader.length;
+            for (i = 0; i < apaHeader.nsub && i < APA_MAXSUB; i++)
+                size += apaHeader.subs[i].length;
+            pGameEntry->size = size / 4; // size in HDD sectors * (512 / 2048) = 0.25x
+            count++;
         }
-    } else {
-        ret = fd;
+
+        lba = apaHeader.next;
+        if (lba == 0)
+            break;
+    }
+
+    if (ret == 0 && head) {
+        if ((game_list->games = malloc(sizeof(hdl_game_info_t) * count)) != NULL) {
+            memset(game_list->games, 0, sizeof(hdl_game_info_t) * count);
+            // 判断是否开启了txt映射
+            if (gTxtRename && gHDDPrefix) {
+                char txtPath[256];
+                snprintf(txtPath, 64, "%sGameListTranslator.txt", gHDDPrefix);
+                FILE *file = fopen(txtPath, "ab+, ccs=UTF-8");
+                if (file) {
+                    fseek(file, 0, SEEK_END);
+                    if (ftell(file) == 0) {
+                        txtFileCreated = 1;
+                        unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+                        fwrite(bom, sizeof(unsigned char), 3, file); // 写入BOM，避免文本打开后乱码
+                        fprintf(file, "注意事项：\r\n// 此OPL已支持将iso直接改为中文名！！！此功能仅作为备选方案。\r\n// 本txt主要用来把英文名映射成中文，避免因iso改成中文名后与其他OPL不兼容！\r\n--------------在“.”后面填写映射名称即可！-------------\r\n");
+                    }
+                }
+                for (i = 0, current = head; i < count; i++, current = current->next) {
+                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i], file)) != 0)
+                        break;
+                }
+                if (file)
+                    fclose(file);
+            } else {
+                for (i = 0, current = head; i < count; i++, current = current->next) {
+                    if ((ret = hddGetHDLGameInfo(current, &game_list->games[i], NULL)) != 0)
+                        break;
+                }
+            }
+
+            if (ret) {
+                free(game_list->games);
+                game_list->games = NULL;
+            } else {
+                game_list->count = count;
+            }
+        } else {
+            ret = ENOMEM;
+        }
+    }
+
+    for (current = head; current; current = next) {
+        next = current->next;
+        free(current);
     }
 
     return ret;
