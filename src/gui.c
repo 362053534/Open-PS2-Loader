@@ -458,6 +458,10 @@ void guiShowNetCompatUpdateSingle(int id, item_list_t *support, config_set_t *co
 static void guiShowBlockDeviceConfig(void)
 {
     int ret;
+    const char *deviceModes[] = {_l(_STR_OFF), _l(_STR_MANUAL), _l(_STR_AUTO), NULL};
+
+    diaSetEnum(diaBlockDevicesConfig, CFG_BDMMODE, deviceModes);
+    diaSetInt(diaBlockDevicesConfig, CFG_BDMMODE, gBDMStartMode);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
@@ -469,6 +473,7 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
+        diaGetInt(diaBlockDevicesConfig, CFG_BDMMODE, &gBDMStartMode);
 
         // BDMHDD开启时，自动关闭APA
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
@@ -477,7 +482,8 @@ static void guiShowBlockDeviceConfig(void)
                 gHDDStartMode = 0;
                 guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
             }
-            if (BdmStarted)
+            if (BdmStarted || (!BdmStarted && gBDMStartMode == START_MODE_AUTO &&
+                               (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)))
                 reFindBDM();
             applyConfig(-1, -1, 0);
         }
@@ -493,8 +499,6 @@ static int guiUpdater(int modified)
         diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, showAutoStartLast);
         diaSetVisible(diaConfig, CFG_AUTOSTARTLAST, showAutoStartLast);
 
-        diaGetInt(diaConfig, CFG_BDMMODE, &gBDMStartMode);
-        diaSetVisible(diaConfig, BLOCKDEVICE_BUTTON, gBDMStartMode);
     }
     return 0;
 }
@@ -544,7 +548,6 @@ reConfig:
     const char *deviceModes[] = {_l(_STR_OFF), _l(_STR_MANUAL), _l(_STR_AUTO), NULL};
 
     diaSetEnum(diaConfig, CFG_DEFDEVICE, deviceNames);
-    diaSetEnum(diaConfig, CFG_BDMMODE, deviceModes);
     diaSetEnum(diaConfig, CFG_HDDMODE, deviceModes);
     diaSetEnum(diaConfig, CFG_ETHMODE, deviceModes);
     diaSetEnum(diaConfig, CFG_APPMODE, deviceModes);
@@ -568,8 +571,7 @@ reConfig:
     diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, gRememberLastPlayed);
     int deviceModeIndex = guiIoModeToDeviceType(gDefaultDevice);
     diaSetInt(diaConfig, CFG_DEFDEVICE, deviceModeIndex);
-    diaSetInt(diaConfig, CFG_BDMMODE, gBDMStartMode);
-    diaSetVisible(diaConfig, BLOCKDEVICE_BUTTON, gBDMStartMode);
+    diaSetLabel(diaConfig, CFG_BDMMODE, deviceModes[gBDMStartMode]);
     //diaSetEnabled(diaConfig, CFG_HDDMODE, !gEnableBdmHDD);
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
@@ -600,11 +602,11 @@ reConfig:
         diaGetInt(diaConfig, CFG_SMBCACHE, &smbCacheSize);
         diaGetInt(diaConfig, CFG_AUTODETECTPS1APPS, &gAutoDetectPS1Apps);
 
-        if (ret == BLOCKDEVICE_BUTTON) {
+        if (ret == CFG_BDMMODE) {
             guiShowBlockDeviceConfig();
 
             // 反回上个界面，并选中块设备
-            UiId = BLOCKDEVICE_BUTTON; // 块设备的uiid
+            UiId = CFG_BDMMODE; // 块设备的uiid
             goto reConfig;
         } else if (ret == UIID_BTN_OK) {
             if (gHDDStartMode && gEnableBdmHDD) {
