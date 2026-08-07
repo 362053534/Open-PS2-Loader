@@ -5,7 +5,6 @@
 */
 
 #include "internal.h"
-#include <ctype.h>
 
 static void cdvdman_trimspaces(char *str);
 static struct dirTocEntry *cdvdman_locatefile(char *name, u32 tocLBA, int tocLength, int layer);
@@ -52,6 +51,7 @@ static struct dirTocEntry *cdvdman_locatefile(char *name, u32 tocLBA, int tocLen
     char *p = (char *)name;
     char *slash;
     int r, len, filename_len, i;
+    unsigned char c1, c2;
     int tocPos;
     struct dirTocEntry *tocEntryPointer;
 
@@ -125,7 +125,13 @@ lbl_startlocate:
                 // ISO9660 文件名比较不区分 ASCII 大小写，兼容不同镜像的目录项大小写。
                 r = 0;
                 for (i = 0; i < 12; i++) {
-                    r = tolower((unsigned char)cdvdman_dirname[i]) - tolower((unsigned char)cdvdman_curdir[i]);
+                    c1 = (unsigned char)cdvdman_dirname[i];
+                    c2 = (unsigned char)cdvdman_curdir[i];
+                    if (c1 >= 'a' && c1 <= 'z')
+                        c1 -= 'a' - 'A';
+                    if (c2 >= 'a' && c2 <= 'z')
+                        c2 -= 'a' - 'A';
+                    r = c1 - c2;
                     if (r || !cdvdman_dirname[i] || !cdvdman_curdir[i])
                         break;
                 }
