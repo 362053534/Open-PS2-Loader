@@ -628,6 +628,7 @@ static void diaResetValue(struct UIItem *item)
     switch (item->type) {
         case UI_INT:
         case UI_BOOL:
+        case UI_ENUM:
             item->intvalue.current = item->intvalue.def;
             return;
         case UI_STRING:
@@ -644,7 +645,7 @@ static int diaHandleInput(struct UIItem *item, int *modified)
     // circle loses focus, sets old values first
     if (getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
         diaResetValue(item);
-        sfxPlay(SFX_CONFIRM);
+        sfxPlay(SFX_CANCEL);
         return 0;
     }
 
