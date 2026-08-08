@@ -14,6 +14,8 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <rom0_info.h>
+#define NEWLIB_PORT_AWARE
+#include <fileXio_rpc.h>
 
 #include "include/hdd.h"
 #include "include/bdmsupport.h"
@@ -214,18 +216,20 @@ static int popstarterGetDriverState(int slot, int usbhdfsdSize, int mode)
             driversCurrent++;
     }
 
-    snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-    state = popstarterCheckDriver(path, usbhdfsdSize);
-    if (state > 0) {
-        driversFound++;
-        if (state == 2)
-            driversCurrent++;
+    if (usbhdfsdSize > 0) {
+        snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
+        state = popstarterCheckDriver(path, usbhdfsdSize);
+        if (state > 0) {
+            driversFound++;
+            if (state == 2)
+                driversCurrent++;
+        }
     }
 
     if (driversFound == 0)
         return POPSTARTER_DRIVERS_NONE;
 
-    return driversCurrent == 2 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
+    return driversCurrent == (usbhdfsdSize > 0 ? 2 : 1) ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
 }
 
 static int popstarterWriteDriver(char *path, const void *buffer, int size, int overwrite)
@@ -361,9 +365,11 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
     if (popstarterWriteDriver(path, popstarter_usbd_irx, size_popstarter_usbd_irx, 0) < 0)
         result = -1;
 
-    snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-    if (popstarterWriteDriver(path, usbhdfsdBuffer, usbhdfsdSize, 0) < 0)
-        result = -1;
+    if (usbhdfsdSize > 0) {
+        snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
+        if (popstarterWriteDriver(path, usbhdfsdBuffer, usbhdfsdSize, 0) < 0)
+            result = -1;
+    }
 
     return result;
 }
@@ -371,10 +377,12 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
 int installPopstarterDrivers(int mode, int bdmDeviceType)
 {
     DIR *rootDir;
-    int slot, state, firstAvailableSlot;
+    int slot, state, firstAvailableSlot, filesystemType;
+    int removeUsbhdfsd;
     const void *usbhdfsdBuffer;
     int usbhdfsdSize;
 
+    removeUsbhdfsd = 0;
     if (mode == ETH_MODE) {
         usbhdfsdBuffer = NULL;
         usbhdfsdSize = 0;
@@ -389,6 +397,22 @@ int installPopstarterDrivers(int mode, int bdmDeviceType)
         usbhdfsdSize = size_popstarter_usbhdfsd_irx;
     }
 
+    if (bdmDeviceType == BDM_TYPE_USB && mode >= BDM_MODE && mode <= BDM_MODE4) {
+        char massPath[16];
+        int dir;
+
+        snprintf(massPath, sizeof(massPath), "mass%d:/", mode);
+        dir = fileXioDopen(massPath);
+        if (dir >= 0) {
+            if (fileXioIoctl2(dir, USBMASS_IOCTL_GET_FILESYSTEM, NULL, 0, &filesystemType, sizeof(filesystemType)) == 0 && filesystemType != USBMASS_FILESYSTEM_EXFAT) {
+                removeUsbhdfsd = 1;
+                usbhdfsdBuffer = NULL;
+                usbhdfsdSize = 0;
+            }
+            fileXioDclose(dir);
+        }
+    }
+
     firstAvailableSlot = -1;
     for (slot = 0; slot < 2; slot++) {
         char rootPath[8];
@@ -401,6 +425,13 @@ int installPopstarterDrivers(int mode, int bdmDeviceType)
 
         if (firstAvailableSlot < 0)
             firstAvailableSlot = slot;
+
+        if (removeUsbhdfsd) {
+            char path[64];
+
+            snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
+            unlink(path);
+        }
 
         state = popstarterGetDriverState(slot, usbhdfsdSize, mode);
         if (state == POPSTARTER_DRIVERS_CURRENT) {
