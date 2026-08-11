@@ -1725,8 +1725,9 @@ void guiMainLoop(void)
     if (gOPLPart[0] != '\0')
         showPartPopup = 1;
 
-    if (gEnableBGM)
-        bgmStart();
+    // 首次启动时，待主界面初始化完成后再启动背景音乐。
+    // if (gEnableBGM)
+    //     bgmStart();
 
     //// debug
     //int delayFrameCount = 0;
@@ -1836,6 +1837,9 @@ void guiMainLoop(void)
                     }
                     bdmDefaultNeedsCorrection = 0;
                     mainScreenInitDone = 1;
+                    // 设备初始化完成后再启动背景音乐，避免音乐所在设备尚未挂载。
+                    if (gEnableBGM)
+                        bgmStart();
                     // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
                     if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {
                         item_list_t *ethSupport = ethGetObject(1);
