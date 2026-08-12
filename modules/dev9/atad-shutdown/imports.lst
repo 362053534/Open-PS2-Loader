@@ -1,0 +1,11 @@
+atad_IMPORTS_start
+I_sceAtaInit
+atad_IMPORTS_end
+
+dev9_IMPORTS_start
+I_Dev9RegisterPowerOffHandler
+dev9_IMPORTS_end
+
+thbase_IMPORTS_start
+I_DelayThread
+thbase_IMPORTS_end

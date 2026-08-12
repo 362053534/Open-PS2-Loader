@@ -245,6 +245,10 @@ void hddLoadModules(void)
             return;
         }
         hddLoadModulesSuccess = 1;
+        if (!hddHDProKitDetected) {
+            LOG("[ATAD SHUTDOWN]:\n");
+            sysLoadModuleBuffer(&atad_shutdown_irx, size_atad_shutdown_irx, 0, NULL);
+        }
         //usleep(500000); // 延迟0.5秒,加一点延迟,尤其在PS2上的HDD可能需要
     } else
         hddModulesLoadCount++;
@@ -840,11 +844,9 @@ static void hddShutdown(item_list_t *itemList)
     if (hddModulesLoadCount > 0) {
         hddModulesLoadCount -= 1;
         if (hddModulesLoadCount == 0) {
-            int keepDev9Powered = !sysIsDev9PowerOffEnabled();
-
             // DDIOC_OFF already puts the HDD into standby. Issue IDLE IMMEDIATE only when the
-            // final HDD user is gone but DEV9 stays powered by ETH or the game-launch policy.
-            if (sysShutdownDev9() > 0 || keepDev9Powered)
+            // final HDD user is gone but another user (such as ETH) keeps DEV9 powered on.
+            if (sysShutdownDev9() > 0)
                 hddSetIdleImmediate();
         }
     }

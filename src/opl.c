@@ -2130,21 +2130,12 @@ void deinit(int exception, int modeSelected)
     ioEnd();
 }
 
-static int oplTargetUsesDev9(int modeSelected, int bdmDeviceType)
+void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
 {
-    return modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA;
-}
+    if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
+        return;
 
-void oplPrepareDev9ForLaunch(int modeSelected, int bdmDeviceType)
-{
-    if (!oplTargetUsesDev9(modeSelected, bdmDeviceType))
-        sysSetDev9PowerOffEnabled(0);
-}
-
-void oplFinishDev9Launch(int modeSelected, int bdmDeviceType)
-{
-    if (!oplTargetUsesDev9(modeSelected, bdmDeviceType))
-        sysSetDev9PowerOffEnabled(1);
+    sysForceShutdownDev9();
 }
 
 void setDefaultColors(void)

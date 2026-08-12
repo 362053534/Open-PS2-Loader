@@ -148,7 +148,7 @@ exit:
 
 #define OPL_SIF_CMD_BUFF_SIZE 1
 static SifCmdHandlerData_t OplSifCmdbuffer[OPL_SIF_CMD_BUFF_SIZE];
-static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9PowerOffEnabled = 1, dev9PowerOffDeferred = 0, dev9InitCount = 0;
+static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9InitCount = 0;
 
 void sysInitDev9(void)
 {
@@ -162,7 +162,6 @@ void sysInitDev9(void)
     }
 
     dev9InitCount++;
-    dev9PowerOffDeferred = 0;
 }
 
 static int sysDev9PowerOffOnce(void)
@@ -184,35 +183,20 @@ int sysShutdownDev9(void)
     if (dev9InitCount > 0) {
         --dev9InitCount;
 
-        if (dev9InitCount == 0) {
-            if (dev9PowerOffEnabled) /* Switch off DEV9 once nothing needs it. */
-                sysDev9PowerOffOnce();
-            else
-                dev9PowerOffDeferred = 1;
-        }
+        if (dev9InitCount == 0) /* Switch off DEV9 once nothing needs it. */
+            sysDev9PowerOffOnce();
     }
 
     return dev9InitCount;
 }
 
-void sysSetDev9PowerOffEnabled(int enabled)
-{
-    dev9PowerOffEnabled = enabled != 0;
-}
-
-int sysIsDev9PowerOffEnabled(void)
-{
-    return dev9PowerOffEnabled;
-}
-
 void sysForceShutdownDev9(void)
 {
-    if (dev9InitCount == 0 && !dev9PowerOffDeferred)
+    if (dev9InitCount == 0)
         return;
 
     dev9InitCount = 0;
-    if (sysDev9PowerOffOnce() >= 0)
-        dev9PowerOffDeferred = 0;
+    sysDev9PowerOffOnce();
 }
 
 void sysReset(int modload_mask)
@@ -242,8 +226,6 @@ void sysReset(int modload_mask)
 #endif
 
     dev9Initialized = 0;
-    dev9PowerOffEnabled = 1;
-    dev9PowerOffDeferred = 0;
     while (!SifIopSync())
         ;
 

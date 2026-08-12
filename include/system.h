@@ -11,8 +11,6 @@ unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
 void sysInitDev9(void);
 int sysShutdownDev9(void);
-void sysSetDev9PowerOffEnabled(int enabled);
-int sysIsDev9PowerOffEnabled(void);
 // 显式强制 DEV9 断电，不受普通引用释放策略影响。
 void sysForceShutdownDev9(void);
 void sysReset(int modload_mask);
