@@ -2136,8 +2136,8 @@ void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
     if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
         return;
 
-    // 不在此处调 hddSetIdleImmediate：BDM/GPT 场景下对 hdd0: 的 IDLEIMM 可能卡住。
-    // 仅在 DEV9 引用仍残留时断电（例如 ETH 占用但未在 ethShutdown 里减计数）。
+    // deinit 已结束：各设备 Shutdown/CleanUp 已跑完，再尝试让硬盘休眠并关 DEV9
+    hddSetIdleImmediate();
     sysForceShutdownDev9();
 }
 
