@@ -11,8 +11,6 @@ unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
 void sysInitDev9(void);
 void sysShutdownDev9(void);
-// 启动不依赖网卡的应用前调用：强制 DEV9 断电（当前为死等，便于排查）
-void sysForceShutdownDev9(void);
 void sysReset(int modload_mask);
 void sysExecExit(void);
 void sysPowerOff(void);

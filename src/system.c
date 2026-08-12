@@ -164,32 +164,18 @@ void sysInitDev9(void)
     dev9InitCount++;
 }
 
-static void sysDev9PowerOffOnce(void)
-{
-    if (!dev9Loaded)
-        return;
-
-    // 暂时保持死等，便于发现 DDIOC_OFF 失败/卡死问题（勿改为有限次重试）
-    while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
-    };
-}
-
 void sysShutdownDev9(void)
 {
     if (dev9InitCount > 0) {
         --dev9InitCount;
 
         if (dev9InitCount == 0) { /* Switch off DEV9 once nothing needs it. */
-            sysDev9PowerOffOnce();
+            if (dev9Loaded) {
+                while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
+                };
+            }
         }
     }
-}
-
-void sysForceShutdownDev9(void)
-{
-    // 引用计数清零并尝试断电（供 USB 等不需要 DEV9 的启动路径）
-    dev9InitCount = 0;
-    sysDev9PowerOffOnce();
 }
 
 void sysReset(int modload_mask)
