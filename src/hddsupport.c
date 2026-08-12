@@ -840,9 +840,11 @@ static void hddShutdown(item_list_t *itemList)
     if (hddModulesLoadCount > 0) {
         hddModulesLoadCount -= 1;
         if (hddModulesLoadCount == 0) {
+            int keepDev9Powered = !sysIsDev9PowerOffEnabled();
+
             // DDIOC_OFF already puts the HDD into standby. Issue IDLE IMMEDIATE only when the
-            // final HDD user is gone but another user (such as ETH) keeps DEV9 powered on.
-            if (sysShutdownDev9() > 0)
+            // final HDD user is gone but DEV9 stays powered by ETH or the game-launch policy.
+            if (sysShutdownDev9() > 0 || keepDev9Powered)
                 hddSetIdleImmediate();
         }
     }

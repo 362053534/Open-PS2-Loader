@@ -2130,15 +2130,21 @@ void deinit(int exception, int modeSelected)
     ioEnd();
 }
 
-void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
+static int oplTargetUsesDev9(int modeSelected, int bdmDeviceType)
 {
-    // ETH / APA / BDM-ATA 仍需要网卡，不能关
-    if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
-        return;
+    return modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA;
+}
 
-    // 不在此处调 hddSetIdleImmediate：BDM/GPT 场景下对 hdd0: 的 IDLEIMM 可能卡住。
-    // 仅在 DEV9 引用仍残留时断电（例如 ETH 占用但未在 ethShutdown 里减计数）。
-    sysForceShutdownDev9();
+void oplPrepareDev9ForLaunch(int modeSelected, int bdmDeviceType)
+{
+    if (!oplTargetUsesDev9(modeSelected, bdmDeviceType))
+        sysSetDev9PowerOffEnabled(0);
+}
+
+void oplFinishDev9Launch(int modeSelected, int bdmDeviceType)
+{
+    if (!oplTargetUsesDev9(modeSelected, bdmDeviceType))
+        sysSetDev9PowerOffEnabled(1);
 }
 
 void setDefaultColors(void)
