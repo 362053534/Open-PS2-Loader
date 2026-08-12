@@ -22,14 +22,13 @@ static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
 
 /*
- * 游戏可能通过 ROM UDNL 以 ROM IOPRP 重置 IOP，例如：
- * "rom0:UDNL rom0:EELOADCNF"。不要将该 ROM 参数转交给 OPL 的第二轮
- * UDNL。第一轮重置已经准备好 OPL 的 IOPRP 镜像；复用通常的无参数路径可
- * 保持 0.9.3 之前的重置语义，并避免 SIFCMD 未初始化。
+ * 0.9.3 之前只有通过 ROM UDNL 加载游戏 CDROM IOPRP 的请求会保留给第二轮
+ * UDNL。其余参数（包括 "rom0:UDNL rom0:EELOADCNF"）均复用 OPL 已准备
+ * 的 IOPRP 镜像，并走无参数路径。保持这一分流规则可避免 SIFCMD 未初始化。
  */
-static int IsROMIOPRPReset(const char *arg, int arglen)
+static int IsCDROMIOPRPReset(const char *arg, int arglen)
 {
-    static const char pattern[] = "rom0:UDNL rom";
+    static const char pattern[] = "rom0:UDNL cdrom";
     int i;
 
     if (arglen < sizeof(pattern) - 1)
@@ -206,10 +205,10 @@ int New_Reset_Iop(const char *arg, int arglen)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
     if (arglen > 0) {
-        if (IsROMIOPRPReset(arg, arglen))
-            ResetIopSpecial(NULL, 0);
-        else
+        if (IsCDROMIOPRPReset(arg, arglen))
             ResetIopSpecial(&arg[10], arglen - 10);
+        else
+            ResetIopSpecial(NULL, 0);
         if (EnableDebug)
             DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }
