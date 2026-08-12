@@ -164,17 +164,21 @@ void sysInitDev9(void)
     dev9InitCount++;
 }
 
-static void sysDev9PowerOffOnce(void)
+static int sysDev9PowerOffOnce(void)
 {
-    if (!dev9Loaded)
-        return;
+    int result;
 
-    // 暂时保持死等，便于发现 DDIOC_OFF 失败/卡死问题（勿改为有限次重试）
-    while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
-    };
+    if (!dev9Loaded)
+        return 0;
+
+    result = fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0);
+    if (result < 0)
+        LOG("DEV9: DDIOC_OFF failed, result=%d\n", result);
+
+    return result;
 }
 
-void sysShutdownDev9(void)
+int sysShutdownDev9(void)
 {
     if (dev9InitCount > 0) {
         --dev9InitCount;
@@ -183,12 +187,13 @@ void sysShutdownDev9(void)
             sysDev9PowerOffOnce();
         }
     }
+
+    return dev9InitCount;
 }
 
 void sysForceShutdownDev9(void)
 {
-    // deinit 里 hddShutdown 可能已把计数减到 0 并成功 DDIOC_OFF；
-    // 若再关一次，第二次 OFF 常失败并在 while 里死等（卡在“处理中”）。
+    // deinit 里 hddShutdown 可能已把计数减到 0 并成功 DDIOC_OFF。
     if (dev9InitCount == 0)
         return;
 

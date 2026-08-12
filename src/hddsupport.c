@@ -840,13 +840,11 @@ static void hddShutdown(item_list_t *itemList)
     if (hddModulesLoadCount > 0) {
         hddModulesLoadCount -= 1;
         if (hddModulesLoadCount == 0) {
-            // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
-            // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
-            hddSetIdleImmediate();
+            // DDIOC_OFF already puts the HDD into standby. Issue IDLE IMMEDIATE only when the
+            // final HDD user is gone but another user (such as ETH) keeps DEV9 powered on.
+            if (sysShutdownDev9() > 0)
+                hddSetIdleImmediate();
         }
-
-        // Only shut down dev9 from here, if it was initialized from here before.
-        sysShutdownDev9();
     }
 }
 
