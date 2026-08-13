@@ -798,14 +798,14 @@ static void hddCleanUp(item_list_t *itemList, int exception)
         free(hddIsoGames);
         hddIsoGames = NULL;
         hddIsoGameCount = 0;
-
-        if ((exception & UNMOUNT_EXCEPTION) == 0)
-            fileXioUmount(hddPrefix);
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.
     if (hddSupportModulesLoaded) {
         fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
+
+        if ((exception & UNMOUNT_EXCEPTION) == 0)
+            fileXioUmount(hddPrefix);
 
         hddSupportModulesLoaded = 0;
     }
@@ -826,13 +826,13 @@ static void hddShutdown(item_list_t *itemList)
         free(hddIsoGames);
         hddIsoGames = NULL;
         hddIsoGameCount = 0;
-        fileXioUmount(hddPrefix);
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.
     if (hddSupportModulesLoaded) {
         /* Close all files */
         fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
+        fileXioUmount(hddPrefix);
 
         hddSupportModulesLoaded = 0;
     }
