@@ -32,6 +32,8 @@ static unsigned char hddForceUpdate = 0;
 static unsigned char hddHDProKitDetected = 0;
 static unsigned char hddModulesLoadCount = 0;
 static unsigned char hddSupportModulesLoaded = 0;
+static unsigned char hddConfigSource = 0;
+static unsigned char hddConfigModulesRetained = 0;
 
 static char *hddPrefix = "pfs0:";
 static hdl_games_list_t hddGames;
@@ -69,7 +71,12 @@ static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *gam
 
 static void hddInitModules(void)
 {
-    hddLoadModules();
+    // 从HDD读取配置时已经启动了完整的HDD模块栈。
+    // 后续自动或手动初始化HDD时，直接接管之前保留的生命周期引用，避免重复增加计数。
+    if (hddConfigModulesRetained)
+        hddConfigModulesRetained = 0;
+    else
+        hddLoadModules();
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
     if (hddLoadModulesSuccess) {
         int retryCount = 0;
@@ -398,6 +405,23 @@ int hddLoadSupportModules(void)
     }
 
     return 0;
+}
+
+void hddSetConfigSource(void)
+{
+    // 官方配置读取流程会强制自动启动HDD，因此在关闭前会多出一个HDD生命周期引用。
+    // 在不修改用户启动模式、也不启用或扫描HDD游戏列表的前提下，保持相同的计数关系。
+    if (!hddConfigSource && !hddGameList.enabled && hddModulesLoadCount > 0) {
+        hddLoadModules();
+        hddConfigModulesRetained = 1;
+    }
+
+    hddConfigSource = 1;
+}
+
+int hddIsConfigSource(void)
+{
+    return hddConfigSource;
 }
 
 void hddInit(item_list_t *itemList)
@@ -801,6 +825,9 @@ static void hddCleanUp(item_list_t *itemList, int exception)
 
         if ((exception & UNMOUNT_EXCEPTION) == 0)
             fileXioUmount(hddPrefix);
+    } else if (hddConfigSource && (exception & UNMOUNT_EXCEPTION) == 0) {
+        // 配置读取流程挂载了pfs0:，但没有启用HDD游戏列表。
+        fileXioUmount(hddPrefix);
     }
 
     // UI may have loaded modules outside of HDD mode, so deinitialize regardless of the enabled status.
@@ -826,6 +853,9 @@ static void hddShutdown(item_list_t *itemList)
         free(hddIsoGames);
         hddIsoGames = NULL;
         hddIsoGameCount = 0;
+        fileXioUmount(hddPrefix);
+    } else if (hddConfigSource) {
+        // 配置读取流程挂载了pfs0:，但没有启用HDD游戏列表。
         fileXioUmount(hddPrefix);
     }
 

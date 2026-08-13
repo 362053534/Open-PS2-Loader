@@ -65,6 +65,8 @@ void hddInit(item_list_t *itemList);
 item_list_t *hddGetObject(int initOnly);
 void hddLoadModules(void);
 int hddLoadSupportModules(void);
+void hddSetConfigSource(void);
+int hddIsConfigSource(void);
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);
 
 extern int hddLoadModulesSuccess;
