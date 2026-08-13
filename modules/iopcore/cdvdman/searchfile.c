@@ -5,7 +5,6 @@
 */
 
 #include "internal.h"
-#include <ctype.h>
 
 static void cdvdman_trimspaces(char *str);
 static struct dirTocEntry *cdvdman_locatefile(char *name, u32 tocLBA, int tocLength, int layer);
@@ -51,7 +50,7 @@ static struct dirTocEntry *cdvdman_locatefile(char *name, u32 tocLBA, int tocLen
                         we'll assume that ISO9660 disc images are all _strictly_ compliant with ISO9660 level 1.	*/
     char *p = (char *)name;
     char *slash;
-    int r, len, filename_len, i;
+    int r, len, filename_len;
     int tocPos;
     struct dirTocEntry *tocEntryPointer;
 
@@ -122,13 +121,7 @@ lbl_startlocate:
                 DPRINTF("cdvdman_locatefile strcmp %s %s\n", cdvdman_dirname, cdvdman_curdir);
 #endif
 
-                // ISO9660 文件名比较不区分 ASCII 大小写，兼容不同镜像的目录项大小写。
-                r = 0;
-                for (i = 0; i < 12; i++) {
-                    r = tolower((unsigned char)cdvdman_dirname[i]) - tolower((unsigned char)cdvdman_curdir[i]);
-                    if (r || !cdvdman_dirname[i] || !cdvdman_curdir[i])
-                        break;
-                }
+                r = strncmp(cdvdman_dirname, cdvdman_curdir, 12);
                 if ((!r) && (!slash)) { // we searched a file so it's found
                     DPRINTF("cdvdman_locatefile found file! LBA=%d size=%d\n", (int)tocEntryPointer->fileLBA, (int)tocEntryPointer->fileSize);
                     return tocEntryPointer;
