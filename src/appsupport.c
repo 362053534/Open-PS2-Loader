@@ -679,9 +679,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 saveConfig(CONFIG_LAST, 0);
             }
 
-            oplPrepareDev9ForLaunch(mode, popsBdmType);
             deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-            oplFinishDev9Launch(mode, popsBdmType);
+            oplShutdownUnusedDev9(mode, popsBdmType);
             LoadELFFromMemory(popstarter_elf, 1, argv);
         }
         if (mode == HDD_MODE)
@@ -759,9 +758,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 saveConfig(CONFIG_LAST, 0);
             }
 
-            oplPrepareDev9ForLaunch(mode, bdmType);
             deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-            oplFinishDev9Launch(mode, bdmType);
+            oplShutdownUnusedDev9(mode, bdmType);
             LoadELFFromFileWithPartition(filename, partition, argc, argv);
         }
     } else {
