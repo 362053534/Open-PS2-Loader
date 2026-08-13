@@ -102,6 +102,7 @@ static void clearIOModuleT(opl_io_module_t *mod)
 
 // forward decl
 static void clearMenuGameList(opl_io_module_t *mdl);
+static void supportCleanup(item_list_t *support, int exception, int modeSelected);
 static void moduleCleanup(opl_io_module_t *mod, int exception, int modeSelected);
 static void reset(void);
 static void deferredAudioInit(void);
@@ -574,6 +575,11 @@ static void deinitAllSupport(int exception, int modeSelected)
         if (list_support[i].support != NULL)
             moduleCleanup(&list_support[i], exception, modeSelected);
     }
+
+    // 即使HDD support未注册，从HDD读取配置也会加载并挂载HDD模块栈。
+    // 遇到这种情况时，仍交由原有清理逻辑决定是关闭还是仅清理。
+    if (list_support[HDD_MODE].support == NULL && hddIsConfigSource())
+        supportCleanup(hddGetObject(0), exception, modeSelected);
 }
 
 // For resolving the mode, given an app's path
@@ -1225,6 +1231,7 @@ static int checkLoadConfigHDD(int types)
         configEnd();
         configInit(gHDDPrefix);
         value = configReadMulti(types);
+        hddSetConfigSource();
         // 配置文件所在设备不应覆盖用户设置的APA HDD启动模式。
         //config_set_t *configOPL = configGetByType(CONFIG_OPL);
         //configSetInt(configOPL, CONFIG_OPL_HDD_MODE, START_MODE_AUTO);
@@ -2087,19 +2094,27 @@ static void reset(void)
     mcInit(MC_TYPE_XMC);
 }
 
+static void supportCleanup(item_list_t *support, int exception, int modeSelected)
+{
+    if (!support)
+        return;
+
+    // 如果后续不再需要该设备，则将其关闭。
+    if ((support->mode != modeSelected) && (modeSelected != IO_MODE_SELECTED_ALL)) {
+        if (support->itemShutdown)
+            support->itemShutdown(support);
+    } else {
+        if (support->itemCleanUp)
+            support->itemCleanUp(support, exception);
+    }
+}
+
 static void moduleCleanup(opl_io_module_t *mod, int exception, int modeSelected)
 {
     if (!mod->support)
         return;
 
-    // Shutdown if not required anymore.
-    if ((mod->support->mode != modeSelected) && (modeSelected != IO_MODE_SELECTED_ALL)) {
-        if (mod->support->itemShutdown)
-            mod->support->itemShutdown(mod->support);
-    } else {
-        if (mod->support->itemCleanUp)
-            mod->support->itemCleanUp(mod->support, exception);
-    }
+    supportCleanup(mod->support, exception, modeSelected);
 
     clearMenuGameList(mod);
 }
