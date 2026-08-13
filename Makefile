@@ -82,7 +82,7 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		sio2man.o padman.o mcman.o mcserv.o \
 		httpclient-iop.o netman.o ps2ips.o \
 		bdm_mcemu.o hdd_mcemu.o smb_mcemu.o \
-		iremsndpatch.o apemodpatch.o f2techioppatch.o cleareffects.o atad_shutdown.o resetspu.o \
+		iremsndpatch.o apemodpatch.o f2techioppatch.o cleareffects.o resetspu.o \
 		libsd.o audsrv.o
 
 EECORE_OBJS = ee_core.o ioprp.o util.o \
@@ -315,8 +315,6 @@ clean:	download_lwNBD
 	$(MAKE) -C modules/network/httpclient clean
 	echo " -xhdd"
 	$(MAKE) -C modules/hdd/xhdd clean
-	echo " -ATAD shutdown timeout"
-	$(MAKE) -C modules/dev9/atad-shutdown clean
 	echo " -mcemu"
 	$(MAKE) -C modules/mcemu USE_BDM=1 clean
 	$(MAKE) -C modules/mcemu USE_HDD=1 clean
@@ -658,12 +656,6 @@ $(EE_ASM_DIR)smbinit.c: modules/network/smbinit/smbinit.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
 
 $(EE_ASM_DIR)ps2atad.c: $(PS2SDK)/iop/irx/ata_bd.irx | $(EE_ASM_DIR)
-	$(BIN2C) $< $@ $(*F)_irx
-
-modules/dev9/atad-shutdown/atad_shutdown.irx: modules/dev9/atad-shutdown
-	$(MAKE) -C $<
-
-$(EE_ASM_DIR)atad_shutdown.c: modules/dev9/atad-shutdown/atad_shutdown.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
 
 $(EE_ASM_DIR)hdpro_atad.c: $(PS2SDK)/iop/irx/hdproatad.irx | $(EE_ASM_DIR)

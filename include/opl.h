@@ -90,8 +90,9 @@ void menuDeferredUpdate(void *data);
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged);
 void handleLwnbdSrv();
 void deinit(int exception, int modeSelected);
-// 启动目标不需要 DEV9 时，在 deinit 之后关闭 DEV9。
-void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType);
+// 启动目标不需要 DEV9 时，在 deinit 期间保留供电，之后只让 HDD 立即休眠。
+void oplPrepareDev9ForLaunch(int modeSelected, int bdmDeviceType);
+void oplFinishDev9Launch(int modeSelected, int bdmDeviceType);
 
 // Shutdown minimal services initiated for auto loading.
 void miniDeinit(config_set_t *configSet);

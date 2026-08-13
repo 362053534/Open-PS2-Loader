@@ -105,7 +105,6 @@ IMPORT_BIN2C(popstarter_smb_smsutils_irx);
 IMPORT_BIN2C(ppctty_irx);
 
 IMPORT_BIN2C(ps2atad_irx);
-IMPORT_BIN2C(atad_shutdown_irx);
 
 IMPORT_BIN2C(ps2dev9_irx);
 

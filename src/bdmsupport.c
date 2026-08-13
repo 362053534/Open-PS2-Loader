@@ -754,8 +754,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     if (gAutoLaunchBDMGame == NULL) {
         int bdmType = pDeviceData->bdmDeviceType;
 
+        oplPrepareDev9ForLaunch(itemList->mode, bdmType);
         deinit(NO_EXCEPTION, itemList->mode); // CAREFUL: deinit will call bdmCleanUp, so bdmGames/game will be freed
-        oplShutdownUnusedDev9(itemList->mode, bdmType);
+        oplFinishDev9Launch(itemList->mode, bdmType);
     } else {
         miniDeinit(configSet);
 
