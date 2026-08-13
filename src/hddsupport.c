@@ -543,6 +543,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         bdmDeviceData.bdmGames = hddIsoGames;
         snprintf(bdmDeviceData.bdmPrefix, sizeof(bdmDeviceData.bdmPrefix), "%s", gHDDPrefix);
         strcpy(bdmDeviceData.bdmDriver, "ata");
+        bdmDeviceData.bdmDeviceType = BDM_TYPE_ATA;
         bdmDeviceData.massDeviceIndex = 0;
         bdmResolveLBA_UDMA(&bdmDeviceData);
         bdmLaunchGame(&bdmItemList, id - hddGames.count, configSet);
