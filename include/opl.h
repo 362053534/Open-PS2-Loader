@@ -90,9 +90,7 @@ void menuDeferredUpdate(void *data);
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged);
 void handleLwnbdSrv();
 void deinit(int exception, int modeSelected);
-// Prevent callback-based DDIOC_OFF while deinit releases DEV9 references.
-void oplPrepareDev9ForLaunch(void);
-// Hard-power-off DEV9 after deinit when the launch target does not need it.
+// 启动目标不需要 DEV9 时，在 deinit 之后关闭 DEV9。
 void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType);
 
 // Shutdown minimal services initiated for auto loading.

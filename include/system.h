@@ -11,9 +11,7 @@ unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
 void sysInitDev9(void);
 int sysShutdownDev9(void);
-// Suppress DDIOC_OFF while deinit releases the last DEV9 reference.
-void sysDeferDev9Shutdown(void);
-// Power off DEV9 directly without running its registered shutdown callbacks.
+// 显式强制 DEV9 断电，不受普通引用释放策略影响。
 void sysForceShutdownDev9(void);
 void sysReset(int modload_mask);
 void sysExecExit(void);

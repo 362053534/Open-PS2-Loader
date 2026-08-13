@@ -2130,27 +2130,10 @@ void deinit(int exception, int modeSelected)
     ioEnd();
 }
 
-static int oplLaunchUsesDev9(int modeSelected, int bdmDeviceType)
-{
-    return modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA;
-}
-
-void oplPrepareDev9ForLaunch(void)
-{
-    // No launch path should run the callback-based DDIOC_OFF during deinit.
-    // oplShutdownUnusedDev9() applies the final keep-or-hard-off policy afterward.
-    sysDeferDev9Shutdown();
-}
-
 void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
 {
-    if (oplLaunchUsesDev9(modeSelected, bdmDeviceType))
+    if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
         return;
-
-#if defined(__DECI2_DEBUG) || (defined(__INGAME_DEBUG) && defined(TTY_UDP))
-    // Network debugging still needs DEV9 after the menu services are shut down.
-    return;
-#endif
 
     sysForceShutdownDev9();
 }

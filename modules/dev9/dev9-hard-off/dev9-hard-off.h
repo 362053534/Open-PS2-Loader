@@ -1,6 +1,0 @@
-#ifndef OPL_DEV9_HARD_OFF_H
-#define OPL_DEV9_HARD_OFF_H
-
-#define OPL_DEV9_HARD_OFF 0x4F504C39
-
-#endif /* OPL_DEV9_HARD_OFF_H */
