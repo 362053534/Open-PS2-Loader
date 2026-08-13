@@ -520,6 +520,107 @@ static void hddRenameGame(item_list_t *itemList, int id, char *newName)
     }
 }
 
+int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
+{
+    apa_sub_t parts[APA_MAXSUB + 1];
+    hdd_vmc_infos_t vmcInfos[2];
+    char vmc_name[32];
+    int i, vmc_id, partitionCount;
+    int size_mcemu_irx = 0;
+
+    // 未配置 VMC 时不要额外读取 APA 分区表。
+    configGetVMC(configSet, vmc_name, sizeof(vmc_name), 0);
+    if (!vmc_name[0]) {
+        configGetVMC(configSet, vmc_name, sizeof(vmc_name), 1);
+        if (!vmc_name[0])
+            return 0;
+    }
+
+    partitionCount = hddGetPartitionInfo(gOPLPart, parts);
+
+    for (vmc_id = 0; vmc_id < 2; vmc_id++) {
+        char vmc_path[256];
+        int blockCount = 0;
+        int have_error = 0;
+        pfs_blockinfo_t blocks[11];
+        vmc_superblock_t vmc_superblock;
+
+        // 每个插槽都使用全新的映射，避免继承另一个插槽的残留块。
+        memset(&vmcInfos[vmc_id], 0, sizeof(vmcInfos[vmc_id]));
+        configGetVMC(configSet, vmc_name, sizeof(vmc_name), vmc_id);
+
+        if (vmc_name[0]) {
+            have_error = 1;
+
+            if (partitionCount > 0 && partitionCount <= 5 && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
+                for (i = 0; i < partitionCount; i++) {
+                    vmcInfos[vmc_id].parts[i].start = parts[i].start;
+                    vmcInfos[vmc_id].parts[i].length = parts[i].length;
+                }
+
+                vmcInfos[vmc_id].flags = vmc_superblock.mc_flag & 0xFF;
+                vmcInfos[vmc_id].flags |= 0x100;
+                vmcInfos[vmc_id].specs.page_size = vmc_superblock.page_size;
+                vmcInfos[vmc_id].specs.block_size = vmc_superblock.pages_per_block;
+                vmcInfos[vmc_id].specs.card_size = vmc_superblock.pages_per_cluster * vmc_superblock.clusters_per_card;
+
+                // 写入 VMC 前必须取得完整的 PFS 块链，防止写错物理扇区。
+                snprintf(vmc_path, sizeof(vmc_path), "%sVMC/%s.bin", gHDDPrefix, vmc_name);
+                blockCount = hddGetFileBlockInfo(vmc_path, parts, blocks, 11);
+                if (blockCount > 1) {
+                    have_error = 0;
+                    for (i = 0; i < blockCount - 1; i++) {
+                        if (blocks[i + 1].subpart >= partitionCount) {
+                            have_error = 2;
+                            break;
+                        }
+
+                        vmcInfos[vmc_id].blocks[i].number = blocks[i + 1].number;
+                        vmcInfos[vmc_id].blocks[i].subpart = blocks[i + 1].subpart;
+                        vmcInfos[vmc_id].blocks[i].count = blocks[i + 1].count;
+                    }
+
+                    if (!have_error)
+                        vmcInfos[vmc_id].active = 1;
+                } else {
+                    have_error = 2;
+                }
+            }
+
+            if (have_error) {
+                if (showErrorDialogs) {
+                    char error[256];
+
+                    if (have_error == 2)
+                        snprintf(error, sizeof(error), _l(_STR_ERR_VMC_FRAGMENTED_CONTINUE), vmc_name, vmc_id + 1);
+                    else
+                        snprintf(error, sizeof(error), _l(_STR_ERR_VMC_CONTINUE), vmc_name, vmc_id + 1);
+
+                    if (!guiMsgBox(error, 1, NULL))
+                        return -1;
+                } else {
+                    LOG("VMC error\n");
+                }
+            }
+        }
+
+    }
+
+    // 两个插槽全部通过检查后再修改嵌入模块，取消启动时仍可重新尝试。
+    for (vmc_id = 0; vmc_id < 2; vmc_id++) {
+        for (i = 0; i < size_pfs_bdm_mcemu_irx / sizeof(u32); i++) {
+            if (((u32 *)&pfs_bdm_mcemu_irx)[i] == (0xC0DEFAC0 + vmc_id)) {
+                if (vmcInfos[vmc_id].active)
+                    size_mcemu_irx = size_pfs_bdm_mcemu_irx;
+                memcpy(&((u32 *)&pfs_bdm_mcemu_irx)[i], &vmcInfos[vmc_id], sizeof(vmcInfos[vmc_id]));
+                break;
+            }
+        }
+    }
+
+    return size_mcemu_irx;
+}
+
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, size_irx = 0;
@@ -555,89 +656,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     else
         game = gAutoLaunchGame;
 
-    apa_sub_t parts[APA_MAXSUB + 1];
-    char vmc_name[2][32];
-    int part_valid = 0, size_mcemu_irx = 0, nparts;
-    hdd_vmc_infos_t hdd_vmc_infos;
-    memset(&hdd_vmc_infos, 0, sizeof(hdd_vmc_infos_t));
-
-    configGetVMC(configSet, vmc_name[0], sizeof(vmc_name[0]), 0);
-    configGetVMC(configSet, vmc_name[1], sizeof(vmc_name[1]), 1);
-
-    if (vmc_name[0][0] || vmc_name[1][0]) {
-        nparts = hddGetPartitionInfo(gOPLPart, parts);
-        if (nparts > 0 && nparts <= 5) {
-            for (i = 0; i < nparts; i++) {
-                hdd_vmc_infos.parts[i].start = parts[i].start;
-                hdd_vmc_infos.parts[i].length = parts[i].length;
-                LOG("HDDSUPPORT hdd_vmc_infos.parts[%d].start : 0x%X\n", i, hdd_vmc_infos.parts[i].start);
-                LOG("HDDSUPPORT hdd_vmc_infos.parts[%d].length : 0x%X\n", i, hdd_vmc_infos.parts[i].length);
-            }
-            part_valid = 1;
-        }
-    }
-
-    if (part_valid) {
-        char vmc_path[256];
-        int vmc_id, have_error = 0;
-        vmc_superblock_t vmc_superblock;
-        pfs_blockinfo_t blocks[11];
-
-        for (vmc_id = 0; vmc_id < 2; vmc_id++) {
-            if (vmc_name[vmc_id][0]) {
-                have_error = 1;
-                hdd_vmc_infos.active = 0;
-                if (sysCheckVMC(gHDDPrefix, "/", vmc_name[vmc_id], 0, &vmc_superblock) > 0) {
-                    hdd_vmc_infos.flags = vmc_superblock.mc_flag & 0xFF;
-                    hdd_vmc_infos.flags |= 0x100;
-                    hdd_vmc_infos.specs.page_size = vmc_superblock.page_size;
-                    hdd_vmc_infos.specs.block_size = vmc_superblock.pages_per_block;
-                    hdd_vmc_infos.specs.card_size = vmc_superblock.pages_per_cluster * vmc_superblock.clusters_per_card;
-
-                    // Check vmc inode block chain (write operation can cause damage)
-                    snprintf(vmc_path, sizeof(vmc_path), "%sVMC/%s.bin", gHDDPrefix, vmc_name[vmc_id]);
-                    if ((nparts = hddGetFileBlockInfo(vmc_path, parts, blocks, 11)) > 0) {
-                        have_error = 0;
-                        hdd_vmc_infos.active = 1;
-                        for (i = 0; i < nparts - 1; i++) {
-                            hdd_vmc_infos.blocks[i].number = blocks[i + 1].number;
-                            hdd_vmc_infos.blocks[i].subpart = blocks[i + 1].subpart;
-                            hdd_vmc_infos.blocks[i].count = blocks[i + 1].count;
-                            LOG("HDDSUPPORT hdd_vmc_infos.blocks[%d].number     : 0x%X\n", i, hdd_vmc_infos.blocks[i].number);
-                            LOG("HDDSUPPORT hdd_vmc_infos.blocks[%d].subpart    : 0x%X\n", i, hdd_vmc_infos.blocks[i].subpart);
-                            LOG("HDDSUPPORT hdd_vmc_infos.blocks[%d].count      : 0x%X\n", i, hdd_vmc_infos.blocks[i].count);
-                        }
-                    } else { // else VMC file is too fragmented
-                        LOG("HDDSUPPORT Block Chain NG\n");
-                        have_error = 2;
-                    }
-                }
-
-                if (have_error) {
-                    if (gAutoLaunchGame == NULL) {
-                        char error[256];
-                        if (have_error == 2) // VMC file is fragmented
-                            snprintf(error, sizeof(error), _l(_STR_ERR_VMC_FRAGMENTED_CONTINUE), vmc_name[vmc_id], (vmc_id + 1));
-                        else
-                            snprintf(error, sizeof(error), _l(_STR_ERR_VMC_CONTINUE), vmc_name[vmc_id], (vmc_id + 1));
-                        if (!guiMsgBox(error, 1, NULL)) {
-                            return;
-                        }
-                    } else
-                        LOG("VMC error\n");
-                }
-
-                for (i = 0; i < size_hdd_mcemu_irx; i++) {
-                    if (((u32 *)&hdd_mcemu_irx)[i] == (0xC0DEFAC0 + vmc_id)) {
-                        if (hdd_vmc_infos.active)
-                            size_mcemu_irx = size_hdd_mcemu_irx;
-                        memcpy(&((u32 *)&hdd_mcemu_irx)[i], &hdd_vmc_infos, sizeof(hdd_vmc_infos_t));
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    int size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchGame == NULL);
+    if (size_mcemu_irx < 0)
+        return;
 
     if (gRememberLastPlayed) {
         configSetStr(configGetByType(CONFIG_LAST), "last_played", game->startup);
@@ -757,7 +778,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // adjust ZSO cache
     settings->common.zso_cache = hddCacheSize;
-    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, size_mcemu_irx, hdd_mcemu_irx, EnablePS2Logo, compatMode);
+    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, size_mcemu_irx, pfs_bdm_mcemu_irx, EnablePS2Logo, compatMode);
 }
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)

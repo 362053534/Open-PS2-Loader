@@ -74,7 +74,7 @@ struct fat_file
 };
 #endif
 
-#ifdef HDD_DRIVER
+#if defined(HDD_DRIVER) || defined(PFS_BDM_DRIVER)
 /* Apa partitions informations */
 typedef struct
 {
@@ -108,7 +108,7 @@ typedef struct _McImageSpec
     u32 stsec; /* Vmc file start sector */
 #endif
 
-#ifdef HDD_DRIVER
+#if defined(HDD_DRIVER) || defined(PFS_BDM_DRIVER)
     apa_parts parts[5];    /* Vmc file Apa partitions */
     pfs_blocks blocks[10]; /* Vmc file Pfs inode blocks */
 #endif

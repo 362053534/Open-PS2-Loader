@@ -4,6 +4,7 @@
 #include "include/supportbase.h"
 #include "include/bdmsupport.h"
 #include "include/hdd.h"
+#include "include/hddsupport.h"
 #include "include/util.h"
 #include "include/themes.h"
 #include "include/textures.h"
@@ -519,8 +520,18 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     char vmc_name[32], vmc_path[256], have_error = 0;
     int vmc_id, size_mcemu_irx = 0;
+    int usePfsVMC = 0;
     bdm_vmc_infos_t bdm_vmc_infos;
     vmc_superblock_t vmc_superblock;
+
+    // APA ISO 的游戏读取走 BDM ATA，但 VMC 文件仍位于 PFS，需使用专用映射。
+    if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcmp(pDeviceData->bdmDriver, "ata")) {
+        size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchBDMGame == NULL);
+        if (size_mcemu_irx < 0)
+            return;
+        usePfsVMC = 1;
+        goto vmc_prepared;
+    }
 
     for (vmc_id = 0; vmc_id < 2; vmc_id++) {
         memset(&bdm_vmc_infos, 0, sizeof(bdm_vmc_infos_t));
@@ -590,6 +601,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
             }
         }
     }
+
+vmc_prepared:;
 
     void *irx = NULL;
     int irx_size = 0;
@@ -776,7 +789,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     } else if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
-        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, size_mcemu_irx, usePfsVMC ? pfs_bdm_mcemu_irx : bdm_mcemu_irx, EnablePS2Logo, compatmask);
     }
 }
 
