@@ -818,15 +818,15 @@ static void ethShutdown(item_list_t *itemList)
     }
 
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
-    // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9，再配对 sysShutdownDev9。
-    // 仅当引用减到 0 时才会 DDIOC_OFF；若后面 hddShutdown 还会再减，这里通常只减计数不关电。
+    // ethDeinitModules clears ethModulesLoaded, so remember whether ETH owns a DEV9 reference.
+    // Power-off is deliberately deferred until the complete deinit sequence has finished.
     {
         int ethOwnedDev9 = ethModulesLoaded;
 
         ethDeinitModules();
 
         if (ethOwnedDev9)
-            sysShutdownDev9();
+            sysReleaseDev9();
     }
 }
 

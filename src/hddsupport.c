@@ -840,9 +840,10 @@ static void hddShutdown(item_list_t *itemList)
     if (hddModulesLoadCount > 0) {
         hddModulesLoadCount -= 1;
         if (hddModulesLoadCount == 0) {
-            // DDIOC_OFF already puts the HDD into standby. Issue IDLE IMMEDIATE only when the
-            // final HDD user is gone but another user (such as ETH) keeps DEV9 powered on.
-            if (sysShutdownDev9() > 0)
+            // Do not run DDIOC_OFF immediately after unmounting APA/PFS. The synchronous DEV9
+            // callbacks are deferred until deinit has completed. If ETH still owns DEV9, only
+            // put the now-unused HDD into idle state.
+            if (sysReleaseDev9() > 0)
                 hddSetIdleImmediate();
         }
     }

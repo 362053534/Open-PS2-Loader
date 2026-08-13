@@ -148,7 +148,7 @@ exit:
 
 #define OPL_SIF_CMD_BUFF_SIZE 1
 static SifCmdHandlerData_t OplSifCmdbuffer[OPL_SIF_CMD_BUFF_SIZE];
-static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9InitCount = 0;
+static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9Powered = 0, dev9InitCount = 0;
 
 void sysInitDev9(void)
 {
@@ -158,6 +158,7 @@ void sysInitDev9(void)
         LOG("[DEV9]:\n");
         ret = sysLoadModuleBuffer(&ps2dev9_irx, size_ps2dev9_irx, 0, NULL);
         dev9Loaded = (ret == 0); // DEV9.IRX must have successfully loaded and returned RESIDENT END.
+        dev9Powered = dev9Loaded;
         dev9Initialized = 1;
     }
 
@@ -168,35 +169,31 @@ static int sysDev9PowerOffOnce(void)
 {
     int result;
 
-    if (!dev9Loaded)
+    if (!dev9Loaded || !dev9Powered)
         return 0;
 
     result = fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0);
-    if (result < 0)
+    if (result < 0) {
         LOG("DEV9: DDIOC_OFF failed, result=%d\n", result);
+    } else {
+        dev9Powered = 0;
+    }
 
     return result;
 }
 
-int sysShutdownDev9(void)
+int sysReleaseDev9(void)
 {
-    if (dev9InitCount > 0) {
+    if (dev9InitCount > 0)
         --dev9InitCount;
-
-        if (dev9InitCount == 0) { /* Switch off DEV9 once nothing needs it. */
-            sysDev9PowerOffOnce();
-        }
-    }
 
     return dev9InitCount;
 }
 
 void sysForceShutdownDev9(void)
 {
-    // deinit 里 hddShutdown 可能已把计数减到 0 并成功 DDIOC_OFF。
-    if (dev9InitCount == 0)
-        return;
-
+    // Resource shutdown only releases references. Run the synchronous DEV9 callbacks here,
+    // after deinit has finished, even when the final reference has already reached zero.
     dev9InitCount = 0;
     sysDev9PowerOffOnce();
 }

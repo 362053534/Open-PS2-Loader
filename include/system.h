@@ -10,7 +10,8 @@
 unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
 void sysInitDev9(void);
-int sysShutdownDev9(void);
+// Release one DEV9 user without running the synchronous power-off callbacks.
+int sysReleaseDev9(void);
 // 启动不依赖网卡的应用前调用：强制 DEV9 断电。
 void sysForceShutdownDev9(void);
 void sysReset(int modload_mask);

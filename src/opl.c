@@ -2137,7 +2137,7 @@ void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
         return;
 
     // 不在此处调 hddSetIdleImmediate：BDM/GPT 场景下对 hdd0: 的 IDLEIMM 可能卡住。
-    // 仅在 DEV9 引用仍残留时断电（例如 ETH 占用但未在 ethShutdown 里减计数）。
+    // HDD/ETH 清理只释放引用；完整 deinit 结束后再在这里执行同步断电回调。
     sysForceShutdownDev9();
 }
 
