@@ -23,6 +23,7 @@
 #include "include/extern_irx.h"
 #include "../ee_core/include/modules.h"
 #include "../ee_core/include/coreconfig.h"
+#include "../modules/dev9/dev9-hard-off/dev9-hard-off.h"
 #include <osd_config.h>
 #include "include/pggsm.h"
 #include "include/cheatman.h"
@@ -148,7 +149,8 @@ exit:
 
 #define OPL_SIF_CMD_BUFF_SIZE 1
 static SifCmdHandlerData_t OplSifCmdbuffer[OPL_SIF_CMD_BUFF_SIZE];
-static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9InitCount = 0;
+static unsigned char dev9Initialized = 0, dev9Loaded = 0, dev9HardOffLoaded = 0, dev9InitCount = 0;
+static unsigned char dev9ShutdownDeferred = 0;
 
 void sysInitDev9(void)
 {
@@ -158,6 +160,10 @@ void sysInitDev9(void)
         LOG("[DEV9]:\n");
         ret = sysLoadModuleBuffer(&ps2dev9_irx, size_ps2dev9_irx, 0, NULL);
         dev9Loaded = (ret == 0); // DEV9.IRX must have successfully loaded and returned RESIDENT END.
+        if (dev9Loaded) {
+            LOG("[DEV9 HARD OFF]:\n");
+            dev9HardOffLoaded = (sysLoadModuleBuffer(&dev9_hard_off_irx, size_dev9_hard_off_irx, 0, NULL) == 0);
+        }
         dev9Initialized = 1;
     }
 
@@ -183,20 +189,36 @@ int sysShutdownDev9(void)
     if (dev9InitCount > 0) {
         --dev9InitCount;
 
-        if (dev9InitCount == 0) /* Switch off DEV9 once nothing needs it. */
+        if (dev9InitCount == 0 && !dev9ShutdownDeferred) /* Switch off DEV9 once nothing needs it. */
             sysDev9PowerOffOnce();
     }
 
     return dev9InitCount;
 }
 
+void sysDeferDev9Shutdown(void)
+{
+    dev9ShutdownDeferred = 1;
+}
+
 void sysForceShutdownDev9(void)
 {
-    if (dev9InitCount == 0)
-        return;
+    int result;
 
     dev9InitCount = 0;
-    sysDev9PowerOffOnce();
+    dev9ShutdownDeferred = 0;
+
+    if (!dev9Loaded)
+        return;
+
+    if (!dev9HardOffLoaded) {
+        LOG("DEV9: hard power-off helper is not loaded; leaving DEV9 powered until IOP reset\n");
+        return;
+    }
+
+    result = fileXioDevctl("opl9:", OPL_DEV9_HARD_OFF, NULL, 0, NULL, 0);
+    if (result < 0)
+        LOG("DEV9: hard power-off failed, result=%d\n", result);
 }
 
 void sysReset(int modload_mask)
@@ -226,6 +248,10 @@ void sysReset(int modload_mask)
 #endif
 
     dev9Initialized = 0;
+    dev9Loaded = 0;
+    dev9HardOffLoaded = 0;
+    dev9InitCount = 0;
+    dev9ShutdownDeferred = 0;
     while (!SifIopSync())
         ;
 

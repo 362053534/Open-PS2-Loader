@@ -30,6 +30,8 @@ IMPORT_BIN2C(cleareffects_irx);
 
 IMPORT_BIN2C(deci2_img);
 
+IMPORT_BIN2C(dev9_hard_off_irx);
+
 IMPORT_BIN2C(drvtif_irx);
 
 IMPORT_BIN2C(drvtif_ingame_irx);

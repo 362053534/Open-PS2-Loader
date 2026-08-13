@@ -82,7 +82,7 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		sio2man.o padman.o mcman.o mcserv.o \
 		httpclient-iop.o netman.o ps2ips.o \
 		bdm_mcemu.o hdd_mcemu.o smb_mcemu.o \
-		iremsndpatch.o apemodpatch.o f2techioppatch.o cleareffects.o atad_shutdown.o resetspu.o \
+		iremsndpatch.o apemodpatch.o f2techioppatch.o cleareffects.o atad_shutdown.o dev9_hard_off.o resetspu.o \
 		libsd.o audsrv.o
 
 EECORE_OBJS = ee_core.o ioprp.o util.o \
@@ -317,6 +317,8 @@ clean:	download_lwNBD
 	$(MAKE) -C modules/hdd/xhdd clean
 	echo " -ATAD shutdown timeout"
 	$(MAKE) -C modules/dev9/atad-shutdown clean
+	echo " -DEV9 hard power-off"
+	$(MAKE) -C modules/dev9/dev9-hard-off clean
 	echo " -mcemu"
 	$(MAKE) -C modules/mcemu USE_BDM=1 clean
 	$(MAKE) -C modules/mcemu USE_HDD=1 clean
@@ -664,6 +666,12 @@ modules/dev9/atad-shutdown/atad_shutdown.irx: modules/dev9/atad-shutdown
 	$(MAKE) -C $<
 
 $(EE_ASM_DIR)atad_shutdown.c: modules/dev9/atad-shutdown/atad_shutdown.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ $(*F)_irx
+
+modules/dev9/dev9-hard-off/dev9_hard_off.irx: modules/dev9/dev9-hard-off
+	$(MAKE) -C $<
+
+$(EE_ASM_DIR)dev9_hard_off.c: modules/dev9/dev9-hard-off/dev9_hard_off.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
 
 $(EE_ASM_DIR)hdpro_atad.c: $(PS2SDK)/iop/irx/hdproatad.irx | $(EE_ASM_DIR)
