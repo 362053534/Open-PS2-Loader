@@ -250,7 +250,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit);
 
 void setDefaultColors(void);
 
-int menuResetBDMStartup(void);
+int menuResetBDMStartup(int bdmStarted);
 int menuUpdateBDMSupport(void);
 int menuGetBDMStartupRemaining(void);
 unsigned int menuGetBDMStartupMissingTypes(void);

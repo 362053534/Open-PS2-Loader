@@ -1196,7 +1196,7 @@ static void bdmStartupDiscovery(void *data)
     bdmDiscoveryRequestPending = 0;
 }
 
-int menuResetBDMStartup(void)
+int menuResetBDMStartup(int bdmStarted)
 {
     unsigned int enabledTypes = bdmGetEnabledTypeMask();
 
@@ -1208,7 +1208,7 @@ int menuResetBDMStartup(void)
     bdmDevicePresentMask = 0;
 
     if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
-        (gBDMStartMode == START_MODE_MANUAL && !BdmStarted && !bdmManualTrigger)) {
+        (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
         bdmStartupStage = BDM_STARTUP_COMPLETE;
         bdmDiscoveryRemaining = 0;
     } else

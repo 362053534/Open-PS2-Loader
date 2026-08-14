@@ -1687,7 +1687,7 @@ void reFindBDM()
             endIntroDelayFrame = 0;
     }
 
-    endIntroDelayFrame = menuResetBDMStartup();
+    endIntroDelayFrame = menuResetBDMStartup(BdmStarted);
 
     //// debug  打印debug信息
     //char debugFileDir[64];
@@ -1702,7 +1702,7 @@ void reFindBDM()
 
 void guiMainLoop(void)
 {
-    endIntroDelayFrame = menuResetBDMStartup();
+    endIntroDelayFrame = menuResetBDMStartup(BdmStarted);
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
