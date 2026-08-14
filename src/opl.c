@@ -1105,6 +1105,7 @@ enum {
     BDM_STARTUP_DISCOVERY,
     BDM_STARTUP_DISCOVERY_DRAINING,
     BDM_STARTUP_LISTS,
+    BDM_STARTUP_LISTS_VALIDATING,
     BDM_STARTUP_COMPLETE
 };
 
@@ -1119,6 +1120,8 @@ static int bdmDiscoveryTimedOut;
 static volatile int bdmDiscoveryRequestPending;
 static volatile unsigned int bdmDiscoveryCheckedMask;
 static volatile unsigned int bdmDevicePresentMask;
+static volatile int bdmListRequestPending;
+static volatile unsigned int bdmListCheckedMask;
 
 static unsigned int bdmGetEnabledTypeMask(void)
 {
@@ -1196,6 +1199,20 @@ static void bdmStartupDiscovery(void *data)
     bdmDiscoveryRequestPending = 0;
 }
 
+static void bdmStartupListUpdate(void *data)
+{
+    short int mode = *(short int *)data;
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support && (bdmDevicePresentMask & (1 << mode))) {
+        menuDeferredUpdate(data);
+        if (bdmUpdateDeviceData(list_support[mode].support, 1) <= 0)
+            bdmDevicePresentMask &= ~(1 << mode);
+        bdmListCheckedMask |= 1 << mode;
+    }
+
+    bdmListRequestPending = 0;
+}
+
 int menuResetBDMStartup(int bdmStarted)
 {
     unsigned int enabledTypes = bdmGetEnabledTypeMask();
@@ -1206,6 +1223,8 @@ int menuResetBDMStartup(int bdmStarted)
     bdmDiscoveryRequestPending = 0;
     bdmDiscoveryCheckedMask = 0;
     bdmDevicePresentMask = 0;
+    bdmListRequestPending = 0;
+    bdmListCheckedMask = 0;
 
     if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
         (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
@@ -1281,25 +1300,56 @@ int menuUpdateBDMSupport(void)
     if (bdmStartupStage == BDM_STARTUP_LISTS) {
         presentTypes = bdmGetPresentTypeMask();
 
-        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-            if ((bdmDevicePresentMask & (1 << i)) && list_support[i].support) {
-                int deviceType = bdmGetDeviceType(i);
-                int listReady = (deviceType == BDM_TYPE_USB && usbFound) ||
-                                (deviceType == BDM_TYPE_ILINK && ILKFound) ||
-                                (deviceType == BDM_TYPE_SDC && MX4SIOFound) ||
-                                (deviceType == BDM_TYPE_ATA && GptFound);
-
-                if (!listReady)
-                    ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+        if (!bdmListRequestPending) {
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if ((bdmDevicePresentMask & (1 << i)) && !(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
+                    bdmListRequestPending = 1;
+                    if (ioPutRequestUnique(IO_BDM_STARTUP_LIST, &list_support[i].support->mode) != IO_OK)
+                        bdmListRequestPending = 0;
+                    break;
+                }
             }
         }
 
-        if ((!(presentTypes & BDM_STARTUP_TYPE_USB) || usbFound) &&
+        if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask &&
+            (!(presentTypes & BDM_STARTUP_TYPE_USB) || usbFound) &&
             (!(presentTypes & BDM_STARTUP_TYPE_ILINK) || ILKFound) &&
             (!(presentTypes & BDM_STARTUP_TYPE_SDC) || MX4SIOFound) &&
             (!(presentTypes & BDM_STARTUP_TYPE_ATA) || GptFound)) {
-            bdmStartupStage = BDM_STARTUP_COMPLETE;
-            status |= BDM_STARTUP_STATUS_READY;
+            bdmListCheckedMask = 0;
+            bdmStartupStage = BDM_STARTUP_LISTS_VALIDATING;
+        } else if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask)
+            bdmListCheckedMask = 0;
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_LISTS_VALIDATING) {
+        if (!bdmListRequestPending) {
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if ((bdmDevicePresentMask & (1 << i)) && !(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
+                    bdmListRequestPending = 1;
+                    if (ioPutRequestUnique(IO_BDM_STARTUP_LIST, &list_support[i].support->mode) != IO_OK)
+                        bdmListRequestPending = 0;
+                    break;
+                }
+            }
+        }
+
+        if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask) {
+            int deviceChanged = 0;
+
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if ((bdmDevicePresentMask & (1 << i)) && list_support[i].support && bdmHasDeviceEvent(list_support[i].support)) {
+                    deviceChanged = 1;
+                    break;
+                }
+            }
+
+            if (deviceChanged)
+                bdmListCheckedMask = 0;
+            else {
+                bdmStartupStage = BDM_STARTUP_COMPLETE;
+                status |= BDM_STARTUP_STATUS_READY;
+            }
         }
     }
 
@@ -2475,6 +2525,7 @@ static void init(void)
     ioRegisterHandler(IO_MENU_UPDATE_DEFFERED, &menuDeferredUpdate);
     ioRegisterHandler(IO_itemExecSelect, &itemExecSelect_background);
     ioRegisterHandler(IO_BDM_DISCOVERY, &bdmStartupDiscovery);
+    ioRegisterHandler(IO_BDM_STARTUP_LIST, &bdmStartupListUpdate);
     cacheInit();
 
     gSelectButton = (InitConsoleRegionData() == CONSOLE_REGION_JAPAN) ? KEY_CIRCLE : KEY_CROSS;

@@ -54,6 +54,7 @@
 #define IO_COMPAT_UPDATE_DEFFERED 4
 #define IO_itemExecSelect         5
 #define IO_BDM_DISCOVERY          6
+#define IO_BDM_STARTUP_LIST       7
 
 #define BDM_STARTUP_STATUS_TIMEOUT 0x01
 #define BDM_STARTUP_STATUS_READY   0x02
