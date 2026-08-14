@@ -2036,8 +2036,8 @@ int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancel
 
         rmDrawRect(0, 0, screenWidth, screenHeight, gColDarker);
 
-        rmDrawLine(50, 75, screenWidth - 50, 75, gColWhite);
-        rmDrawLine(50, 410, screenWidth - 50, 410, gColWhite);
+        rmDrawLine(50, 160, screenWidth - 50, 160, gColWhite);
+        rmDrawLine(50, 320, screenWidth - 50, 320, gColWhite);
 
         fntRenderString(gTheme->fonts[0], screenWidth >> 1, gTheme->usedHeight >> 1, ALIGN_CENTER, 0, 0, text, gTheme->textColor);
         for (i = 0; i < 2; i++) {
@@ -2050,11 +2050,11 @@ int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancel
                 w = (iconTex->Width * 20) / iconTex->Height;
 
             if (iconTex && iconTex->Mem) {
-                rmDrawPixmap(iconTex, x, 427, ALIGN_VCENTER, w, h, SCALING_RATIO, gDefaultCol);
+                rmDrawPixmap(iconTex, x, 337, ALIGN_VCENTER, w, h, SCALING_RATIO, gDefaultCol);
                 x += rmWideScale(w) + 2;
             }
 
-            fntRenderString(gTheme->fonts[0], x, 427, ALIGN_VCENTER, 0, 0, buttonText[i], gTheme->selTextColor);
+            fntRenderString(gTheme->fonts[0], x, 337, ALIGN_VCENTER, 0, 0, buttonText[i], gTheme->selTextColor);
         }
 
         guiEndFrame();
