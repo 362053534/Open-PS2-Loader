@@ -280,7 +280,7 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
     // Check if the device has been connected or removed.
-    result = bdmUpdateDeviceData(itemList);
+    result = bdmUpdateDeviceData(itemList, 0);
     if (bdmDefaultNeedsCorrection && gInitComplete && !mainScreenInitDone && itemList->owner &&
         pDeviceData->bdmPrefix[0] != '\0' && ((opl_io_module_t *)itemList->owner)->menuItem.visible) {
         struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
@@ -1057,7 +1057,7 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 
 //static int bdmHddCheckDone = 0;
 //static int bdmHddRetryCount = 0;
-int bdmUpdateDeviceData(item_list_t *itemList)
+int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
 {
     // If bdm mode is disabled bail out as we don't want to update the visibility state of the device pages.
     if (gBDMStartMode == START_MODE_DISABLED)
@@ -1075,14 +1075,12 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
+    if (dir < 0 && discoveryOnly)
+        return 0;
+
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
         if (pDeviceData->bdmPrefix[0] == '\0') {
-            if (gBDMPrefix[0] != '\0')
-                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
-            else
-                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
-
             // Get the name of the underlying device driver that backs the fat fs.
             fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
             fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &pDeviceData->massDeviceIndex, sizeof(pDeviceData->massDeviceIndex));
@@ -1101,6 +1099,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
                 itemList->flags = MODE_FLAG_COMPAT_DMA;
             } else
                 pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
+
+            // 第一阶段只记录设备是否存在，不执行初始化和列表生成。
+            if (discoveryOnly) {
+                fileXioDclose(dir);
+                return pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN;
+            }
+
+            if (gBDMPrefix[0] != '\0')
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
+            else
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
 
             // 根据BDM类型开启相应的分桶开关
             char art2Path[128];
@@ -1155,6 +1164,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // Close the device handle.
             fileXioDclose(dir);
             return 1;
+        } else if (discoveryOnly) {
+            fileXioDclose(dir);
+            return pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN;
         } else { // 如果已经初始化
             // 设备从关到开，才需要return1，否则不更新
             int result = 0;

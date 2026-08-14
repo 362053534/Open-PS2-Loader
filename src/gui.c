@@ -64,9 +64,6 @@ int GptFound = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 
-static int defaultDelayFrame = 600;
-// static int LongDelayTime = 18000;
-static int ShortDelayTime = 300;
 static int endIntroDelayFrame = 0;
 static int bdmTimeOut = 0;
 static int artLoadDelayTime = 200;
@@ -1675,14 +1672,6 @@ void reFindBDM()
     //    curShortDelayFrame = LongDelayTime;
     //}
 
-    // 根据设备的就绪状态来添加延迟
-    if ((gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
-        endIntroDelayFrame = defaultDelayFrame; // 需要更长时间搜寻设备
-    else if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound))
-        endIntroDelayFrame = ShortDelayTime; // 搜寻设备的时间不需要太长
-    else
-        endIntroDelayFrame = 0;
-
     if (!BdmStarted) { // BDM未启动时的处理
         if (gBDMStartMode <= START_MODE_MANUAL) {
             if (bdmManualTrigger)
@@ -1698,6 +1687,8 @@ void reFindBDM()
             endIntroDelayFrame = 0;
     }
 
+    endIntroDelayFrame = menuResetBDMStartup();
+
     //// debug  打印debug信息
     //char debugFileDir[64];
     //strcpy(debugFileDir, "smb:debug-BDMReady.txt");
@@ -1711,13 +1702,7 @@ void reFindBDM()
 
 void guiMainLoop(void)
 {
-    endIntroDelayFrame = defaultDelayFrame;
-
-    // 所有设备准备就绪，或BDM关闭或手动模式，就给最低启动延迟，为了预加载背景图和封面
-    if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
-        endIntroDelayFrame = 0;
-    if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !BdmStarted))
-        endIntroDelayFrame = 0;
+    endIntroDelayFrame = menuResetBDMStartup();
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1734,6 +1719,37 @@ void guiMainLoop(void)
 
     while (!gTerminate) {
         // 各种弹窗提示
+        if (bdmTimeOut) {
+            unsigned int missingTypes = menuGetBDMStartupMissingTypes();
+            char timeoutDevices[64] = "";
+            char timeoutMessage[96];
+            const int english = lngGetValue()[0] == 'E';
+            const char *separator = english ? ", " : "、";
+
+            bdmTimeOut = 0; // 防止重复弹窗
+            if (missingTypes & BDM_STARTUP_TYPE_USB)
+                strcat(timeoutDevices, "USB");
+            if (missingTypes & BDM_STARTUP_TYPE_ILINK) {
+                if (timeoutDevices[0])
+                    strcat(timeoutDevices, separator);
+                strcat(timeoutDevices, "iLink");
+            }
+            if (missingTypes & BDM_STARTUP_TYPE_SDC) {
+                if (timeoutDevices[0])
+                    strcat(timeoutDevices, separator);
+                strcat(timeoutDevices, "MX4SIO");
+            }
+            if (missingTypes & BDM_STARTUP_TYPE_ATA) {
+                if (timeoutDevices[0])
+                    strcat(timeoutDevices, separator);
+                strcat(timeoutDevices, "HDD(exFAT)");
+            }
+
+            if (timeoutDevices[0]) {
+                snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "%s检测超时！请检查是否正确连接！", timeoutDevices);
+                guiMsgBox(timeoutMessage, 0, NULL);
+            }
+        }
         if (greetingAlpha <= 0x00) {
             // 如果txt被创建，则弹出提示框
             if (txtFileCreated) {
@@ -1749,78 +1765,27 @@ void guiMainLoop(void)
                 else
                     guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
             }
-            if (bdmTimeOut) {
-                bdmTimeOut = 0; // 防止重复弹窗
-                char timeoutDevices[64] = "";
-                char timeoutMessage[96];
-                const int english = lngGetValue()[0] == 'E';
-                const char *separator = english ? ", " : "、";
-                if (gEnableUSB && !usbFound)
-                    strcat(timeoutDevices, "USB");
-                if (gEnableILK && !ILKFound) {
-                    if (timeoutDevices[0])
-                        strcat(timeoutDevices, separator);
-                    strcat(timeoutDevices, "iLink");
-                }
-                if (gEnableMX4SIO && !MX4SIOFound) {
-                    if (timeoutDevices[0])
-                        strcat(timeoutDevices, separator);
-                    strcat(timeoutDevices, "MX4SIO");
-                }
-                if (gEnableBdmHDD && !GptFound) {
-                    if (timeoutDevices[0])
-                        strcat(timeoutDevices, separator);
-                    strcat(timeoutDevices, "HDD(exFAT)");
-                }
-
-                if (timeoutDevices[0]) {
-                    snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "%s检测超时！请检查是否正确连接！", timeoutDevices);
-                    guiMsgBox(timeoutMessage, 0, NULL);
-                }
-            }
         }
 
         // 多线程初始化结束后，才开始处理设备
         if (theardInitDone) {
-            // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
-            if (endIntroDelayFrame > 0) {
-                // 所有设备准备就绪，才可以结束延迟
-                if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
-                    //// debug  打印debug信息
-                    // char debugFileDir[64];
-                    // strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-                    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    // FILE *debugFile = fopen(debugFileDir, "ab+");
-                    // if (debugFile != NULL) {
-                    //     fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", delayFrameCount, usbFound, GptFound);
-                    //     delayFrameCount = 0;
-                    //     fclose(debugFile);
-                    // }
-                    endIntroDelayFrame = 0;
-                } else {
-                    menuUpdateBDMSupport(); // 继续尝试检索bdm设备
-                    endIntroDelayFrame--;
-                    // BDM设备超时，弹出提示框
-                    if ((endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted || bdmManualTrigger))
-                        bdmTimeOut = 1;
+            int bdmStartupStatus = menuUpdateBDMSupport();
+            endIntroDelayFrame = menuGetBDMStartupRemaining();
 
-                    //// debug  打印debug信息
-                    // delayFrameCount++;
-                    // if (endIntroDelayFrame <= 0) {
+            if (bdmStartupStatus & BDM_STARTUP_STATUS_TIMEOUT)
+                bdmTimeOut = 1;
 
-                    //
-                    //    char debugFileDir[64];
-                    //    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-                    //    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    //    FILE *debugFile = fopen(debugFileDir, "ab+");
-                    //    if (debugFile != NULL) {
-                    //        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", delayFrameCount, gEnableUSB, gEnableBdmHDD);
-                    //        delayFrameCount = 0;
-                    //        fclose(debugFile);
-                    //    }
-                    //}
-                }
-            } else {
+            //// debug  打印debug信息
+            // char debugFileDir[64];
+            // strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+            //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+            // FILE *debugFile = fopen(debugFileDir, "ab+");
+            // if (debugFile != NULL) {
+            //     fprintf(debugFile, "设备寻找剩余：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
+            //     fclose(debugFile);
+            // }
+
+            if (bdmStartupStatus & BDM_STARTUP_STATUS_READY) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
                     // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页

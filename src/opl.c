@@ -270,7 +270,8 @@ static void itemInitSupport(item_list_t *support)
     support->itemInit(support);
     moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
-    menuDeferredUpdate(&support->mode);
+    if (!(bdmManualTrigger && support->mode >= BDM_MODE && support->mode <= BDM_MODE4))
+        menuDeferredUpdate(&support->mode);
     //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 }
 
@@ -528,7 +529,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
             // ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-            menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
+            if (mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone)
+                menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
@@ -1099,20 +1101,209 @@ void menuMarkGameListsForRefresh(void)
     }
 }
 
-void menuUpdateBDMSupport(void)
+enum {
+    BDM_STARTUP_DISCOVERY,
+    BDM_STARTUP_DISCOVERY_DRAINING,
+    BDM_STARTUP_LISTS,
+    BDM_STARTUP_COMPLETE
+};
+
+#define BDM_DISCOVERY_SHORT_DELAY 300
+#define BDM_DISCOVERY_LONG_DELAY  600
+#define BDM_DISCOVERY_SLOT_MASK   ((1 << MAX_BDM_DEVICES) - 1)
+
+static int bdmStartupStage = BDM_STARTUP_COMPLETE;
+static int bdmDiscoveryRemaining;
+static int bdmDiscoveryMode;
+static int bdmDiscoveryTimedOut;
+static volatile int bdmDiscoveryRequestPending;
+static volatile unsigned int bdmDiscoveryCheckedMask;
+static volatile unsigned int bdmDevicePresentMask;
+
+static unsigned int bdmGetEnabledTypeMask(void)
 {
-    // BDM设备会在欢迎界面或手动启动时不断尝试初始化，直到成功或超时为止
+    unsigned int result = 0;
+
+    if (gEnableUSB)
+        result |= BDM_STARTUP_TYPE_USB;
+    if (gEnableILK)
+        result |= BDM_STARTUP_TYPE_ILINK;
+    if (gEnableMX4SIO)
+        result |= BDM_STARTUP_TYPE_SDC;
+    if (gEnableBdmHDD)
+        result |= BDM_STARTUP_TYPE_ATA;
+
+    return result;
+}
+
+static unsigned int bdmGetPresentTypeMask(void)
+{
+    unsigned int result = 0;
+
     for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-        if (list_support[i].support) {
-            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-            int bdmDeviceOn = (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB) ||
-                              (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK && gEnableILK) ||
-                              (pDeviceData->bdmDeviceType == BDM_TYPE_SDC && gEnableMX4SIO) ||
-                              (pDeviceData->bdmDeviceType == BDM_TYPE_ATA && gEnableBdmHDD);
-            if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (bdmDeviceOn && pDeviceData->bdmGameCount == -1)))
-                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+        if (bdmDevicePresentMask & (1 << i)) {
+            int deviceType = bdmGetDeviceType(i);
+
+            if (deviceType == BDM_TYPE_USB)
+                result |= BDM_STARTUP_TYPE_USB;
+            else if (deviceType == BDM_TYPE_ILINK)
+                result |= BDM_STARTUP_TYPE_ILINK;
+            else if (deviceType == BDM_TYPE_SDC)
+                result |= BDM_STARTUP_TYPE_SDC;
+            else if (deviceType == BDM_TYPE_ATA)
+                result |= BDM_STARTUP_TYPE_ATA;
         }
     }
+
+    return result;
+}
+
+static int bdmGetDiscoveryBudget(unsigned int typeMask)
+{
+    int result = 0;
+
+    if (typeMask & BDM_STARTUP_TYPE_USB)
+        result += BDM_DISCOVERY_SHORT_DELAY;
+    if (typeMask & BDM_STARTUP_TYPE_ILINK)
+        result += BDM_DISCOVERY_SHORT_DELAY;
+    if (typeMask & BDM_STARTUP_TYPE_SDC)
+        result += BDM_DISCOVERY_LONG_DELAY;
+    if (typeMask & BDM_STARTUP_TYPE_ATA)
+        result += BDM_DISCOVERY_LONG_DELAY;
+
+    return result;
+}
+
+static int bdmDeviceTypeEnabled(int deviceType)
+{
+    return (deviceType == BDM_TYPE_USB && gEnableUSB) ||
+           (deviceType == BDM_TYPE_ILINK && gEnableILK) ||
+           (deviceType == BDM_TYPE_SDC && gEnableMX4SIO) ||
+           (deviceType == BDM_TYPE_ATA && gEnableBdmHDD);
+}
+
+static void bdmStartupDiscovery(void *data)
+{
+    short int mode = *(short int *)data;
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support) {
+        if (bdmUpdateDeviceData(list_support[mode].support, 1) > 0 && bdmDeviceTypeEnabled(bdmGetDeviceType(mode)))
+            bdmDevicePresentMask |= 1 << mode;
+    }
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4)
+        bdmDiscoveryCheckedMask |= 1 << mode;
+    bdmDiscoveryRequestPending = 0;
+}
+
+int menuResetBDMStartup(void)
+{
+    unsigned int enabledTypes = bdmGetEnabledTypeMask();
+
+    bdmDiscoveryRemaining = bdmGetDiscoveryBudget(enabledTypes);
+    bdmDiscoveryMode = BDM_MODE;
+    bdmDiscoveryTimedOut = 0;
+    bdmDiscoveryRequestPending = 0;
+    bdmDiscoveryCheckedMask = 0;
+    bdmDevicePresentMask = 0;
+
+    if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
+        (gBDMStartMode == START_MODE_MANUAL && !BdmStarted && !bdmManualTrigger)) {
+        bdmStartupStage = BDM_STARTUP_COMPLETE;
+        bdmDiscoveryRemaining = 0;
+    } else
+        bdmStartupStage = BDM_STARTUP_DISCOVERY;
+
+    return bdmDiscoveryRemaining;
+}
+
+int menuGetBDMStartupRemaining(void)
+{
+    return bdmDiscoveryRemaining;
+}
+
+unsigned int menuGetBDMStartupMissingTypes(void)
+{
+    return bdmGetEnabledTypeMask() & ~bdmGetPresentTypeMask();
+}
+
+int menuUpdateBDMSupport(void)
+{
+    int status = 0;
+    unsigned int presentTypes;
+    unsigned int missingTypes;
+
+    if (bdmStartupStage == BDM_STARTUP_COMPLETE)
+        return BDM_STARTUP_STATUS_READY;
+
+    presentTypes = bdmGetPresentTypeMask();
+    missingTypes = bdmGetEnabledTypeMask() & ~presentTypes;
+
+    if (bdmStartupStage == BDM_STARTUP_DISCOVERY) {
+        int remainingBudget = bdmGetDiscoveryBudget(missingTypes);
+
+        if (bdmDiscoveryRemaining > remainingBudget)
+            bdmDiscoveryRemaining = remainingBudget;
+
+        if ((!missingTypes && bdmDiscoveryCheckedMask == BDM_DISCOVERY_SLOT_MASK) ||
+            (missingTypes && bdmDiscoveryRemaining <= 0)) {
+            bdmDiscoveryTimedOut = missingTypes != 0;
+            bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
+        } else {
+            if (missingTypes && bdmDiscoveryRemaining > 0)
+                bdmDiscoveryRemaining--;
+
+            if (!bdmDiscoveryRequestPending) {
+                if (list_support[bdmDiscoveryMode].support) {
+                    bdmDiscoveryRequestPending = 1;
+                    if (ioPutRequestUnique(IO_BDM_DISCOVERY, &list_support[bdmDiscoveryMode].support->mode) != IO_OK)
+                        bdmDiscoveryRequestPending = 0;
+                } else
+                    bdmDiscoveryCheckedMask |= 1 << bdmDiscoveryMode;
+
+                if (bdmDiscoveryRequestPending || !list_support[bdmDiscoveryMode].support) {
+                    bdmDiscoveryMode++;
+                    if (bdmDiscoveryMode > BDM_MODE4)
+                        bdmDiscoveryMode = BDM_MODE;
+                }
+            }
+        }
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_DISCOVERY_DRAINING && !bdmDiscoveryRequestPending) {
+        presentTypes = bdmGetPresentTypeMask();
+        if (bdmDiscoveryTimedOut && (bdmGetEnabledTypeMask() & ~presentTypes))
+            status |= BDM_STARTUP_STATUS_TIMEOUT;
+
+        bdmStartupStage = BDM_STARTUP_LISTS;
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_LISTS) {
+        presentTypes = bdmGetPresentTypeMask();
+
+        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+            if ((bdmDevicePresentMask & (1 << i)) && list_support[i].support) {
+                int deviceType = bdmGetDeviceType(i);
+                int listReady = (deviceType == BDM_TYPE_USB && usbFound) ||
+                                (deviceType == BDM_TYPE_ILINK && ILKFound) ||
+                                (deviceType == BDM_TYPE_SDC && MX4SIOFound) ||
+                                (deviceType == BDM_TYPE_ATA && GptFound);
+
+                if (!listReady)
+                    ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+            }
+        }
+
+        if ((!(presentTypes & BDM_STARTUP_TYPE_USB) || usbFound) &&
+            (!(presentTypes & BDM_STARTUP_TYPE_ILINK) || ILKFound) &&
+            (!(presentTypes & BDM_STARTUP_TYPE_SDC) || MX4SIOFound) &&
+            (!(presentTypes & BDM_STARTUP_TYPE_ATA) || GptFound)) {
+            bdmStartupStage = BDM_STARTUP_COMPLETE;
+            status |= BDM_STARTUP_STATUS_READY;
+        }
+    }
+
+    return status;
 }
 static void menuUpdateHook()
 {
@@ -1606,16 +1797,7 @@ static void loadSupportsBackground(void)
         deferredAudioInit();
         deferredInit();
     }
-    // BDM设备还需要刷新一下列表
-    if (!mainScreenInitDone) {
-        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-            if (list_support[i].support) {
-                bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-                if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
-                    menuDeferredUpdate(&list_support[i].support->mode);
-            }
-        }
-    }
+    // 欢迎阶段由BDM三阶段流程统一发现设备和生成列表，此处不提前刷新BDM。
     theardInitDone = 1;
 }
 void applyConfig(int themeID, int langID, int skipDeviceRefresh)
@@ -2292,6 +2474,7 @@ static void init(void)
     // handler for deffered menu updates
     ioRegisterHandler(IO_MENU_UPDATE_DEFFERED, &menuDeferredUpdate);
     ioRegisterHandler(IO_itemExecSelect, &itemExecSelect_background);
+    ioRegisterHandler(IO_BDM_DISCOVERY, &bdmStartupDiscovery);
     cacheInit();
 
     gSelectButton = (InitConsoleRegionData() == CONSOLE_REGION_JAPAN) ? KEY_CIRCLE : KEY_CROSS;

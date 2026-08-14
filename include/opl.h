@@ -53,6 +53,15 @@
 #define IO_CACHE_LOAD_ART         3 // io call to handle the loading of covers
 #define IO_COMPAT_UPDATE_DEFFERED 4
 #define IO_itemExecSelect         5
+#define IO_BDM_DISCOVERY          6
+
+#define BDM_STARTUP_STATUS_TIMEOUT 0x01
+#define BDM_STARTUP_STATUS_READY   0x02
+
+#define BDM_STARTUP_TYPE_USB   0x01
+#define BDM_STARTUP_TYPE_ILINK 0x02
+#define BDM_STARTUP_TYPE_SDC   0x04
+#define BDM_STARTUP_TYPE_ATA   0x08
 
 // Codes have been planned to fit the design of the GUI functions within gui.c.
 #define OPL_COMPAT_UPDATE_STAT_WIP        0
@@ -241,7 +250,10 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit);
 
 void setDefaultColors(void);
 
-void menuUpdateBDMSupport(void);
+int menuResetBDMStartup(void);
+int menuUpdateBDMSupport(void);
+int menuGetBDMStartupRemaining(void);
+unsigned int menuGetBDMStartupMissingTypes(void);
 void menuMarkGameListsForRefresh(void);
 void menuRefreshGameLists(void);
 

@@ -53,7 +53,7 @@ void bdmEnumerateDevices();
 
 void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData);
 
-int bdmUpdateDeviceData(item_list_t *itemList);
+int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly);
 int bdmHasDeviceEvent(item_list_t *itemList);
 void bdmRequestDeviceCheck(item_list_t *itemList);
 int bdmGetDeviceType(int mode);
