@@ -395,7 +395,9 @@ static int cdrom_dread(iop_file_t *f, iox_dirent_t *dirent)
     DPRINTF("cdrom_dread fh->lsn=%lu\n", fh->lsn);
 
     sceCdDiskReady(0);
-    if ((r = sceCdRead(fh->lsn, 1, cdvdman_fs_buf, NULL)) == 1) {
+    while ((r = sceCdRead(fh->lsn, 1, cdvdman_fs_buf, NULL)) == 0)
+        DelayThread(10000);
+    if (r == 1) {
         sceCdSync(0);
 
         do {
