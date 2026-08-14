@@ -603,7 +603,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     const char *argv1;
 
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
-        char cheatPath[APP_PATH_MAX + 12];
+        char cheatPath[APP_PATH_MAX + 14];
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
         const char *cheats;
@@ -618,14 +618,50 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         if (mode == HDD_MODE) {
             fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-            if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, "hdd0:__common", FIO_MT_RDWR) == 0)
+            if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, "hdd0:__common", FIO_MT_RDWR) == 0) {
+                char missingFiles[32];
+
+                missingFiles[0] = '\0';
+                fd = openFile("pfs0:POPS/IOPRP252.IMG", O_RDONLY);
+                if (fd >= 0)
+                    close(fd);
+                else
+                    strcpy(missingFiles, "IOPRP252.IMG");
+
+                fd = openFile("pfs0:POPS/POPS.ELF", O_RDONLY);
+                if (fd >= 0)
+                    close(fd);
+                else {
+                    if (missingFiles[0] != '\0')
+                        strcat(missingFiles, " 和 ");
+                    strcat(missingFiles, "POPS.ELF");
+                }
+
+                if (missingFiles[0] != '\0') {
+                    char message[96];
+
+                    snprintf(message, sizeof(message), "__common/POPS 目录下缺少 %s", missingFiles);
+                    guiMsgBox(message, 0, NULL);
+                    oplRestoreHDDOPLPartition();
+                    return;
+                }
+
                 snprintf(cheatPath, sizeof(cheatPath), "pfs0:POPS/CHEATS.TXT");
-            else {
+            } else {
                 cheatPath[0] = '\0';
                 oplRestoreHDDOPLPartition();
             }
-        } else
+        } else {
+            snprintf(cheatPath, sizeof(cheatPath), "%s/POPS_IOX.PAK", appsList[id].path);
+            fd = openFile(cheatPath, O_RDONLY);
+            if (fd < 0) {
+                guiMsgBox("POPS 目录下缺少 POPS_IOX.PAK", 0, NULL);
+                return;
+            }
+            close(fd);
+
             snprintf(cheatPath, sizeof(cheatPath), "%s/CHEATS.TXT", appsList[id].path);
+        }
 
         if (cheatPath[0] != '\0') {
             fd = openFile(cheatPath, O_RDONLY);
