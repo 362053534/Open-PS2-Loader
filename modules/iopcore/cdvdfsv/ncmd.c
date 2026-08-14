@@ -207,8 +207,8 @@ static inline void cdvd_readee(void *buf)
                 bytesent += size_64bb;
             }
 
-            *((u32 *)&curlsn_buf[0]) = bytesent;
-            sysmemSendEE((void *)curlsn_buf, (void *)r->eeaddr2, 16);
+            // *((u32 *)&curlsn_buf[0]) = bytesent;
+            // sysmemSendEE((void *)curlsn_buf, (void *)r->eeaddr2, 16);
 
             sectors_to_read -= nsectors;
             r->lsn += nsectors;
