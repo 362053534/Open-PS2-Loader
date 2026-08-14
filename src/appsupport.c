@@ -590,7 +590,7 @@ static void appPreparePOPSLauncher(void)
 {
     appPOPSPrepareResult = 0;
 
-    if (gAutoDetectPS1Apps && installPopstarterDrivers(oplPath2Mode(appsList[appPOPSPrepareID].path), appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
+    if (gAutoDetectPS1Apps && oplPath2Mode(appsList[appPOPSPrepareID].path) != HDD_MODE && installPopstarterDrivers(oplPath2Mode(appsList[appPOPSPrepareID].path), appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
         appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 
     appPOPSPrepareStatus = 0;
