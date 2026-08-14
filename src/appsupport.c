@@ -668,12 +668,12 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             if (fd >= 0)
                 close(fd);
             else {
-                if (guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i", "240p", NULL))
-                    cheats = "$SAFEMODE\n$HDTVFIX\n480p";
+                if (guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i (液晶)", "240p (CRT)", NULL))
+                    cheats = "$SAFEMODE\r\n$HDTVFIX\r\n480p";
                 else
-                    cheats = "$SAFEMODE\nHDTVFIX\n480p";
+                    cheats = "$SAFEMODE\r\nHDTVFIX\r\n480p";
 
-                guiMsgBox("若删除POPS/CHEATS.TXT，可重新选择分辨率！", 0, NULL);
+                guiMsgBox("若黑屏，请删除 POPS/CHEATS.TXT 即可重新选择分辨率", 0, NULL);
 
                 fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
                 if (fd >= 0) {
