@@ -1122,6 +1122,7 @@ static volatile unsigned int bdmDiscoveryCheckedMask;
 static volatile unsigned int bdmDevicePresentMask;
 static volatile int bdmListRequestPending;
 static volatile unsigned int bdmListCheckedMask;
+static volatile unsigned int bdmDeviceListReadyMask;
 
 static unsigned int bdmGetEnabledTypeMask(void)
 {
@@ -1204,9 +1205,16 @@ static void bdmStartupListUpdate(void *data)
     short int mode = *(short int *)data;
 
     if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support && (bdmDevicePresentMask & (1 << mode))) {
+        item_list_t *support = list_support[mode].support;
+
         menuDeferredUpdate(data);
-        if (bdmUpdateDeviceData(list_support[mode].support, 1) <= 0)
+        if (bdmUpdateDeviceData(support, 1) <= 0) {
             bdmDevicePresentMask &= ~(1 << mode);
+            bdmDeviceListReadyMask &= ~(1 << mode);
+        } else if (support->itemGetPrefix(support)[0] != '\0' && support->itemGetCount(support) >= 0)
+            bdmDeviceListReadyMask |= 1 << mode;
+        else
+            bdmDeviceListReadyMask &= ~(1 << mode);
         bdmListCheckedMask |= 1 << mode;
     }
 
@@ -1225,6 +1233,7 @@ int menuResetBDMStartup(int bdmStarted)
     bdmDevicePresentMask = 0;
     bdmListRequestPending = 0;
     bdmListCheckedMask = 0;
+    bdmDeviceListReadyMask = 0;
 
     if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
         (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
@@ -1298,8 +1307,6 @@ int menuUpdateBDMSupport(void)
     }
 
     if (bdmStartupStage == BDM_STARTUP_LISTS) {
-        presentTypes = bdmGetPresentTypeMask();
-
         if (!bdmListRequestPending) {
             for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
                 if ((bdmDevicePresentMask & (1 << i)) && !(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
@@ -1312,14 +1319,11 @@ int menuUpdateBDMSupport(void)
         }
 
         if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask &&
-            (!(presentTypes & BDM_STARTUP_TYPE_USB) || usbFound) &&
-            (!(presentTypes & BDM_STARTUP_TYPE_ILINK) || ILKFound) &&
-            (!(presentTypes & BDM_STARTUP_TYPE_SDC) || MX4SIOFound) &&
-            (!(presentTypes & BDM_STARTUP_TYPE_ATA) || GptFound)) {
+            (bdmDeviceListReadyMask & bdmDevicePresentMask) == bdmDevicePresentMask) {
             bdmListCheckedMask = 0;
             bdmStartupStage = BDM_STARTUP_LISTS_VALIDATING;
         } else if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask)
-            bdmListCheckedMask = 0;
+            bdmListCheckedMask = bdmDeviceListReadyMask & bdmDevicePresentMask;
     }
 
     if (bdmStartupStage == BDM_STARTUP_LISTS_VALIDATING) {
@@ -1337,18 +1341,23 @@ int menuUpdateBDMSupport(void)
         if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask) {
             int deviceChanged = 0;
 
-            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-                if ((bdmDevicePresentMask & (1 << i)) && list_support[i].support && bdmHasDeviceEvent(list_support[i].support)) {
-                    deviceChanged = 1;
-                    break;
+            if ((bdmDeviceListReadyMask & bdmDevicePresentMask) != bdmDevicePresentMask) {
+                bdmListCheckedMask = bdmDeviceListReadyMask & bdmDevicePresentMask;
+                bdmStartupStage = BDM_STARTUP_LISTS;
+            } else {
+                for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                    if ((bdmDevicePresentMask & (1 << i)) && list_support[i].support && bdmHasDeviceEvent(list_support[i].support)) {
+                        deviceChanged = 1;
+                        break;
+                    }
                 }
-            }
 
-            if (deviceChanged)
-                bdmListCheckedMask = 0;
-            else {
-                bdmStartupStage = BDM_STARTUP_COMPLETE;
-                status |= BDM_STARTUP_STATUS_READY;
+                if (deviceChanged)
+                    bdmListCheckedMask = 0;
+                else {
+                    bdmStartupStage = BDM_STARTUP_COMPLETE;
+                    status |= BDM_STARTUP_STATUS_READY;
+                }
             }
         }
     }
