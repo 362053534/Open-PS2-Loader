@@ -1092,6 +1092,7 @@ void menuDeferredUpdate(void *data)
 }
 
 #define BDM_HOTPLUG_CHECK_DELAY 300
+#define BDM_HOTPLUG_USE_MOUNT_INFO 1
 
 void menuMarkGameListsForRefresh(void)
 {
@@ -1445,6 +1446,51 @@ int menuUpdateBDMSupport(void)
 
     return status;
 }
+
+#if BDM_HOTPLUG_USE_MOUNT_INFO
+static void bdmHotplugMountInfoCheck(void)
+{
+    usbmass_mount_info_t mountInfo[MAX_BDM_DEVICES] = {0};
+    int count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_MOUNT_INFO, NULL, 0, mountInfo, sizeof(mountInfo));
+
+    if (count < 0)
+        return;
+
+    for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+        item_list_t *support = list_support[i].support;
+        bdm_device_data_t *pDeviceData = support ? support->priv : NULL;
+
+        if (!support || !support->enabled || !pDeviceData)
+            continue;
+
+        if (mountInfo[i].mounted) {
+            int deviceType = bdmGetDeviceTypeFromDriver(mountInfo[i].device.name);
+
+            if (pDeviceData->bdmPrefix[0] == '\0' && bdmDeviceTypeEnabled(deviceType)) {
+                bdmRequestDeviceCheck(support);
+                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+            } else if (pDeviceData->bdmPrefix[0] != '\0' && bdmDeviceTypeEnabled(deviceType) &&
+                       (strcmp(pDeviceData->bdmDriver, mountInfo[i].device.name) ||
+                        pDeviceData->massDeviceIndex != (int)mountInfo[i].device.devNr)) {
+                if (ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode) == IO_OK) {
+                    strncpy(pDeviceData->bdmDriver, mountInfo[i].device.name, sizeof(pDeviceData->bdmDriver) - 1);
+                    pDeviceData->bdmDriver[sizeof(pDeviceData->bdmDriver) - 1] = '\0';
+                    pDeviceData->bdmDeviceType = deviceType;
+                    pDeviceData->massDeviceIndex = mountInfo[i].device.devNr;
+                    support->flags = deviceType == BDM_TYPE_ATA ? MODE_FLAG_COMPAT_DMA : 0;
+                    if (deviceType == BDM_TYPE_ATA)
+                        bdmResolveLBA_UDMA(pDeviceData);
+                    pDeviceData->ForceRefresh = 1;
+                }
+            }
+        } else if (pDeviceData->bdmPrefix[0] != '\0' && bdmDeviceTypeEnabled(pDeviceData->bdmDeviceType)) {
+            bdmRequestDeviceCheck(support);
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+        }
+    }
+}
+#endif
+
 static void menuUpdateHook()
 {
     int i;
@@ -1455,6 +1501,21 @@ static void menuUpdateHook()
     // 将自动刷新作为BDM热插拔检测。真实事件立即处理，低频检查用于补偿丢失的事件。
     if (gAutoRefresh && mainScreenInitDone && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
         const int fallbackCheck = frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0;
+
+#if BDM_HOTPLUG_USE_MOUNT_INFO
+        if (fallbackCheck)
+            ioPutRequestUnique(IO_CUSTOM_SIMPLEACTION, &bdmHotplugMountInfoCheck);
+
+        for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+            item_list_t *support = list_support[i].support;
+            bdm_device_data_t *pDeviceData = support ? support->priv : NULL;
+            int deviceType = bdmGetDeviceType(i);
+
+            if (support && support->enabled && bdmHasDeviceEvent(support) && pDeviceData &&
+                (pDeviceData->bdmPrefix[0] == '\0' || bdmDeviceTypeEnabled(deviceType)))
+                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+        }
+#else
         unsigned int mountedTypeMask = 0;
         int hasHistoricalEmptyPage = 0;
 
@@ -1501,6 +1562,7 @@ static void menuUpdateHook()
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
             }
         }
+#endif
     }
 
     //// BDM设备会在欢迎界面或手动启动时不断尝试初始化，直到成功或超时为止
