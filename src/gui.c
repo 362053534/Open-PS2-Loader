@@ -1719,7 +1719,7 @@ void guiMainLoop(void)
 
     while (!gTerminate) {
         // 各种弹窗提示
-        if (bdmTimeOut) {
+        if (bdmTimeOut && greetingAlpha <= 0x00) {
             unsigned int missingTypes = menuGetBDMStartupMissingTypes();
             char timeoutDevices[64] = "";
             char timeoutMessage[96];
