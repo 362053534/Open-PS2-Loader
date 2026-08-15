@@ -1111,15 +1111,18 @@ enum {
     BDM_STARTUP_COMPLETE
 };
 
-#define BDM_DISCOVERY_SHORT_DELAY 300
-#define BDM_DISCOVERY_LONG_DELAY  600
-#define BDM_DISCOVERY_SLOT_MASK   ((1 << MAX_BDM_DEVICES) - 1)
+#define BDM_DISCOVERY_SLOT_MASK ((1 << MAX_BDM_DEVICES) - 1)
 
 static int bdmStartupStage = BDM_STARTUP_COMPLETE;
 static int bdmDiscoveryRemaining;
 static int bdmDiscoveryMode;
-static int bdmDiscoveryTimedOut;
+static volatile int bdmDiscoveryResult;
 static volatile int bdmDiscoveryRequestPending;
+static volatile unsigned int bdmProbeCompletedMask;
+static volatile unsigned int bdmProbePresentMask;
+static volatile unsigned int bdmProbeErrorMask;
+static unsigned int bdmDiscoveryExpectedTypeMask;
+static unsigned int bdmDiscoveryModuleErrorMask;
 static usbmass_bd_info_t bdmDiscoveredDevices[MAX_BDM_DEVICES];
 static volatile int bdmDiscoveredDeviceCount;
 static volatile unsigned int bdmDiscoveredDeviceMask;
@@ -1159,44 +1162,6 @@ static unsigned int bdmGetEnabledTypeMask(void)
     return result;
 }
 
-static unsigned int bdmGetPresentTypeMask(void)
-{
-    unsigned int result = 0;
-
-    for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
-        if (bdmDiscoveredDeviceMask & (1 << i)) {
-            int deviceType = bdmGetDeviceTypeFromDriver(bdmDiscoveredDevices[i].name);
-
-            if (deviceType == BDM_TYPE_USB)
-                result |= BDM_STARTUP_TYPE_USB;
-            else if (deviceType == BDM_TYPE_ILINK)
-                result |= BDM_STARTUP_TYPE_ILINK;
-            else if (deviceType == BDM_TYPE_SDC)
-                result |= BDM_STARTUP_TYPE_SDC;
-            else if (deviceType == BDM_TYPE_ATA)
-                result |= BDM_STARTUP_TYPE_ATA;
-        }
-    }
-
-    return result;
-}
-
-static int bdmGetDiscoveryBudget(unsigned int typeMask)
-{
-    int result = 0;
-
-    if (typeMask & BDM_STARTUP_TYPE_USB)
-        result += BDM_DISCOVERY_SHORT_DELAY;
-    if (typeMask & BDM_STARTUP_TYPE_ILINK)
-        result += BDM_DISCOVERY_SHORT_DELAY;
-    if (typeMask & BDM_STARTUP_TYPE_SDC)
-        result += BDM_DISCOVERY_LONG_DELAY;
-    if (typeMask & BDM_STARTUP_TYPE_ATA)
-        result += BDM_DISCOVERY_LONG_DELAY;
-
-    return result;
-}
-
 static int bdmDeviceTypeEnabled(int deviceType)
 {
     return (deviceType == BDM_TYPE_USB && gEnableUSB) ||
@@ -1207,6 +1172,7 @@ static int bdmDeviceTypeEnabled(int deviceType)
 
 static void bdmStartupDiscovery(void *data)
 {
+    usbmass_bd_probe_status_t probeStatus;
     usbmass_bd_info_t devices[USBMASS_BD_MAX_DEVICES];
     usbmass_bd_info_t discoveredDevices[MAX_BDM_DEVICES];
     int count;
@@ -1214,30 +1180,40 @@ static void bdmStartupDiscovery(void *data)
 
     (void)data;
 
-    count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
-    if (count >= 0) {
-        for (int i = 0; i < count; i++) {
-            int deviceType = bdmGetDeviceTypeFromDriver(devices[i].name);
-            int found = 0;
+    bdmDiscoveryResult = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_PROBE_STATUS, NULL, 0, &probeStatus, sizeof(probeStatus));
+    if (bdmDiscoveryResult >= 0) {
+        bdmProbeCompletedMask = probeStatus.completed;
+        bdmProbePresentMask = probeStatus.present;
+        bdmProbeErrorMask = probeStatus.error | bdmDiscoveryModuleErrorMask;
 
-            if (!bdmDeviceTypeEnabled(deviceType))
-                continue;
+        if ((bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask) {
+            count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
+            if (count >= 0) {
+                for (int i = 0; i < count; i++) {
+                    int deviceType = bdmGetDeviceTypeFromDriver(devices[i].name);
+                    int found = 0;
 
-            // 同一物理设备的整盘与分区会同时注册，只记录一次。
-            for (int j = 0; j < discoveredDeviceCount; j++) {
-                if (!strcmp(discoveredDevices[j].name, devices[i].name) && discoveredDevices[j].devNr == devices[i].devNr) {
-                    found = 1;
-                    break;
+                    if (!bdmDeviceTypeEnabled(deviceType))
+                        continue;
+
+                    // 同一物理设备的整盘与分区会同时注册，只记录一次。
+                    for (int j = 0; j < discoveredDeviceCount; j++) {
+                        if (!strcmp(discoveredDevices[j].name, devices[i].name) && discoveredDevices[j].devNr == devices[i].devNr) {
+                            found = 1;
+                            break;
+                        }
+                    }
+
+                    if (!found && discoveredDeviceCount < MAX_BDM_DEVICES)
+                        discoveredDevices[discoveredDeviceCount++] = devices[i];
                 }
-            }
 
-            if (!found && discoveredDeviceCount < MAX_BDM_DEVICES)
-                discoveredDevices[discoveredDeviceCount++] = devices[i];
+                memcpy(bdmDiscoveredDevices, discoveredDevices, sizeof(usbmass_bd_info_t) * discoveredDeviceCount);
+                bdmDiscoveredDeviceCount = discoveredDeviceCount;
+                bdmDiscoveredDeviceMask = discoveredDeviceCount ? (1 << discoveredDeviceCount) - 1 : 0;
+            } else
+                bdmDiscoveryResult = count;
         }
-
-        memcpy(bdmDiscoveredDevices, discoveredDevices, sizeof(usbmass_bd_info_t) * discoveredDeviceCount);
-        bdmDiscoveredDeviceCount = discoveredDeviceCount;
-        bdmDiscoveredDeviceMask = discoveredDeviceCount ? (1 << discoveredDeviceCount) - 1 : 0;
     }
 
     bdmDiscoveryRequestPending = 0;
@@ -1325,10 +1301,15 @@ int menuResetBDMStartup(int bdmStarted)
 {
     unsigned int enabledTypes = bdmGetEnabledTypeMask();
 
-    bdmDiscoveryRemaining = bdmGetDiscoveryBudget(enabledTypes);
+    bdmDiscoveryRemaining = enabledTypes != 0;
     bdmDiscoveryMode = BDM_MODE;
-    bdmDiscoveryTimedOut = 0;
+    bdmDiscoveryResult = 0;
     bdmDiscoveryRequestPending = 0;
+    bdmProbeCompletedMask = 0;
+    bdmProbePresentMask = 0;
+    bdmProbeErrorMask = 0;
+    bdmDiscoveryExpectedTypeMask = 0;
+    bdmDiscoveryModuleErrorMask = 0;
     bdmDiscoveredDeviceCount = 0;
     bdmDiscoveredDeviceMask = 0;
     bdmDiscoveredDeviceReadyMask = 0;
@@ -1354,35 +1335,40 @@ int menuGetBDMStartupRemaining(void)
 
 unsigned int menuGetBDMStartupMissingTypes(void)
 {
-    return bdmGetEnabledTypeMask() & ~bdmGetPresentTypeMask();
+    unsigned int enabledTypes = bdmGetEnabledTypeMask();
+
+    if (bdmDiscoveryResult < 0)
+        return enabledTypes;
+
+    return enabledTypes & (~bdmProbePresentMask | bdmProbeErrorMask);
 }
 
 int menuUpdateBDMSupport(void)
 {
     int status = 0;
-    unsigned int presentTypes;
-    unsigned int missingTypes;
+    unsigned int enabledTypes;
 
     if (bdmStartupStage == BDM_STARTUP_COMPLETE)
         return BDM_STARTUP_STATUS_READY;
 
-    presentTypes = bdmGetPresentTypeMask();
-    missingTypes = bdmGetEnabledTypeMask() & ~presentTypes;
+    enabledTypes = bdmGetEnabledTypeMask();
 
     if (bdmStartupStage == BDM_STARTUP_DISCOVERY) {
-        int remainingBudget = bdmGetDiscoveryBudget(missingTypes);
+        int loadedTypes = bdmGetLoadedTypeMask();
 
-        if (bdmDiscoveryRemaining > remainingBudget)
-            bdmDiscoveryRemaining = remainingBudget;
-
-        if (!missingTypes || bdmDiscoveryRemaining <= 0) {
-            bdmDiscoveryTimedOut = missingTypes != 0;
+        if (loadedTypes < 0) {
+            bdmDiscoveryResult = loadedTypes;
+            bdmDiscoveryModuleErrorMask = enabledTypes;
             bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
         } else {
-            if (missingTypes && bdmDiscoveryRemaining > 0)
-                bdmDiscoveryRemaining--;
+            bdmDiscoveryExpectedTypeMask = enabledTypes & loadedTypes;
+            bdmDiscoveryModuleErrorMask = enabledTypes & ~loadedTypes;
+            bdmProbeErrorMask |= bdmDiscoveryModuleErrorMask;
 
-            if (!bdmDiscoveryRequestPending) {
+            if (bdmDiscoveryResult < 0 ||
+                (bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask)
+                bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
+            else if (!bdmDiscoveryRequestPending) {
                 bdmDiscoveryRequestPending = 1;
                 if (ioPutRequestUnique(IO_BDM_DISCOVERY, &bdmDiscoveryMode) != IO_OK)
                     bdmDiscoveryRequestPending = 0;
@@ -1391,8 +1377,8 @@ int menuUpdateBDMSupport(void)
     }
 
     if (bdmStartupStage == BDM_STARTUP_DISCOVERY_DRAINING && !bdmDiscoveryRequestPending) {
-        presentTypes = bdmGetPresentTypeMask();
-        if (bdmDiscoveryTimedOut && (bdmGetEnabledTypeMask() & ~presentTypes))
+        bdmDiscoveryRemaining = 0;
+        if (menuGetBDMStartupMissingTypes())
             status |= BDM_STARTUP_STATUS_TIMEOUT;
 
         bdmStartupStage = BDM_STARTUP_LISTS;

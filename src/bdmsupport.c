@@ -22,6 +22,7 @@
 #include <fileXio_rpc.h> // fileXioIoctl, fileXioDevctl
 
 static int bdmModLoaded = 0;
+static int usbModLoaded = 0;
 static int iLinkModLoaded = 0;
 static int mx4sioModLoaded = 0;
 static int hddModLoaded = 0;
@@ -139,21 +140,22 @@ static void bdmLoadBlockDeviceModules(void)
     if (gEnableILK && !iLinkModLoaded) {
         // Load iLink Block Device drivers
         LOG("[ILINKMAN]:\n");
-        sysLoadModuleBuffer(&iLinkman_irx, size_iLinkman_irx, 0, NULL);
-        LOG("[IEEE1394_BD]:\n");
-        sysLoadModuleBuffer(&IEEE1394_bd_irx, size_IEEE1394_bd_irx, 0, NULL);
-
-        iLinkModLoaded = 1;
-        modulesLoaded = 1;
+        if (sysLoadModuleBuffer(&iLinkman_irx, size_iLinkman_irx, 0, NULL) == 0) {
+            LOG("[IEEE1394_BD]:\n");
+            if (sysLoadModuleBuffer(&IEEE1394_bd_irx, size_IEEE1394_bd_irx, 0, NULL) == 0) {
+                iLinkModLoaded = 1;
+                modulesLoaded = 1;
+            }
+        }
     }
 
     if (gEnableMX4SIO && !mx4sioModLoaded) {
         // Load MX4SIO Block Device drivers
         LOG("[MX4SIO_BD]:\n");
-        sysLoadModuleBuffer(&mx4sio_bd_irx, size_mx4sio_bd_irx, 0, NULL);
-
-        mx4sioModLoaded = 1;
-        modulesLoaded = 1;
+        if (sysLoadModuleBuffer(&mx4sio_bd_irx, size_mx4sio_bd_irx, 0, NULL) == 0) {
+            mx4sioModLoaded = 1;
+            modulesLoaded = 1;
+        }
     }
 
     if (gEnableBdmHDD && !hddModLoaded) {
@@ -162,7 +164,8 @@ static void bdmLoadBlockDeviceModules(void)
         hddLoadModules();
 
         hddModLoaded = 1;
-        modulesLoaded = 1;
+        if (hddLoadModulesSuccess)
+            modulesLoaded = 1;
     }
 
     // Give newly loaded block-device drivers time to initialize. Do not stall
@@ -174,32 +177,56 @@ static void bdmLoadBlockDeviceModules(void)
 void bdmLoadModules(void)
 {
     if (!bdmModLoaded) {
-        bdmModLoaded = 1;
         LOG("BDMSUPPORT LoadModules\n");
 
         // Load Block Device Manager (BDM)
         LOG("[BDM]:\n");
-        sysLoadModuleBuffer(&bdm_irx, size_bdm_irx, 0, NULL);
+        if (sysLoadModuleBuffer(&bdm_irx, size_bdm_irx, 0, NULL) < 0)
+            return;
 
         // Load FATFS (mass:) driver
         LOG("[BDMFS_FATFS]:\n");
-        sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL);
+        if (sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL) < 0)
+            return;
+
+        bdmModLoaded = 1;
 
         // Load USB Block Device drivers
         LOG("[USBD]:\n");
-        sysLoadModuleBuffer(&usbd_irx, size_usbd_irx, 0, NULL);
-        LOG("[USBMASS_BD]:\n");
-        sysLoadModuleBuffer(&usbmass_bd_irx, size_usbmass_bd_irx, 0, NULL);
+        if (sysLoadModuleBuffer(&usbd_irx, size_usbd_irx, 0, NULL) == 0) {
+            LOG("[USBMASS_BD]:\n");
+            if (sysLoadModuleBuffer(&usbmass_bd_irx, size_usbmass_bd_irx, 0, NULL) == 0)
+                usbModLoaded = 1;
+        }
 
         LOG("[BDMEVENT]:\n");
-        sysLoadModuleBuffer(&bdmevent_irx, size_bdmevent_irx, 0, NULL);
-        SifAddCmdHandler(0, &bdmEventHandler, NULL);
+        if (sysLoadModuleBuffer(&bdmevent_irx, size_bdmevent_irx, 0, NULL) == 0)
+            SifAddCmdHandler(0, &bdmEventHandler, NULL);
 
         LOG("BDMSUPPORT Modules loaded\n");
     }
 
     // Load Optional Block Device drivers
     bdmLoadBlockDeviceModules();
+}
+
+int bdmGetLoadedTypeMask(void)
+{
+    int result = 0;
+
+    if (!bdmModLoaded)
+        return -1;
+
+    if (usbModLoaded)
+        result |= BDM_STARTUP_TYPE_USB;
+    if (iLinkModLoaded)
+        result |= BDM_STARTUP_TYPE_ILINK;
+    if (mx4sioModLoaded)
+        result |= BDM_STARTUP_TYPE_SDC;
+    if (hddModLoaded && hddLoadModulesSuccess)
+        result |= BDM_STARTUP_TYPE_ATA;
+
+    return result;
 }
 
 void bdmInit(item_list_t *itemList)
