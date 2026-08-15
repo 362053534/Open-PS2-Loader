@@ -168,6 +168,8 @@ static void bdmLoadBlockDeviceModules(void)
             modulesLoaded = 1;
     }
 
+    fileXioDevctl("mass:", USBMASS_DEVCTL_SET_MX4SIO_PROBE, &gEnableMX4SIO, sizeof(gEnableMX4SIO), NULL, 0);
+
     // Give newly loaded block-device drivers time to initialize. Do not stall
     // periodic BDM refreshes once every optional driver is already loaded.
     if (modulesLoaded)
