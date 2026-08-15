@@ -653,7 +653,7 @@ vmc_prepared:;
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
     memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
 #pragma GCC diagnostic pop
-    u8 iTotalFragCount = 0;
+    int iTotalFragCount = 0;
 
     //
     // Add ISO as fragfile[0] to fragment list
@@ -665,17 +665,18 @@ vmc_prepared:;
         // Open file
         sbCreatePath(game, partname, pDeviceData->bdmPrefix, "/", i);
         fd = open(partname, O_RDONLY);
-        iop_fd = ps2sdk_get_iop_fd(fd);
         if (fd < 0) {
             sbUnprepare(&settings->common);
             guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
             return;
         }
+        iop_fd = ps2sdk_get_iop_fd(fd);
 
         // Get fragment list
         int iFragCount;
+        int iFragCapacity = BDM_MAX_FRAGS - iTotalFragCount;
         if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
-            iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
+            iFragCount = hddGetFileBlockInfo(partname, parts, blocks, iFragCapacity);
             if (iFragCount > 0) {
                 int j;
 
@@ -691,13 +692,23 @@ vmc_prepared:;
                 settings->fragsAre512ByteSectors = 1;
             }
         } else
-            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
-        if ((!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && iFragCount <= 0) || iFragCount > BDM_MAX_FRAGS) {
-            // Too many fragments
+            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * iFragCapacity);
+        if (iFragCount <= 0 || iFragCount > iFragCapacity) {
+            // 碎片表无效、不完整或超出容量。
             close(fd);
             sbUnprepare(&settings->common);
             guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
             return;
+        }
+
+        int j;
+        for (j = 0; j < iFragCount; j++) {
+            if (settings->frags[iTotalFragCount + j].count == 0) {
+                close(fd);
+                sbUnprepare(&settings->common);
+                guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+                return;
+            }
         }
         iso_frag->frag_count += iFragCount;
         iTotalFragCount += iFragCount;
