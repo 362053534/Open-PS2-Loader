@@ -530,7 +530,8 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             moduleUpdateMenuInternal(mod, 0, 0);
             // ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
             if ((mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone) &&
-                !(mode == APP_MODE && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO && !mainScreenInitDone))
+                !(mode == APP_MODE && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO && !mainScreenInitDone &&
+                  gBDMStartMode == START_MODE_AUTO && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)))
                 menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
         }
     } else {
@@ -1119,11 +1120,28 @@ static int bdmDiscoveryRemaining;
 static int bdmDiscoveryMode;
 static int bdmDiscoveryTimedOut;
 static volatile int bdmDiscoveryRequestPending;
-static volatile unsigned int bdmDiscoveryCheckedMask;
+static usbmass_bd_info_t bdmDiscoveredDevices[MAX_BDM_DEVICES];
+static volatile int bdmDiscoveredDeviceCount;
+static volatile unsigned int bdmDiscoveredDeviceMask;
+static volatile unsigned int bdmDiscoveredDeviceReadyMask;
 static volatile unsigned int bdmDevicePresentMask;
 static volatile int bdmListRequestPending;
 static volatile unsigned int bdmListCheckedMask;
 static volatile unsigned int bdmDeviceListReadyMask;
+
+static int bdmGetDeviceTypeFromDriver(const char *driver)
+{
+    if (!strcmp(driver, "usb"))
+        return BDM_TYPE_USB;
+    if (!strcmp(driver, "sd"))
+        return BDM_TYPE_ILINK;
+    if (!strcmp(driver, "sdc"))
+        return BDM_TYPE_SDC;
+    if (!strcmp(driver, "ata"))
+        return BDM_TYPE_ATA;
+
+    return BDM_TYPE_UNKNOWN;
+}
 
 static unsigned int bdmGetEnabledTypeMask(void)
 {
@@ -1145,9 +1163,9 @@ static unsigned int bdmGetPresentTypeMask(void)
 {
     unsigned int result = 0;
 
-    for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-        if (bdmDevicePresentMask & (1 << i)) {
-            int deviceType = bdmGetDeviceType(i);
+    for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+        if (bdmDiscoveredDeviceMask & (1 << i)) {
+            int deviceType = bdmGetDeviceTypeFromDriver(bdmDiscoveredDevices[i].name);
 
             if (deviceType == BDM_TYPE_USB)
                 result |= BDM_STARTUP_TYPE_USB;
@@ -1189,15 +1207,39 @@ static int bdmDeviceTypeEnabled(int deviceType)
 
 static void bdmStartupDiscovery(void *data)
 {
-    short int mode = *(short int *)data;
+    usbmass_bd_info_t devices[USBMASS_BD_MAX_DEVICES];
+    usbmass_bd_info_t discoveredDevices[MAX_BDM_DEVICES];
+    int count;
+    int discoveredDeviceCount = 0;
 
-    if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support) {
-        if (bdmUpdateDeviceData(list_support[mode].support, 1) > 0 && bdmDeviceTypeEnabled(bdmGetDeviceType(mode)))
-            bdmDevicePresentMask |= 1 << mode;
+    (void)data;
+
+    count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
+    if (count >= 0) {
+        for (int i = 0; i < count; i++) {
+            int deviceType = bdmGetDeviceTypeFromDriver(devices[i].name);
+            int found = 0;
+
+            if (!bdmDeviceTypeEnabled(deviceType))
+                continue;
+
+            // 同一物理设备的整盘与分区会同时注册，只记录一次。
+            for (int j = 0; j < discoveredDeviceCount; j++) {
+                if (!strcmp(discoveredDevices[j].name, devices[i].name) && discoveredDevices[j].devNr == devices[i].devNr) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found && discoveredDeviceCount < MAX_BDM_DEVICES)
+                discoveredDevices[discoveredDeviceCount++] = devices[i];
+        }
+
+        memcpy(bdmDiscoveredDevices, discoveredDevices, sizeof(usbmass_bd_info_t) * discoveredDeviceCount);
+        bdmDiscoveredDeviceCount = discoveredDeviceCount;
+        bdmDiscoveredDeviceMask = discoveredDeviceCount ? (1 << discoveredDeviceCount) - 1 : 0;
     }
 
-    if (mode >= BDM_MODE && mode <= BDM_MODE4)
-        bdmDiscoveryCheckedMask |= 1 << mode;
     bdmDiscoveryRequestPending = 0;
 }
 
@@ -1205,17 +1247,74 @@ static void bdmStartupListUpdate(void *data)
 {
     short int mode = *(short int *)data;
 
-    if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support && (bdmDevicePresentMask & (1 << mode))) {
+    if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support) {
         item_list_t *support = list_support[mode].support;
+        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
+        int hadDevice = pDeviceData->bdmPrefix[0] != '\0';
+        int deviceFound = bdmUpdateDeviceData(support, 1);
+        unsigned int discoveredDevice = 0;
 
-        menuDeferredUpdate(data);
-        if (bdmUpdateDeviceData(support, 1) <= 0) {
+        if (deviceFound > 0 && bdmDeviceTypeEnabled(pDeviceData->bdmDeviceType)) {
+            for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                if ((bdmDiscoveredDeviceMask & (1 << i)) && !strcmp(bdmDiscoveredDevices[i].name, pDeviceData->bdmDriver) &&
+                    bdmDiscoveredDevices[i].devNr == (unsigned int)pDeviceData->massDeviceIndex) {
+                    discoveredDevice |= 1 << i;
+                }
+            }
+        }
+
+        if (discoveredDevice) {
+            bdmDevicePresentMask |= 1 << mode;
+            menuDeferredUpdate(data);
+            if (support->itemGetPrefix(support)[0] != '\0' && support->itemGetCount(support) >= 0) {
+                bdmDeviceListReadyMask |= 1 << mode;
+                bdmDiscoveredDeviceReadyMask |= discoveredDevice;
+            } else {
+                bdmDeviceListReadyMask &= ~(1 << mode);
+                bdmDiscoveredDeviceReadyMask &= ~discoveredDevice;
+            }
+        } else {
+            if (hadDevice && deviceFound <= 0) {
+                for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                    if (!strcmp(bdmDiscoveredDevices[i].name, pDeviceData->bdmDriver) &&
+                        bdmDiscoveredDevices[i].devNr == (unsigned int)pDeviceData->massDeviceIndex) {
+                        bdmDiscoveredDeviceMask &= ~(1 << i);
+                        bdmDiscoveredDeviceReadyMask &= ~(1 << i);
+                    }
+                }
+                menuDeferredUpdate(data);
+            }
             bdmDevicePresentMask &= ~(1 << mode);
             bdmDeviceListReadyMask &= ~(1 << mode);
-        } else if (support->itemGetPrefix(support)[0] != '\0' && support->itemGetCount(support) >= 0)
-            bdmDeviceListReadyMask |= 1 << mode;
-        else
-            bdmDeviceListReadyMask &= ~(1 << mode);
+        }
+
+        if (mode == BDM_MODE4) {
+            usbmass_bd_info_t devices[USBMASS_BD_MAX_DEVICES];
+            int count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
+
+            // 第二阶段只移除已拔出的设备，不接收第一阶段结束后新出现的设备。
+            if (count >= 0) {
+                for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                    int found = 0;
+
+                    if (!(bdmDiscoveredDeviceMask & (1 << i)))
+                        continue;
+
+                    for (int j = 0; j < count; j++) {
+                        if (!strcmp(bdmDiscoveredDevices[i].name, devices[j].name) &&
+                            bdmDiscoveredDevices[i].devNr == devices[j].devNr) {
+                            found = 1;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        bdmDiscoveredDeviceMask &= ~(1 << i);
+                        bdmDiscoveredDeviceReadyMask &= ~(1 << i);
+                    }
+                }
+            }
+        }
         bdmListCheckedMask |= 1 << mode;
     }
 
@@ -1230,7 +1329,9 @@ int menuResetBDMStartup(int bdmStarted)
     bdmDiscoveryMode = BDM_MODE;
     bdmDiscoveryTimedOut = 0;
     bdmDiscoveryRequestPending = 0;
-    bdmDiscoveryCheckedMask = 0;
+    bdmDiscoveredDeviceCount = 0;
+    bdmDiscoveredDeviceMask = 0;
+    bdmDiscoveredDeviceReadyMask = 0;
     bdmDevicePresentMask = 0;
     bdmListRequestPending = 0;
     bdmListCheckedMask = 0;
@@ -1274,8 +1375,7 @@ int menuUpdateBDMSupport(void)
         if (bdmDiscoveryRemaining > remainingBudget)
             bdmDiscoveryRemaining = remainingBudget;
 
-        if ((!missingTypes && bdmDiscoveryCheckedMask == BDM_DISCOVERY_SLOT_MASK) ||
-            (missingTypes && bdmDiscoveryRemaining <= 0)) {
+        if (!missingTypes || bdmDiscoveryRemaining <= 0) {
             bdmDiscoveryTimedOut = missingTypes != 0;
             bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
         } else {
@@ -1283,18 +1383,9 @@ int menuUpdateBDMSupport(void)
                 bdmDiscoveryRemaining--;
 
             if (!bdmDiscoveryRequestPending) {
-                if (list_support[bdmDiscoveryMode].support) {
-                    bdmDiscoveryRequestPending = 1;
-                    if (ioPutRequestUnique(IO_BDM_DISCOVERY, &list_support[bdmDiscoveryMode].support->mode) != IO_OK)
-                        bdmDiscoveryRequestPending = 0;
-                } else
-                    bdmDiscoveryCheckedMask |= 1 << bdmDiscoveryMode;
-
-                if (bdmDiscoveryRequestPending || !list_support[bdmDiscoveryMode].support) {
-                    bdmDiscoveryMode++;
-                    if (bdmDiscoveryMode > BDM_MODE4)
-                        bdmDiscoveryMode = BDM_MODE;
-                }
+                bdmDiscoveryRequestPending = 1;
+                if (ioPutRequestUnique(IO_BDM_DISCOVERY, &bdmDiscoveryMode) != IO_OK)
+                    bdmDiscoveryRequestPending = 0;
             }
         }
     }
@@ -1308,9 +1399,9 @@ int menuUpdateBDMSupport(void)
     }
 
     if (bdmStartupStage == BDM_STARTUP_LISTS) {
-        if (!bdmListRequestPending) {
+        if (bdmDiscoveredDeviceMask && !bdmListRequestPending) {
             for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-                if ((bdmDevicePresentMask & (1 << i)) && !(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
+                if (!(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
                     bdmListRequestPending = 1;
                     if (ioPutRequestUnique(IO_BDM_STARTUP_LIST, &list_support[i].support->mode) != IO_OK)
                         bdmListRequestPending = 0;
@@ -1319,14 +1410,11 @@ int menuUpdateBDMSupport(void)
             }
         }
 
-        if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask &&
+        if (!bdmListRequestPending && (bdmDiscoveredDeviceReadyMask & bdmDiscoveredDeviceMask) == bdmDiscoveredDeviceMask &&
             (bdmDeviceListReadyMask & bdmDevicePresentMask) == bdmDevicePresentMask) {
             bdmListCheckedMask = 0;
             bdmStartupStage = BDM_STARTUP_LISTS_VALIDATING;
-            if (gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO &&
-                list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
-                appForceRefresh();
-        } else if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask)
+        } else if (!bdmListRequestPending && bdmListCheckedMask == BDM_DISCOVERY_SLOT_MASK)
             bdmListCheckedMask = bdmDeviceListReadyMask & bdmDevicePresentMask;
     }
 
@@ -1360,6 +1448,9 @@ int menuUpdateBDMSupport(void)
                     bdmListCheckedMask = 0;
                 else {
                     bdmStartupStage = BDM_STARTUP_COMPLETE;
+                    if (gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO &&
+                        list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
+                        appForceRefresh();
                     status |= BDM_STARTUP_STATUS_READY;
                 }
             }
