@@ -1452,17 +1452,51 @@ static void menuUpdateHook()
     // if timer exceeds some threshold, schedule updates of the available input sources
     frameCounter++;
 
-    // Treat automatic refresh as BDM hotplug detection. BDM events are handled
-    // immediately, while a low-frequency probe catches any missed event. The probe
-    // only opens massN:/ for already connected devices; it does not rescan ISO files.
+    // 将自动刷新作为BDM热插拔检测。真实事件立即处理，低频检查用于补偿丢失的事件。
     if (gAutoRefresh && mainScreenInitDone && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
         const int fallbackCheck = frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0;
+        unsigned int mountedTypeMask = 0;
+        int hasHistoricalEmptyPage = 0;
+
+        if (fallbackCheck) {
+            for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+                item_list_t *support = list_support[i].support;
+                bdm_device_data_t *pDeviceData = support ? support->priv : NULL;
+
+                if (!support || !support->enabled || !pDeviceData)
+                    continue;
+
+                if (pDeviceData->bdmPrefix[0] != '\0') {
+                    if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                        mountedTypeMask |= BDM_STARTUP_TYPE_USB;
+                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                        mountedTypeMask |= BDM_STARTUP_TYPE_ILINK;
+                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                        mountedTypeMask |= BDM_STARTUP_TYPE_SDC;
+                    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                        mountedTypeMask |= BDM_STARTUP_TYPE_ATA;
+                } else if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN)
+                    hasHistoricalEmptyPage = 1;
+            }
+        }
 
         for (i = BDM_MODE; i <= BDM_MODE4; i++) {
             item_list_t *support = list_support[i].support;
+            bdm_device_data_t *pDeviceData = support ? support->priv : NULL;
+            int deviceType = bdmGetDeviceType(i);
+            int deviceEvent = support && bdmHasDeviceEvent(support);
+            int fallbackSlot = 0;
 
-            if (support != NULL && support->enabled && (bdmHasDeviceEvent(support) || fallbackCheck)) {
-                if (fallbackCheck)
+            if (fallbackCheck && pDeviceData) {
+                if (pDeviceData->bdmPrefix[0] != '\0')
+                    fallbackSlot = bdmDeviceTypeEnabled(deviceType);
+                else if (bdmGetEnabledTypeMask() & ~mountedTypeMask)
+                    fallbackSlot = hasHistoricalEmptyPage ? deviceType != BDM_TYPE_UNKNOWN : deviceType == BDM_TYPE_UNKNOWN;
+            }
+
+            if (support && support->enabled &&
+                ((deviceEvent && pDeviceData && (pDeviceData->bdmPrefix[0] == '\0' || bdmDeviceTypeEnabled(deviceType))) || fallbackSlot)) {
+                if (fallbackSlot)
                     bdmRequestDeviceCheck(support);
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
             }
