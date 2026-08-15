@@ -147,7 +147,7 @@ struct UIItem diaBlockDevicesConfig[] = {
     {UI_BREAK},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"设备开关(请只开启已连接的设备，未连接的设备应关闭)", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"设备开关 (未使用的设备应关闭，以提升启动速度)", -1}}},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"USB", -1}}},

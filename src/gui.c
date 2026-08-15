@@ -1746,7 +1746,7 @@ void guiMainLoop(void)
             }
 
             if (timeoutDevices[0]) {
-                snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "%s检测超时！请检查是否正确连接！", timeoutDevices);
+                snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "没有检测到 %s 。若不使用，请将其关闭", timeoutDevices);
                 guiMsgBox(timeoutMessage, 0, NULL);
             }
         }
