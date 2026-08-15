@@ -1114,7 +1114,7 @@ enum {
 #define BDM_DISCOVERY_SLOT_MASK ((1 << MAX_BDM_DEVICES) - 1)
 
 static int bdmStartupStage = BDM_STARTUP_COMPLETE;
-static int bdmDiscoveryRemaining;
+static int bdmDiscoveryPending;
 static int bdmDiscoveryMode;
 static volatile int bdmDiscoveryResult;
 static volatile int bdmDiscoveryRequestPending;
@@ -1301,7 +1301,7 @@ int menuResetBDMStartup(int bdmStarted)
 {
     unsigned int enabledTypes = bdmGetEnabledTypeMask();
 
-    bdmDiscoveryRemaining = enabledTypes != 0;
+    bdmDiscoveryPending = enabledTypes != 0;
     bdmDiscoveryMode = BDM_MODE;
     bdmDiscoveryResult = 0;
     bdmDiscoveryRequestPending = 0;
@@ -1321,19 +1321,19 @@ int menuResetBDMStartup(int bdmStarted)
     if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
         (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
         bdmStartupStage = BDM_STARTUP_COMPLETE;
-        bdmDiscoveryRemaining = 0;
+        bdmDiscoveryPending = 0;
     } else
         bdmStartupStage = BDM_STARTUP_DISCOVERY;
 
-    return bdmDiscoveryRemaining;
+    return bdmDiscoveryPending;
 }
 
-int menuGetBDMStartupRemaining(void)
+int menuIsBDMDiscoveryPending(void)
 {
-    return bdmDiscoveryRemaining;
+    return bdmDiscoveryPending;
 }
 
-unsigned int menuGetBDMStartupMissingTypes(void)
+unsigned int menuGetBDMStartupUnavailableTypes(void)
 {
     unsigned int enabledTypes = bdmGetEnabledTypeMask();
 
@@ -1377,9 +1377,9 @@ int menuUpdateBDMSupport(void)
     }
 
     if (bdmStartupStage == BDM_STARTUP_DISCOVERY_DRAINING && !bdmDiscoveryRequestPending) {
-        bdmDiscoveryRemaining = 0;
-        if (menuGetBDMStartupMissingTypes())
-            status |= BDM_STARTUP_STATUS_TIMEOUT;
+        bdmDiscoveryPending = 0;
+        if (menuGetBDMStartupUnavailableTypes())
+            status |= BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE;
 
         bdmStartupStage = BDM_STARTUP_LISTS;
     }

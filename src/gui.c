@@ -64,8 +64,7 @@ int GptFound = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 
-static int endIntroDelayFrame = 0;
-static int bdmTimeOut = 0;
+static int bdmDeviceAlertPending = 0;
 static int artLoadDelayTime = 200;
 
 #ifdef __DEBUG
@@ -1676,18 +1675,14 @@ void reFindBDM()
         if (gBDMStartMode <= START_MODE_MANUAL) {
             if (bdmManualTrigger)
                 mainScreenInitDone = 0;
-            else
-                endIntroDelayFrame = 0;
         } else {
             mainScreenInitDone = 0;
         }
     } else { // BDM已启动后的处理
         mainScreenInitDone = 0;
-        if (!gBDMStartMode)
-            endIntroDelayFrame = 0;
     }
 
-    endIntroDelayFrame = menuResetBDMStartup(BdmStarted);
+    menuResetBDMStartup(BdmStarted);
 
     //// debug  打印debug信息
     //char debugFileDir[64];
@@ -1695,14 +1690,14 @@ void reFindBDM()
     //// sprintf(debugFileDir, "%sdebug.txt", prefix);
     //FILE *debugFile = fopen(debugFileDir, "ab+");
     //if (debugFile != NULL) {
-    //    fprintf(debugFile, "开始找设备时：最大延迟%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
+    //    fprintf(debugFile, "开始找设备时：%d\r\nUsbFound:%d  GptFound:%d\r\n\r\n", menuIsBDMDiscoveryPending(), usbFound, GptFound);
     //    fclose(debugFile);
     //}
 }
 
 void guiMainLoop(void)
 {
-    endIntroDelayFrame = menuResetBDMStartup(BdmStarted);
+    menuResetBDMStartup(BdmStarted);
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1719,35 +1714,35 @@ void guiMainLoop(void)
 
     while (!gTerminate) {
         // 各种弹窗提示
-        if (bdmTimeOut && greetingAlpha <= 0x00) {
-            unsigned int missingTypes = menuGetBDMStartupMissingTypes();
-            char timeoutDevices[64] = "";
-            char timeoutMessage[96];
+        if (bdmDeviceAlertPending && greetingAlpha <= 0x00) {
+            unsigned int unavailableTypes = menuGetBDMStartupUnavailableTypes();
+            char unavailableDevices[64] = "";
+            char deviceAlertMessage[96];
             const int english = lngGetValue()[0] == 'E';
             const char *separator = english ? ", " : "、";
 
-            bdmTimeOut = 0; // 防止重复弹窗
-            if (missingTypes & BDM_STARTUP_TYPE_USB)
-                strcat(timeoutDevices, "USB");
-            if (missingTypes & BDM_STARTUP_TYPE_ILINK) {
-                if (timeoutDevices[0])
-                    strcat(timeoutDevices, separator);
-                strcat(timeoutDevices, "iLink");
+            bdmDeviceAlertPending = 0; // 防止重复弹窗
+            if (unavailableTypes & BDM_STARTUP_TYPE_USB)
+                strcat(unavailableDevices, "USB");
+            if (unavailableTypes & BDM_STARTUP_TYPE_ILINK) {
+                if (unavailableDevices[0])
+                    strcat(unavailableDevices, separator);
+                strcat(unavailableDevices, "iLink");
             }
-            if (missingTypes & BDM_STARTUP_TYPE_SDC) {
-                if (timeoutDevices[0])
-                    strcat(timeoutDevices, separator);
-                strcat(timeoutDevices, "MX4SIO");
+            if (unavailableTypes & BDM_STARTUP_TYPE_SDC) {
+                if (unavailableDevices[0])
+                    strcat(unavailableDevices, separator);
+                strcat(unavailableDevices, "MX4SIO");
             }
-            if (missingTypes & BDM_STARTUP_TYPE_ATA) {
-                if (timeoutDevices[0])
-                    strcat(timeoutDevices, separator);
-                strcat(timeoutDevices, "HDD(exFAT)");
+            if (unavailableTypes & BDM_STARTUP_TYPE_ATA) {
+                if (unavailableDevices[0])
+                    strcat(unavailableDevices, separator);
+                strcat(unavailableDevices, "HDD(exFAT)");
             }
 
-            if (timeoutDevices[0]) {
-                snprintf(timeoutMessage, sizeof(timeoutMessage), english ? "%s detection timed out!" : "没有检测到 %s 。若不使用，请将其关闭", timeoutDevices);
-                guiMsgBox(timeoutMessage, 0, NULL);
+            if (unavailableDevices[0]) {
+                snprintf(deviceAlertMessage, sizeof(deviceAlertMessage), english ? "%s detection timed out!" : "没有检测到 %s 。若不使用，请将其关闭", unavailableDevices);
+                guiMsgBox(deviceAlertMessage, 0, NULL);
             }
         }
         if (greetingAlpha <= 0x00) {
@@ -1770,10 +1765,9 @@ void guiMainLoop(void)
         // 多线程初始化结束后，才开始处理设备
         if (theardInitDone) {
             int bdmStartupStatus = menuUpdateBDMSupport();
-            endIntroDelayFrame = menuGetBDMStartupRemaining();
 
-            if (bdmStartupStatus & BDM_STARTUP_STATUS_TIMEOUT)
-                bdmTimeOut = 1;
+            if (bdmStartupStatus & BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE)
+                bdmDeviceAlertPending = 1;
 
             //// debug  打印debug信息
             // char debugFileDir[64];
@@ -1781,7 +1775,7 @@ void guiMainLoop(void)
             //// sprintf(debugFileDir, "%sdebug.txt", prefix);
             // FILE *debugFile = fopen(debugFileDir, "ab+");
             // if (debugFile != NULL) {
-            //     fprintf(debugFile, "设备寻找剩余：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
+            //     fprintf(debugFile, "设备寻找状态：%d\r\nUsbFound:%d  GptFound:%d\r\n\r\n", menuIsBDMDiscoveryPending(), usbFound, GptFound);
             //     fclose(debugFile);
             // }
 

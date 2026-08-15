@@ -56,8 +56,8 @@
 #define IO_BDM_DISCOVERY          6
 #define IO_BDM_STARTUP_LIST       7
 
-#define BDM_STARTUP_STATUS_TIMEOUT 0x01
-#define BDM_STARTUP_STATUS_READY   0x02
+#define BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE 0x01
+#define BDM_STARTUP_STATUS_READY              0x02
 
 #define BDM_STARTUP_TYPE_USB   0x01
 #define BDM_STARTUP_TYPE_ILINK 0x02
@@ -253,8 +253,8 @@ void setDefaultColors(void);
 
 int menuResetBDMStartup(int bdmStarted);
 int menuUpdateBDMSupport(void);
-int menuGetBDMStartupRemaining(void);
-unsigned int menuGetBDMStartupMissingTypes(void);
+int menuIsBDMDiscoveryPending(void);
+unsigned int menuGetBDMStartupUnavailableTypes(void);
 void menuMarkGameListsForRefresh(void);
 void menuRefreshGameLists(void);
 
