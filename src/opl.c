@@ -1338,10 +1338,7 @@ unsigned int menuGetBDMStartupUnavailableTypes(void)
 {
     unsigned int enabledTypes = bdmGetEnabledTypeMask();
 
-    if (bdmDiscoveryResult < 0)
-        return enabledTypes;
-
-    return enabledTypes & (~bdmProbePresentMask | bdmProbeErrorMask);
+    return enabledTypes & bdmProbeErrorMask;
 }
 
 int menuUpdateBDMSupport(void)
