@@ -434,7 +434,7 @@ static void TransferWait(int sema)
 
     if (SetAlarm(&cmd_timeout, timeout, (void *)sema) == 0) {
         WaitSema(sema);
-        CancelAlarm(timeout, NULL);
+        CancelAlarm(timeout, (void *)sema);
     }
 }
 
