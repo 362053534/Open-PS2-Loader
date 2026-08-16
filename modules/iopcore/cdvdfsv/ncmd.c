@@ -188,7 +188,7 @@ static inline void cdvd_readee(void *buf)
             }
 
             while (sceCdRead(r->lsn, temp, (void *)fsvRbuf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
             sceCdSync(0);
 
             size_64b = nsectors * sector_size;
@@ -283,7 +283,7 @@ static inline void cdvd_readiopm(void *buf)
     u32 readpos;
 
     while (sceCdRead(((RpcCdvd_t *)buf)->lsn, ((RpcCdvd_t *)buf)->sectors, ((RpcCdvd_t *)buf)->buf, NULL) == 0)
-        DelayThread(10000);
+        sceCdSync(0);
     while (sceCdSync(1)) {
         readpos = sceCdGetReadPos();
         sysmemSendEE(&readpos, ((RpcCdvd_t *)buf)->eeaddr2, sizeof(readpos));
@@ -310,7 +310,7 @@ static inline void cdvd_readchain(void *buf)
 
         if ((u32)ch->buf & 1) { // IOP addr
             while (sceCdRead(lsn, tsectors, (void *)addr, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
             sceCdSync(0);
 
             readpos += tsectors * 2048;
@@ -319,7 +319,7 @@ static inline void cdvd_readchain(void *buf)
                 nsectors = (tsectors > CDVDMAN_FS_SECTORS) ? CDVDMAN_FS_SECTORS : tsectors;
 
                 while (sceCdRead(lsn, nsectors, cdvdfsv_buf, NULL) == 0)
-                    DelayThread(10000);
+                    sceCdSync(0);
                 sceCdSync(0);
                 sysmemSendEE(cdvdfsv_buf, (void *)addr, nsectors * 2048);
 

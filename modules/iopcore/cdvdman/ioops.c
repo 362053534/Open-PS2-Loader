@@ -282,7 +282,7 @@ static int cdrom_read(iop_file_t *f, void *buf, int size)
             if (size < nbytes)
                 nbytes = size;
             while (sceCdRead(fh->lsn + (fh->position / 2048), 1, cdvdman_fs_buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
 
             fh->position += nbytes;
             size -= nbytes;
@@ -298,7 +298,7 @@ static int cdrom_read(iop_file_t *f, void *buf, int size)
             nbytes = nsectors * 2048;
 
             while (sceCdRead(fh->lsn + (fh->position / 2048), nsectors, buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
 
             buf += nbytes;
             size -= nbytes;
@@ -311,7 +311,7 @@ static int cdrom_read(iop_file_t *f, void *buf, int size)
         // Phase 3: read any remaining data that isn't divisible by 2048.
         if ((nbytes = size) > 0) {
             while (sceCdRead(fh->lsn + (fh->position / 2048), 1, cdvdman_fs_buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
 
             fh->position += nbytes;
             rpos += nbytes;
@@ -396,7 +396,7 @@ static int cdrom_dread(iop_file_t *f, iox_dirent_t *dirent)
 
     sceCdDiskReady(0);
     while ((r = sceCdRead(fh->lsn, 1, cdvdman_fs_buf, NULL)) == 0)
-        DelayThread(10000);
+        sceCdSync(0);
     if (r == 1) {
         sceCdSync(0);
 

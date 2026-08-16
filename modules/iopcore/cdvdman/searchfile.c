@@ -98,7 +98,7 @@ lbl_startlocate:
 
     while (tocLength > 0) {
         while (sceCdRead(tocLBA, 1, cdvdman_buf, NULL) == 0)
-            DelayThread(10000);
+            sceCdSync(0);
         sceCdSync(0);
         DPRINTF("cdvdman_locatefile tocLBA read done\n");
 
@@ -231,7 +231,7 @@ void cdvdman_searchfile_init(void)
 {
     // Read the volume descriptor
     while (sceCdRead(16, 1, cdvdman_buf, NULL) == 0)
-        DelayThread(10000);
+        sceCdSync(0);
     sceCdSync(0);
 
     struct dirTocEntry *tocEntryPointer = (struct dirTocEntry *)&cdvdman_buf[0x9c];
@@ -252,7 +252,7 @@ void cdvdman_searchfile_init(void)
             // So that CdRead below can read more than first layer.
             mediaLsnCount = 0;
             while (sceCdRead(layer1_start + 16, 1, cdvdman_buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
             sceCdSync(0);
             tocEntryPointer = (struct dirTocEntry *)&cdvdman_buf[0x9c];
             layer_info[1].rootDirtocLBA = layer1_start + tocEntryPointer->fileLBA;
