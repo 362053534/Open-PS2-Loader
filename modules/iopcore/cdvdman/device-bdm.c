@@ -18,11 +18,13 @@ char atad_inited = 0;
 #endif
 
 extern struct cdvdman_settings_bdm cdvdman_settings;
+#define INVALID_BD_GENERIC_SECTOR ((u64)-1)
 static struct block_device *g_bd = NULL;
 static u32 g_bd_sectors_per_sector = 4;
 static int bdm_io_sema;
 static u8 *g_bd_generic_sector_buffer_2 = NULL;
 static u32 g_bd_generic_sector_buffer_size_2 = 0;
+static u64 g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 static bd_defrag_cursor_t g_bd_defrag_cursor;
 
 extern struct irx_export_table _exp_bdm;
@@ -57,6 +59,7 @@ void bdm_connect_bd(struct block_device *bd)
             cdvdman_settings.fragsAre512ByteSectors = 0;
         }
         bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+        g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
         g_bd_sectors_per_sector = (2048 / bd->sectorSize);
         // Free usage of block device
         SignalSema(bdm_io_sema);
@@ -75,6 +78,7 @@ void bdm_disconnect_bd(struct block_device *bd)
         if (g_bd == bd) {
             g_bd = NULL;
             bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+            g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
         }
     }
 }
@@ -96,6 +100,7 @@ void DeviceInit(void)
     smp.attr = SA_THPRI;
     bdm_io_sema = CreateSema(&smp);
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+    g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 
     RegisterLibraryEntries(&_exp_bdm);
 
@@ -111,6 +116,7 @@ void DeviceDeinit(void)
 {
     DPRINTF("%s\n", __func__);
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+    g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 
     if (g_bd_generic_sector_buffer_2 != NULL) {
         FreeSysMemory(g_bd_generic_sector_buffer_2);
@@ -178,6 +184,7 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
         FreeSysMemory(g_bd_generic_sector_buffer_2);
         g_bd_generic_sector_buffer_2 = NULL;
         g_bd_generic_sector_buffer_size_2 = 0;
+        g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
     }
 
     if (sector_size == 1024 || sector_size == 2048) {
@@ -300,6 +307,7 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
                 if (g_bd_generic_sector_buffer_2 != NULL)
                     FreeSysMemory(g_bd_generic_sector_buffer_2);
 
+                g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
                 g_bd_generic_sector_buffer_2 = AllocSysMemory(ALLOC_FIRST, sector_size, NULL);
                 if (g_bd_generic_sector_buffer_2 == NULL) {
                     g_bd_generic_sector_buffer_size_2 = 0;
@@ -314,22 +322,29 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
             if (sectors_to_read > iso_sectors_remaining)
                 sectors_to_read = iso_sectors_remaining;
 
-            if (bd_defrag_read_cached(g_bd, cdvdman_settings.fragfile[0].frag_count,
-                                      &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
-                                      file_sector, g_bd_generic_sector_buffer_2, 1, &g_bd_defrag_cursor) != 1) {
-                u64 totalSectorCount = 0;
-                unsigned int i;
+            if (g_bd_generic_sector_buffer_sector_2 != file_sector) {
+                g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+                if (bd_defrag_read_cached(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                                          &cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start],
+                                          file_sector, g_bd_generic_sector_buffer_2, 1, &g_bd_defrag_cursor) != 1) {
+                    u64 totalSectorCount = 0;
+                    unsigned int i;
 
-                for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
-                    totalSectorCount += cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start + i].count;
+                    for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
+                        totalSectorCount += cdvdman_settings.frags[cdvdman_settings.fragfile[0].frag_start + i].count;
 
-                if (file_sector >= totalSectorCount)
-                    memset(destination, 0, sectors_to_read * 2048);
-                else {
-                    SignalSema(bdm_io_sema);
-                    return SCECdErREAD;
+                    if (file_sector >= totalSectorCount)
+                        memset(destination, 0, sectors_to_read * 2048);
+                    else {
+                        SignalSema(bdm_io_sema);
+                        return SCECdErREAD;
+                    }
+                } else {
+                    g_bd_generic_sector_buffer_sector_2 = file_sector;
                 }
-            } else
+            }
+
+            if (g_bd_generic_sector_buffer_sector_2 == file_sector)
                 memcpy(destination, g_bd_generic_sector_buffer_2 + iso_sector_offset * 2048, sectors_to_read * 2048);
             destination += sectors_to_read * 2048;
             file_sector++;
@@ -401,6 +416,7 @@ void bdm_writeSector(u32 lba, unsigned short int nsectors, const unsigned char *
     DPRINTF("%s\n", __func__);
 
     WaitSema(bdm_io_sema);
+    g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
     g_bd->write(g_bd, (u64)lba, buffer, nsectors);
     SignalSema(bdm_io_sema);
 }
