@@ -1110,6 +1110,7 @@ enum {
 };
 
 #define BDM_DISCOVERY_SLOT_MASK ((1 << MAX_BDM_DEVICES) - 1)
+#define BDM_STARTUP_LIST_TIMEOUT_FRAMES (20 * 60)
 
 static int bdmStartupStage = BDM_STARTUP_COMPLETE;
 static int bdmDiscoveryPending;
@@ -1129,6 +1130,7 @@ static volatile unsigned int bdmDevicePresentMask;
 static volatile int bdmListRequestPending;
 static volatile unsigned int bdmListCheckedMask;
 static volatile unsigned int bdmDeviceListReadyMask;
+static int bdmListWaitFrames;
 
 static int bdmGetDeviceTypeFromDriver(const char *driver)
 {
@@ -1315,6 +1317,7 @@ int menuResetBDMStartup(int bdmStarted)
     bdmListRequestPending = 0;
     bdmListCheckedMask = 0;
     bdmDeviceListReadyMask = 0;
+    bdmListWaitFrames = 0;
 
     if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
         (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
@@ -1435,6 +1438,55 @@ int menuUpdateBDMSupport(void)
                     status |= BDM_STARTUP_STATUS_READY;
                 }
             }
+        }
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_LISTS || bdmStartupStage == BDM_STARTUP_LISTS_VALIDATING) {
+        // 第二阶段超过20秒时，将仍未完成的设备标记为错误并结束等待。
+        if (++bdmListWaitFrames >= BDM_STARTUP_LIST_TIMEOUT_FRAMES) {
+            unsigned int pendingDevices = bdmDiscoveredDeviceMask & ~bdmDiscoveredDeviceReadyMask;
+            unsigned int pendingSlots = bdmDevicePresentMask &
+                                        ~(bdmStartupStage == BDM_STARTUP_LISTS ? bdmDeviceListReadyMask : bdmListCheckedMask);
+
+            for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                int deviceType;
+
+                if (!(pendingDevices & (1 << i)))
+                    continue;
+
+                deviceType = bdmGetDeviceTypeFromDriver(bdmDiscoveredDevices[i].name);
+                if (deviceType == BDM_TYPE_USB)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_USB;
+                else if (deviceType == BDM_TYPE_ILINK)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_ILINK;
+                else if (deviceType == BDM_TYPE_SDC)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_SDC;
+                else if (deviceType == BDM_TYPE_ATA)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_ATA;
+            }
+
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                int deviceType;
+
+                if (!(pendingSlots & (1 << i)))
+                    continue;
+
+                deviceType = bdmGetDeviceType(i);
+                if (deviceType == BDM_TYPE_USB)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_USB;
+                else if (deviceType == BDM_TYPE_ILINK)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_ILINK;
+                else if (deviceType == BDM_TYPE_SDC)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_SDC;
+                else if (deviceType == BDM_TYPE_ATA)
+                    bdmProbeErrorMask |= BDM_STARTUP_TYPE_ATA;
+            }
+
+            bdmStartupStage = BDM_STARTUP_COMPLETE;
+            if (gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO &&
+                list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
+                appForceRefresh();
+            status |= BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE | BDM_STARTUP_STATUS_READY;
         }
     }
 
