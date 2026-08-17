@@ -604,7 +604,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
         char cheatPath[APP_PATH_MAX + 14];
-        char popstarterArg[APP_BOOT_MAX + 5];
+        char popstarterArg[APP_POPS_LAUNCH_ARG_MAX];
         char *argv[1];
         const char *cheats;
         int mode;
@@ -694,12 +694,28 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             return;
         }
 
-        // 保持原有 XX./SB. 命名约定，但不再要求对应 ELF 文件真实存在。
-        if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= sizeof(popstarterArg)) {
-            guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
-            if (mode == HDD_MODE)
-                oplRestoreHDDOPLPartition();
-            return;
+        // 优先传完整设备路径；超长时退回 XX./SB. 文件名，POPStarter 仍能按前缀找 VCD
+        {
+            size_t pathLen = strlen(appsList[id].path);
+            const char *sep = "";
+            char last;
+            int n;
+
+            if (pathLen > 0) {
+                last = appsList[id].path[pathLen - 1];
+                if (last != ':' && last != '/' && last != '\\')
+                    sep = "/";
+            }
+
+            n = snprintf(popstarterArg, sizeof(popstarterArg), "%s%s%s", appsList[id].path, sep, appsList[id].boot);
+            if (n < 0 || n >= (int)sizeof(popstarterArg)) {
+                if (snprintf(popstarterArg, sizeof(popstarterArg), "%s", appsList[id].boot) >= (int)sizeof(popstarterArg)) {
+                    guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
+                    if (mode == HDD_MODE)
+                        oplRestoreHDDOPLPartition();
+                    return;
+                }
+            }
         }
 
         argv[0] = popstarterArg;
@@ -711,7 +727,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromMemory(popstarter_elf, 1, argv);
+        LoadELFFromMemoryNoReset(popstarter_elf, 1, argv);
         if (mode == HDD_MODE)
             oplRestoreHDDOPLPartition();
         return;

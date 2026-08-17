@@ -7,7 +7,10 @@
 
 #define APP_TITLE_MAX 128
 #define APP_PATH_MAX  128
-#define APP_BOOT_MAX  64
+// 须能装下 XX./SB. + 最长 ISO 名（160）去掉 .VCD 再加 .ELF
+#define APP_BOOT_MAX  192
+// POPStarter / ExecPS2 习惯上限；路径+假 ELF 名不应超过这个长度
+#define APP_POPS_LAUNCH_ARG_MAX 256
 #define APP_ARGV1_MAX 128
 
 #define APP_CONFIG_TITLE "title"
