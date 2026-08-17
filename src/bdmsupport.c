@@ -40,6 +40,28 @@ static int artUseBuckets_ATA = 0;
 
 void bdmInitDevicesData();
 
+int bdmIsIlinkSupported(void)
+{
+    static int supported = -1;
+
+    if (supported < 0) {
+        char romver[5];
+        int fd;
+
+        supported = 1;
+        fd = open("rom0:ROMVER", O_RDONLY);
+        if (fd >= 0) {
+            if (read(fd, romver, 4) == 4) {
+                romver[4] = '\0';
+                supported = strtoul(romver, NULL, 16) <= 0x160;
+            }
+            close(fd);
+        }
+    }
+
+    return supported;
+}
+
 // Identifies the partition that the specified file is stored on and generates a full path to it.
 int bdmFindPartition(char *target, const char *name, int write)
 {
@@ -137,7 +159,7 @@ static void bdmLoadBlockDeviceModules(void)
 {
     int modulesLoaded = 0;
 
-    if (gEnableILK && !iLinkModLoaded) {
+    if (gEnableILK && bdmIsIlinkSupported() && !iLinkModLoaded) {
         // Load iLink Block Device drivers
         LOG("[ILINKMAN]:\n");
         if (sysLoadModuleBuffer(&iLinkman_irx, size_iLinkman_irx, 0, NULL) == 0) {

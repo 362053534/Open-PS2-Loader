@@ -1150,7 +1150,7 @@ static unsigned int bdmGetEnabledTypeMask(void)
 
     if (gEnableUSB)
         result |= BDM_STARTUP_TYPE_USB;
-    if (gEnableILK)
+    if (gEnableILK && bdmIsIlinkSupported())
         result |= BDM_STARTUP_TYPE_ILINK;
     if (gEnableMX4SIO)
         result |= BDM_STARTUP_TYPE_SDC;
