@@ -44,6 +44,22 @@ static void appFreeLegacyConfig(void);
 #define POPS_BDM_ELF_PREFIX "XX."
 #define POPS_SMB_ELF_PREFIX "SB."
 
+#define POPS_BOOT_MAILBOX_MAGIC    0x53504F50
+#define POPS_BOOT_MAILBOX_VERSION  1
+#define POPS_BOOT_MAILBOX_PATH_MAX 256
+#define POPS_BOOT_VCD_PREFIX       "0:/POPS/"
+
+typedef struct
+{
+    u32 magic;
+    u32 version;
+    s32 deviceType;
+    char vcdPath[POPS_BOOT_MAILBOX_PATH_MAX];
+    u32 checksum;
+} pops_boot_mailbox_t;
+
+typedef char pops_boot_mailbox_size_must_be_272[(sizeof(pops_boot_mailbox_t) == 272) ? 1 : -1];
+
 static int appIsPOPSLauncher(const app_info_t *app)
 {
     return app->popstarter || strstr(app->path, "APPS") == NULL;
@@ -57,6 +73,44 @@ static int appGetPOPSBDMDeviceType(const app_info_t *app)
         return bdmGetDeviceType(mode);
 
     return BDM_TYPE_UNKNOWN;
+}
+
+static u32 appPOPSBootMailboxChecksum(const pops_boot_mailbox_t *mailbox)
+{
+    const u8 *data = (const u8 *)mailbox;
+    u32 checksum = 2166136261u;
+    unsigned int i;
+
+    for (i = 0; i < sizeof(*mailbox) - sizeof(mailbox->checksum); i++) {
+        checksum ^= data[i];
+        checksum *= 16777619u;
+    }
+
+    return checksum;
+}
+
+static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *mailbox)
+{
+    int deviceType;
+
+    memset(mailbox, 0, sizeof(*mailbox));
+
+    deviceType = appGetPOPSBDMDeviceType(app);
+    if (deviceType < BDM_TYPE_USB || deviceType > BDM_TYPE_ATA)
+        return -1;
+
+    if (app->vcdName[0] == '\0')
+        return -1;
+
+    if (snprintf(mailbox->vcdPath, sizeof(mailbox->vcdPath), "%s%s",
+                 POPS_BOOT_VCD_PREFIX, app->vcdName) >= (int)sizeof(mailbox->vcdPath))
+        return -1;
+
+    mailbox->magic = POPS_BOOT_MAILBOX_MAGIC;
+    mailbox->version = POPS_BOOT_MAILBOX_VERSION;
+    mailbox->deviceType = deviceType;
+    mailbox->checksum = appPOPSBootMailboxChecksum(mailbox);
+    return 0;
 }
 
 static struct config_value_t *appGetConfigValue(int id)
@@ -226,6 +280,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
         }
         strncpy(app->app.startup, app->app.boot, APP_BOOT_MAX + 1);
         app->app.startup[APP_BOOT_MAX] = '\0';
+        app->app.vcdName[0] = '\0';
 
         app->app.legacy = 1;
         app->app.generated = 0;
@@ -269,6 +324,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         app->app.startup[APP_BOOT_MAX] = '\0';
         strncpy(app->app.path, path, APP_PATH_MAX + 1);
         app->app.path[APP_PATH_MAX] = '\0';
+        app->app.vcdName[0] = '\0';
         if (configGetStr(appConfig, APP_CONFIG_ARGV1, &argv1) != 0) {
             strncpy(app->app.argv1, argv1, APP_ARGV1_MAX + 1);
             app->app.argv1[APP_ARGV1_MAX] = '\0';
@@ -359,6 +415,7 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
 
     strcpy(app->app.title, title);
     strcpy(app->app.boot, boot);
+    strcpy(app->app.vcdName, vcdName);
     strcpy(app->app.startup, startup);
     strcpy(app->app.path, path);
     pathLength = strlen(app->app.path);
@@ -421,6 +478,7 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
     title[titleLength] = '\0';
     strcpy(app->app.title, title);
     strcpy(app->app.boot, elfName);
+    app->app.vcdName[0] = '\0';
     strcpy(app->app.startup, elfName);
     strcpy(app->app.path, path);
     app->app.argv1[0] = '\0';
@@ -606,6 +664,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         char cheatPath[APP_PATH_MAX + 14];
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
+        pops_boot_mailbox_t bootMailbox;
         const char *cheats;
         int mode;
 
@@ -704,6 +763,10 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         argv[0] = popstarterArg;
 
+        /* 生成失败时明确清空邮箱；POPStarter继续启动，BDMA改用PAK就绪探测。 */
+        if (appBuildPOPSBootMailbox(&appsList[id], &bootMailbox) < 0)
+            memset(&bootMailbox, 0, sizeof(bootMailbox));
+
         if (mode < 0)
             mode = APP_MODE;
         if (gRememberLastPlayed) {
@@ -711,7 +774,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromMemoryNoReset(popstarter_elf, 1, argv);
+        LoadELFFromMemoryNoResetWithResidentData(popstarter_elf, &bootMailbox, sizeof(bootMailbox), 1, argv);
         if (mode == HDD_MODE)
             oplRestoreHDDOPLPartition();
         return;
