@@ -92,10 +92,25 @@ static u32 appPOPSBootMailboxChecksum(const pops_boot_mailbox_t *mailbox)
 static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *mailbox)
 {
     int deviceType;
+    int mode;
 
     memset(mailbox, 0, sizeof(*mailbox));
 
+    mode = oplPath2Mode(app->path);
     deviceType = appGetPOPSBDMDeviceType(app);
+    if (deviceType == BDM_TYPE_UNKNOWN) {
+        /* BDM模式拿不到类型属于来源损坏，交给驱动开放式回退。 */
+        if (mode >= BDM_MODE && mode <= BDM_MODE4)
+            return -1;
+
+        /* 非BDM模式的未知类型明确表示无需启动BDM硬件。 */
+        mailbox->magic = POPS_BOOT_MAILBOX_MAGIC;
+        mailbox->version = POPS_BOOT_MAILBOX_VERSION;
+        mailbox->deviceType = deviceType;
+        mailbox->checksum = appPOPSBootMailboxChecksum(mailbox);
+        return 0;
+    }
+
     if (deviceType < BDM_TYPE_USB || deviceType > BDM_TYPE_ATA)
         return -1;
 
@@ -648,7 +663,7 @@ static void appPreparePOPSLauncher(void)
 {
     appPOPSPrepareResult = 0;
 
-    if (gAutoDetectPS1Apps && oplPath2Mode(appsList[appPOPSPrepareID].path) != HDD_MODE && installPopstarterDrivers(oplPath2Mode(appsList[appPOPSPrepareID].path), appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
+    if (gAutoDetectPS1Apps && installPopstarterDrivers(oplPath2Mode(appsList[appPOPSPrepareID].path), appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
         appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 
     appPOPSPrepareStatus = 0;
@@ -746,10 +761,10 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         appPOPSPrepareID = id;
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
-        if ((appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
+        /* APA HDD不依赖记忆卡中的外部驱动，修补失败不能阻止启动。 */
+        if (mode != HDD_MODE &&
+            (appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
             !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL)) {
-            if (mode == HDD_MODE)
-                oplRestoreHDDOPLPartition();
             return;
         }
 
