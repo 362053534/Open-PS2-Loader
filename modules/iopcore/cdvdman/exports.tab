@@ -148,6 +148,15 @@ DECLARE_EXPORT_TABLE(bdm, 1, 1)
 //	DECLARE_EXPORT(bdm_disconnect_fs)
 //	DECLARE_EXPORT(bdm_get_bd)
 //	DECLARE_EXPORT(bdm_RegisterCallback)
+	// 游戏阶段只需连接块设备，其余接口保留序号兼容性。
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_dummy)
 END_EXPORT_TABLE
 #endif
 
