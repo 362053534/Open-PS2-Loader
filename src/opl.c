@@ -1102,6 +1102,7 @@ void menuMarkGameListsForRefresh(void)
 }
 
 enum {
+    BDM_STARTUP_MODULE_LOAD,
     BDM_STARTUP_DISCOVERY,
     BDM_STARTUP_DISCOVERY_DRAINING,
     BDM_STARTUP_LISTS,
@@ -1110,6 +1111,7 @@ enum {
 };
 
 #define BDM_DISCOVERY_SLOT_MASK ((1 << MAX_BDM_DEVICES) - 1)
+#define BDM_MODULE_LOAD_NOT_STARTED -2
 
 static int bdmStartupStage = BDM_STARTUP_COMPLETE;
 static int bdmDiscoveryPending;
@@ -1166,6 +1168,18 @@ static int bdmDeviceTypeEnabled(int deviceType)
            (deviceType == BDM_TYPE_ILINK && gEnableILK) ||
            (deviceType == BDM_TYPE_SDC && gEnableMX4SIO) ||
            (deviceType == BDM_TYPE_ATA && gEnableBdmHDD);
+}
+
+static void bdmStartupModuleLoad(void *data)
+{
+    (void)data;
+
+    bdmDiscoveryResult = bdmGetLoadedTypeMask();
+    if (bdmDiscoveryResult >= 0) {
+        bdmLoadDeviceModules();
+        bdmDiscoveryResult = bdmGetLoadedTypeMask();
+    }
+    bdmDiscoveryRequestPending = 0;
 }
 
 static void bdmStartupDiscovery(void *data)
@@ -1301,7 +1315,7 @@ int menuResetBDMStartup(int bdmStarted)
 
     bdmDiscoveryPending = enabledTypes != 0;
     bdmDiscoveryMode = BDM_MODE;
-    bdmDiscoveryResult = 0;
+    bdmDiscoveryResult = BDM_MODULE_LOAD_NOT_STARTED;
     bdmDiscoveryRequestPending = 0;
     bdmProbeCompletedMask = 0;
     bdmProbePresentMask = 0;
@@ -1321,7 +1335,7 @@ int menuResetBDMStartup(int bdmStarted)
         bdmStartupStage = BDM_STARTUP_COMPLETE;
         bdmDiscoveryPending = 0;
     } else
-        bdmStartupStage = BDM_STARTUP_DISCOVERY;
+        bdmStartupStage = BDM_STARTUP_MODULE_LOAD;
 
     return bdmDiscoveryPending;
 }
@@ -1348,26 +1362,38 @@ int menuUpdateBDMSupport(void)
 
     enabledTypes = bdmGetEnabledTypeMask();
 
-    if (bdmStartupStage == BDM_STARTUP_DISCOVERY) {
-        int loadedTypes = bdmGetLoadedTypeMask();
-
-        if (loadedTypes < 0) {
-            bdmDiscoveryResult = loadedTypes;
-            bdmDiscoveryModuleErrorMask = enabledTypes;
-            bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
-        } else {
-            bdmDiscoveryExpectedTypeMask = enabledTypes & loadedTypes;
-            bdmDiscoveryModuleErrorMask = enabledTypes & ~loadedTypes;
-            bdmProbeErrorMask |= bdmDiscoveryModuleErrorMask;
-
-            if (bdmDiscoveryResult < 0 ||
-                (bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask)
-                bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
-            else if (!bdmDiscoveryRequestPending) {
+    if (bdmStartupStage == BDM_STARTUP_MODULE_LOAD) {
+        if (bdmDiscoveryResult == BDM_MODULE_LOAD_NOT_STARTED) {
+            if (!bdmDiscoveryRequestPending) {
                 bdmDiscoveryRequestPending = 1;
-                if (ioPutRequestUnique(IO_BDM_DISCOVERY, &bdmDiscoveryMode) != IO_OK)
+                if (ioPutRequestUnique(IO_BDM_MODULE_LOAD, &bdmDiscoveryMode) != IO_OK)
                     bdmDiscoveryRequestPending = 0;
             }
+        } else if (!bdmDiscoveryRequestPending) {
+            int loadedTypes = bdmDiscoveryResult;
+
+            if (loadedTypes < 0) {
+                bdmDiscoveryModuleErrorMask = enabledTypes;
+                bdmProbeErrorMask |= bdmDiscoveryModuleErrorMask;
+                bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
+            } else {
+                bdmDiscoveryExpectedTypeMask = enabledTypes & loadedTypes;
+                bdmDiscoveryModuleErrorMask = enabledTypes & ~loadedTypes;
+                bdmProbeErrorMask |= bdmDiscoveryModuleErrorMask;
+                bdmDiscoveryResult = 0;
+                bdmStartupStage = bdmDiscoveryExpectedTypeMask ? BDM_STARTUP_DISCOVERY : BDM_STARTUP_DISCOVERY_DRAINING;
+            }
+        }
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_DISCOVERY) {
+        if (bdmDiscoveryResult < 0 ||
+            (bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask)
+            bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
+        else if (!bdmDiscoveryRequestPending) {
+            bdmDiscoveryRequestPending = 1;
+            if (ioPutRequestUnique(IO_BDM_DISCOVERY, &bdmDiscoveryMode) != IO_OK)
+                bdmDiscoveryRequestPending = 0;
         }
     }
 
@@ -2594,6 +2620,7 @@ static void init(void)
     // handler for deffered menu updates
     ioRegisterHandler(IO_MENU_UPDATE_DEFFERED, &menuDeferredUpdate);
     ioRegisterHandler(IO_itemExecSelect, &itemExecSelect_background);
+    ioRegisterHandler(IO_BDM_MODULE_LOAD, &bdmStartupModuleLoad);
     ioRegisterHandler(IO_BDM_DISCOVERY, &bdmStartupDiscovery);
     ioRegisterHandler(IO_BDM_STARTUP_LIST, &bdmStartupListUpdate);
     cacheInit();
@@ -2700,6 +2727,7 @@ static void miniInit(int mode)
         gEnableMX4SIO = 1;
         gEnableBdmHDD = 1;
         bdmLoadModules();
+        bdmLoadDeviceModules();
 
     } else if (mode == HDD_MODE) {
         hddLoadModules();

@@ -46,6 +46,7 @@ typedef struct
 void bdmInit(item_list_t *itemList);
 int bdmFindPartition(char *target, const char *name, int write);
 void bdmLoadModules(void);
+void bdmLoadDeviceModules(void);
 int bdmGetLoadedTypeMask(void);
 int bdmIsIlinkSupported(void);
 void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);

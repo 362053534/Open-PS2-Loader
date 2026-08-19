@@ -229,8 +229,11 @@ void bdmLoadModules(void)
 
         LOG("BDMSUPPORT Modules loaded\n");
     }
+}
 
-    // Load Optional Block Device drivers
+void bdmLoadDeviceModules(void)
+{
+    // 加载可选块设备驱动
     bdmLoadBlockDeviceModules();
 }
 
@@ -1070,9 +1073,6 @@ void bdmEnumerateDevices()
     
     // Initialize the device list data if it hasn't been initialized yet.
     bdmInitDevicesData();
-
-    // Because bdmLoadModules is called before the config file is loaded bdmLoadBlockDeviceModules will not have loaded any
-    // optional bdm modules. Now that the config file has been loaded try loading any optional modules that weren't previously loaded.
 
     LOG("bdmEnumerateDevices done\n");
 }

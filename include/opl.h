@@ -55,6 +55,7 @@
 #define IO_itemExecSelect         5
 #define IO_BDM_DISCOVERY          6
 #define IO_BDM_STARTUP_LIST       7
+#define IO_BDM_MODULE_LOAD        8
 
 #define BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE 0x01
 #define BDM_STARTUP_STATUS_READY              0x02
