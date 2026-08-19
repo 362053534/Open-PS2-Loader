@@ -1557,20 +1557,19 @@ static int checkLoadConfigBDM(int types)
 
 static int checkLoadConfigHDD(int types)
 {
-    int value;
+    int value, retryCount = 0;
     char path[64];
 
     hddLoadModules();
+    if (!hddLoadModulesSuccess)
+        return 0;
+
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
-    if (hddLoadModulesSuccess) {
-        int retryCount = 0;
-        while (hddLoadSupportModules()) {
-            if (++retryCount >= 20)
-                break;
-            usleep(100000);
-        }
-    } else
-        hddLoadSupportModules();
+    while (hddLoadSupportModules()) {
+        if (++retryCount >= 20)
+            return 0;
+        usleep(100000);
+    }
 
     snprintf(path, sizeof(path), "%sconf_opl.cfg", gHDDPrefix);
     value = open(path, O_RDONLY);
@@ -1792,7 +1791,7 @@ static int trySaveConfigHDD(int types)
 {
     hddLoadModules();
     // Check that the formatted & usable HDD is connected.
-    if (hddCheck() == 0) {
+    if (hddLoadModulesSuccess && hddCheck() == 0) {
         configSetMove(gHDDPrefix);
         return configWriteMulti(types);
     }
@@ -2739,8 +2738,7 @@ static void miniInit(int mode)
                     break;
                 usleep(100000);
             }
-        } else
-            hddLoadSupportModules();
+        }
     }
 
     InitConsoleRegionData();

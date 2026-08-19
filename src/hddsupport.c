@@ -32,6 +32,7 @@ static unsigned char hddForceUpdate = 0;
 static unsigned char hddHDProKitDetected = 0;
 static unsigned char hddModulesLoadCount = 0;
 static unsigned char hddSupportModulesLoaded = 0;
+static unsigned char hddModulesLoading = 0;
 static unsigned char hddConfigSource = 0;
 static unsigned char hddConfigModulesRetained = 0;
 
@@ -69,24 +70,26 @@ static int artUseBuckets_APA = 0;
 static int hddLoadGameListCache(hdl_games_list_t *cache);
 static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *game_list);
 
-static void hddInitModules(void)
+static int hddInitModules(void)
 {
+    int result, retryCount = 0;
+
     // 从HDD读取配置时已经启动了完整的HDD模块栈。
     // 后续自动或手动初始化HDD时，直接接管之前保留的生命周期引用，避免重复增加计数。
     if (hddConfigModulesRetained)
         hddConfigModulesRetained = 0;
     else
         hddLoadModules();
+
+    if (!hddLoadModulesSuccess)
+        return -1;
+
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
-    if (hddLoadModulesSuccess) {
-        int retryCount = 0;
-        while (hddLoadSupportModules()) {
-            if (++retryCount >= 20)
-                break;
-            usleep(100000);
-        }
-    } else
-        hddLoadSupportModules();
+    while ((result = hddLoadSupportModules())) {
+        if (++retryCount >= 20)
+            return result;
+        usleep(100000);
+    }
 
     // update Themes
     char path[256];
@@ -97,6 +100,7 @@ static void hddInitModules(void)
     lngAddLanguages(path, "/", hddGameList.mode);
 
     sbCreateFolders(gHDDPrefix, 0);
+    return 0;
 }
 
 // HD Pro Kit is mapping the 1st word in ROM0 seg as a main ATA controller,
@@ -220,17 +224,27 @@ int hddLoadModulesSuccess = 0;
 static void hddLoadModulesInternal(int bdmAsync)
 {
     static char bdmAtadArg[] = "-bdm_async";
-    int ret;
+    int ret, xhddRet;
 
     LOG("HDDSUPPORT LoadModules %d\n", hddModulesLoadCount);
 
-    if (hddModulesLoadCount == 0) {
+    if (hddModulesLoadCount == 0 || !hddLoadModulesSuccess) {
+        if (hddModulesLoading) {
+            hddModulesLoadCount++;
+            return;
+        }
+
         // Increment the load count as soon as possible to prevent thread scheduling from allowing another thread to
         // call into here and try to double load modules.
-        hddModulesLoadCount = 1;
+        if (hddModulesLoadCount == 0) {
+            hddModulesLoadCount = 1;
 
-        // DEV9 must be loaded, as HDD.IRX depends on it. Even if not required by the I/F (i.e. HDPro)
-        sysInitDev9();
+            // DEV9 must be loaded, as HDD.IRX depends on it. Even if not required by the I/F (i.e. HDPro)
+            sysInitDev9();
+        }
+
+        // 保留已加载的IRX和DEV9引用，使后续调用可以继续重试未完成的模块。
+        hddModulesLoading = 1;
 
         // try to detect HD Pro Kit (not the connected HDD),
         // if detected it loads the specific ATAD module
@@ -239,24 +253,26 @@ static void hddLoadModulesInternal(int bdmAsync)
             LOG("[ATAD_HDPRO]:\n");
             ret = sysLoadModuleBuffer(&hdpro_atad_irx, size_hdpro_atad_irx, 0, NULL);
             LOG("[XHDD]:\n");
-            sysLoadModuleBuffer(&xhdd_irx, size_xhdd_irx, 6, "-hdpro");
+            xhddRet = sysLoadModuleBuffer(&xhdd_irx, size_xhdd_irx, 6, "-hdpro");
         } else {
             LOG("[ATAD]:\n");
             ret = sysLoadModuleBuffer(&ps2atad_irx, size_ps2atad_irx,
                                       bdmAsync ? sizeof(bdmAtadArg) : 0,
                                       bdmAsync ? bdmAtadArg : NULL);
             LOG("[XHDD]:\n");
-            sysLoadModuleBuffer(&xhdd_irx, size_xhdd_irx, 0, NULL);
+            xhddRet = sysLoadModuleBuffer(&xhdd_irx, size_xhdd_irx, 0, NULL);
         }
 
-        if (ret < 0) {
+        if (ret < 0 || xhddRet < 0) {
+            hddModulesLoading = 0;
             LOG("HDD: No HardDisk Drive detected.\n");
             setErrorMessageWithCode(_STR_HDD_NOT_CONNECTED_ERROR, ERROR_HDD_IF_NOT_DETECTED);
             return;
         }
         hddLoadModulesSuccess = 1;
+        hddModulesLoading = 0;
         //usleep(500000); // 延迟0.5秒,加一点延迟,尤其在PS2上的HDD可能需要
-    } else
+    } else if (hddLoadModulesSuccess)
         hddModulesLoadCount++;
 
     LOG("HDDSUPPORT LoadModules done\n");
@@ -370,9 +386,6 @@ int hddLoadSupportModules(void)
             return -1;
         }
 
-        hddSupportModulesLoaded = 1;
-        LOG("HDDSUPPORT modules loaded\n");
-
         if (gOPLPart[0] == '\0')
             hddFindOPLPartition();
 
@@ -382,8 +395,14 @@ int hddLoadSupportModules(void)
         if (ret == -ENOENT) {
             // Attempt to create the partition.
             if ((hddCreateOPLPartition(gOPLPart)) >= 0)
-                fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+                ret = fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
         }
+
+        if (ret < 0)
+            return ret;
+
+        hddSupportModulesLoaded = 1;
+        LOG("HDDSUPPORT modules loaded\n");
 
         if (gOPLPart[5] != '+') {
             hddCheckOPLFolder(hddPrefix);
@@ -442,8 +461,7 @@ void hddInit(item_list_t *itemList)
     LOG("HDDSUPPORT Init\n");
     hddForceUpdate = 0; // Use cache at initial startup.
     configGetInt(configGetByType(CONFIG_OPL), "hdd_frames_delay", &hddGameList.delay);
-    hddInitModules();
-    hddGameList.enabled = 1;
+    hddGameList.enabled = hddInitModules() == 0;
 }
 
 item_list_t *hddGetObject(int initOnly)
