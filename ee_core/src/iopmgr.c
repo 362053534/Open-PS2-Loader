@@ -231,11 +231,8 @@ int New_Reset_Iop(const char *arg, int arglen)
     if (EnableDebug)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
-    if (arglen > 0) {
-        if (GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen))
-            ResetIopSpecial(ioprp_args, ioprp_arglen);
-        else
-            ResetIopSpecial(NULL, 0);
+    if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
+        ResetIopSpecial(ioprp_args, ioprp_arglen);
         if (EnableDebug)
             DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }
