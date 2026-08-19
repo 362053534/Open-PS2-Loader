@@ -183,7 +183,7 @@ static void bdmLoadBlockDeviceModules(void)
     if (gEnableBdmHDD && !hddModLoaded) {
         // Load dev9 and atad device drivers.
         LOG("bdmLoadBlockDeviceModules loading hdd drivers...\n");
-        hddLoadModules();
+        hddLoadModulesBDM();
 
         hddModLoaded = 1;
         if (hddLoadModulesSuccess)

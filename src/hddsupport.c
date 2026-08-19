@@ -217,8 +217,9 @@ static int hddCreateOPLPartition(const char *name)
 }
 
 int hddLoadModulesSuccess = 0;
-void hddLoadModules(void)
+static void hddLoadModulesInternal(int bdmAsync)
 {
+    static char bdmAtadArg[] = "-bdm_async";
     int ret;
 
     LOG("HDDSUPPORT LoadModules %d\n", hddModulesLoadCount);
@@ -241,7 +242,9 @@ void hddLoadModules(void)
             sysLoadModuleBuffer(&xhdd_irx, size_xhdd_irx, 6, "-hdpro");
         } else {
             LOG("[ATAD]:\n");
-            ret = sysLoadModuleBuffer(&ps2atad_irx, size_ps2atad_irx, 0, NULL);
+            ret = sysLoadModuleBuffer(&ps2atad_irx, size_ps2atad_irx,
+                                      bdmAsync ? sizeof(bdmAtadArg) : 0,
+                                      bdmAsync ? bdmAtadArg : NULL);
             LOG("[XHDD]:\n");
             sysLoadModuleBuffer(&xhdd_irx, size_xhdd_irx, 0, NULL);
         }
@@ -257,6 +260,16 @@ void hddLoadModules(void)
         hddModulesLoadCount++;
 
     LOG("HDDSUPPORT LoadModules done\n");
+}
+
+void hddLoadModules(void)
+{
+    hddLoadModulesInternal(0);
+}
+
+void hddLoadModulesBDM(void)
+{
+    hddLoadModulesInternal(1);
 }
 
 // Returns 1 for MBR/GPT, 0 for APA, and -1 if an error occured
