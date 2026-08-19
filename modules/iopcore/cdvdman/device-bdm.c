@@ -361,6 +361,7 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     int rv = SCECdErNO;
+    int isMX4SIO;
 
     // DPRINTF("%s(%u, 0x%p, %u)\n", __func__, (unsigned int)lsn, buffer, sectors);
 
@@ -370,6 +371,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     if (g_bd->sectorSize != 512)
         return DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
 
+    isMX4SIO = g_bd->name[0] == 's' && g_bd->name[1] == 'd' && g_bd->name[2] == 'c' && g_bd->name[3] == '\0';
     WaitSema(bdm_io_sema);
     u64 sector = ((u64)lsn) * 4;
     unsigned int sectorCount = sectors * 4;
@@ -389,9 +391,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             if (bd_defrag_read_cached(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, validSectorCount, &g_bd_defrag_cursor) == (int)validSectorCount)
                 memset((u8 *)buffer + validSectorCount * 512, 0, (sectorCount - validSectorCount) * 512);
             else
-                rv = SCECdErREAD;
+                rv = isMX4SIO ? SCECdErTRMOPN : SCECdErREAD;
         } else
-            rv = SCECdErREAD;
+            rv = isMX4SIO ? SCECdErTRMOPN : SCECdErREAD;
     }
     SignalSema(bdm_io_sema);
 
