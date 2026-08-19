@@ -27,7 +27,8 @@ static int appPOPSPrepareID;
 static config_set_t *configApps;
 static app_info_t *appsList;
 
-#define APP_POPS_PREPARE_DRIVERS_FAILED  0x01
+#define APP_POPS_PREPARE_DRIVERS_FAILED 0x01
+#define APP_POPS_PREPARE_EE_READY       0x02
 
 struct app_info_linked
 {
@@ -49,6 +50,35 @@ static void appFreeLegacyConfig(void);
 #define POPS_BOOT_MAILBOX_PATH_MAX 256
 #define POPS_BOOT_VCD_PREFIX       "0:/POPS/"
 
+#define POPS_EE_RESIDENT_SIZE             0x1000
+#define POPS_EE_TRAMPOLINE_OFFSET         0x0200
+#define POPS_EE_COPY_TABLE_OFFSET         ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET
+#define POPS_EE_USBD_ADDRESS              0x00140000
+#define POPS_EE_DRIVER_ADDRESS            0x00180000
+#define POPS_EE_IRX_SIZE_OFFSET           0x007C
+
+static u8 appPOPSEEResident[POPS_EE_RESIDENT_SIZE] __attribute__((aligned(64)));
+
+/* 该跳板在POPStarter完成解压后修正其固定地址IRX分支中的目标指针。 */
+static const u32 appPOPSEETrampoline[] = {
+    0x3C080087,
+    0x3C0B0088,
+    0x3C093C04,
+    0x35290014,
+    0xAD091D50,
+    0xAD0920B8,
+    0xAD69AC90,
+    0xAD69AD04,
+    0x3C093C04,
+    0x35290018,
+    0xAD091F04,
+    0xAD092154,
+    0xAD69AD3C,
+    0xAD69ADB0,
+    0x0821C000,
+    0x00000000,
+};
+
 typedef struct
 {
     u32 magic;
@@ -59,6 +89,9 @@ typedef struct
 } pops_boot_mailbox_t;
 
 typedef char pops_boot_mailbox_size_must_be_272[(sizeof(pops_boot_mailbox_t) == 272) ? 1 : -1];
+typedef char pops_ee_mailbox_must_fit[(sizeof(pops_boot_mailbox_t) <= POPS_EE_TRAMPOLINE_OFFSET) ? 1 : -1];
+typedef char pops_ee_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + sizeof(appPOPSEETrampoline) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
+typedef char pops_ee_copy_table_must_fit[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 
 static int appIsPOPSLauncher(const app_info_t *app)
 {
@@ -87,6 +120,112 @@ static u32 appPOPSBootMailboxChecksum(const pops_boot_mailbox_t *mailbox)
     }
 
     return checksum;
+}
+
+static u32 appPOPSChecksum(const void *buffer, unsigned int size)
+{
+    const u8 *data = (const u8 *)buffer;
+    u32 checksum = 2166136261u;
+    unsigned int i;
+
+    for (i = 0; i < size; i++) {
+        checksum ^= data[i];
+        checksum *= 16777619u;
+    }
+
+    return checksum;
+}
+
+static void appPOPSWriteU32(u8 *buffer, unsigned int offset, u32 value)
+{
+    memcpy(buffer + offset, &value, sizeof(value));
+}
+
+static void *appPOPSStageIRX(const void *irx, int size)
+{
+    u8 *staged;
+
+    staged = malloc(size);
+    if (!staged)
+        return NULL;
+
+    memcpy(staged, irx, size);
+    appPOPSWriteU32(staged, POPS_EE_IRX_SIZE_OFFSET, (u32)size);
+    return staged;
+}
+
+static const void *appPOPSGetBDMDriver(int deviceType, int *size)
+{
+    if (deviceType == BDM_TYPE_ATA) {
+        *size = size_popstarter_bdmhdd_irx;
+        return popstarter_bdmhdd_irx;
+    }
+    if (deviceType == BDM_TYPE_SDC) {
+        *size = size_popstarter_mx4sio_irx;
+        return popstarter_mx4sio_irx;
+    }
+    if (deviceType == BDM_TYPE_USB || deviceType == BDM_TYPE_ILINK) {
+        *size = size_popstarter_usbhdfsd_irx;
+        return popstarter_usbhdfsd_irx;
+    }
+
+    *size = 0;
+    return NULL;
+}
+
+static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox)
+{
+    elf_loader_resident_copy_table_t *copyTable;
+    const void *driver;
+    u8 *patchedELF;
+    void *stagedUSBD;
+    void *stagedDriver;
+    int driverSize;
+
+    driver = appPOPSGetBDMDriver(mailbox->deviceType, &driverSize);
+    if (!driver)
+        return NULL;
+
+    patchedELF = malloc(size_popstarter_elf);
+    stagedUSBD = appPOPSStageIRX(popstarter_usbd_irx, size_popstarter_usbd_irx);
+    stagedDriver = appPOPSStageIRX(driver, driverSize);
+    if (!patchedELF || !stagedUSBD || !stagedDriver) {
+        free(patchedELF);
+        free(stagedUSBD);
+        free(stagedDriver);
+        return NULL;
+    }
+
+    /* 内嵌资源与补丁版本由构建保证，运行时只处理内存分配失败。 */
+    memcpy(patchedELF, popstarter_elf, size_popstarter_elf);
+
+    /* 缩小外层清零范围，保留两个各256 KiB的IRX槽位。 */
+    appPOPSWriteU32(patchedELF, 0x0434, 0x3C04001C);
+    appPOPSWriteU32(patchedELF, 0x0438, 0x3C0601E3);
+    appPOPSWriteU32(patchedELF, 0x0444, 0x34840000);
+    appPOPSWriteU32(patchedELF, 0x0450, 0x34C63190);
+
+    /* 解压完成后先进入低端常驻跳板，再执行内层入口。 */
+    appPOPSWriteU32(patchedELF, 0x28B54, 0x08025080);
+
+    memset(appPOPSEEResident, 0, sizeof(appPOPSEEResident));
+    memcpy(appPOPSEEResident, mailbox, sizeof(*mailbox));
+    memcpy(appPOPSEEResident + POPS_EE_TRAMPOLINE_OFFSET,
+           appPOPSEETrampoline, sizeof(appPOPSEETrampoline));
+
+    copyTable = (elf_loader_resident_copy_table_t *)(appPOPSEEResident + POPS_EE_COPY_TABLE_OFFSET);
+    copyTable->magic = ELF_LOADER_RESIDENT_COPY_MAGIC;
+    copyTable->version = ELF_LOADER_RESIDENT_COPY_VERSION;
+    copyTable->count = 2;
+    copyTable->entries[0].source = stagedUSBD;
+    copyTable->entries[0].destination = (void *)POPS_EE_USBD_ADDRESS;
+    copyTable->entries[0].size = size_popstarter_usbd_irx;
+    copyTable->entries[1].source = stagedDriver;
+    copyTable->entries[1].destination = (void *)POPS_EE_DRIVER_ADDRESS;
+    copyTable->entries[1].size = driverSize;
+    copyTable->checksum = appPOPSChecksum(copyTable, sizeof(*copyTable) - sizeof(copyTable->checksum));
+
+    return patchedELF;
 }
 
 static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *mailbox)
@@ -661,9 +800,26 @@ static void appRenameItem(item_list_t *itemList, int id, char *newName)
 
 static void appPreparePOPSLauncher(void)
 {
-    appPOPSPrepareResult = 0;
+    pops_boot_mailbox_t bootMailbox;
+    const void *driver;
+    int driverSize;
+    int useEEInjection;
+    int mode;
 
-    if (gAutoDetectPS1Apps && installPopstarterDrivers(oplPath2Mode(appsList[appPOPSPrepareID].path), appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
+    appPOPSPrepareResult = 0;
+    mode = oplPath2Mode(appsList[appPOPSPrepareID].path);
+    driver = NULL;
+    driverSize = 0;
+    if (mode >= BDM_MODE && mode <= BDM_MODE4 &&
+        appBuildPOPSBootMailbox(&appsList[appPOPSPrepareID], &bootMailbox) == 0)
+        driver = appPOPSGetBDMDriver(bootMailbox.deviceType, &driverSize);
+    useEEInjection = driver != NULL;
+
+    /* 只有EE注入无法使用时才写入记忆卡，避免正常BDM启动继续依赖外部文件。 */
+    if (useEEInjection)
+        appPOPSPrepareResult |= APP_POPS_PREPARE_EE_READY;
+    else if (gAutoDetectPS1Apps &&
+             installPopstarterDrivers(mode, appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
         appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 
     appPOPSPrepareStatus = 0;
@@ -680,6 +836,10 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         char popstarterArg[APP_BOOT_MAX + 5];
         char *argv[1];
         pops_boot_mailbox_t bootMailbox;
+        const void *launchELF;
+        const void *residentData;
+        unsigned int residentSize;
+        int useEEInjection;
         const char *cheats;
         int mode;
 
@@ -761,13 +921,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         appPOPSPrepareID = id;
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
-        /* APA HDD不依赖记忆卡中的外部驱动，修补失败不能阻止启动。 */
-        if (mode != HDD_MODE &&
-            (appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
-            !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL)) {
-            return;
-        }
-
         // uLE: + XX./SB. 假 ELF 名。deinit 前先拷到栈上。
         if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= (int)sizeof(popstarterArg)) {
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
@@ -778,9 +931,34 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         argv[0] = popstarterArg;
 
-        /* 生成失败时明确清空邮箱；POPStarter继续启动，BDMA改用PAK就绪探测。 */
-        if (appBuildPOPSBootMailbox(&appsList[id], &bootMailbox) < 0)
+        launchELF = popstarter_elf;
+        residentData = &bootMailbox;
+        residentSize = sizeof(bootMailbox);
+        useEEInjection = 0;
+        if (appBuildPOPSBootMailbox(&appsList[id], &bootMailbox) < 0) {
             memset(&bootMailbox, 0, sizeof(bootMailbox));
+        } else if (appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY) {
+            launchELF = appPreparePOPSEEInjection(&bootMailbox);
+            if (launchELF) {
+                residentData = appPOPSEEResident;
+                residentSize = sizeof(appPOPSEEResident);
+                useEEInjection = 1;
+            } else {
+                launchELF = popstarter_elf;
+            }
+        }
+
+        /* 预检后若EE内存准备仍失败，必须在OPL退出前补装记忆卡驱动。 */
+        if ((appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY) && !useEEInjection &&
+            installPopstarterDrivers(mode, appGetPOPSBDMDeviceType(&appsList[id])) < 0)
+            appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
+
+        /* APA HDD不依赖记忆卡中的外部驱动，修补失败不能阻止启动。 */
+        if (mode != HDD_MODE &&
+            (appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
+            !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL)) {
+            return;
+        }
 
         if (mode < 0)
             mode = APP_MODE;
@@ -789,7 +967,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromMemoryNoResetWithResidentData(popstarter_elf, &bootMailbox, sizeof(bootMailbox), 1, argv);
+        LoadELFFromMemoryNoResetWithResidentData(launchELF, residentData, residentSize, 1, argv);
         if (mode == HDD_MODE)
             oplRestoreHDDOPLPartition();
         return;
