@@ -290,7 +290,7 @@ int buildPopstarterSMBConfigs(char *ipconfig, int ipconfigCapacity, int *ipconfi
     strcpy(smbPath, gPCShareName);
     pos = strlen(smbPath);
 
-    // POPStarter只接受反斜杠分隔且不带首尾分隔符的共享目录。
+    // 扩展版SMBMAN以第一个分隔符区分真实共享名和共享内根目录。
     while (*prefix == '/' || *prefix == '\\')
         prefix++;
 

@@ -1056,10 +1056,6 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
         mode = oplPath2Mode(appsList[id].path);
-        if (mode == ETH_MODE && gETHPrefix[0]) {
-            guiMsgBox("POPS不支持SMB前缀路径！", 0, NULL);
-            return;
-        }
 
         if (mode == HDD_MODE) {
             fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
