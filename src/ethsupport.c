@@ -740,7 +740,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     settings->common.layer1_start = layer1_start;
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
-        strcpy(filename, game->startup);
+        sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
     deinit(NO_EXCEPTION, ETH_MODE); // CAREFUL: deinit will call ethCleanUp, so ethGames/game will be freed
 
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;

@@ -1143,28 +1143,107 @@ static int ProbeZISO(int fd)
     }
 }
 
-static int GetStartupExecNameFromISO(const char *path, char *filename, int maxlength)
+static u16 ReadLE16(const u8 *data)
 {
-    u32 rootLBA, rootSize, sector;
-    int fd, compressed, result = -1;
+    u16 value;
 
-    if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+static u32 ReadLE32(const u8 *data)
+{
+    u32 value;
+
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+static u64 ReadLE64(const u8 *data)
+{
+    u64 value;
+
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+static int ReadImageSector(int fd, int compressed, u32 sector)
+{
+    if (compressed)
+        return ziso_read_sector(IOBuffer, sector, 1) == 1 ? 0 : -1;
+
+    u64 offset = (u64)sector * 2048;
+    return lseek64(fd, offset, SEEK_SET) == offset && read(fd, IOBuffer, sizeof(IOBuffer)) == sizeof(IOBuffer) ? 0 : -1;
+}
+
+static int CopyStartupName(const u8 *name, u32 nameLength, int udf, char *filename, int maxlength)
+{
+    char startup[GAME_STARTUP_MAX];
+    int i;
+
+    if (maxlength < GAME_STARTUP_MAX - 1)
         return -1;
 
-    compressed = ProbeZISO(fd);
-    if (compressed) {
-        if (ziso_read_sector(IOBuffer, 16, 1) != 1)
-            goto end;
+    if (udf) {
+        if (nameLength == GAME_STARTUP_MAX && name[0] == 8) {
+            memcpy(startup, &name[1], GAME_STARTUP_MAX - 1);
+        } else if (nameLength == GAME_STARTUP_MAX * 2 - 1 && name[0] == 16) {
+            for (i = 0; i < GAME_STARTUP_MAX - 1; i++) {
+                if (name[i * 2 + 1] != 0)
+                    return -1;
+                startup[i] = name[i * 2 + 2];
+            }
+        } else {
+            return -1;
+        }
     } else {
-        if (lseek64(fd, 16 * 2048, SEEK_SET) != 16 * 2048 || read(fd, IOBuffer, sizeof(IOBuffer)) != sizeof(IOBuffer))
-            goto end;
+        if (nameLength < GAME_STARTUP_MAX - 1 ||
+            (nameLength > GAME_STARTUP_MAX - 1 && name[GAME_STARTUP_MAX - 1] != ';'))
+            return -1;
+        memcpy(startup, name, GAME_STARTUP_MAX - 1);
     }
 
-    if (IOBuffer[0] != 1 || strncmp((char *)&IOBuffer[1], "CD001", 5) || IOBuffer[156] < 34)
-        goto end;
+    for (i = 0; i < 4; i++) {
+        if (startup[i] >= 'a' && startup[i] <= 'z')
+            startup[i] -= 'a' - 'A';
+        else if (startup[i] < 'A' || startup[i] > 'Z')
+            return -1;
+    }
 
-    memcpy(&rootLBA, &IOBuffer[158], sizeof(rootLBA));
-    memcpy(&rootSize, &IOBuffer[166], sizeof(rootSize));
+    if (startup[4] != '_' || startup[8] != '.' ||
+        startup[5] < '0' || startup[5] > '9' || startup[6] < '0' || startup[6] > '9' || startup[7] < '0' || startup[7] > '9' ||
+        startup[9] < '0' || startup[9] > '9' || startup[10] < '0' || startup[10] > '9')
+        return -1;
+
+    memcpy(filename, startup, GAME_STARTUP_MAX - 1);
+    filename[GAME_STARTUP_MAX - 1] = '\0';
+    return 0;
+}
+
+static int HasUDF(int fd, int compressed)
+{
+    u32 sector;
+
+    for (sector = 16; sector < 32; sector++) {
+        if (ReadImageSector(fd, compressed, sector) != 0)
+            return 0;
+        if (!memcmp(&IOBuffer[1], "NSR02", 5) || !memcmp(&IOBuffer[1], "NSR03", 5))
+            return 1;
+    }
+
+    return 0;
+}
+
+static int GetStartupExecNameFromISO9660(int fd, int compressed, char *filename, int maxlength)
+{
+    u32 rootLBA, rootSize, sector;
+
+    if (ReadImageSector(fd, compressed, 16) != 0 ||
+        IOBuffer[0] != 1 || memcmp(&IOBuffer[1], "CD001", 5) || IOBuffer[156] < 34)
+        return -1;
+
+    rootLBA = ReadLE32(&IOBuffer[158]);
+    rootSize = ReadLE32(&IOBuffer[166]);
 
     for (sector = 0; sector < (rootSize + 2047) / 2048; sector++) {
         u32 position = 0;
@@ -1172,57 +1251,211 @@ static int GetStartupExecNameFromISO(const char *path, char *filename, int maxle
 
         if (sectorSize > 2048)
             sectorSize = 2048;
-
-        if (compressed) {
-            if (ziso_read_sector(IOBuffer, rootLBA + sector, 1) != 1)
-                goto end;
-        } else {
-            u64 offset = (u64)(rootLBA + sector) * 2048;
-            if (lseek64(fd, offset, SEEK_SET) != offset || read(fd, IOBuffer, sizeof(IOBuffer)) != sizeof(IOBuffer))
-                goto end;
-        }
+        if (ReadImageSector(fd, compressed, rootLBA + sector) != 0)
+            return -1;
 
         while (position < sectorSize) {
             const u8 recordLength = IOBuffer[position];
             const u8 *name;
             u8 nameLength;
-            int valid = 1;
-            int i;
 
             if (!recordLength)
                 break;
             if (recordLength < 34 || position + recordLength > sectorSize)
-                goto end;
+                return -1;
 
             nameLength = IOBuffer[position + 32];
             name = &IOBuffer[position + 33];
-            if (!(IOBuffer[position + 25] & 2) && nameLength >= GAME_STARTUP_MAX - 1 &&
-                33 + nameLength <= recordLength &&
-                (nameLength == GAME_STARTUP_MAX - 1 || name[GAME_STARTUP_MAX - 1] == ';')) {
-                for (i = 0; i < 4; i++) {
-                    if (!((name[i] >= 'A' && name[i] <= 'Z') || (name[i] >= 'a' && name[i] <= 'z'))) {
-                        valid = 0;
-                        break;
-                    }
-                }
-
-                if (valid && name[4] == '_' && name[8] == '.' &&
-                    name[5] >= '0' && name[5] <= '9' && name[6] >= '0' && name[6] <= '9' && name[7] >= '0' && name[7] <= '9' &&
-                    name[9] >= '0' && name[9] <= '9' && name[10] >= '0' && name[10] <= '9') {
-                    memcpy(filename, name, GAME_STARTUP_MAX - 1);
-                    filename[GAME_STARTUP_MAX - 1] = '\0';
-                    result = 0;
-                    goto end;
-                }
-            }
+            if (!(IOBuffer[position + 25] & 2) && 33 + nameLength <= recordLength &&
+                CopyStartupName(name, nameLength, 0, filename, maxlength) == 0)
+                return 0;
 
             position += recordLength;
         }
     }
 
+    return -1;
+}
+
+static int GetStartupExecNameFromUDF(int fd, int compressed, char *filename, int maxlength)
+{
+    u32 mainLength, mainLocation, partitionStart[16] = {0};
+    u16 partitionNumber[16] = {0}, partitionMap[16] = {0};
+    u32 fileSetLocation = 0, rootLocation, rootSize, position;
+    u16 fileSetPartition = 0, rootPartition;
+    u8 partitionCount = 0, partitionMapCount = 0;
+    u8 *allocationDescriptors = NULL, *rootData = NULL;
+    int result = -1;
+    u32 sector;
+
+    if (ReadImageSector(fd, compressed, 256) != 0 || ReadLE16(IOBuffer) != 2)
+        return -1;
+
+    mainLength = ReadLE32(&IOBuffer[16]);
+    mainLocation = ReadLE32(&IOBuffer[20]);
+
+    for (sector = mainLocation; sector < mainLocation + (mainLength + 2047) / 2048; sector++) {
+        u16 tag;
+
+        if (ReadImageSector(fd, compressed, sector) != 0)
+            return -1;
+
+        tag = ReadLE16(IOBuffer);
+        if (tag == 5 && partitionCount < 16) {
+            partitionNumber[partitionCount] = ReadLE16(&IOBuffer[22]);
+            partitionStart[partitionCount] = ReadLE32(&IOBuffer[188]);
+            partitionCount++;
+        } else if (tag == 6) {
+            u32 mapLength = ReadLE32(&IOBuffer[264]);
+            u32 mapPosition = 440;
+            u32 mapEnd = mapPosition + mapLength;
+
+            if (ReadLE32(&IOBuffer[212]) != 2048 || mapEnd > sizeof(IOBuffer))
+                return -1;
+
+            fileSetLocation = ReadLE32(&IOBuffer[252]);
+            fileSetPartition = ReadLE16(&IOBuffer[256]);
+            while (mapPosition + 2 <= mapEnd && partitionMapCount < 16) {
+                u8 mapType = IOBuffer[mapPosition];
+                u8 mapSize = IOBuffer[mapPosition + 1];
+
+                if (mapType != 1 || mapSize < 6 || mapPosition + mapSize > mapEnd)
+                    return -1;
+                partitionMap[partitionMapCount++] = ReadLE16(&IOBuffer[mapPosition + 4]);
+                mapPosition += mapSize;
+            }
+        } else if (tag == 8) {
+            break;
+        }
+    }
+
+    if (fileSetPartition >= partitionMapCount)
+        return -1;
+
+    for (sector = 0; sector < partitionCount; sector++) {
+        if (partitionNumber[sector] == partitionMap[fileSetPartition])
+            break;
+    }
+    if (sector == partitionCount || ReadImageSector(fd, compressed, partitionStart[sector] + fileSetLocation) != 0 || ReadLE16(IOBuffer) != 256)
+        return -1;
+
+    rootLocation = ReadLE32(&IOBuffer[404]);
+    rootPartition = ReadLE16(&IOBuffer[408]);
+    if (rootPartition >= partitionMapCount)
+        return -1;
+
+    for (sector = 0; sector < partitionCount; sector++) {
+        if (partitionNumber[sector] == partitionMap[rootPartition])
+            break;
+    }
+    if (sector == partitionCount || ReadImageSector(fd, compressed, partitionStart[sector] + rootLocation) != 0 || ReadLE16(IOBuffer) != 261)
+        return -1;
+
+    rootSize = (u32)ReadLE64(&IOBuffer[56]);
+    u32 extendedAttributesLength = ReadLE32(&IOBuffer[168]);
+    u32 allocationDescriptorsLength = ReadLE32(&IOBuffer[172]);
+    u32 allocationDescriptorsPosition = 176 + extendedAttributesLength;
+    u16 allocationType = ReadLE16(&IOBuffer[34]) & 7;
+
+    if (!rootSize || allocationDescriptorsPosition + allocationDescriptorsLength > sizeof(IOBuffer))
+        return -1;
+
+    allocationDescriptors = malloc(allocationDescriptorsLength);
+    rootData = malloc(rootSize);
+    if (!allocationDescriptors || !rootData)
+        goto end;
+
+    memcpy(allocationDescriptors, &IOBuffer[allocationDescriptorsPosition], allocationDescriptorsLength);
+    if (allocationType == 3) {
+        if (allocationDescriptorsLength < rootSize)
+            goto end;
+        memcpy(rootData, allocationDescriptors, rootSize);
+    } else if (allocationType == 0) {
+        u32 copied = 0;
+
+        for (position = 0; position + 8 <= allocationDescriptorsLength && copied < rootSize; position += 8) {
+            u32 extentLength = ReadLE32(&allocationDescriptors[position]) & 0x3fffffff;
+            u32 extentLocation = ReadLE32(&allocationDescriptors[position + 4]);
+            u32 extentSector;
+
+            for (extentSector = 0; extentSector < (extentLength + 2047) / 2048 && copied < rootSize; extentSector++) {
+                u32 copySize = rootSize - copied;
+                if (copySize > 2048)
+                    copySize = 2048;
+                if (ReadImageSector(fd, compressed, partitionStart[sector] + extentLocation + extentSector) != 0)
+                    goto end;
+                memcpy(&rootData[copied], IOBuffer, copySize);
+                copied += copySize;
+            }
+        }
+
+        if (copied < rootSize)
+            goto end;
+    } else {
+        goto end;
+    }
+
+    for (position = 0; position + 38 <= rootSize;) {
+        u8 fileCharacteristics, nameLength;
+        u16 implementationUseLength;
+        u32 recordLength;
+
+        if (ReadLE16(&rootData[position]) != 257)
+            break;
+
+        fileCharacteristics = rootData[position + 18];
+        nameLength = rootData[position + 19];
+        implementationUseLength = ReadLE16(&rootData[position + 36]);
+        recordLength = (38 + implementationUseLength + nameLength + 3) & ~3;
+        if (position + recordLength > rootSize)
+            break;
+
+        if (!(fileCharacteristics & 6) &&
+            CopyStartupName(&rootData[position + 38 + implementationUseLength], nameLength, 1, filename, maxlength) == 0) {
+            result = 0;
+            break;
+        }
+
+        position += recordLength;
+    }
+
 end:
+    free(rootData);
+    free(allocationDescriptors);
+    return result;
+}
+
+static int GetStartupExecNameFromISO(const char *path, char *filename, int maxlength)
+{
+    int fd, compressed, result;
+
+    if ((fd = open(path, O_RDONLY, 0666)) < 0)
+        return -1;
+
+    compressed = ProbeZISO(fd);
+    if (HasUDF(fd, compressed))
+        result = GetStartupExecNameFromUDF(fd, compressed, filename, maxlength);
+    else
+        result = GetStartupExecNameFromISO9660(fd, compressed, filename, maxlength);
+
     close(fd);
     return result;
+}
+
+void sbGetStartupExecNameForLaunch(const char *path, const char *startup, char *filename, int maxlength)
+{
+    int fd, compressed;
+
+    strncpy(filename, startup, maxlength);
+    filename[maxlength] = '\0';
+
+    if ((fd = open(path, O_RDONLY, 0666)) < 0)
+        return;
+
+    compressed = ProbeZISO(fd);
+    GetStartupExecNameFromISO9660(fd, compressed, filename, maxlength);
+
+    close(fd);
 }
 
 u32 sbGetISO9660MaxLBA(const char *path)

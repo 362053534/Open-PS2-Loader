@@ -59,6 +59,7 @@ void sbCreateFolders(const char *path, int createDiscImgFolders);
 u32 sbGetISO9660MaxLBA(const char *path);
 int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset);
 int sbProbeISO9660_64(const char *path, base_game_info_t *game, u32 layer1_offset);
+void sbGetStartupExecNameForLaunch(const char *path, const char *startup, char *filename, int maxlength);
 
 int sbLoadCheats(const char *path, const char *file);
 

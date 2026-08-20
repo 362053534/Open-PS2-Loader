@@ -792,7 +792,7 @@ vmc_prepared:;
     }
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
-        strcpy(filename, game->startup);
+        sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
 
     // deinit will free per device data.. copy driver name before free to compare for launch
     char bdmCurrentDriver[32];
