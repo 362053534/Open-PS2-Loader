@@ -206,20 +206,24 @@ int New_Reset_Iop(const char *arg, int arglen)
     USE_LOCAL_EECORE_CONFIG;
     const char *ioprp_args;
     unsigned int ioprp_arglen;
+    int useFastReset;
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
         DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
 
     SifInitRpc(0);
 
+    useFastReset = iop_reboot_count > 0 && arglen == 0;
     iop_reboot_count++;
 
     // Reseting IOP.
-    while (!Reset_Iop("", 0)) {
-        ;
-    }
-    while (!SifIopSync()) {
-        ;
+    if (!useFastReset) {
+        while (!Reset_Iop("", 0)) {
+            ;
+        }
+        while (!SifIopSync()) {
+            ;
+        }
     }
 
     SifInitRpc(0);
