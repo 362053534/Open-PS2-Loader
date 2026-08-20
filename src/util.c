@@ -280,6 +280,69 @@ static int popstarterWriteDriver(char *path, const void *buffer, int size, int o
     return 0;
 }
 
+int buildPopstarterSMBConfigs(char *ipconfig, int ipconfigCapacity, int *ipconfigSize,
+                              char *smbconfig, int smbconfigCapacity, int *smbconfigSize)
+{
+    u8 ipAddress[4], netmask[4], gateway[4];
+    char smbPath[sizeof(gPCShareName) + sizeof(gETHPrefix)];
+    const char *prefix;
+    size_t pos;
+
+    if (!ipconfig || ipconfigCapacity <= 0 || !ipconfigSize ||
+        !smbconfig || smbconfigCapacity <= 0 || !smbconfigSize)
+        return -1;
+
+    ethGetNetConfig(ipAddress, netmask, gateway);
+    *ipconfigSize = snprintf(ipconfig, ipconfigCapacity,
+                             "%u.%u.%u.%u %u.%u.%u.%u %u.%u.%u.%u",
+                             ipAddress[0], ipAddress[1], ipAddress[2], ipAddress[3],
+                             netmask[0], netmask[1], netmask[2], netmask[3],
+                             gateway[0], gateway[1], gateway[2], gateway[3]);
+    if (*ipconfigSize < 0 || *ipconfigSize >= ipconfigCapacity)
+        return -1;
+
+    prefix = gETHPrefix;
+    strcpy(smbPath, gPCShareName);
+    pos = strlen(smbPath);
+
+    // POPStarter只接受反斜杠分隔且不带首尾分隔符的共享目录。
+    while (*prefix == '/' || *prefix == '\\')
+        prefix++;
+
+    if (*prefix) {
+        smbPath[pos++] = '\\';
+        while (*prefix) {
+            if (*prefix == '/' || *prefix == '\\') {
+                while (prefix[1] == '/' || prefix[1] == '\\')
+                    prefix++;
+                if (prefix[1])
+                    smbPath[pos++] = '\\';
+            } else
+                smbPath[pos++] = *prefix;
+            prefix++;
+        }
+    }
+    smbPath[pos] = '\0';
+
+    *smbconfigSize = snprintf(smbconfig, smbconfigCapacity, "%d.%d.%d.%d %s%s%s%s%s",
+                              pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], smbPath,
+                              (gPCLoginUser[0] || gPCPassword[0]) ? "\n" : "",
+                              gPCLoginUser,
+                              (gPCLoginUser[0] || gPCPassword[0]) ? "\n" : "",
+                              gPCPassword);
+    if (*smbconfigSize < 0 || *smbconfigSize >= smbconfigCapacity)
+        return -1;
+
+    if (gPCLoginUser[0] && !gPCPassword[0]) {
+        if (*smbconfigSize + 2 > smbconfigCapacity)
+            return -1;
+        smbconfig[(*smbconfigSize)++] = '\n';
+        smbconfig[(*smbconfigSize)++] = '\0';
+    }
+
+    return 0;
+}
+
 static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usbhdfsdSize, int mode)
 {
     char path[64];
@@ -288,8 +351,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
     result = 0;
 
     if (mode == ETH_MODE) {
-        u8 ipAddress[4], netmask[4], gateway[4];
-        char ipconfig[48], smbconfig[144], smbPath[sizeof(gPCShareName) + sizeof(gETHPrefix)];
+        char ipconfig[48], smbconfig[144];
         int ipconfigSize, smbconfigSize;
         const char *filenames[] = {
             POPSTARTER_SMB_POWEROFF_FILENAME,
@@ -327,44 +389,13 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
                 result = -1;
         }
 
-        ethGetNetConfig(ipAddress, netmask, gateway);
-        ipconfigSize = snprintf(ipconfig, sizeof(ipconfig), "%u.%u.%u.%u %u.%u.%u.%u %u.%u.%u.%u", ipAddress[0], ipAddress[1], ipAddress[2], ipAddress[3], netmask[0], netmask[1], netmask[2], netmask[3], gateway[0], gateway[1], gateway[2], gateway[3]);
+        if (buildPopstarterSMBConfigs(ipconfig, sizeof(ipconfig), &ipconfigSize,
+                                      smbconfig, sizeof(smbconfig), &smbconfigSize) < 0)
+            return -1;
+
         snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_SMB_IPCONFIG_FILENAME);
         if (popstarterWriteDriver(path, ipconfig, ipconfigSize, 1) < 0)
             result = -1;
-
-        const char *prefix = gETHPrefix;
-        size_t pos;
-
-        strcpy(smbPath, gPCShareName);
-        pos = strlen(smbPath);
-
-        // 跳过SMB前缀开头的所有斜杠。
-        while (*prefix == '/' || *prefix == '\\')
-            prefix++;
-
-        if (*prefix) {
-            smbPath[pos++] = '\\';
-            while (*prefix) {
-                if (*prefix == '/' || *prefix == '\\') {
-                    // 将中间连续的斜杠统一为一个反斜杠，结尾斜杠不写入。
-                    while (prefix[1] == '/' || prefix[1] == '\\')
-                        prefix++;
-                    if (prefix[1])
-                        smbPath[pos++] = '\\';
-                } else
-                    smbPath[pos++] = *prefix;
-                prefix++;
-            }
-        }
-        smbPath[pos] = '\0';
-
-        smbconfigSize = snprintf(smbconfig, sizeof(smbconfig), "%d.%d.%d.%d %s%s%s%s%s", pc_ip[0], pc_ip[1], pc_ip[2], pc_ip[3], smbPath, (gPCLoginUser[0] || gPCPassword[0]) ? "\n" : "", gPCLoginUser, (gPCLoginUser[0] || gPCPassword[0]) ? "\n" : "", gPCPassword);
-        if (gPCLoginUser[0] && !gPCPassword[0]) {
-            smbconfig[smbconfigSize++] = '\n';
-            smbconfig[smbconfigSize] = '\0';
-            smbconfigSize++;
-        }
         snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_SMB_SMBCONFIG_FILENAME);
         if (popstarterWriteDriver(path, smbconfig, smbconfigSize, 1) < 0)
             result = -1;

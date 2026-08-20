@@ -56,8 +56,21 @@ static void appFreeLegacyConfig(void);
 #define POPS_EE_USBD_ADDRESS              0x00140000
 #define POPS_EE_DRIVER_ADDRESS            0x00180000
 #define POPS_EE_IRX_SIZE_OFFSET           0x007C
+#define POPS_EE_SMB_PACKAGE_ADDRESS       0x00140000
+#define POPS_EE_SMB_PACKAGE_CAPACITY      0x00040000
+#define POPS_EE_SMB_PACKAGE_MAGIC         0x534D4256
+#define POPS_EE_SMB_PACKAGE_VERSION       1
+#define POPS_EE_SMB_FILE_COUNT            8
+#define POPS_EE_SMB_CODE_OFFSET           0x0100
 
 static u8 appPOPSEEResident[POPS_EE_RESIDENT_SIZE] __attribute__((aligned(64)));
+
+extern const u8 appPOPSSMBVFSStart[];
+extern const u8 appPOPSSMBVFSOpen[];
+extern const u8 appPOPSSMBVFSClose[];
+extern const u8 appPOPSSMBVFSRead[];
+extern const u8 appPOPSSMBVFSLseek[];
+extern const u8 appPOPSSMBVFSEnd[];
 
 /* 该跳板在POPStarter完成解压后修正其固定地址IRX分支中的目标指针。 */
 static const u32 appPOPSEETrampoline[] = {
@@ -88,10 +101,28 @@ typedef struct
     u32 checksum;
 } pops_boot_mailbox_t;
 
+typedef struct
+{
+    u32 nameOffset;
+    u32 dataOffset;
+    u32 size;
+    u32 cursor;
+} pops_smb_vfs_entry_t;
+
+typedef struct
+{
+    u32 magic;
+    u32 version;
+    u32 fileCount;
+    u32 totalSize;
+    pops_smb_vfs_entry_t entries[POPS_EE_SMB_FILE_COUNT];
+} pops_smb_vfs_header_t;
+
 typedef char pops_boot_mailbox_size_must_be_272[(sizeof(pops_boot_mailbox_t) == 272) ? 1 : -1];
 typedef char pops_ee_mailbox_must_fit[(sizeof(pops_boot_mailbox_t) <= POPS_EE_TRAMPOLINE_OFFSET) ? 1 : -1];
 typedef char pops_ee_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + sizeof(appPOPSEETrampoline) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
 typedef char pops_ee_copy_table_must_fit[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
+typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
 static int appIsPOPSLauncher(const app_info_t *app)
 {
@@ -141,6 +172,148 @@ static void appPOPSWriteU32(u8 *buffer, unsigned int offset, u32 value)
     memcpy(buffer + offset, &value, sizeof(value));
 }
 
+static unsigned int appPOPSAlign16(unsigned int value)
+{
+    return (value + 15) & ~15;
+}
+
+static u32 appPOPSMIPSJump(unsigned int address)
+{
+    return 0x08000000 | ((address >> 2) & 0x03FFFFFF);
+}
+
+static int appPOPSBuildSMBTrampoline(void)
+{
+    static const unsigned int patchOffsets[] = {0x0000, 0x0060, 0x0090, 0x00D0};
+    const u8 *handlers[] = {
+        appPOPSSMBVFSOpen,
+        appPOPSSMBVFSClose,
+        appPOPSSMBVFSRead,
+        appPOPSSMBVFSLseek};
+    const unsigned int codeSize = appPOPSSMBVFSEnd - appPOPSSMBVFSStart;
+    u32 *code = (u32 *)(appPOPSEEResident + POPS_EE_TRAMPOLINE_OFFSET);
+    unsigned int target, jump;
+    int i, count;
+
+    count = 0;
+    code[count++] = 0x3C080088; // lui t0,0x0088
+    code[count++] = 0x2508C390; // addiu t0,t0,-15472
+
+    for (i = 0; i < 4; i++) {
+        unsigned int handlerOffset = handlers[i] - appPOPSSMBVFSStart;
+
+        if (handlerOffset >= codeSize)
+            return -1;
+
+        target = POPS_EE_SMB_PACKAGE_ADDRESS + POPS_EE_SMB_CODE_OFFSET + handlerOffset;
+        jump = appPOPSMIPSJump(target);
+        code[count++] = 0x3C090000 | (jump >> 16);                         // lui t1,高16位
+        code[count++] = 0x35290000 | (jump & 0xFFFF);                     // ori t1,t1,低16位
+        code[count++] = 0xAD090000 | (patchOffsets[i] & 0xFFFF);           // sw t1,偏移(t0)
+        code[count++] = 0xAD000000 | ((patchOffsets[i] + 4) & 0xFFFF);     // sw zero,偏移+4(t0)
+    }
+
+    code[count++] = 0x0000000F; // sync
+    code[count++] = 0x3C080087; // lui t0,0x0087
+    code[count++] = 0x01000008; // jr t0
+    code[count++] = 0x00000000;
+
+    return count * sizeof(*code) <= POPS_EE_COPY_TABLE_OFFSET - POPS_EE_TRAMPOLINE_OFFSET ? 0 : -1;
+}
+
+static void *appPOPSBuildSMBPackage(unsigned int *packageSize)
+{
+    static const char *names[POPS_EE_SMB_FILE_COUNT] = {
+        "IPCONFIG.DAT",
+        "SMBCONFIG.DAT",
+        "poweroff.irx",
+        "ps2dev9.irx",
+        "smsutils.irx",
+        "ps2ip.irx",
+        "ps2smap.irx",
+        "smbman.irx"};
+    char ipconfig[48], smbconfig[144];
+    const void *buffers[POPS_EE_SMB_FILE_COUNT];
+    int sizes[POPS_EE_SMB_FILE_COUNT];
+    pops_smb_vfs_header_t *header;
+    unsigned int codeSize, offset, dataOffset, totalSize;
+    u8 *package;
+    int ipconfigSize, smbconfigSize;
+    int i;
+
+    if (buildPopstarterSMBConfigs(ipconfig, sizeof(ipconfig), &ipconfigSize,
+                                  smbconfig, sizeof(smbconfig), &smbconfigSize) < 0)
+        return NULL;
+
+    buffers[0] = ipconfig;
+    buffers[1] = smbconfig;
+    buffers[2] = popstarter_smb_poweroff_irx;
+    buffers[3] = popstarter_smb_ps2dev9_irx;
+    buffers[4] = popstarter_smb_smsutils_irx;
+    buffers[5] = popstarter_smb_ps2ip_irx;
+    buffers[6] = popstarter_smb_ps2smap_irx;
+    buffers[7] = popstarter_smb_smbman_irx;
+    sizes[0] = ipconfigSize;
+    sizes[1] = smbconfigSize;
+    sizes[2] = size_popstarter_smb_poweroff_irx;
+    sizes[3] = size_popstarter_smb_ps2dev9_irx;
+    sizes[4] = size_popstarter_smb_smsutils_irx;
+    sizes[5] = size_popstarter_smb_ps2ip_irx;
+    sizes[6] = size_popstarter_smb_ps2smap_irx;
+    sizes[7] = size_popstarter_smb_smbman_irx;
+
+    codeSize = appPOPSSMBVFSEnd - appPOPSSMBVFSStart;
+    if (codeSize == 0 || POPS_EE_SMB_CODE_OFFSET + codeSize > POPS_EE_SMB_PACKAGE_CAPACITY)
+        return NULL;
+
+    offset = appPOPSAlign16(POPS_EE_SMB_CODE_OFFSET + codeSize);
+    for (i = 0; i < POPS_EE_SMB_FILE_COUNT; i++)
+        offset += strlen(names[i]) + 1;
+
+    dataOffset = appPOPSAlign16(offset);
+    totalSize = dataOffset;
+    for (i = 0; i < POPS_EE_SMB_FILE_COUNT; i++) {
+        totalSize = appPOPSAlign16(totalSize);
+        totalSize += sizes[i];
+    }
+    totalSize = appPOPSAlign16(totalSize);
+    if (totalSize > POPS_EE_SMB_PACKAGE_CAPACITY)
+        return NULL;
+
+    package = memalign(64, totalSize);
+    if (!package)
+        return NULL;
+    memset(package, 0, totalSize);
+
+    header = (pops_smb_vfs_header_t *)package;
+    header->magic = POPS_EE_SMB_PACKAGE_MAGIC;
+    header->version = POPS_EE_SMB_PACKAGE_VERSION;
+    header->fileCount = POPS_EE_SMB_FILE_COUNT;
+    header->totalSize = totalSize;
+    memcpy(package + POPS_EE_SMB_CODE_OFFSET, appPOPSSMBVFSStart, codeSize);
+
+    offset = appPOPSAlign16(POPS_EE_SMB_CODE_OFFSET + codeSize);
+    for (i = 0; i < POPS_EE_SMB_FILE_COUNT; i++) {
+        unsigned int nameSize = strlen(names[i]) + 1;
+
+        header->entries[i].nameOffset = offset;
+        memcpy(package + offset, names[i], nameSize);
+        offset += nameSize;
+    }
+
+    offset = dataOffset;
+    for (i = 0; i < POPS_EE_SMB_FILE_COUNT; i++) {
+        offset = appPOPSAlign16(offset);
+        header->entries[i].dataOffset = offset;
+        header->entries[i].size = sizes[i];
+        memcpy(package + offset, buffers[i], sizes[i]);
+        offset += sizes[i];
+    }
+
+    *packageSize = totalSize;
+    return package;
+}
+
 static void *appPOPSStageIRX(const void *irx, int size)
 {
     u8 *staged;
@@ -173,7 +346,19 @@ static const void *appPOPSGetBDMDriver(int deviceType, int *size)
     return NULL;
 }
 
-static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox)
+static void appPOPSPatchOuterELF(u8 *patchedELF)
+{
+    /* POPStarter外层解压后不得清除EE常驻包所在的两个槽位。 */
+    appPOPSWriteU32(patchedELF, 0x0434, 0x3C04001C);
+    appPOPSWriteU32(patchedELF, 0x0438, 0x3C0601E3);
+    appPOPSWriteU32(patchedELF, 0x0444, 0x34840000);
+    appPOPSWriteU32(patchedELF, 0x0450, 0x34C63190);
+
+    /* 解压完成后先进入低端常驻跳板，再执行内层入口。 */
+    appPOPSWriteU32(patchedELF, 0x28B54, 0x08025080);
+}
+
+static void *appPreparePOPSBDMEEInjection(const pops_boot_mailbox_t *mailbox)
 {
     elf_loader_resident_copy_table_t *copyTable;
     const void *driver;
@@ -199,14 +384,7 @@ static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox)
     /* 内嵌资源与补丁版本由构建保证，运行时只处理内存分配失败。 */
     memcpy(patchedELF, popstarter_elf, size_popstarter_elf);
 
-    /* 缩小外层清零范围，保留两个各256 KiB的IRX槽位。 */
-    appPOPSWriteU32(patchedELF, 0x0434, 0x3C04001C);
-    appPOPSWriteU32(patchedELF, 0x0438, 0x3C0601E3);
-    appPOPSWriteU32(patchedELF, 0x0444, 0x34840000);
-    appPOPSWriteU32(patchedELF, 0x0450, 0x34C63190);
-
-    /* 解压完成后先进入低端常驻跳板，再执行内层入口。 */
-    appPOPSWriteU32(patchedELF, 0x28B54, 0x08025080);
+    appPOPSPatchOuterELF(patchedELF);
 
     memset(appPOPSEEResident, 0, sizeof(appPOPSEEResident));
     memcpy(appPOPSEEResident, mailbox, sizeof(*mailbox));
@@ -226,6 +404,52 @@ static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox)
     copyTable->checksum = appPOPSChecksum(copyTable, sizeof(*copyTable) - sizeof(copyTable->checksum));
 
     return patchedELF;
+}
+
+static void *appPreparePOPSSMBEEInjection(const pops_boot_mailbox_t *mailbox)
+{
+    elf_loader_resident_copy_table_t *copyTable;
+    unsigned int packageSize;
+    u8 *patchedELF;
+    void *package;
+
+    package = appPOPSBuildSMBPackage(&packageSize);
+    patchedELF = malloc(size_popstarter_elf);
+    if (!package || !patchedELF) {
+        free(package);
+        free(patchedELF);
+        return NULL;
+    }
+
+    memcpy(patchedELF, popstarter_elf, size_popstarter_elf);
+    appPOPSPatchOuterELF(patchedELF);
+
+    memset(appPOPSEEResident, 0, sizeof(appPOPSEEResident));
+    memcpy(appPOPSEEResident, mailbox, sizeof(*mailbox));
+    if (appPOPSBuildSMBTrampoline() < 0) {
+        free(package);
+        free(patchedELF);
+        return NULL;
+    }
+
+    copyTable = (elf_loader_resident_copy_table_t *)(appPOPSEEResident + POPS_EE_COPY_TABLE_OFFSET);
+    copyTable->magic = ELF_LOADER_RESIDENT_COPY_MAGIC;
+    copyTable->version = ELF_LOADER_RESIDENT_COPY_VERSION;
+    copyTable->count = 1;
+    copyTable->entries[0].source = package;
+    copyTable->entries[0].destination = (void *)POPS_EE_SMB_PACKAGE_ADDRESS;
+    copyTable->entries[0].size = packageSize;
+    copyTable->checksum = appPOPSChecksum(copyTable, sizeof(*copyTable) - sizeof(copyTable->checksum));
+
+    return patchedELF;
+}
+
+static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox, int mode)
+{
+    if (mode == ETH_MODE)
+        return appPreparePOPSSMBEEInjection(mailbox);
+
+    return appPreparePOPSBDMEEInjection(mailbox);
 }
 
 static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *mailbox)
@@ -810,10 +1034,12 @@ static void appPreparePOPSLauncher(void)
     mode = oplPath2Mode(appsList[appPOPSPrepareID].path);
     driver = NULL;
     driverSize = 0;
-    if (mode >= BDM_MODE && mode <= BDM_MODE4 &&
+    useEEInjection = mode == ETH_MODE;
+    if (!useEEInjection && mode >= BDM_MODE && mode <= BDM_MODE4 &&
         appBuildPOPSBootMailbox(&appsList[appPOPSPrepareID], &bootMailbox) == 0)
         driver = appPOPSGetBDMDriver(bootMailbox.deviceType, &driverSize);
-    useEEInjection = driver != NULL;
+    if (!useEEInjection)
+        useEEInjection = driver != NULL;
 
     /* 只有EE注入无法使用时才写入记忆卡，避免正常BDM启动继续依赖外部文件。 */
     if (useEEInjection)
@@ -937,8 +1163,12 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         useEEInjection = 0;
         if (appBuildPOPSBootMailbox(&appsList[id], &bootMailbox) < 0) {
             memset(&bootMailbox, 0, sizeof(bootMailbox));
-        } else if (appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY) {
-            launchELF = appPreparePOPSEEInjection(&bootMailbox);
+        }
+
+        /* SMB内存包不依赖BDM邮箱；即使邮箱不可用，也必须继续执行SMB注入。 */
+        if ((mode == ETH_MODE || bootMailbox.magic == POPS_BOOT_MAILBOX_MAGIC) &&
+            (appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY)) {
+            launchELF = appPreparePOPSEEInjection(&bootMailbox, mode);
             if (launchELF) {
                 residentData = appPOPSEEResident;
                 residentSize = sizeof(appPOPSEEResident);
