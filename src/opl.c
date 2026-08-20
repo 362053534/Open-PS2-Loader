@@ -333,6 +333,18 @@ static void itemExecSelect(struct menu_item *curMenu)
     }   
 }
 
+static void retryBDMErrors(void)
+{
+    unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
+
+    if (!retryTypes || fileXioDevctl("mass:", USBMASS_DEVCTL_RESET_PROBE, &retryTypes, sizeof(retryTypes), NULL, 0) != 0) {
+        bdmManualTrigger = 0;
+        return;
+    }
+
+    reFindBDM();
+}
+
 static void itemExecRefresh(struct menu_item *curMenu)
 {
     unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
@@ -344,10 +356,9 @@ static void itemExecRefresh(struct menu_item *curMenu)
     }
 
     if (retryTypes && gBDMStartMode != START_MODE_DISABLED) {
-        if (fileXioDevctl("mass:", USBMASS_DEVCTL_RESET_PROBE, &retryTypes, sizeof(retryTypes), NULL, 0) == 0) {
-            bdmManualTrigger = 1;
-            reFindBDM();
-        }
+        bdmManualTrigger = 1;
+        if (ioPutRequestUnique(IO_CUSTOM_SIMPLEACTION, &retryBDMErrors) != IO_OK)
+            bdmManualTrigger = 0;
         sfxPlay(SFX_CONFIRM);
         return;
     }
