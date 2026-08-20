@@ -364,7 +364,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
             snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, filenames[i]);
             fd = open(path, O_RDONLY);
             if (fd >= 0) {
-                if (!strcmp(filenames[i], POPSTARTER_SMB_SMBMAN_FILENAME) && getFileSize(fd) != sizes[i]) {
+                if ((!strcmp(filenames[i], POPSTARTER_SMB_PS2IP_FILENAME) || !strcmp(filenames[i], POPSTARTER_SMB_SMBMAN_FILENAME)) && getFileSize(fd) != sizes[i]) {
                     close(fd);
                     if (popstarterWriteDriver(path, buffers[i], sizes[i], 0) < 0)
                         result = -1;
