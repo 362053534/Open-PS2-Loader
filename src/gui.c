@@ -1741,7 +1741,7 @@ void guiMainLoop(void)
             }
 
             if (unavailableDevices[0]) {
-                snprintf(deviceAlertMessage, sizeof(deviceAlertMessage), english ? "%s detection timed out. Device compatibility issue." : "%s 检测超时，设备兼容性存在问题", unavailableDevices);
+                snprintf(deviceAlertMessage, sizeof(deviceAlertMessage), english ? "%s detection timed out. Device compatibility issue." : "%s 检测超时，可使用“手动刷新”重试", unavailableDevices);
                 guiMsgBox(deviceAlertMessage, 0, NULL);
             }
         }

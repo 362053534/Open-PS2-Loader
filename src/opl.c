@@ -335,6 +335,23 @@ static void itemExecSelect(struct menu_item *curMenu)
 
 static void itemExecRefresh(struct menu_item *curMenu)
 {
+    unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
+
+    // 错误设备重试期间禁止重复刷新，避免重置正在执行的初始化流程。
+    if (bdmManualTrigger) {
+        sfxPlay(SFX_CONFIRM);
+        return;
+    }
+
+    if (retryTypes && gBDMStartMode != START_MODE_DISABLED) {
+        if (fileXioDevctl("mass:", USBMASS_DEVCTL_RESET_PROBE, &retryTypes, sizeof(retryTypes), NULL, 0) == 0) {
+            bdmManualTrigger = 1;
+            reFindBDM();
+        }
+        sfxPlay(SFX_CONFIRM);
+        return;
+    }
+
     //// 只刷新当前页面
     //item_list_t *support = curMenu->userdata;
     //if (support && support->enabled) {
