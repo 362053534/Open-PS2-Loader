@@ -134,6 +134,8 @@ static int GetStartupExecName(const char *path, char *filename, int maxlength)
     }
 }
 
+static int GetStartupExecNameFromISO(const char *path, char *filename, int maxlength);
+
 static void freeISOGameListCache(struct game_cache_list *cache);
 
 static int loadISOGameListCache(const char *path, struct game_cache_list *cache, char type)
@@ -440,11 +442,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                     }
                 }
             } else {
-                // need to mount and read SYSTEM.CNF
                 char startup[GAME_STARTUP_MAX];
                 int reopenApaTxt = 0;
+                int MountFD = -1;
 
-                // APA PFS：挂载前临时关闭同分区 txt，避免多开导致挂载失败；BDM/SMB 不改
+                // APA PFS：读取镜像前临时关闭同分区 txt，避免多开导致失败；BDM/SMB 不改
                 if (file && pFile && txtPath && strncmp(path, "pfs", 3) == 0) {
                     fclose(file);
                     *pFile = NULL;
@@ -452,18 +454,20 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                     reopenApaTxt = 1;
                 }
 
-                int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                if (GetStartupExecNameFromISO(fullpath, startup, GAME_STARTUP_MAX - 1) != 0) {
+                    MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
 
-                if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                    fileXioUmount("iso:");
-                    // 挂载失败也要重开，保证后续缓存回填/追加仍能写 txt
-                    if (reopenApaTxt) {
-                        *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
-                        file = *pFile;
+                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                        fileXioUmount("iso:");
+                        // 挂载失败也要重开，保证后续缓存回填/追加仍能写 txt
+                        if (reopenApaTxt) {
+                            *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
+                            file = *pFile;
+                        }
+                        *glist = next->next;
+                        free(next);
+                        continue;
                     }
-                    *glist = next->next;
-                    free(next);
-                    continue;
                 }
                 strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
                 game->startup[GAME_STARTUP_MAX - 1] = '\0';
@@ -471,7 +475,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                 game->name[NameLen] = '\0';
                 strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                fileXioUmount("iso:");
+                if (MountFD >= 0)
+                    fileXioUmount("iso:");
                 if (reopenApaTxt) {
                     *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
                     file = *pFile;
@@ -1136,6 +1141,88 @@ static int ProbeZISO(int fd)
     } else {
         return 0;
     }
+}
+
+static int GetStartupExecNameFromISO(const char *path, char *filename, int maxlength)
+{
+    u32 rootLBA, rootSize, sector;
+    int fd, compressed, result = -1;
+
+    if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
+        return -1;
+
+    compressed = ProbeZISO(fd);
+    if (compressed) {
+        if (ziso_read_sector(IOBuffer, 16, 1) != 1)
+            goto end;
+    } else {
+        if (lseek64(fd, 16 * 2048, SEEK_SET) != 16 * 2048 || read(fd, IOBuffer, sizeof(IOBuffer)) != sizeof(IOBuffer))
+            goto end;
+    }
+
+    if (IOBuffer[0] != 1 || strncmp((char *)&IOBuffer[1], "CD001", 5) || IOBuffer[156] < 34)
+        goto end;
+
+    memcpy(&rootLBA, &IOBuffer[158], sizeof(rootLBA));
+    memcpy(&rootSize, &IOBuffer[166], sizeof(rootSize));
+
+    for (sector = 0; sector < (rootSize + 2047) / 2048; sector++) {
+        u32 position = 0;
+        u32 sectorSize = rootSize - sector * 2048;
+
+        if (sectorSize > 2048)
+            sectorSize = 2048;
+
+        if (compressed) {
+            if (ziso_read_sector(IOBuffer, rootLBA + sector, 1) != 1)
+                goto end;
+        } else {
+            u64 offset = (u64)(rootLBA + sector) * 2048;
+            if (lseek64(fd, offset, SEEK_SET) != offset || read(fd, IOBuffer, sizeof(IOBuffer)) != sizeof(IOBuffer))
+                goto end;
+        }
+
+        while (position < sectorSize) {
+            const u8 recordLength = IOBuffer[position];
+            const u8 *name;
+            u8 nameLength;
+            int valid = 1;
+            int i;
+
+            if (!recordLength)
+                break;
+            if (recordLength < 34 || position + recordLength > sectorSize)
+                goto end;
+
+            nameLength = IOBuffer[position + 32];
+            name = &IOBuffer[position + 33];
+            if (!(IOBuffer[position + 25] & 2) && nameLength >= GAME_STARTUP_MAX - 1 &&
+                33 + nameLength <= recordLength &&
+                (nameLength == GAME_STARTUP_MAX - 1 || name[GAME_STARTUP_MAX - 1] == ';')) {
+                for (i = 0; i < 4; i++) {
+                    if (!((name[i] >= 'A' && name[i] <= 'Z') || (name[i] >= 'a' && name[i] <= 'z'))) {
+                        valid = 0;
+                        break;
+                    }
+                }
+
+                if (valid && name[4] == '_' && name[8] == '.' &&
+                    name[5] >= '0' && name[5] <= '9' && name[6] >= '0' && name[6] <= '9' && name[7] >= '0' && name[7] <= '9' &&
+                    name[9] >= '0' && name[9] <= '9' && name[10] >= '0' && name[10] <= '9') {
+                    memcpy(filename, name, GAME_STARTUP_MAX - 1);
+                    filename[GAME_STARTUP_MAX - 1] = '\0';
+                    result = 0;
+                    goto end;
+                }
+            }
+
+            position += recordLength;
+        }
+    }
+
+end:
+    close(fd);
+    return result;
 }
 
 u32 sbGetISO9660MaxLBA(const char *path)
