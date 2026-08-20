@@ -348,6 +348,11 @@ static void CheckLinkStatus(struct SmapDriverData *SmapDrivPrivData)
     }
 }
 
+int SMAPGetLinkStatus(void)
+{
+    return SmapDriverData.SmapIsInitialized && SmapDriverData.LinkStatus;
+}
+
 // This timer callback starts the Ethernet link check event.
 static unsigned int LinkCheckTimerCB(struct SmapDriverData *SmapDrivPrivData)
 {

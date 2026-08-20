@@ -10,7 +10,16 @@
 #include "device.h"
 
 #define SMB_RECONNECT_INTERVAL_US 2000000
+#define SMB_RECOVERY_WAIT_US      100000
+#define SMB_RECOVERY_GRACE_TICKS  50
 #define SMB_ECHO_IDLE_TICKS       60
+#define SMB_CONNECTION_WAIT_LINK  3
+#define SMB_CONNECTION_RETRY_WAIT 4
+
+#define SMB_RECONNECT_IDLE    0
+#define SMB_RECONNECT_PENDING 1
+#define SMB_RECONNECT_SUCCESS 2
+#define SMB_RECONNECT_FAILED  3
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -36,9 +45,11 @@ static u32 ServerCapabilities;
 static OplSmbPwHashFunc_t smbHashCallback;
 static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
+static volatile int smbReconnectResult;
 static volatile int smbTrayOpen;
 static volatile unsigned int smbIdleTicks;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
+static int (*pSmapGetLinkStatus)(void);
 
 static int smbOpenGame(void);
 static void smbReconnectThread(void *arg);
@@ -61,6 +72,9 @@ static void ps2ip_init(void)
 
     if (getModInfo("netman\0\0", &info))
         pNetManGetGlobalNetIFLinkState = info.exports[14];
+
+    if (getModInfo("smaplink", &info))
+        pSmapGetLinkStatus = info.exports[4];
 }
 
 static int smbOpenGame(void)
@@ -120,6 +134,7 @@ static void smbReconnectThread(void *arg)
                     smbIdleTicks = 0;
                 } else if (result < 0) {
                     smbIdleTicks = 0;
+                    smbReconnectResult = SMB_RECONNECT_PENDING;
                     smbConnectionState = 2;
                 }
             }
@@ -138,22 +153,46 @@ static void smbReconnectThread(void *arg)
             }
         }
 
+        if (smbReconnectEnabled && smbConnectionState == SMB_CONNECTION_WAIT_LINK) {
+            result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
+                                         (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
+            if (result) {
+                smbReconnectResult = SMB_RECONNECT_PENDING;
+                smbConnectionState = 0;
+            }
+        }
+
+        if (smbReconnectEnabled && smbConnectionState == SMB_CONNECTION_RETRY_WAIT) {
+            result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
+                                         (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
+            if (result) {
+                smbReconnectResult = SMB_RECONNECT_PENDING;
+                smbConnectionState = 0;
+            } else
+                smbConnectionState = SMB_CONNECTION_WAIT_LINK;
+        }
+
         if (smbReconnectEnabled && smbConnectionState == 0) {
+            smbReconnectResult = SMB_RECONNECT_PENDING;
             smbConnectionState = 2;
 
             if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
-                smbOpenGame() > 0 && smbReconnectEnabled) {
+                smbOpenGame() > 0 && smbReconnectEnabled && smbConnectionState == 2) {
+                smbReconnectResult = SMB_RECONNECT_SUCCESS;
                 smbConnectionState = 1;
                 smbIdleTicks = 0;
-                if (smbTrayOpen) {
-                    sceCdTrayReq(SCECdTrayClose, NULL);
-                    smbTrayOpen = 0;
-                }
                 continue;
             }
 
             smb_Disconnect();
-            smbConnectionState = 0;
+            if (smbReconnectEnabled) {
+                smbReconnectResult = SMB_RECONNECT_FAILED;
+                if (smbConnectionState != SMB_CONNECTION_WAIT_LINK) {
+                    result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
+                                                 (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
+                    smbConnectionState = result ? SMB_CONNECTION_RETRY_WAIT : SMB_CONNECTION_WAIT_LINK;
+                }
+            }
         }
 
         DelayThread(SMB_RECONNECT_INTERVAL_US);
@@ -198,11 +237,13 @@ int DeviceReady(void)
 void DeviceFSInit(void)
 {
     smbReconnectEnabled = 1;
+    smbReconnectResult = SMB_RECONNECT_IDLE;
     smbIdleTicks = 0;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
     } else {
         smb_Disconnect();
+        smbReconnectResult = SMB_RECONNECT_PENDING;
         smbConnectionState = 0;
     }
 }
@@ -215,6 +256,7 @@ void DeviceLock(void)
 void DeviceUnmount(void)
 {
     smbReconnectEnabled = 0;
+    smbReconnectResult = SMB_RECONNECT_IDLE;
     smbIdleTicks = 0;
     if (smbConnectionState == 1)
         smb_CloseAll();
@@ -232,6 +274,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     register int i, esc_flag = 0, result, bytes_to_read;
     u8 *p = (u8 *)buffer;
     int rv = SCECdErNO;
+    unsigned int recoveryTicks = 0;
 
     lbound = 0;
     ubound = (cdvdman_settings.common.NumParts > 1) ? 0x80000 : 0xFFFFFFFF;
@@ -251,8 +294,35 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
             bytes_to_read = sectors_to_read * 2048;
             for (;;) {
-                while (smbReconnectEnabled && smbConnectionState != 1)
-                    DelayThread(100000);
+                while (smbReconnectEnabled && smbConnectionState != 1) {
+                    DelayThread(SMB_RECOVERY_WAIT_US);
+
+                    if (!smbReconnectEnabled)
+                        break;
+
+                    if (smbReconnectResult == SMB_RECONNECT_FAILED) {
+                        recoveryTicks = 0;
+                        result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
+                                                     (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
+                        if (!result) {
+                            if (!smbTrayOpen) {
+                                smbTrayOpen = 1;
+                                sceCdTrayReq(SCECdTrayOpen, NULL);
+                            }
+                            smbConnectionState = SMB_CONNECTION_WAIT_LINK;
+                        }
+                    } else if (smbReconnectResult == SMB_RECONNECT_PENDING && ++recoveryTicks >= SMB_RECOVERY_GRACE_TICKS) {
+                        result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
+                                                     (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
+                        if (!result) {
+                            if (!smbTrayOpen) {
+                                smbTrayOpen = 1;
+                                sceCdTrayReq(SCECdTrayOpen, NULL);
+                            }
+                            smbConnectionState = SMB_CONNECTION_WAIT_LINK;
+                        }
+                    }
+                }
 
                 if (!smbReconnectEnabled) {
                     result = -1;
@@ -261,19 +331,21 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
                 result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
                 if (result >= 0) {
+                    smbReconnectResult = SMB_RECONNECT_IDLE;
                     smbIdleTicks = 0;
+                    recoveryTicks = 0;
+                    if (smbTrayOpen) {
+                        sceCdTrayReq(SCECdTrayClose, NULL);
+                        smbTrayOpen = 0;
+                    }
                     break;
                 }
 
                 smbIdleTicks = 0;
 
-                // 只在真实读失败后查询物理链路，避免后台轮询干扰正常流式读取。
-                if (pNetManGetGlobalNetIFLinkState && !pNetManGetGlobalNetIFLinkState() && !smbTrayOpen) {
-                    smbTrayOpen = 1;
-                    sceCdTrayReq(SCECdTrayOpen, NULL);
-                }
-
                 // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
+                smbReconnectResult = SMB_RECONNECT_PENDING;
+                recoveryTicks = 0;
                 smbConnectionState = 2;
             }
 
