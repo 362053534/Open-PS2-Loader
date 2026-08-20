@@ -179,6 +179,9 @@ static int popstarterGetDriverState(int slot, int usbhdfsdSize, int mode)
     driversFound = 0;
     driversCurrent = 0;
 
+    if (mode == HDD_MODE)
+        return POPSTARTER_DRIVERS_CURRENT;
+
     if (mode == ETH_MODE) {
         const char *filenames[] = {
             POPSTARTER_SMB_POWEROFF_FILENAME,
@@ -197,28 +200,10 @@ static int popstarterGetDriverState(int slot, int usbhdfsdSize, int mode)
             }
         }
 
-        driversCurrent = driversFound;
-
-        snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
-        state = popstarterCheckDriver(path, size_popstarter_usbd_irx);
-        if (state > 0) {
-            driversFound++;
-            if (state == 2)
-                driversCurrent++;
-        }
-
-        snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBHDFSD_FILENAME);
-        state = popstarterCheckDriver(path, usbhdfsdSize);
-        if (state > 0) {
-            driversFound++;
-            if (state == 2)
-                driversCurrent++;
-        }
-
         if (driversFound == 0)
             return POPSTARTER_DRIVERS_NONE;
 
-        return driversFound == 8 && driversCurrent == 8 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
+        return driversFound == 6 ? POPSTARTER_DRIVERS_CURRENT : POPSTARTER_DRIVERS_INCOMPLETE;
     }
 
     snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
@@ -400,6 +385,7 @@ static int popstarterDeployDrivers(int slot, const void *usbhdfsdBuffer, int usb
         if (popstarterWriteDriver(path, smbconfig, smbconfigSize, 1) < 0)
             result = -1;
 
+        return result;
     }
 
     snprintf(path, sizeof(path), "mc%d:%s/%s", slot, POPSTARTER_DRIVER_DIR, POPSTARTER_USBD_FILENAME);
@@ -420,7 +406,10 @@ int installPopstarterDrivers(int mode, int bdmDeviceType)
     const void *usbhdfsdBuffer;
     int usbhdfsdSize;
 
-    if (bdmDeviceType == BDM_TYPE_ATA) {
+    if (mode == ETH_MODE) {
+        usbhdfsdBuffer = NULL;
+        usbhdfsdSize = 0;
+    } else if (bdmDeviceType == BDM_TYPE_ATA) {
         usbhdfsdBuffer = popstarter_bdmhdd_irx;
         usbhdfsdSize = size_popstarter_bdmhdd_irx;
     } else if (bdmDeviceType == BDM_TYPE_SDC) {

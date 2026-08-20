@@ -455,25 +455,10 @@ static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox, int m
 static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *mailbox)
 {
     int deviceType;
-    int mode;
 
     memset(mailbox, 0, sizeof(*mailbox));
 
-    mode = oplPath2Mode(app->path);
     deviceType = appGetPOPSBDMDeviceType(app);
-    if (deviceType == BDM_TYPE_UNKNOWN) {
-        /* BDM模式拿不到类型属于来源损坏，交给驱动开放式回退。 */
-        if (mode >= BDM_MODE && mode <= BDM_MODE4)
-            return -1;
-
-        /* 非BDM模式的未知类型明确表示无需启动BDM硬件。 */
-        mailbox->magic = POPS_BOOT_MAILBOX_MAGIC;
-        mailbox->version = POPS_BOOT_MAILBOX_VERSION;
-        mailbox->deviceType = deviceType;
-        mailbox->checksum = appPOPSBootMailboxChecksum(mailbox);
-        return 0;
-    }
-
     if (deviceType < BDM_TYPE_USB || deviceType > BDM_TYPE_ATA)
         return -1;
 
@@ -1044,7 +1029,7 @@ static void appPreparePOPSLauncher(void)
     /* 只有EE注入无法使用时才写入记忆卡，避免正常BDM启动继续依赖外部文件。 */
     if (useEEInjection)
         appPOPSPrepareResult |= APP_POPS_PREPARE_EE_READY;
-    else if (gAutoDetectPS1Apps &&
+    else if (gAutoDetectPS1Apps && mode != HDD_MODE &&
              installPopstarterDrivers(mode, appGetPOPSBDMDeviceType(&appsList[appPOPSPrepareID])) < 0)
         appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 
@@ -1179,13 +1164,12 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         }
 
         /* 预检后若EE内存准备仍失败，必须在OPL退出前补装记忆卡驱动。 */
-        if ((appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY) && !useEEInjection &&
+        if (mode != HDD_MODE &&
+            (appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY) && !useEEInjection &&
             installPopstarterDrivers(mode, appGetPOPSBDMDeviceType(&appsList[id])) < 0)
             appPOPSPrepareResult |= APP_POPS_PREPARE_DRIVERS_FAILED;
 
-        /* APA HDD不依赖记忆卡中的外部驱动，修补失败不能阻止启动。 */
-        if (mode != HDD_MODE &&
-            (appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
+        if ((appPOPSPrepareResult & APP_POPS_PREPARE_DRIVERS_FAILED) &&
             !guiMsgBox("无法注入驱动，请检查记忆卡！是否强行启动？", 1, NULL)) {
             return;
         }
