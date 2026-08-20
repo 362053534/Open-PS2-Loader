@@ -1051,7 +1051,60 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         const void *residentData;
         unsigned int residentSize;
         int useEEInjection;
-        const char *cheats;
+        const char *cheats =
+            "HDTVFIX / 强制使用480i输出，解决部分液晶电视不支持240p导致的黑屏或绿屏。\r\n"
+            "480p / 强制使用480p输出，部分游戏可能不兼容。\r\n"
+            "\r\n"
+            "COMPATIBILITY_0x01 / 修复部分游戏缺少音乐或语音的问题。\r\n"
+            "COMPATIBILITY_0x02 / 模式0x01的变体，并避免破坏部分游戏的MDEC过场动画。\r\n"
+            "COMPATIBILITY_0x03 / 模式0x01无效时可尝试的另一种CD状态修复。\r\n"
+            "COMPATIBILITY_0x04 / 修复部分游戏的卡顿、闪烁及其他兼容性问题。\r\n"
+            "COMPATIBILITY_0x05 / 主要用于修复PAL版《生化危机：导演剪辑版》的过场动画。\r\n"
+            "COMPATIBILITY_0x06 / 跳过BIOS OSD外壳及部分光盘检查，修复部分游戏启动时卡死。\r\n"
+            "COMPATIBILITY_0x07 / 修复部分游戏纹理缺失的问题。\r\n"
+            "\r\n"
+            "CODECACHE_ADDON_0 / 调整代码缓存机制，可修复部分游戏的卡顿或随机死机。\r\n"
+            "SUBCDSTATUS / 调整光驱子状态，作用类似兼容模式0x05。\r\n"
+            "FAKELC / 使用伪造的LibCrypt数据，绕过部分游戏的LibCrypt保护问题。\r\n"
+            "\r\n"
+            "NOPAL / 禁用POPStarter的自动PAL补丁，按POPS原生NTSC方式输出。\r\n"
+            "FORCEPAL / 强制启用PAL补丁和欧洲BIOS区域设置。\r\n"
+            "SMOOTH / 默认启用POPS纹理平滑。\r\n"
+            "\r\n"
+            "SCANLINES / 启用扫描线显示效果。\r\n"
+            "WIDESCREEN / 启用宽屏显示补丁，不会修正2D界面和背景。\r\n"
+            "ULTRA_WIDESCREEN / 启用比普通宽屏更宽的显示比例。\r\n"
+            "EYEFINITY / 启用超宽多屏风格显示比例。\r\n"
+            "\r\n"
+            "XPOS_0640 / 设置画面的水平位置，0640为参数示例。\r\n"
+            "YPOS_10 / 设置画面的垂直位置，10为参数示例。\r\n"
+            "DWSTRETCH_#### / 调整画面的水平拉伸宽度。\r\n"
+            "DWCROP_#### / 调整画面的水平裁切范围。\r\n"
+            "\r\n"
+            "MUTE_CDDA / 禁用游戏的CDDA音轨音乐。\r\n"
+            "MUTE_VAB / 禁用VAB、VAG等采样音频或音乐。\r\n"
+            "\r\n"
+            "SAFEMODE / 延迟启用RAW十六进制代码，降低游戏启动时崩溃的概率。\r\n"
+            "00507028 00000001 / 让手柄1始终启用震动。\r\n"
+            "005070B8 00000001 / 让手柄2始终启用震动。\r\n"
+            "\r\n"
+            "D2LS / 使用左摇杆模拟数字方向键，并保持数字控制模式。\r\n"
+            "D2LS_ALT / 左摇杆模拟数字方向键的替代模式，并保持模拟控制模式。\r\n"
+            "\r\n"
+            "NOVMC0 / 禁用第一个虚拟记忆卡插槽。\r\n"
+            "NOVMC1 / 禁用第二个虚拟记忆卡插槽。\r\n"
+            "\r\n"
+            "IGR0 / 按L1+L2+R1+R2+×+下打开IGR菜单。\r\n"
+            "IGR1 / 按START+SELECT打开IGR菜单。\r\n"
+            "IGR2 / 按L1+L2+R1+R2+START+SELECT打开IGR菜单。\r\n"
+            "IGR3 / 按L1+L2+R1+R2+×+下直接退出游戏，不显示IGR菜单。\r\n"
+            "IGR4 / 按START+SELECT直接退出游戏，不显示IGR菜单。\r\n"
+            "IGR5 / 按L1+L2+R1+R2+START+SELECT直接退出游戏，不显示IGR菜单。\r\n"
+            "NOIGR / 完全禁用游戏内重启和退出功能。\r\n"
+            "\r\n"
+            "CACHE1 / 将POPS读取缓存从16个扇区缩减为1个扇区，可修复部分动画卡死。\r\n"
+            "USBDELAY_# / 调整POPS的USB读取延迟；用于数据传输兼容，不影响设备识别。";
+        int enableHDTVFix;
         int mode;
 
         // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
@@ -1109,15 +1162,14 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             if (fd >= 0)
                 close(fd);
             else {
-                if (guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i (液晶)", "240p (CRT)", NULL))
-                    cheats = "$SAFEMODE\r\n$HDTVFIX\r\n480p";
-                else
-                    cheats = "$SAFEMODE\r\nHDTVFIX\r\n480p";
+                enableHDTVFix = guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i (液晶)", "240p (CRT)", NULL);
 
                 guiMsgBox("若黑屏，请删除 POPS/CHEATS.TXT 即可重新选择分辨率", 0, NULL);
 
                 fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
                 if (fd >= 0) {
+                    if (enableHDTVFix)
+                        write(fd, "$", 1);
                     write(fd, cheats, strlen(cheats));
                     close(fd);
                 }
