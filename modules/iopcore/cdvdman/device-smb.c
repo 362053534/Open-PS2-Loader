@@ -11,7 +11,6 @@
 
 #define SMB_RECONNECT_INTERVAL_US 2000000
 #define SMB_RECOVERY_WAIT_US      100000
-#define SMB_RECOVERY_GRACE_TICKS  50
 #define SMB_ECHO_IDLE_TICKS       60
 #define SMB_CONNECTION_WAIT_LINK  3
 #define SMB_CONNECTION_RETRY_WAIT 4
@@ -274,7 +273,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     register int i, esc_flag = 0, result, bytes_to_read;
     u8 *p = (u8 *)buffer;
     int rv = SCECdErNO;
-    unsigned int recoveryTicks = 0;
 
     lbound = 0;
     ubound = (cdvdman_settings.common.NumParts > 1) ? 0x80000 : 0xFFFFFFFF;
@@ -300,18 +298,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                     if (!smbReconnectEnabled)
                         break;
 
-                    if (smbReconnectResult == SMB_RECONNECT_FAILED) {
-                        recoveryTicks = 0;
-                        result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
-                                                     (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
-                        if (!result) {
-                            if (!smbTrayOpen) {
-                                smbTrayOpen = 1;
-                                sceCdTrayReq(SCECdTrayOpen, NULL);
-                            }
-                            smbConnectionState = SMB_CONNECTION_WAIT_LINK;
-                        }
-                    } else if (smbReconnectResult == SMB_RECONNECT_PENDING && ++recoveryTicks >= SMB_RECOVERY_GRACE_TICKS) {
+                    if (smbReconnectResult == SMB_RECONNECT_FAILED || smbReconnectResult == SMB_RECONNECT_PENDING) {
                         result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
                                                      (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
                         if (!result) {
@@ -333,7 +320,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 if (result >= 0) {
                     smbReconnectResult = SMB_RECONNECT_IDLE;
                     smbIdleTicks = 0;
-                    recoveryTicks = 0;
                     if (smbTrayOpen) {
                         sceCdTrayReq(SCECdTrayClose, NULL);
                         smbTrayOpen = 0;
@@ -345,7 +331,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
                 // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
                 smbReconnectResult = SMB_RECONNECT_PENDING;
-                recoveryTicks = 0;
                 smbConnectionState = 2;
             }
 
