@@ -111,6 +111,11 @@ static const u32 appPOPSHDDOPLTrampoline[] = {
     0x35290008, // ori t1,t1,8
     0xAD098B18, // sw t1,-29928(t0)
     0xAD008B1C, // sw zero,-29924(t0)
+    /* 仅为定位+OPL链路：保留POPStarter内部的参数、挂载及文件访问输出。 */
+    0x3C080087, // lui t0,0x0087
+    0x3C09AF80, // lui t1,0xAF80
+    0x352938B0, // ori t1,t1,0x38B0
+    0xAD090E10, // sw t1,0x0E10(t0)，禁止启动代码重新关闭内部输出
     0x0000000F, // sync
     0x3C080087, // lui t0,0x0087
     0x01000008, // jr t0
