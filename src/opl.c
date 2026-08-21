@@ -557,9 +557,7 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
             // ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-            if ((mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone) &&
-                !(mode == APP_MODE && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO && !mainScreenInitDone &&
-                  gBDMStartMode == START_MODE_AUTO && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)))
+            if (mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone)
                 menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
         }
     } else {
@@ -1112,7 +1110,7 @@ void menuDeferredUpdate(void *data)
             shouldAppsUpdate = 1;
 
             // 来源设备更新后重建自动识别的APPS列表。
-            if (mainScreenInitDone && gAutoDetectPS1Apps && gAPPStartMode != START_MODE_DISABLED &&
+            if (gAutoDetectPS1Apps && gAPPStartMode != START_MODE_DISABLED &&
                 list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
         }
@@ -1483,9 +1481,6 @@ int menuUpdateBDMSupport(void)
                     bdmListCheckedMask = 0;
                 else {
                     bdmStartupStage = BDM_STARTUP_COMPLETE;
-                    if (gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO &&
-                        list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
-                        appForceRefresh();
                     status |= BDM_STARTUP_STATUS_READY;
                 }
             }
