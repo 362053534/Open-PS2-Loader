@@ -1224,6 +1224,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         if (mode < 0)
             mode = APP_MODE;
+        if (appGetPOPSBDMDeviceType(&appsList[id]) == BDM_TYPE_SDC) {
+            char device[8];
+
+            snprintf(device, sizeof(device), "mass%d:", mode);
+            if (fileXioDevctl(device, USBMASS_DEVCTL_QUIESCE_MX4SIO, NULL, 0, NULL, 0) < 0) {
+                guiMsgBox("MX4SIO检测线程无法停止，已取消启动", 0, NULL);
+                return;
+            }
+        }
         if (gRememberLastPlayed) {
             configSetStr(configGetByType(CONFIG_LAST), "last_played", appsList[id].startup);
             saveConfig(CONFIG_LAST, 0);
