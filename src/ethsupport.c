@@ -68,6 +68,9 @@ static void ethSMBConnect(void)
     int echoResult = -1;
     int retryPS2 = !gPCUserName[0] && !gPCPassword[0];
 
+    memset(&logon, 0, sizeof(logon));
+    memset(&echo, 0, sizeof(echo));
+    memset(&openshare, 0, sizeof(openshare));
     gPCLoginUser[0] = '\0';
 
     if (gETHPrefix[0] != '\0')
@@ -163,13 +166,16 @@ static void ethSMBConnect(void)
         }
     }
 
-    // 判断是否存在ART2，提升图片读取效率
-    char art2Path[128];
-    snprintf(art2Path, sizeof(art2Path), "%sART2", ethPrefix);
-    DIR *art2Dir = opendir(art2Path);
-    artUseBuckets_SMB = art2Dir ? 1 : 0;
-    if (art2Dir)
-        closedir(art2Dir);
+    if (gNetworkStartup == 0) {
+        // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
+        char art2Path[128];
+        snprintf(art2Path, sizeof(art2Path), "%sART2", ethPrefix);
+        DIR *art2Dir = opendir(art2Path);
+        artUseBuckets_SMB = art2Dir ? 1 : 0;
+        if (art2Dir)
+            closedir(art2Dir);
+    } else
+        artUseBuckets_SMB = 0;
 }
 
 static int ethSMBDisconnect(void)
@@ -189,36 +195,19 @@ static int ethSMBDisconnect(void)
     return 0;
 }
 
-static void EthStatusCheckCb(s32 alarm_id, u16 time, void *common)
-{
-    iSignalSema(*(int *)common);
-}
-
 static int WaitValidNetState(int (*checkingFunction)(void))
 {
-    int SemaID, retry_cycles;
-    ee_sema_t SemaData;
+    int retry_cycles;
 
-    // Wait for a valid network status;
-    SemaData.option = SemaData.attr = 0;
-    SemaData.init_count = 0;
-    SemaData.max_count = 1;
-    if ((SemaID = CreateSema(&SemaData)) < 0)
-        return SemaID;
+    // 定时器回调丢失会让信号量永久等待，改用有限次数轮询保证初始化必定返回。
+    for (retry_cycles = 0; retry_cycles < 30; retry_cycles++) {
+        if (checkingFunction() != 0)
+            return 0;
 
-    for (retry_cycles = 0; checkingFunction() == 0; retry_cycles++) {
-        SetAlarm(1000 * rmGetHsync(), &EthStatusCheckCb, &SemaID);
-        WaitSema(SemaID);
-
-        if (retry_cycles >= 30) // 30s = 30*1000ms
-        {
-            DeleteSema(SemaID);
-            return -1;
-        }
+        usleep(1000000);
     }
 
-    DeleteSema(SemaID);
-    return 0;
+    return checkingFunction() != 0 ? 0 : -1;
 }
 
 static int ethWaitValidNetIFLinkState(void)
@@ -233,14 +222,27 @@ static int ethWaitValidDHCPState(void)
 
 static int ethInitApplyConfig(void)
 {
+    int retry_cycles;
+
     LOG("ETHSUPPORT ApplyConfig\n");
 
-    do {
+    for (retry_cycles = 0; retry_cycles < 30; retry_cycles++) {
         if (ethWaitValidNetIFLinkState() != 0) {
             gNetworkStartup = ERROR_ETH_LINK_FAIL;
             return ERROR_ETH_LINK_FAIL;
         }
-    } while (ethApplyNetIFConfig() != 0);
+
+        if (ethApplyNetIFConfig() == 0)
+            break;
+
+        // 链路模式应用失败时留出重试间隔，避免异常状态下无限占用后台线程。
+        usleep(100000);
+    }
+
+    if (retry_cycles >= 30) {
+        gNetworkStartup = ERROR_ETH_LINK_FAIL;
+        return ERROR_ETH_LINK_FAIL;
+    }
 
     // Before the network configuration is applied, wait for a valid link status.
     if (ethWaitValidNetIFLinkState() != 0) {
@@ -274,31 +276,30 @@ static void ethInitSMB(void)
 {
     int ret;
 
-    // WaitSema(ethInitSemaID);
+    WaitSema(ethInitSemaID);
     ret = ethInitApplyConfig();
-    // SignalSema(ethInitSemaID);
 
-    if (ret != 0) {
-        ethDisplayErrorStatus();
-        return;
+    if (ret == 0) {
+        // connect
+        ethSMBConnect();
+
+        if (gNetworkStartup == 0) {
+            // update Themes
+            char path[256];
+            sprintf(path, "%sTHM", ethPrefix);
+            thmAddElements(path, "\\", 1);
+
+            sprintf(path, "%sLNG", ethPrefix);
+            lngAddLanguages(path, "\\", ethGameList.mode);
+
+            sbCreateFolders(ethPrefix, 1);
+        }
     }
 
-    // connect
-    ethSMBConnect();
+    SignalSema(ethInitSemaID);
 
-    if (gNetworkStartup == 0) {
-        // update Themes
-        char path[256];
-        sprintf(path, "%sTHM", ethPrefix);
-        thmAddElements(path, "\\", 1);
-
-        sprintf(path, "%sLNG", ethPrefix);
-        lngAddLanguages(path, "\\", ethGameList.mode);
-
-        sbCreateFolders(ethPrefix, 1);
-    } else if (gPCShareName[0] || !(gNetworkStartup >= ERROR_ETH_SMB_OPENSHARE)) {
+    if (ret != 0 || (gNetworkStartup != 0 && (gPCShareName[0] || !(gNetworkStartup >= ERROR_ETH_SMB_OPENSHARE))))
         ethDisplayErrorStatus();
-    }
 }
 
 static int ethLoadModules(void)
@@ -306,8 +307,6 @@ static int ethLoadModules(void)
     LOG("ETHSUPPORT LoadModules\n");
 
     if (!ethModulesLoaded) {
-        ethModulesLoaded = 1;
-
         sysInitDev9();
 
         LOG("[NETMAN]:\n");
@@ -329,6 +328,7 @@ static int ethLoadModules(void)
                     ps2ip_init();
                     HttpInit();
 
+                    ethModulesLoaded = 1;
                     LOG("ETHSUPPORT Modules loaded\n");
                     usleep(100000); // 加载完驱动后，延迟100毫秒再进行后续初始化
                     return 0;
