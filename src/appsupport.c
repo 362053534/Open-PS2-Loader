@@ -99,18 +99,19 @@ static const u32 appPOPSHDDOPLTrampoline[] = {
     0x3C093173, // lui t1,0x3173
     0x35296670, // ori t1,t1,0x6670
     0xAD09FEB8, // sw t1,-328(t0)，pfs0:改为pfs1:
+    /* POPStarter会先检查核心文件，因此必须在参数解析前真正把+OPL挂到pfs1。 */
+    0x3C09504F, // lui t1,0x504F
+    0x35292B3A, // ori t1,t1,0x2B3A
+    0xAD091FCC, // sw t1,0x1FCC(t0)，__common改为+OPL
+    0x2409004C, // addiu t1,zero,0x004C
+    0xAD091FD0, // sw t1,0x1FD0(t0)，补写结尾并清除旧名称
     0x3C080087, // lui t0,0x0087
     0x3C092402, // lui t1,0x2402
     0x35290031, // ori t1,t1,0x0031
     0xAD095534, // sw t1,0x5534(t0)，构造pfs1:IMAGE0.VCD
-    0x3C08008E, // lui t0,0x008E
-    0x3C092402, // lui t1,0x2402
-    0x35290001, // ori t1,t1,1
-    0xAD098B14, // sw t1,-29932(t0)，__common挂载函数直接成功
-    0x3C0903E0, // lui t1,0x03E0
-    0x35290008, // ori t1,t1,8
-    0xAD098B18, // sw t1,-29928(t0)
-    0xAD008B1C, // sw zero,-29924(t0)
+    /* +OPL已经挂载到pfs1，后续参数流程只需复用，不能再次挂载同一分区。 */
+    0x24091025, // addiu t1,zero,0x1025，or v0,zero,zero
+    0xAD095684, // sw t1,0x5684(t0)，把重复挂载调用改为返回成功
     /* 仅为定位+OPL链路：保留POPStarter内部的参数、挂载及文件访问输出。 */
     0x3C080087, // lui t0,0x0087
     0x3C09AF80, // lui t1,0xAF80
