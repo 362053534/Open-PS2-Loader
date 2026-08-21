@@ -53,6 +53,7 @@ static void appFreeLegacyConfig(void);
 
 #define POPS_EE_RESIDENT_SIZE             0x1000
 #define POPS_EE_TRAMPOLINE_OFFSET         0x0200
+#define POPS_EE_HDD_PATH_HELPER_OFFSET    0x0280
 #define POPS_EE_COPY_TABLE_OFFSET         ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET
 #define POPS_EE_USBD_ADDRESS              0x00140000
 #define POPS_EE_DRIVER_ADDRESS            0x00180000
@@ -93,12 +94,9 @@ static const u32 appPOPSEETrampoline[] = {
     0x00000000,
 };
 
-/* +OPL链路复用pfs1，避免POPStarter随后再次挂载__common时占用同一槽位。 */
+/* +OPL链路复用pfs1，并绕过只适用于独立__.POPS分区的VCD枚举流程。 */
 static const u32 appPOPSHDDOPLTrampoline[] = {
     0x3C08009B, // lui t0,0x009B
-    0x3C093173, // lui t1,0x3173
-    0x35296670, // ori t1,t1,0x6670
-    0xAD09FEB8, // sw t1,-328(t0)，pfs0:改为pfs1:
     /* POPStarter会先检查核心文件，因此必须在参数解析前真正把+OPL挂到pfs1。 */
     0x3C09504F, // lui t1,0x504F
     0x35292B3A, // ori t1,t1,0x2B3A
@@ -106,20 +104,46 @@ static const u32 appPOPSHDDOPLTrampoline[] = {
     0x2409004C, // addiu t1,zero,0x004C
     0xAD091FD0, // sw t1,0x1FD0(t0)，补写结尾并清除旧名称
     0x3C080087, // lui t0,0x0087
-    0x3C092402, // lui t1,0x2402
-    0x35290031, // ori t1,t1,0x0031
-    0xAD095534, // sw t1,0x5534(t0)，构造pfs1:IMAGE0.VCD
-    /* +OPL已经挂载到pfs1，后续参数流程只需复用，不能再次挂载同一分区。 */
-    0x24091025, // addiu t1,zero,0x1025，or v0,zero,zero
-    0xAD095684, // sw t1,0x5684(t0)，把重复挂载调用改为返回成功
     /* 仅为定位+OPL链路：保留POPStarter内部的参数、挂载及文件访问输出。 */
-    0x3C080087, // lui t0,0x0087
     0x3C09AF80, // lui t1,0xAF80
     0x352938B0, // ori t1,t1,0x38B0
     0xAD090E10, // sw t1,0x0E10(t0)，禁止启动代码重新关闭内部输出
+    /* 用常驻辅助函数构造pfs1:/POPS/<游戏名>.VCD。 */
+    0x3C090C02, // lui t1,0x0C02
+    0x352950A0, // ori t1,t1,0x50A0，jal 0x00094280
+    0xAD09596C, // sw t1,0x596C(t0)
+    0xAD005970, // sw zero,0x5970(t0)
+    0x3C091000, // lui t1,0x1000
+    0x35290008, // ori t1,t1,8
+    0xAD095974, // sw t1,0x5974(t0)，跳过原有pfs0:前缀构造
+    0xAD005978, // sw zero,0x5978(t0)
+    0x3C092784, // lui t1,0x2784
+    0x3529347B, // ori t1,t1,0x347B
+    0xAD0959D0, // sw t1,0x59D0(t0)，把游戏名追加到/POPS/之后
+    0xAD095A24, // sw t1,0x5A24(t0)
+    /* pfs1已经就绪，不能再枚举和挂载__.POPS、__.POPS0至__.POPS9。 */
+    0x3C091000, // lui t1,0x1000
+    0x3529006F, // ori t1,t1,0x006F
+    0xAD095AB0, // sw t1,0x5AB0(t0)，直接进入VCD打开阶段
+    0xAD005AB4, // sw zero,0x5AB4(t0)
     0x0000000F, // sync
     0x3C080087, // lui t0,0x0087
     0x01000008, // jr t0
+    0x00000000,
+};
+
+/* 固定放在0x00094280，避免修改主跳板时改变被调用地址。 */
+static const u32 appPOPSHDDOPLPathHelper[] = {
+    0x3C083173, // lui t0,0x3173
+    0x35086670, // ori t0,t0,0x6670
+    0xAF883470, // sw t0,13424(gp)，写入pfs1
+    0x3C084F50, // lui t0,0x4F50
+    0x35082F3A, // ori t0,t0,0x2F3A
+    0xAF883474, // sw t0,13428(gp)，写入:/PO
+    0x3C08002F, // lui t0,0x002F
+    0x35085350, // ori t0,t0,0x5350
+    0xAF883478, // sw t0,13432(gp)，写入PS/与结尾
+    0x03E00008, // jr ra
     0x00000000,
 };
 
@@ -153,6 +177,7 @@ typedef char pops_boot_mailbox_size_must_be_272[(sizeof(pops_boot_mailbox_t) == 
 typedef char pops_ee_mailbox_must_fit[(sizeof(pops_boot_mailbox_t) <= POPS_EE_TRAMPOLINE_OFFSET) ? 1 : -1];
 typedef char pops_ee_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + sizeof(appPOPSEETrampoline) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_opl_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + sizeof(appPOPSHDDOPLTrampoline) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_opl_helper_must_fit[(POPS_EE_HDD_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPathHelper) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
 typedef char pops_ee_copy_table_must_fit[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
@@ -490,6 +515,8 @@ static void *appPreparePOPSHDDOPLEEInjection(void)
     memset(appPOPSEEResident, 0, sizeof(appPOPSEEResident));
     memcpy(appPOPSEEResident + POPS_EE_TRAMPOLINE_OFFSET,
            appPOPSHDDOPLTrampoline, sizeof(appPOPSHDDOPLTrampoline));
+    memcpy(appPOPSEEResident + POPS_EE_HDD_PATH_HELPER_OFFSET,
+           appPOPSHDDOPLPathHelper, sizeof(appPOPSHDDOPLPathHelper));
 
     return patchedELF;
 }
