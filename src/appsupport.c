@@ -49,6 +49,7 @@ static void appFreeLegacyConfig(void);
 #define POPS_BOOT_MAILBOX_VERSION  1
 #define POPS_BOOT_MAILBOX_PATH_MAX 256
 #define POPS_BOOT_VCD_PREFIX       "0:/POPS/"
+#define POPS_HDD_OPL_ARG_PREFIX    "hdd0:+OPL:pfs:/POPS/"
 
 #define POPS_EE_RESIDENT_SIZE             0x1000
 #define POPS_EE_TRAMPOLINE_OFFSET         0x0200
@@ -92,6 +93,30 @@ static const u32 appPOPSEETrampoline[] = {
     0x00000000,
 };
 
+/* +OPL链路复用pfs1，避免POPStarter随后再次挂载__common时占用同一槽位。 */
+static const u32 appPOPSHDDOPLTrampoline[] = {
+    0x3C08009B, // lui t0,0x009B
+    0x3C093173, // lui t1,0x3173
+    0x35296670, // ori t1,t1,0x6670
+    0xAD09FEB8, // sw t1,-328(t0)，pfs0:改为pfs1:
+    0x3C080087, // lui t0,0x0087
+    0x3C092402, // lui t1,0x2402
+    0x35290031, // ori t1,t1,0x0031
+    0xAD095534, // sw t1,0x5534(t0)，构造pfs1:IMAGE0.VCD
+    0x3C08008E, // lui t0,0x008E
+    0x3C092402, // lui t1,0x2402
+    0x35290001, // ori t1,t1,1
+    0xAD098B14, // sw t1,-29932(t0)，__common挂载函数直接成功
+    0x3C0903E0, // lui t1,0x03E0
+    0x35290008, // ori t1,t1,8
+    0xAD098B18, // sw t1,-29928(t0)
+    0xAD008B1C, // sw zero,-29924(t0)
+    0x0000000F, // sync
+    0x3C080087, // lui t0,0x0087
+    0x01000008, // jr t0
+    0x00000000,
+};
+
 typedef struct
 {
     u32 magic;
@@ -121,6 +146,7 @@ typedef struct
 typedef char pops_boot_mailbox_size_must_be_272[(sizeof(pops_boot_mailbox_t) == 272) ? 1 : -1];
 typedef char pops_ee_mailbox_must_fit[(sizeof(pops_boot_mailbox_t) <= POPS_EE_TRAMPOLINE_OFFSET) ? 1 : -1];
 typedef char pops_ee_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + sizeof(appPOPSEETrampoline) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_opl_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + sizeof(appPOPSHDDOPLTrampoline) <= POPS_EE_COPY_TABLE_OFFSET) ? 1 : -1];
 typedef char pops_ee_copy_table_must_fit[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
@@ -444,10 +470,30 @@ static void *appPreparePOPSSMBEEInjection(const pops_boot_mailbox_t *mailbox)
     return patchedELF;
 }
 
-static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox, int mode)
+static void *appPreparePOPSHDDOPLEEInjection(void)
+{
+    u8 *patchedELF;
+
+    patchedELF = malloc(size_popstarter_elf);
+    if (!patchedELF)
+        return NULL;
+
+    memcpy(patchedELF, popstarter_elf, size_popstarter_elf);
+    appPOPSPatchOuterELF(patchedELF);
+
+    memset(appPOPSEEResident, 0, sizeof(appPOPSEEResident));
+    memcpy(appPOPSEEResident + POPS_EE_TRAMPOLINE_OFFSET,
+           appPOPSHDDOPLTrampoline, sizeof(appPOPSHDDOPLTrampoline));
+
+    return patchedELF;
+}
+
+static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox, int mode, int hddSource)
 {
     if (mode == ETH_MODE)
         return appPreparePOPSSMBEEInjection(mailbox);
+    if (mode == HDD_MODE && hddSource == OPL_HDD_POPS_SOURCE_OPL)
+        return appPreparePOPSHDDOPLEEInjection();
 
     return appPreparePOPSBDMEEInjection(mailbox);
 }
@@ -648,6 +694,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
         app->app.legacy = 1;
         app->app.generated = 0;
         app->app.popstarter = 0;
+        app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
         count++;
         cur = cur->next;
     }
@@ -696,6 +743,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         app->app.legacy = 0;
         app->app.generated = 0;
         app->app.popstarter = 0;
+        app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -712,7 +760,7 @@ static int appIsNumberedVcdName(const char *vcdName, int nameLength)
            strcasecmp(&vcdName[nameLength - 4], ".VCD") == 0;
 }
 
-static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix)
+static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix, int hddSource)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
     struct app_info_linked *app;
@@ -788,23 +836,24 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     app->app.legacy = 0;
     app->app.generated = 1;
     app->app.popstarter = 1;
+    app->app.popsHddSource = hddSource;
 
     return 0;
 }
 
 static int appScanBDMPOPSCallback(const char *path, const char *vcdName, void *arg)
 {
-    return appAddPOPSItem(path, vcdName, arg, POPS_BDM_ELF_PREFIX);
+    return appAddPOPSItem(path, vcdName, arg, POPS_BDM_ELF_PREFIX, OPL_HDD_POPS_SOURCE_NONE);
 }
 
 static int appScanSMBPOPSCallback(const char *path, const char *vcdName, void *arg)
 {
-    return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX);
+    return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX, OPL_HDD_POPS_SOURCE_NONE);
 }
 
-static int appScanHDDPOPSCallback(const char *path, const char *vcdName, void *arg)
+static int appScanHDDPOPSCallback(const char *path, const char *vcdName, int source, void *arg)
 {
-    return appAddPOPSItem(path, vcdName, arg, "");
+    return appAddPOPSItem(path, vcdName, arg, "", source);
 }
 
 static int appScanELFCallback(const char *path, const char *elfName, void *arg)
@@ -848,6 +897,7 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
     app->app.legacy = 0;
     app->app.generated = 1;
     app->app.popstarter = 0;
+    app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
 
     return 0;
 }
@@ -1019,7 +1069,8 @@ static void appPreparePOPSLauncher(void)
     mode = oplPath2Mode(appsList[appPOPSPrepareID].path);
     driver = NULL;
     driverSize = 0;
-    useEEInjection = mode == ETH_MODE;
+    useEEInjection = mode == ETH_MODE ||
+                     (mode == HDD_MODE && appsList[appPOPSPrepareID].popsHddSource == OPL_HDD_POPS_SOURCE_OPL);
     if (!useEEInjection && mode >= BDM_MODE && mode <= BDM_MODE4 &&
         appBuildPOPSBootMailbox(&appsList[appPOPSPrepareID], &bootMailbox) == 0)
         driver = appPOPSGetBDMDriver(bootMailbox.deviceType, &driverSize);
@@ -1044,7 +1095,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
         char cheatPath[APP_PATH_MAX + 14];
-        char popstarterArg[APP_BOOT_MAX + 5];
+        char popstarterArg[sizeof(POPS_HDD_OPL_ARG_PREFIX) + APP_BOOT_MAX + 1];
         char *argv[1];
         pops_boot_mailbox_t bootMailbox;
         const void *launchELF;
@@ -1105,14 +1156,19 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             "CACHE1 / 将POPS读取缓存从16个扇区缩减为1个扇区，可修复部分动画卡死。\r\n"
             "USBDELAY_# / 调整POPS的USB读取延迟；用于数据传输兼容，不影响设备识别。";
         int enableHDTVFix;
+        int requiresHDDOPLInjection;
         int mode;
 
         // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
         mode = oplPath2Mode(appsList[id].path);
+        requiresHDDOPLInjection = mode == HDD_MODE && appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL;
 
         if (mode == HDD_MODE) {
+            const char *resourcePartition = requiresHDDOPLInjection ? OPL_HDD_OPL_PARTITION : "hdd0:__common";
+            const char *resourceLocation = requiresHDDOPLInjection ? "+OPL/POPS" : "__common/POPS";
+
             fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-            if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, "hdd0:__common", FIO_MT_RDWR) == 0) {
+            if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, resourcePartition, FIO_MT_RDWR) == 0) {
                 char missingFiles[32];
 
                 missingFiles[0] = '\0';
@@ -1134,7 +1190,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 if (missingFiles[0] != '\0') {
                     char message[96];
 
-                    snprintf(message, sizeof(message), "__common/POPS 目录下缺少 %s", missingFiles);
+                    snprintf(message, sizeof(message), "%s 目录下缺少 %s", resourceLocation, missingFiles);
                     guiMsgBox(message, 0, NULL);
                     oplRestoreHDDOPLPartition();
                     return;
@@ -1142,8 +1198,13 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
                 snprintf(cheatPath, sizeof(cheatPath), "pfs0:POPS/CHEATS.TXT");
             } else {
-                cheatPath[0] = '\0';
+                if (requiresHDDOPLInjection)
+                    guiMsgBox("无法挂载+OPL的POPS资源目录", 0, NULL);
+                else
+                    cheatPath[0] = '\0';
                 oplRestoreHDDOPLPartition();
+                if (requiresHDDOPLInjection)
+                    return;
             }
         } else {
             snprintf(cheatPath, sizeof(cheatPath), "%s/POPS_IOX.PAK", appsList[id].path);
@@ -1180,8 +1241,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         appPOPSPrepareID = id;
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
-        // uLE: + XX./SB. 假 ELF 名。deinit 前先拷到栈上。
-        if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s", appsList[id].boot) >= (int)sizeof(popstarterArg)) {
+        if (requiresHDDOPLInjection && !(appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY)) {
+            guiMsgBox("无法启用+OPL的POPS内存补丁", 0, NULL);
+            oplRestoreHDDOPLPartition();
+            return;
+        }
+
+        // +OPL来源需要让POPStarter解析分区；其它链路继续使用uLE假ELF名。
+        if (snprintf(popstarterArg, sizeof(popstarterArg), requiresHDDOPLInjection ? POPS_HDD_OPL_ARG_PREFIX "%s" : "uLE:%s",
+                     appsList[id].boot) >= (int)sizeof(popstarterArg)) {
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
             if (mode == HDD_MODE)
                 oplRestoreHDDOPLPartition();
@@ -1198,15 +1266,20 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             memset(&bootMailbox, 0, sizeof(bootMailbox));
         }
 
-        /* SMB内存包不依赖BDM邮箱；即使邮箱不可用，也必须继续执行SMB注入。 */
-        if ((mode == ETH_MODE || bootMailbox.magic == POPS_BOOT_MAILBOX_MAGIC) &&
+        /* SMB与+OPL链路不依赖BDM邮箱，邮箱不可用时仍须执行各自的EE补丁。 */
+        if ((mode == ETH_MODE || requiresHDDOPLInjection || bootMailbox.magic == POPS_BOOT_MAILBOX_MAGIC) &&
             (appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY)) {
-            launchELF = appPreparePOPSEEInjection(&bootMailbox, mode);
+            launchELF = appPreparePOPSEEInjection(&bootMailbox, mode, appsList[id].popsHddSource);
             if (launchELF) {
                 residentData = appPOPSEEResident;
                 residentSize = sizeof(appPOPSEEResident);
                 useEEInjection = 1;
             } else {
+                if (requiresHDDOPLInjection) {
+                    guiMsgBox("无法准备+OPL的POPS内存补丁", 0, NULL);
+                    oplRestoreHDDOPLPartition();
+                    return;
+                }
                 launchELF = popstarter_elf;
             }
         }

@@ -938,25 +938,70 @@ int oplRestoreHDDOPLPartition(void)
     return fileXioMount(OPL_HDD_POPS_MOUNTPOINT, gOPLPart, FIO_MT_RDWR);
 }
 
-int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+typedef struct
+{
+    int (*callback)(const char *path, const char *vcdName, int source, void *arg);
+    void *arg;
+    int source;
+} hdd_pops_scan_context_t;
+
+static int oplScanHDDPOPSCallback(const char *path, const char *vcdName, void *arg)
+{
+    hdd_pops_scan_context_t *context = (hdd_pops_scan_context_t *)arg;
+
+    return context->callback(path, vcdName, context->source, context->arg);
+}
+
+static int oplScanHDDPOPSPath(const char *path, int source,
+                              int (*callback)(const char *path, const char *vcdName, int source, void *arg), void *arg)
+{
+    hdd_pops_scan_context_t context;
+
+    context.callback = callback;
+    context.arg = arg;
+    context.source = source;
+    return scanPOPS(&oplScanHDDPOPSCallback, &context, path);
+}
+
+static int oplScanHDDPOPSPartition(const char *partition, const char *path, int source,
+                                   int (*callback)(const char *path, const char *vcdName, int source, void *arg), void *arg)
+{
+    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
+    if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, partition, FIO_MT_RDWR) < 0)
+        return 0;
+
+    return oplScanHDDPOPSPath(path, source, callback, arg);
+}
+
+int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int source, void *arg), void *arg)
 {
     item_list_t *listSupport;
-    int result;
+    iox_stat_t stat;
+    int result, restoreResult, restoreNeeded;
 
     listSupport = list_support[HDD_MODE].support;
     if ((gHDDStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled)
         return 0;
 
-    result = oplMountHDDPOPS();
-    if (result < 0) {
-        oplRestoreHDDOPLPartition();
-        return 0;
+    restoreNeeded = strcmp(gOPLPart, OPL_HDD_OPL_PARTITION) != 0;
+    if (!restoreNeeded)
+        result = oplScanHDDPOPSPath(OPL_HDD_POPS_MOUNTPOINT "POPS", OPL_HDD_POPS_SOURCE_OPL, callback, arg);
+    else
+        result = oplScanHDDPOPSPartition(OPL_HDD_OPL_PARTITION, OPL_HDD_POPS_MOUNTPOINT "POPS",
+                                         OPL_HDD_POPS_SOURCE_OPL, callback, arg);
+
+    /* 直接查询APA分区表，避免用一次失败的挂载来判断__.POPS是否存在。 */
+    if (fileXioGetStat(OPL_HDD_POPS_PARTITION, &stat) >= 0) {
+        result += oplScanHDDPOPSPartition(OPL_HDD_POPS_PARTITION, OPL_HDD_POPS_MOUNTPOINT,
+                                          OPL_HDD_POPS_SOURCE_LEGACY, callback, arg);
+        restoreNeeded = 1;
     }
 
-    result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT);
-
-    if (oplRestoreHDDOPLPartition() < 0)
-        return 0;
+    if (restoreNeeded) {
+        restoreResult = oplRestoreHDDOPLPartition();
+        if (restoreResult < 0)
+            LOG("APPS failed to restore HDD partition %s: %d\n", gOPLPart, restoreResult);
+    }
 
     return result;
 }

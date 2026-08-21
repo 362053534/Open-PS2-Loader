@@ -29,6 +29,7 @@ typedef struct
     u8 legacy;
     u8 generated;
     u8 popstarter;
+    u8 popsHddSource;
 } app_info_t;
 
 void appInit(item_list_t *itemList);
