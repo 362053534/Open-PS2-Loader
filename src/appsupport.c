@@ -1651,9 +1651,17 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (createCheats) {
             fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
             if (fd >= 0) {
+                const char *line = cheats;
+
                 if (enableHDTVFix)
                     write(fd, "$", 1);
-                write(fd, cheats, strlen(cheats));
+                while (*line) {
+                    const char *lineEnd = strstr(line, "\r\n");
+                    int lineLength = lineEnd ? lineEnd - line + 2 : strlen(line);
+
+                    write(fd, line, lineLength);
+                    line += lineLength;
+                }
                 close(fd);
             }
         }
