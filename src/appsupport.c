@@ -393,6 +393,9 @@ static u32 appPOPSMIPSJump(unsigned int address)
 static int appPOPSBuildSMBTrampoline(void)
 {
     static const unsigned int patchOffsets[] = {0x0000, 0x0060, 0x0090, 0x00D0};
+    const unsigned int outputBranchAddress = 0x0087162C;
+    const unsigned int outputStoreAddress = 0x00871634;
+    const u32 outputStoreInstruction = 0xAF8238B0;
     const u8 *handlers[] = {
         appPOPSSMBVFSOpen,
         appPOPSSMBVFSClose,
@@ -421,10 +424,12 @@ static int appPOPSBuildSMBTrampoline(void)
         code[count++] = 0xAD000000 | ((patchOffsets[i] + 4) & 0xFFFF);     // sw zero,偏移+4(t0)
     }
 
-    /* SMB内存注入不读取记忆卡配置，因此在入口前直接关闭普通初始化输出。 */
-    code[count++] = 0x3C08009B; // 加载输出标志地址高位
-    code[count++] = 0x24090001; // 设置关闭标志
-    code[count++] = 0xAD0938B0; // 写入普通输出开关
+    /* POPStarter识别SMB参数后会重新开启输出，这里强制改为关闭普通输出。 */
+    code[count++] = 0x3C080000 | (outputBranchAddress >> 16);             // 加载补丁地址高位
+    code[count++] = 0x3C090000 | (outputStoreInstruction >> 16);          // 加载替换指令高位
+    code[count++] = 0x35290000 | (outputStoreInstruction & 0xFFFF);       // 加载替换指令低位
+    code[count++] = 0xAD000000 | (outputBranchAddress & 0xFFFF);          // 取消跳过输出设置的分支
+    code[count++] = 0xAD090000 | (outputStoreAddress & 0xFFFF);           // 将普通输出标志设为关闭
     code[count++] = 0x0000000F; // sync
     code[count++] = 0x3C080087; // lui t0,0x0087
     code[count++] = 0x01000008; // jr t0
