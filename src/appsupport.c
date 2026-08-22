@@ -56,6 +56,7 @@ static void appFreeLegacyConfig(void);
 #define POPS_EE_HDD_PATH_HELPER_OFFSET    0x0600
 #define POPS_EE_HDD_NATIVE_HELPER_OFFSET  0x0680
 #define POPS_EE_HDD_MOUNT_HELPER_OFFSET   0x0780
+#define POPS_EE_HDD_PFS_MOUNT_HELPER_OFFSET 0x07C0
 #define POPS_EE_HDD_PARTITION_OFFSET      0x0800
 #define POPS_EE_HDD_PARTITION_CAPACITY    0x0040
 #define POPS_EE_HDD_RESOURCE_FORMAT_OFFSET 0x0840
@@ -116,17 +117,11 @@ static const u32 appPOPSHDDOPLTrampoline[] = {
 
 /* 目录式APA链路复用pfs1，并绕过只适用于独立__.POPS分区的VCD枚举流程。 */
 static const u32 appPOPSHDDOPLPatchHelper[] = {
-    0x3C08009B, // lui t0,0x009B
-    /* 从EE常驻区复制实际APA分区名，避免把+OPL写死在POPStarter中。 */
-    0x25081FCC, // addiu t0,t0,0x1FCC
-    0x3C090009, // lui t1,0x0009
-    0x25294800, // addiu t1,t1,0x4800
-    0x912A0000, // lbu t2,0(t1)
-    0xA10A0000, // sb t2,0(t0)
-    0x25080001, // addiu t0,t0,1
-    0x25290001, // addiu t1,t1,1
-    0x1540FFFB, // bnez t2,复制分区名
-    0x00000000,
+    /* 原始__common缓冲区过短，改由常驻包装函数直接提供实际APA设备名。 */
+    0x3C08008E, // lui t0,0x008E
+    0x3C090C02, // lui t1,0x0C02
+    0x352951F0, // ori t1,t1,0x51F0，jal 0x000947C0
+    0xAD098B6C, // sw t1,-0x7494(t0)，修补0x008D8B6C
     /* 环境页面和后续资源路径必须与实际挂载点保持一致。 */
     0x3C08009B, // lui t0,0x009B
     0x25080AE0, // addiu t0,t0,0x0AE0
@@ -284,6 +279,20 @@ static const u32 appPOPSHDDOPLMountHelper[] = {
     0x00000000,
 };
 
+/* POPStarter挂载pfs1时直接使用EE常驻区中的完整APA设备名。 */
+static const u32 appPOPSHDDOPLPFSMountHelper[] = {
+    0x27BDFFF0, // addiu sp,sp,-16
+    0xAFBF0000, // sw ra,0(sp)
+    0x3C050009, // lui a1,0x0009
+    0x24A54800, // addiu a1,a1,0x4800
+    0x0C245794, // jal 0x00915E50
+    0x00000000,
+    0x8FBF0000, // lw ra,0(sp)
+    0x27BD0010, // addiu sp,sp,16
+    0x03E00008, // jr ra
+    0x00000000,
+};
+
 typedef struct
 {
     u32 magic;
@@ -319,7 +328,8 @@ typedef char pops_ee_hdd_patch_helper_after_copy_table[(POPS_EE_COPY_TABLE_OFFSE
 typedef char pops_ee_hdd_patch_helper_must_fit[(POPS_EE_HDD_PATCH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPatchHelper) <= POPS_EE_HDD_PATH_HELPER_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_path_helper_must_fit[(POPS_EE_HDD_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPathHelper) <= POPS_EE_HDD_NATIVE_HELPER_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_native_helper_must_fit[(POPS_EE_HDD_NATIVE_HELPER_OFFSET + sizeof(appPOPSHDDOPLNativeHelper) <= POPS_EE_HDD_MOUNT_HELPER_OFFSET) ? 1 : -1];
-typedef char pops_ee_hdd_mount_helper_must_fit[(POPS_EE_HDD_MOUNT_HELPER_OFFSET + sizeof(appPOPSHDDOPLMountHelper) <= POPS_EE_HDD_PARTITION_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_mount_helper_must_fit[(POPS_EE_HDD_MOUNT_HELPER_OFFSET + sizeof(appPOPSHDDOPLMountHelper) <= POPS_EE_HDD_PFS_MOUNT_HELPER_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_pfs_mount_helper_must_fit[(POPS_EE_HDD_PFS_MOUNT_HELPER_OFFSET + sizeof(appPOPSHDDOPLPFSMountHelper) <= POPS_EE_HDD_PARTITION_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_partition_must_fit[(POPS_EE_HDD_PARTITION_OFFSET + POPS_EE_HDD_PARTITION_CAPACITY <= POPS_EE_HDD_RESOURCE_FORMAT_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_resource_format_must_fit[(POPS_EE_HDD_RESOURCE_FORMAT_OFFSET + POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY <= POPS_EE_HDD_VCD_PREFIX_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_vcd_prefix_must_fit[(POPS_EE_HDD_VCD_PREFIX_OFFSET + POPS_EE_HDD_VCD_PREFIX_CAPACITY <= POPS_EE_HDD_PFS_FORMAT_OFFSET) ? 1 : -1];
@@ -687,6 +697,8 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
            appPOPSHDDOPLNativeHelper, sizeof(appPOPSHDDOPLNativeHelper));
     memcpy(appPOPSEEResident + POPS_EE_HDD_MOUNT_HELPER_OFFSET,
            appPOPSHDDOPLMountHelper, sizeof(appPOPSHDDOPLMountHelper));
+    memcpy(appPOPSEEResident + POPS_EE_HDD_PFS_MOUNT_HELPER_OFFSET,
+           appPOPSHDDOPLPFSMountHelper, sizeof(appPOPSHDDOPLPFSMountHelper));
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_PARTITION_OFFSET), partition);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_RESOURCE_FORMAT_OFFSET), resourceFormat);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_VCD_PREFIX_OFFSET), vcdPrefix);
