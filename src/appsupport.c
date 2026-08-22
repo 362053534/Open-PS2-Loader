@@ -710,7 +710,8 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     }
 
     /* 先落盘临时链接，再由PFS原子替换正式入口，避免留下空窗。 */
-    if (fileXioSymlink(targetPath, temporaryLinkPath) < 0 ||
+    /* IOMAN需要从第一个参数取得pfs0设备，PFS收到的链接内容仍会去掉设备前缀。 */
+    if (fileXioSymlink(sourcePath, temporaryLinkPath) < 0 ||
         appReadPOPSSymlink(temporaryLinkPath, currentTarget, sizeof(currentTarget)) < 0 ||
         strcmp(currentTarget, targetPath) != 0 ||
         fileXioRename(temporaryLinkPath, linkPath) < 0 ||
