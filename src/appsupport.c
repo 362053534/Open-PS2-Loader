@@ -765,10 +765,11 @@ static int appGetPOPSDirectoryEntryMode(const char *directory, const char *name,
 
 static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
 {
-    static const char linkDirectory[] = "pfs0:/disc";
-    static const char linkPath[] = "pfs0:/disc/disc0";
-    static const char temporaryLinkPath[] = "pfs0:/disc/disc0.new";
+    static const char linkDirectory[] = "pfs0:/";
     char sourcePath[APP_PATH_MAX + APP_BOOT_MAX + 2];
+    char linkPath[APP_BOOT_MAX + sizeof("pfs0:/")];
+    char temporaryLinkPath[APP_BOOT_MAX + sizeof("pfs0:/.new")];
+    char temporaryLinkName[APP_BOOT_MAX + sizeof(".new")];
     const char *relativePath;
     unsigned int mode;
     int fd, result;
@@ -779,7 +780,10 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     while (*relativePath == '/')
         relativePath++;
     if (*relativePath == '\0' ||
-        snprintf(sourcePath, sizeof(sourcePath), "pfs0:/%s/%s", relativePath, app->vcdName) >= (int)sizeof(sourcePath))
+        snprintf(sourcePath, sizeof(sourcePath), "pfs0:/%s/%s", relativePath, app->vcdName) >= (int)sizeof(sourcePath) ||
+        snprintf(linkPath, sizeof(linkPath), "pfs0:/%s", app->vcdName) >= (int)sizeof(linkPath) ||
+        snprintf(temporaryLinkPath, sizeof(temporaryLinkPath), "pfs0:/%s.new", app->vcdName) >= (int)sizeof(temporaryLinkPath) ||
+        snprintf(temporaryLinkName, sizeof(temporaryLinkName), "%s.new", app->vcdName) >= (int)sizeof(temporaryLinkName))
         return -1;
 
     /* 先确认目标可读，避免把有效映射替换成指向不存在文件的链接。 */
@@ -788,25 +792,13 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
         return -1;
     close(fd);
 
-    fd = fileXioDopen(linkDirectory);
-    if (fd >= 0) {
-        fileXioDclose(fd);
-    } else {
-        if (fileXioMkdir(linkDirectory, 0777) < 0)
-            return -1;
-        fd = fileXioDopen(linkDirectory);
-        if (fd < 0)
-            return -1;
-        fileXioDclose(fd);
-    }
-
-    result = appGetPOPSDirectoryEntryMode(linkDirectory, "disc0", &mode);
+    result = appGetPOPSDirectoryEntryMode(linkDirectory, app->vcdName, &mode);
     if (result < 0 || (result > 0 && !FIO_S_ISLNK(mode))) {
-        /* 目录项模式不会跟随链接，可避免覆盖用户已有的普通disc0。 */
+        /* 目录项模式不会跟随链接，可避免覆盖分区根目录中已有的普通文件。 */
         return -1;
     }
 
-    result = appGetPOPSDirectoryEntryMode(linkDirectory, "disc0.new", &mode);
+    result = appGetPOPSDirectoryEntryMode(linkDirectory, temporaryLinkName, &mode);
     if (result < 0 || (result > 0 && !FIO_S_ISLNK(mode)))
         return -1;
     if (result > 0) {
@@ -818,7 +810,7 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     /* PFS收到的链接内容会去掉设备前缀，因此这里必须保留根目录斜杠。 */
     if (fileXioSymlink(sourcePath, temporaryLinkPath) < 0 ||
         fileXioRename(temporaryLinkPath, linkPath) < 0 ||
-        appGetPOPSDirectoryEntryMode(linkDirectory, "disc0", &mode) != 1 ||
+        appGetPOPSDirectoryEntryMode(linkDirectory, app->vcdName, &mode) != 1 ||
         !FIO_S_ISLNK(mode)) {
         fileXioRemove(temporaryLinkPath);
         return -1;
@@ -1534,7 +1526,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 }
 
                 if (requiresHDDOPLInjection && appPreparePOPSHDDOPLVCDLink(&appsList[id]) < 0) {
-                    guiMsgBox("无法为目录式APA分区准备原生VCD入口，请检查POPS文件和disc目录", 0, NULL);
+                    guiMsgBox("无法为目录式APA分区准备原生VCD入口，请检查POPS文件和分区根目录", 0, NULL);
                     oplRestoreHDDOPLPartition();
                     return;
                 }
