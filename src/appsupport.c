@@ -1644,13 +1644,9 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         if (mode < 0)
             mode = APP_MODE;
         if (appGetPOPSBDMDeviceType(&appsList[id]) == BDM_TYPE_SDC) {
-            char device[8];
+            int enabled = 0;
 
-            snprintf(device, sizeof(device), "mass%d:", mode);
-            if (fileXioDevctl(device, USBMASS_DEVCTL_QUIESCE_MX4SIO, NULL, 0, NULL, 0) < 0) {
-                guiMsgBox("MX4SIO检测线程无法停止，已取消启动", 0, NULL);
-                return;
-            }
+            fileXioDevctl("mass:", USBMASS_DEVCTL_SET_MX4SIO_PROBE, &enabled, sizeof(enabled), NULL, 0);
         }
         if (createCheats) {
             fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
