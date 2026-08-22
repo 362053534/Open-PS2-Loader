@@ -155,10 +155,6 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
     0x1540FFFB, // bnez t2,复制资源格式串
     0x00000000,
     0x3C080087, // lui t0,0x0087
-    /* 仅为定位目录式APA链路：保留POPStarter内部的参数、挂载及文件访问输出。 */
-    0x3C09AF80, // lui t1,0xAF80
-    0x352938B0, // ori t1,t1,0x38B0
-    0xAD090E10, // sw t1,0x0E10(t0)，禁止启动代码重新关闭内部输出
     /* 用常驻辅助函数构造当前目录对应的pfs1 VCD路径。 */
     0x3C090C02, // lui t1,0x0C02
     0x35295180, // ori t1,t1,0x5180，jal 0x00094600
@@ -666,7 +662,7 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
 
     if (partition == NULL || strncmp(partition, "hdd0:", 5) != 0 || partition[5] == '\0' ||
         strlen(partition) >= POPS_EE_HDD_PARTITION_CAPACITY ||
-        snprintf(resourceFormat, sizeof(resourceFormat), ":%s:%%s", partition + 5) >= (int)sizeof(resourceFormat))
+        snprintf(resourceFormat, sizeof(resourceFormat), ":%s:%%s\n", partition + 5) >= (int)sizeof(resourceFormat))
         return NULL;
 
     if (pfsPath == NULL || strncmp(pfsPath, "pfs0:", 5) != 0)
@@ -676,7 +672,7 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
         relativePath++;
     if (*relativePath == '\0' ||
         snprintf(vcdPrefix, sizeof(vcdPrefix), "pfs1:/%s/", relativePath) >= (int)sizeof(vcdPrefix) ||
-        snprintf(pfsFormat, sizeof(pfsFormat), "pfs1:/%s/%%s", relativePath) >= 0x2C)
+        snprintf(pfsFormat, sizeof(pfsFormat), "pfs1:/%s/%%s\n", relativePath) >= 0x2C)
         return NULL;
 
     patchedELF = malloc(size_popstarter_elf);
