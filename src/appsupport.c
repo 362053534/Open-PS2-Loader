@@ -757,10 +757,17 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     static const char linkPath[] = "pfs0:/disc/disc0";
     static const char temporaryLinkPath[] = "pfs0:/disc/disc0.new";
     char sourcePath[APP_PATH_MAX + APP_BOOT_MAX + 2];
+    const char *relativePath;
     unsigned int mode;
     int fd, result;
 
-    if (snprintf(sourcePath, sizeof(sourcePath), "%s/%s", app->path, app->vcdName) >= (int)sizeof(sourcePath))
+    if (strncmp(app->path, "pfs0:", 5) != 0)
+        return -1;
+    relativePath = app->path + 5;
+    while (*relativePath == '/')
+        relativePath++;
+    if (*relativePath == '\0' ||
+        snprintf(sourcePath, sizeof(sourcePath), "pfs0:/%s/%s", relativePath, app->vcdName) >= (int)sizeof(sourcePath))
         return -1;
 
     /* 先确认目标可读，避免把有效映射替换成指向不存在文件的链接。 */
@@ -796,7 +803,7 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     }
 
     /* 先落盘临时链接，再由PFS原子替换正式入口，避免留下空窗。 */
-    /* IOMAN需要从第一个参数取得pfs0设备，PFS收到的链接内容仍会去掉设备前缀。 */
+    /* PFS收到的链接内容会去掉设备前缀，因此这里必须保留根目录斜杠。 */
     if (fileXioSymlink(sourcePath, temporaryLinkPath) < 0 ||
         fileXioRename(temporaryLinkPath, linkPath) < 0 ||
         appGetPOPSDirectoryEntryMode(linkDirectory, "disc0", &mode) != 1 ||
