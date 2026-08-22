@@ -421,6 +421,10 @@ static int appPOPSBuildSMBTrampoline(void)
         code[count++] = 0xAD000000 | ((patchOffsets[i] + 4) & 0xFFFF);     // sw zero,偏移+4(t0)
     }
 
+    /* SMB内存注入不读取记忆卡配置，因此在入口前直接关闭普通初始化输出。 */
+    code[count++] = 0x3C08009B; // 加载输出标志地址高位
+    code[count++] = 0x24090001; // 设置关闭标志
+    code[count++] = 0xAD0938B0; // 写入普通输出开关
     code[count++] = 0x0000000F; // sync
     code[count++] = 0x3C080087; // lui t0,0x0087
     code[count++] = 0x01000008; // jr t0
