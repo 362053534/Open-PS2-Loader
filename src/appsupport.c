@@ -55,7 +55,6 @@ static void appFreeLegacyConfig(void);
 #define POPS_EE_TRAMPOLINE_OFFSET         0x0200
 #define POPS_EE_HDD_PATCH_HELPER_OFFSET   0x0400
 #define POPS_EE_HDD_PATH_HELPER_OFFSET    0x0600
-#define POPS_EE_HDD_ARG_HELPER_OFFSET     0x0640
 #define POPS_EE_COPY_TABLE_OFFSET         ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET
 #define POPS_EE_USBD_ADDRESS              0x00140000
 #define POPS_EE_DRIVER_ADDRESS            0x00180000
@@ -192,11 +191,6 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
     0x3529004F, // ori t1,t1,0x004F
     0xAD098D5C, // sw t1,0x8D5C(t0)，直接进入通过分支
     0xAD008D60, // sw zero,0x8D60(t0)
-    /* 资源路径注册完成后，只把APA分区名交给最终POPS，避免IOPCD把VCD名误当分区。 */
-    0x3C090C02, // lui t1,0x0C02
-    0x35295190, // ori t1,t1,0x5190，jal 0x00094640
-    0xAD098EC4, // sw t1,0x8EC4(t0)
-    0xAD008EC8, // sw zero,0x8EC8(t0)
     0x0000000F, // sync
     0x03E00008, // jr ra
     0x00000000,
@@ -215,23 +209,6 @@ static const u32 appPOPSHDDOPLPathHelper[] = {
     0xAF883478, // sw t0,13432(gp)，写入PS/与结尾
     0x03E00008, // jr ra
     0x00000000,
-};
-
-/* 最终POPS只需要APA设备名；原路径此前已经用于生成VMC及资源目录。 */
-static const u32 appPOPSHDDOPLArgHelper[] = {
-    0x8FC20014, // lw v0,20(s8)
-    0x8C420000, // lw v0,0(v0)
-    0x3C083064, // lui t0,0x3064
-    0x35086468, // ori t0,t0,0x6468
-    0xAC480000, // sw t0,0(v0)，写入hdd0
-    0x3C08504F, // lui t0,0x504F
-    0x35082B3A, // ori t0,t0,0x2B3A
-    0xAC480004, // sw t0,4(v0)，写入:+OP
-    0x2408004C, // addiu t0,zero,0x004C
-    0xAC480008, // sw t0,8(v0)，写入L及结尾
-    0x3C040096, // lui a0,0x0096
-    0x03E00008, // jr ra
-    0x248438B0, // addiu a0,a0,0x38B0，恢复被替换的原指令结果
 };
 
 typedef struct
@@ -267,8 +244,7 @@ typedef char pops_ee_hdd_opl_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + si
 typedef char pops_ee_copy_table_must_fit[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_ee_hdd_patch_helper_after_copy_table[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_HDD_PATCH_HELPER_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_patch_helper_must_fit[(POPS_EE_HDD_PATCH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPatchHelper) <= POPS_EE_HDD_PATH_HELPER_OFFSET) ? 1 : -1];
-typedef char pops_ee_hdd_path_helper_must_fit[(POPS_EE_HDD_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPathHelper) <= POPS_EE_HDD_ARG_HELPER_OFFSET) ? 1 : -1];
-typedef char pops_ee_hdd_arg_helper_must_fit[(POPS_EE_HDD_ARG_HELPER_OFFSET + sizeof(appPOPSHDDOPLArgHelper) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
+typedef char pops_ee_hdd_path_helper_must_fit[(POPS_EE_HDD_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPathHelper) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
 static int appIsPOPSLauncher(const app_info_t *app)
@@ -609,8 +585,6 @@ static void *appPreparePOPSHDDOPLEEInjection(void)
            appPOPSHDDOPLPatchHelper, sizeof(appPOPSHDDOPLPatchHelper));
     memcpy(appPOPSEEResident + POPS_EE_HDD_PATH_HELPER_OFFSET,
            appPOPSHDDOPLPathHelper, sizeof(appPOPSHDDOPLPathHelper));
-    memcpy(appPOPSEEResident + POPS_EE_HDD_ARG_HELPER_OFFSET,
-           appPOPSHDDOPLArgHelper, sizeof(appPOPSHDDOPLArgHelper));
 
     return patchedELF;
 }
