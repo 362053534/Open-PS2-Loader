@@ -49,12 +49,21 @@ static void appFreeLegacyConfig(void);
 #define POPS_BOOT_MAILBOX_VERSION  1
 #define POPS_BOOT_MAILBOX_PATH_MAX 256
 #define POPS_BOOT_VCD_PREFIX       "0:/POPS/"
-#define POPS_HDD_OPL_ARG_PREFIX    "hdd0:+OPL:pfs:/POPS/"
 
 #define POPS_EE_RESIDENT_SIZE             0x1000
 #define POPS_EE_TRAMPOLINE_OFFSET         0x0200
 #define POPS_EE_HDD_PATCH_HELPER_OFFSET   0x0400
 #define POPS_EE_HDD_PATH_HELPER_OFFSET    0x0600
+#define POPS_EE_HDD_NATIVE_HELPER_OFFSET  0x0680
+#define POPS_EE_HDD_MOUNT_HELPER_OFFSET   0x0780
+#define POPS_EE_HDD_PARTITION_OFFSET      0x0800
+#define POPS_EE_HDD_PARTITION_CAPACITY    0x0040
+#define POPS_EE_HDD_RESOURCE_FORMAT_OFFSET 0x0840
+#define POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY 0x0040
+#define POPS_EE_HDD_VCD_PREFIX_OFFSET     0x0880
+#define POPS_EE_HDD_VCD_PREFIX_CAPACITY   0x0040
+#define POPS_EE_HDD_PFS_FORMAT_OFFSET     0x08C0
+#define POPS_EE_HDD_PFS_FORMAT_CAPACITY   0x0040
 #define POPS_EE_COPY_TABLE_OFFSET         ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET
 #define POPS_EE_USBD_ADDRESS              0x00140000
 #define POPS_EE_DRIVER_ADDRESS            0x00180000
@@ -95,7 +104,7 @@ static const u32 appPOPSEETrampoline[] = {
     0x00000000,
 };
 
-/* 主跳板必须停在复制表之前，较大的+OPL修补逻辑放到复制表之后。 */
+/* 主跳板必须停在复制表之前，较大的目录式APA修补逻辑放到复制表之后。 */
 static const u32 appPOPSHDDOPLTrampoline[] = {
     0x0C025100, // jal 0x00094400
     0x00000000,
@@ -105,69 +114,57 @@ static const u32 appPOPSHDDOPLTrampoline[] = {
     0x00000000,
 };
 
-/* +OPL链路复用pfs1，并绕过只适用于独立__.POPS分区的VCD枚举流程。 */
+/* 目录式APA链路复用pfs1，并绕过只适用于独立__.POPS分区的VCD枚举流程。 */
 static const u32 appPOPSHDDOPLPatchHelper[] = {
     0x3C08009B, // lui t0,0x009B
-    /* POPStarter会先检查核心文件，因此必须在参数解析前真正把+OPL挂到pfs1。 */
-    0x3C09504F, // lui t1,0x504F
-    0x35292B3A, // ori t1,t1,0x2B3A
-    0xAD091FCC, // sw t1,0x1FCC(t0)，__common改为+OPL
-    0x2409004C, // addiu t1,zero,0x004C
-    0xAD091FD0, // sw t1,0x1FD0(t0)，补写结尾并清除旧名称
-    /* 同步修正挂载提示，避免把实际的+OPL误显示为__common。 */
-    0x3C09504F, // lui t1,0x504F
-    0x35292B20, // ori t1,t1,0x2B20
-    0xAD091FAC, // sw t1,0x1FAC(t0)
-    0x3C096F74, // lui t1,0x6F74
-    0x3529204C, // ori t1,t1,0x204C
-    0xAD091FB0, // sw t1,0x1FB0(t0)
-    0x3C097366, // lui t1,0x7366
-    0x35297020, // ori t1,t1,0x7020
-    0xAD091FB4, // sw t1,0x1FB4(t0)
-    0x3C092E2E, // lui t1,0x2E2E
-    0x35292E31, // ori t1,t1,0x2E31
-    0xAD091FB8, // sw t1,0x1FB8(t0)
-    0xAD001FBC, // sw zero,0x1FBC(t0)
-    0x3C09504F, // lui t1,0x504F
-    0x35292B20, // ori t1,t1,0x2B20
-    0xAD091FE8, // sw t1,0x1FE8(t0)
-    0x3C096F74, // lui t1,0x6F74
-    0x3529204C, // ori t1,t1,0x204C
-    0xAD091FEC, // sw t1,0x1FEC(t0)
-    0x3C097366, // lui t1,0x7366
-    0x35297020, // ori t1,t1,0x7020
-    0xAD091FF0, // sw t1,0x1FF0(t0)
-    0x24090A31, // addiu t1,zero,0x0A31
-    0xAD091FF4, // sw t1,0x1FF4(t0)
+    /* 从EE常驻区复制实际APA分区名，避免把+OPL写死在POPStarter中。 */
+    0x25081FCC, // addiu t0,t0,0x1FCC
+    0x3C090009, // lui t1,0x0009
+    0x25294800, // addiu t1,t1,0x4800
+    0x912A0000, // lbu t2,0(t1)
+    0xA10A0000, // sb t2,0(t0)
+    0x25080001, // addiu t0,t0,1
+    0x25290001, // addiu t1,t1,1
+    0x1540FFFB, // bnez t2,复制分区名
+    0x00000000,
     /* 环境页面和后续资源路径必须与实际挂载点保持一致。 */
-    0x3C093173, // lui t1,0x3173
-    0x35296670, // ori t1,t1,0x6670
-    0xAD090AE0, // sw t1,0x0AE0(t0)
-    0x3C094F50, // lui t1,0x4F50
-    0x35292F3A, // ori t1,t1,0x2F3A
-    0xAD090AE4, // sw t1,0x0AE4(t0)
-    0x3C09252F, // lui t1,0x252F
-    0x35295350, // ori t1,t1,0x5350
-    0xAD090AE8, // sw t1,0x0AE8(t0)
-    0x24090A73, // addiu t1,zero,0x0A73
-    0xAD090AEC, // sw t1,0x0AEC(t0)
-    0x3C09504F, // lui t1,0x504F
-    0x35292B3A, // ori t1,t1,0x2B3A
-    0xAD090B0C, // sw t1,0x0B0C(t0)
-    0xAD090B3C, // sw t1,0x0B3C(t0)
-    0x3C097325, // lui t1,0x7325
-    0x35293A4C, // ori t1,t1,0x3A4C
-    0xAD090B10, // sw t1,0x0B10(t0)
-    0xAD090B40, // sw t1,0x0B40(t0)
-    0x2409000A, // addiu t1,zero,0x000A
-    0xAD090B14, // sw t1,0x0B14(t0)
-    0xAD090B44, // sw t1,0x0B44(t0)
+    0x3C08009B, // lui t0,0x009B
+    0x25080AE0, // addiu t0,t0,0x0AE0
+    0x3C090009, // lui t1,0x0009
+    0x252948C0, // addiu t1,t1,0x48C0
+    0x912A0000, // lbu t2,0(t1)
+    0xA10A0000, // sb t2,0(t0)
+    0x25080001, // addiu t0,t0,1
+    0x25290001, // addiu t1,t1,1
+    0x1540FFFB, // bnez t2,复制PFS资源格式串
+    0x00000000,
+    /* 两个资源格式串都使用同一个实际APA分区名。 */
+    0x3C08009B, // lui t0,0x009B
+    0x25080B0C, // addiu t0,t0,0x0B0C
+    0x3C090009, // lui t1,0x0009
+    0x25294840, // addiu t1,t1,0x4840
+    0x912A0000, // lbu t2,0(t1)
+    0xA10A0000, // sb t2,0(t0)
+    0x25080001, // addiu t0,t0,1
+    0x25290001, // addiu t1,t1,1
+    0x1540FFFB, // bnez t2,复制资源格式串
+    0x00000000,
+    0x3C08009B, // lui t0,0x009B
+    0x25080B3C, // addiu t0,t0,0x0B3C
+    0x3C090009, // lui t1,0x0009
+    0x25294840, // addiu t1,t1,0x4840
+    0x912A0000, // lbu t2,0(t1)
+    0xA10A0000, // sb t2,0(t0)
+    0x25080001, // addiu t0,t0,1
+    0x25290001, // addiu t1,t1,1
+    0x1540FFFB, // bnez t2,复制资源格式串
+    0x00000000,
     0x3C080087, // lui t0,0x0087
-    /* 仅为定位+OPL链路：保留POPStarter内部的参数、挂载及文件访问输出。 */
+    /* 仅为定位目录式APA链路：保留POPStarter内部的参数、挂载及文件访问输出。 */
     0x3C09AF80, // lui t1,0xAF80
     0x352938B0, // ori t1,t1,0x38B0
     0xAD090E10, // sw t1,0x0E10(t0)，禁止启动代码重新关闭内部输出
-    /* 用常驻辅助函数构造pfs1:/POPS/<游戏名>.VCD。 */
+    /* 用常驻辅助函数构造当前目录对应的pfs1 VCD路径。 */
     0x3C090C02, // lui t1,0x0C02
     0x35295180, // ori t1,t1,0x5180，jal 0x00094600
     0xAD09596C, // sw t1,0x596C(t0)
@@ -185,12 +182,17 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
     0x3529006F, // ori t1,t1,0x006F
     0xAD095AB0, // sw t1,0x5AB0(t0)，直接进入VCD打开阶段
     0xAD005AB4, // sw zero,0x5AB4(t0)
-    /* +OPL使用目录内VCD，不应套用独立APA分区的PP./__.名称规则。 */
+    /* 目录式APA使用目录内VCD，不应套用独立APA分区的PP./__.名称规则。 */
     0x3C080088, // lui t0,0x0088，0x8D5C会按有符号偏移解释
     0x3C091000, // lui t1,0x1000
     0x3529004F, // ori t1,t1,0x004F
     0xAD098D5C, // sw t1,0x8D5C(t0)，直接进入通过分支
     0xAD008D60, // sw zero,0x8D60(t0)
+    /* POPStarter完成原生POPS修补后，再补入HDD模式和实际分区名。 */
+    0x3C080087, // lui t0,0x0087
+    0x3C090C02, // lui t1,0x0C02
+    0x352951A0, // ori t1,t1,0x51A0，jal 0x00094680
+    0xAD0944B0, // sw t1,0x44B0(t0)
     0x0000000F, // sync
     0x03E00008, // jr ra
     0x00000000,
@@ -198,15 +200,86 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
 
 /* 固定放在0x00094600，避免修改修补辅助函数时改变被调用地址。 */
 static const u32 appPOPSHDDOPLPathHelper[] = {
-    0x3C083173, // lui t0,0x3173
-    0x35086670, // ori t0,t0,0x6670
-    0xAF883470, // sw t0,13424(gp)，写入pfs1
-    0x3C084F50, // lui t0,0x4F50
-    0x35082F3A, // ori t0,t0,0x2F3A
-    0xAF883474, // sw t0,13428(gp)，写入:/PO
-    0x3C08002F, // lui t0,0x002F
-    0x35085350, // ori t0,t0,0x5350
-    0xAF883478, // sw t0,13432(gp)，写入PS/与结尾
+    0x3C08009B, // lui t0,0x009B
+    0x25083470, // addiu t0,t0,0x3470
+    0x3C090009, // lui t1,0x0009
+    0x25294880, // addiu t1,t1,0x4880
+    0x912A0000, // lbu t2,0(t1)
+    0xA10A0000, // sb t2,0(t0)
+    0x25080001, // addiu t0,t0,1
+    0x25290001, // addiu t1,t1,1
+    0x1540FFFB, // bnez t2,复制VCD路径前缀
+    0x00000000,
+    0x03E00008, // jr ra
+    0x00000000,
+};
+
+/* 原生POPS会在入口重新解析argv，因此必须修改它最终采用的HDD分支和挂载调用。 */
+static const u32 appPOPSHDDOPLNativeHelper[] = {
+    0x27BDFFF0, // addiu sp,sp,-16
+    0xAFBF0000, // sw ra,0(sp)
+    0x0C236DF9, // jal 0x008DB7E4
+    0x00000000,
+    /* main_Initialize前部也会读取同一字段，必须选择最后一个HDD分支判断。 */
+    0x3C080020, // lui t0,0x0020
+    0x250804F0, // addiu t0,t0,0x04F0
+    0x3C090020, // lui t1,0x0020
+    0x25290940, // addiu t1,t1,0x0940
+    0x3C0A8262, // lui t2,0x8262
+    0x354A30C8, // ori t2,t2,0x30C8，lb v0,0x30C8(s3)
+    0x240E0000, // addiu t6,zero,0
+    0x8D0B0000, // lw t3,0(t0)
+    0x156A0007, // bne t3,t2,继续扫描
+    0x00000000,
+    0x8D0C0004, // lw t4,4(t0)
+    0x000C6402, // srl t4,t4,16
+    0x240D1040, // addiu t5,zero,0x1040，beqz v0
+    0x158D0002, // bne t4,t5,继续扫描
+    0x00000000,
+    0x250E0000, // addiu t6,t0,0，保留最后一个匹配位置
+    0x25080004, // addiu t0,t0,4
+    0x0109582B, // sltu t3,t0,t1
+    0x1560FFF4, // bnez t3,继续扫描
+    0x00000000,
+    0x11C00017, // beqz t6,版本不匹配等待
+    0x00000000,
+    0xADC00004, // sw zero,4(t6)，禁止跳入非HDD分支
+    /* 将SPU_MountHDD调用改到常驻包装函数，由它传入真实分区名。 */
+    0x3C080020, // lui t0,0x0020
+    0x250804F0, // addiu t0,t0,0x04F0
+    0x3C0A0C08, // lui t2,0x0C08
+    0x354A524E, // ori t2,t2,0x524E，jal 0x00214938
+    0x8D0B0000, // lw t3,0(t0)
+    0x116A0007, // beq t3,t2,找到挂载调用
+    0x00000000,
+    0x25080004, // addiu t0,t0,4
+    0x0109582B, // sltu t3,t0,t1
+    0x1560FFFA, // bnez t3,继续扫描
+    0x00000000,
+    0x10000009, // b 版本不匹配等待
+    0x00000000,
+    0x3C0B0C02, // lui t3,0x0C02
+    0x356B51E0, // ori t3,t3,0x51E0，jal 0x00094780
+    0xAD0B0000, // sw t3,0(t0)
+    0x0000000F, // sync
+    0x8FBF0000, // lw ra,0(sp)
+    0x27BD0010, // addiu sp,sp,16
+    0x03E00008, // jr ra
+    0x00000000,
+    0x1000FFFF, // b 版本不匹配等待
+    0x00000000,
+};
+
+/* 原生POPS进入HDD分支后只从这里取得APA设备名，避免其argv解析覆盖来源。 */
+static const u32 appPOPSHDDOPLMountHelper[] = {
+    0x27BDFFF0, // addiu sp,sp,-16
+    0xAFBF0000, // sw ra,0(sp)
+    0x3C040009, // lui a0,0x0009
+    0x24844800, // addiu a0,a0,0x4800
+    0x0C08524E, // jal 0x00214938
+    0x00000000,
+    0x8FBF0000, // lw ra,0(sp)
+    0x27BD0010, // addiu sp,sp,16
     0x03E00008, // jr ra
     0x00000000,
 };
@@ -244,7 +317,13 @@ typedef char pops_ee_hdd_opl_trampoline_must_fit[(POPS_EE_TRAMPOLINE_OFFSET + si
 typedef char pops_ee_copy_table_must_fit[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_ee_hdd_patch_helper_after_copy_table[(POPS_EE_COPY_TABLE_OFFSET + sizeof(elf_loader_resident_copy_table_t) <= POPS_EE_HDD_PATCH_HELPER_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_patch_helper_must_fit[(POPS_EE_HDD_PATCH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPatchHelper) <= POPS_EE_HDD_PATH_HELPER_OFFSET) ? 1 : -1];
-typedef char pops_ee_hdd_path_helper_must_fit[(POPS_EE_HDD_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPathHelper) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
+typedef char pops_ee_hdd_path_helper_must_fit[(POPS_EE_HDD_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLPathHelper) <= POPS_EE_HDD_NATIVE_HELPER_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_native_helper_must_fit[(POPS_EE_HDD_NATIVE_HELPER_OFFSET + sizeof(appPOPSHDDOPLNativeHelper) <= POPS_EE_HDD_MOUNT_HELPER_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_mount_helper_must_fit[(POPS_EE_HDD_MOUNT_HELPER_OFFSET + sizeof(appPOPSHDDOPLMountHelper) <= POPS_EE_HDD_PARTITION_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_partition_must_fit[(POPS_EE_HDD_PARTITION_OFFSET + POPS_EE_HDD_PARTITION_CAPACITY <= POPS_EE_HDD_RESOURCE_FORMAT_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_resource_format_must_fit[(POPS_EE_HDD_RESOURCE_FORMAT_OFFSET + POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY <= POPS_EE_HDD_VCD_PREFIX_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_vcd_prefix_must_fit[(POPS_EE_HDD_VCD_PREFIX_OFFSET + POPS_EE_HDD_VCD_PREFIX_CAPACITY <= POPS_EE_HDD_PFS_FORMAT_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_pfs_format_must_fit[(POPS_EE_HDD_PFS_FORMAT_OFFSET + POPS_EE_HDD_PFS_FORMAT_CAPACITY <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
 static int appIsPOPSLauncher(const app_info_t *app)
@@ -567,9 +646,28 @@ static void *appPreparePOPSSMBEEInjection(const pops_boot_mailbox_t *mailbox)
     return patchedELF;
 }
 
-static void *appPreparePOPSHDDOPLEEInjection(void)
+static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *pfsPath)
 {
+    char resourceFormat[POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY];
+    char vcdPrefix[POPS_EE_HDD_VCD_PREFIX_CAPACITY];
+    char pfsFormat[POPS_EE_HDD_PFS_FORMAT_CAPACITY];
+    const char *relativePath;
     u8 *patchedELF;
+
+    if (partition == NULL || strncmp(partition, "hdd0:", 5) != 0 || partition[5] == '\0' ||
+        strlen(partition) >= POPS_EE_HDD_PARTITION_CAPACITY ||
+        snprintf(resourceFormat, sizeof(resourceFormat), ":%s:%%s", partition + 5) >= (int)sizeof(resourceFormat))
+        return NULL;
+
+    if (pfsPath == NULL || strncmp(pfsPath, "pfs0:", 5) != 0)
+        return NULL;
+    relativePath = pfsPath + 5;
+    while (*relativePath == '/')
+        relativePath++;
+    if (*relativePath == '\0' ||
+        snprintf(vcdPrefix, sizeof(vcdPrefix), "pfs1:/%s/", relativePath) >= (int)sizeof(vcdPrefix) ||
+        snprintf(pfsFormat, sizeof(pfsFormat), "pfs1:/%s/%%s", relativePath) >= 0x2C)
+        return NULL;
 
     patchedELF = malloc(size_popstarter_elf);
     if (!patchedELF)
@@ -585,16 +683,25 @@ static void *appPreparePOPSHDDOPLEEInjection(void)
            appPOPSHDDOPLPatchHelper, sizeof(appPOPSHDDOPLPatchHelper));
     memcpy(appPOPSEEResident + POPS_EE_HDD_PATH_HELPER_OFFSET,
            appPOPSHDDOPLPathHelper, sizeof(appPOPSHDDOPLPathHelper));
+    memcpy(appPOPSEEResident + POPS_EE_HDD_NATIVE_HELPER_OFFSET,
+           appPOPSHDDOPLNativeHelper, sizeof(appPOPSHDDOPLNativeHelper));
+    memcpy(appPOPSEEResident + POPS_EE_HDD_MOUNT_HELPER_OFFSET,
+           appPOPSHDDOPLMountHelper, sizeof(appPOPSHDDOPLMountHelper));
+    strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_PARTITION_OFFSET), partition);
+    strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_RESOURCE_FORMAT_OFFSET), resourceFormat);
+    strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_VCD_PREFIX_OFFSET), vcdPrefix);
+    strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_PFS_FORMAT_OFFSET), pfsFormat);
 
     return patchedELF;
 }
 
-static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox, int mode, int hddSource)
+static void *appPreparePOPSEEInjection(const pops_boot_mailbox_t *mailbox, int mode, int hddSource,
+                                       const char *hddPartition, const char *hddPath)
 {
     if (mode == ETH_MODE)
         return appPreparePOPSSMBEEInjection(mailbox);
     if (mode == HDD_MODE && hddSource == OPL_HDD_POPS_SOURCE_OPL)
-        return appPreparePOPSHDDOPLEEInjection();
+        return appPreparePOPSHDDOPLEEInjection(hddPartition, hddPath);
 
     return appPreparePOPSBDMEEInjection(mailbox);
 }
@@ -649,11 +756,11 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     static const char linkDirectory[] = "pfs0:/disc";
     static const char linkPath[] = "pfs0:/disc/disc0";
     static const char temporaryLinkPath[] = "pfs0:/disc/disc0.new";
-    char sourcePath[sizeof("pfs0:/POPS/") + APP_BOOT_MAX + 1];
+    char sourcePath[APP_PATH_MAX + APP_BOOT_MAX + 2];
     unsigned int mode;
     int fd, result;
 
-    if (snprintf(sourcePath, sizeof(sourcePath), "pfs0:/POPS/%s", app->vcdName) >= (int)sizeof(sourcePath))
+    if (snprintf(sourcePath, sizeof(sourcePath), "%s/%s", app->path, app->vcdName) >= (int)sizeof(sourcePath))
         return -1;
 
     /* 先确认目标可读，避免把有效映射替换成指向不存在文件的链接。 */
@@ -880,6 +987,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
         app->app.generated = 0;
         app->app.popstarter = 0;
         app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
+        app->app.popsHddPartition[0] = '\0';
         count++;
         cur = cur->next;
     }
@@ -929,6 +1037,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         app->app.generated = 0;
         app->app.popstarter = 0;
         app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
+        app->app.popsHddPartition[0] = '\0';
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -945,7 +1054,7 @@ static int appIsNumberedVcdName(const char *vcdName, int nameLength)
            strcasecmp(&vcdName[nameLength - 4], ".VCD") == 0;
 }
 
-static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix, int hddSource)
+static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix, int hddSource, const char *hddPartition)
 {
     struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
     struct app_info_linked *app;
@@ -953,6 +1062,11 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     char boot[APP_BOOT_MAX + 1];
     char startup[APP_BOOT_MAX + 1];
     int nameLength, titleLength, pathLength;
+
+    if (hddPartition != NULL && strlen(hddPartition) > APP_HDD_PARTITION_MAX) {
+        LOG("APPSUPPORT POPS APA partition name is too long: %s\n", hddPartition);
+        return 1;
+    }
 
     nameLength = strlen(vcdName);
     if (appIsNumberedVcdName(vcdName, nameLength)) {
@@ -1022,23 +1136,29 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     app->app.generated = 1;
     app->app.popstarter = 1;
     app->app.popsHddSource = hddSource;
+    if (hddPartition != NULL) {
+        strncpy(app->app.popsHddPartition, hddPartition, APP_HDD_PARTITION_MAX);
+        app->app.popsHddPartition[APP_HDD_PARTITION_MAX] = '\0';
+    } else {
+        app->app.popsHddPartition[0] = '\0';
+    }
 
     return 0;
 }
 
 static int appScanBDMPOPSCallback(const char *path, const char *vcdName, void *arg)
 {
-    return appAddPOPSItem(path, vcdName, arg, POPS_BDM_ELF_PREFIX, OPL_HDD_POPS_SOURCE_NONE);
+    return appAddPOPSItem(path, vcdName, arg, POPS_BDM_ELF_PREFIX, OPL_HDD_POPS_SOURCE_NONE, NULL);
 }
 
 static int appScanSMBPOPSCallback(const char *path, const char *vcdName, void *arg)
 {
-    return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX, OPL_HDD_POPS_SOURCE_NONE);
+    return appAddPOPSItem(path, vcdName, arg, POPS_SMB_ELF_PREFIX, OPL_HDD_POPS_SOURCE_NONE, NULL);
 }
 
-static int appScanHDDPOPSCallback(const char *path, const char *vcdName, int source, void *arg)
+static int appScanHDDPOPSCallback(const char *path, const char *vcdName, int source, const char *partition, void *arg)
 {
-    return appAddPOPSItem(path, vcdName, arg, "", source);
+    return appAddPOPSItem(path, vcdName, arg, "", source, partition);
 }
 
 static int appScanELFCallback(const char *path, const char *elfName, void *arg)
@@ -1083,6 +1203,7 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
     app->app.generated = 1;
     app->app.popstarter = 0;
     app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
+    app->app.popsHddPartition[0] = '\0';
 
     return 0;
 }
@@ -1280,7 +1401,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
         char cheatPath[APP_PATH_MAX + 14];
-        char popstarterArg[sizeof(POPS_HDD_OPL_ARG_PREFIX) + APP_BOOT_MAX + 1];
+        char popstarterArg[APP_HDD_PARTITION_MAX + APP_PATH_MAX + APP_BOOT_MAX + sizeof(":pfs://") + 1];
         char *argv[1];
         pops_boot_mailbox_t bootMailbox;
         const void *launchELF;
@@ -1349,21 +1470,33 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         requiresHDDOPLInjection = mode == HDD_MODE && appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL;
 
         if (mode == HDD_MODE) {
-            const char *resourcePartition = requiresHDDOPLInjection ? OPL_HDD_OPL_PARTITION : "hdd0:__common";
-            const char *resourceLocation = requiresHDDOPLInjection ? "+OPL/POPS" : "__common/POPS";
+            const char *resourcePartition = requiresHDDOPLInjection ? appsList[id].popsHddPartition : "hdd0:__common";
+            char resourceLocation[APP_HDD_PARTITION_MAX + APP_PATH_MAX + 2];
+
+            if (requiresHDDOPLInjection &&
+                (strncmp(resourcePartition, "hdd0:", 5) != 0 || resourcePartition[5] == '\0' ||
+                 strncmp(appsList[id].path, "pfs0:", 5) != 0 || appsList[id].path[5] == '\0')) {
+                guiMsgBox("目录式APA游戏缺少来源分区信息", 0, NULL);
+                return;
+            }
+            snprintf(resourceLocation, sizeof(resourceLocation), "%s/%s",
+                     strncmp(resourcePartition, "hdd0:", 5) == 0 ? resourcePartition + 5 : resourcePartition,
+                     strncmp(appsList[id].path, "pfs0:", 5) == 0 ? appsList[id].path + 5 : "POPS");
 
             fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
             if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, resourcePartition, FIO_MT_RDWR) == 0) {
                 char missingFiles[32];
 
                 missingFiles[0] = '\0';
-                fd = openFile("pfs0:POPS/IOPRP252.IMG", O_RDONLY);
+                snprintf(filename, sizeof(filename), "%s/IOPRP252.IMG", appsList[id].path);
+                fd = openFile(filename, O_RDONLY);
                 if (fd >= 0)
                     close(fd);
                 else
                     strcpy(missingFiles, "IOPRP252.IMG");
 
-                fd = openFile("pfs0:POPS/POPS.ELF", O_RDONLY);
+                snprintf(filename, sizeof(filename), "%s/POPS.ELF", appsList[id].path);
+                fd = openFile(filename, O_RDONLY);
                 if (fd >= 0)
                     close(fd);
                 else {
@@ -1382,15 +1515,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 }
 
                 if (requiresHDDOPLInjection && appPreparePOPSHDDOPLVCDLink(&appsList[id]) < 0) {
-                    guiMsgBox("无法为+OPL准备原生VCD入口，请检查POPS文件和disc目录", 0, NULL);
+                    guiMsgBox("无法为目录式APA分区准备原生VCD入口，请检查POPS文件和disc目录", 0, NULL);
                     oplRestoreHDDOPLPartition();
                     return;
                 }
 
-                snprintf(cheatPath, sizeof(cheatPath), "pfs0:POPS/CHEATS.TXT");
+                snprintf(cheatPath, sizeof(cheatPath), "%s/CHEATS.TXT", appsList[id].path);
             } else {
                 if (requiresHDDOPLInjection)
-                    guiMsgBox("无法挂载+OPL的POPS资源目录", 0, NULL);
+                    guiMsgBox("无法挂载目录式APA分区的POPS资源目录", 0, NULL);
                 else
                     cheatPath[0] = '\0';
                 oplRestoreHDDOPLPartition();
@@ -1433,14 +1566,25 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         guiHandleDeferedIO(&appPOPSPrepareStatus, _l(_STR_PLEASE_WAIT), IO_CUSTOM_SIMPLEACTION, &appPreparePOPSLauncher);
 
         if (requiresHDDOPLInjection && !(appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY)) {
-            guiMsgBox("无法启用+OPL的POPS内存补丁", 0, NULL);
+            guiMsgBox("无法启用目录式APA的POPS内存补丁", 0, NULL);
             oplRestoreHDDOPLPartition();
             return;
         }
 
-        // +OPL来源需要让POPStarter解析分区；其它链路继续使用uLE假ELF名。
-        if (snprintf(popstarterArg, sizeof(popstarterArg), requiresHDDOPLInjection ? POPS_HDD_OPL_ARG_PREFIX "%s" : "uLE:%s",
-                     appsList[id].boot) >= (int)sizeof(popstarterArg)) {
+        // 目录式APA来源需要携带真实分区和目录；其它链路继续使用uLE假ELF名。
+        if (requiresHDDOPLInjection) {
+            const char *relativePath = appsList[id].path + 5;
+
+            while (*relativePath == '/')
+                relativePath++;
+            if (snprintf(popstarterArg, sizeof(popstarterArg), "%s:pfs:/%s/%s",
+                         appsList[id].popsHddPartition, relativePath, appsList[id].boot) >= (int)sizeof(popstarterArg)) {
+                guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
+                oplRestoreHDDOPLPartition();
+                return;
+            }
+        } else if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s",
+                            appsList[id].boot) >= (int)sizeof(popstarterArg)) {
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
             if (mode == HDD_MODE)
                 oplRestoreHDDOPLPartition();
@@ -1457,17 +1601,18 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             memset(&bootMailbox, 0, sizeof(bootMailbox));
         }
 
-        /* SMB与+OPL链路不依赖BDM邮箱，邮箱不可用时仍须执行各自的EE补丁。 */
+        /* SMB与目录式APA链路不依赖BDM邮箱，邮箱不可用时仍须执行各自的EE补丁。 */
         if ((mode == ETH_MODE || requiresHDDOPLInjection || bootMailbox.magic == POPS_BOOT_MAILBOX_MAGIC) &&
             (appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY)) {
-            launchELF = appPreparePOPSEEInjection(&bootMailbox, mode, appsList[id].popsHddSource);
+            launchELF = appPreparePOPSEEInjection(&bootMailbox, mode, appsList[id].popsHddSource,
+                                                  appsList[id].popsHddPartition, appsList[id].path);
             if (launchELF) {
                 residentData = appPOPSEEResident;
                 residentSize = sizeof(appPOPSEEResident);
                 useEEInjection = 1;
             } else {
                 if (requiresHDDOPLInjection) {
-                    guiMsgBox("无法准备+OPL的POPS内存补丁", 0, NULL);
+                    guiMsgBox("无法准备目录式APA的POPS内存补丁", 0, NULL);
                     oplRestoreHDDOPLPartition();
                     return;
                 }
