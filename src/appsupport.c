@@ -174,8 +174,8 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
     0xAD095A24, // sw t1,0x5A24(t0)
     /* pfs1已经就绪，不能再枚举和挂载__.POPS、__.POPS0至__.POPS9。 */
     0x3C091000, // lui t1,0x1000
-    0x3529006F, // ori t1,t1,0x006F
-    0xAD095AB0, // sw t1,0x5AB0(t0)，直接进入VCD打开阶段
+    0x3529013C, // ori t1,t1,0x013C
+    0xAD095AB0, // sw t1,0x5AB0(t0)，跳过独立分区枚举并进入后续加载流程
     0xAD005AB4, // sw zero,0x5AB4(t0)
     /* 目录式APA使用目录内VCD，不应套用独立APA分区的PP./__.名称规则。 */
     0x3C080088, // lui t0,0x0088，0x8D5C会按有符号偏移解释
