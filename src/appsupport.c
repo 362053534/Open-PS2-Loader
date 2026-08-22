@@ -649,16 +649,25 @@ static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *m
     return 0;
 }
 
-static int appReadPOPSSymlink(const char *path, char *target, unsigned int targetSize)
+static int appGetPOPSDirectoryEntryMode(const char *directory, const char *name, unsigned int *mode)
 {
-    int result;
+    iox_dirent_t dirent;
+    int fd, result;
 
-    result = fileXioReadlink(path, target, targetSize - 1);
-    if (result < 0)
-        return result;
+    fd = fileXioDopen(directory);
+    if (fd < 0)
+        return -1;
 
-    target[result] = '\0';
-    return 0;
+    while ((result = fileXioDread(fd, &dirent)) > 0) {
+        if (strcmp(dirent.name, name) == 0) {
+            *mode = dirent.stat.mode;
+            fileXioDclose(fd);
+            return 1;
+        }
+    }
+
+    fileXioDclose(fd);
+    return result < 0 ? -1 : 0;
 }
 
 static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
@@ -667,13 +676,10 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
     static const char linkPath[] = "pfs0:/disc/disc0";
     static const char temporaryLinkPath[] = "pfs0:/disc/disc0.new";
     char sourcePath[sizeof("pfs0:/POPS/") + APP_BOOT_MAX + 1];
-    char targetPath[sizeof("/POPS/") + APP_BOOT_MAX + 1];
-    char currentTarget[sizeof(targetPath)];
-    iox_stat_t stat;
-    int fd;
+    unsigned int mode;
+    int fd, result;
 
-    if (snprintf(sourcePath, sizeof(sourcePath), "pfs0:/POPS/%s", app->vcdName) >= (int)sizeof(sourcePath) ||
-        snprintf(targetPath, sizeof(targetPath), "/POPS/%s", app->vcdName) >= (int)sizeof(targetPath))
+    if (snprintf(sourcePath, sizeof(sourcePath), "pfs0:/POPS/%s", app->vcdName) >= (int)sizeof(sourcePath))
         return -1;
 
     /* 先确认目标可读，避免把有效映射替换成指向不存在文件的链接。 */
@@ -694,32 +700,35 @@ static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
         fileXioDclose(fd);
     }
 
-    if (appReadPOPSSymlink(linkPath, currentTarget, sizeof(currentTarget)) == 0) {
-        if (strcmp(currentTarget, targetPath) == 0)
-            return 0;
-    } else if (fileXioGetStat(linkPath, &stat) >= 0) {
-        /* 用户已有的普通disc0不能被自动覆盖。 */
+    result = appGetPOPSDirectoryEntryMode(linkDirectory, "disc0", &mode);
+    if (result < 0 || (result > 0 && !FIO_S_ISLNK(mode))) {
+        /* 目录项模式不会跟随链接，可避免覆盖用户已有的普通disc0。 */
         return -1;
     }
 
-    if (appReadPOPSSymlink(temporaryLinkPath, currentTarget, sizeof(currentTarget)) == 0) {
+    result = appGetPOPSDirectoryEntryMode(linkDirectory, "disc0.new", &mode);
+    if (result < 0 || (result > 0 && !FIO_S_ISLNK(mode)))
+        return -1;
+    if (result > 0) {
         if (fileXioRemove(temporaryLinkPath) < 0)
             return -1;
-    } else if (fileXioGetStat(temporaryLinkPath, &stat) >= 0) {
-        return -1;
     }
 
     /* 先落盘临时链接，再由PFS原子替换正式入口，避免留下空窗。 */
     /* IOMAN需要从第一个参数取得pfs0设备，PFS收到的链接内容仍会去掉设备前缀。 */
     if (fileXioSymlink(sourcePath, temporaryLinkPath) < 0 ||
-        appReadPOPSSymlink(temporaryLinkPath, currentTarget, sizeof(currentTarget)) < 0 ||
-        strcmp(currentTarget, targetPath) != 0 ||
         fileXioRename(temporaryLinkPath, linkPath) < 0 ||
-        appReadPOPSSymlink(linkPath, currentTarget, sizeof(currentTarget)) < 0 ||
-        strcmp(currentTarget, targetPath) != 0) {
+        appGetPOPSDirectoryEntryMode(linkDirectory, "disc0", &mode) != 1 ||
+        !FIO_S_ISLNK(mode)) {
         fileXioRemove(temporaryLinkPath);
         return -1;
     }
+
+    /* 普通打开会由PFS解析链接，能同时验证链接内容及目标VCD。 */
+    fd = openFile(linkPath, O_RDONLY);
+    if (fd < 0)
+        return -1;
+    close(fd);
 
     return 0;
 }
