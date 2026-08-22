@@ -1478,6 +1478,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             "CACHE1 / 将POPS读取缓存从16个扇区缩减为1个扇区，可修复部分动画卡死。\r\n"
             "USBDELAY_# / 调整POPS的USB读取延迟；用于数据传输兼容，不影响设备识别。";
         int enableHDTVFix;
+        int createCheats = 0;
         int requiresHDDOPLInjection;
         int mode;
 
@@ -1566,14 +1567,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 enableHDTVFix = guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i (液晶)", "240p (CRT)", NULL);
 
                 guiMsgBox("若黑屏，请删除 POPS/CHEATS.TXT 即可重新选择分辨率", 0, NULL);
-
-                fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
-                if (fd >= 0) {
-                    if (enableHDTVFix)
-                        write(fd, "$", 1);
-                    write(fd, cheats, strlen(cheats));
-                    close(fd);
-                }
+                createCheats = 1;
             }
         }
 
@@ -1656,6 +1650,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             if (fileXioDevctl(device, USBMASS_DEVCTL_QUIESCE_MX4SIO, NULL, 0, NULL, 0) < 0) {
                 guiMsgBox("MX4SIO检测线程无法停止，已取消启动", 0, NULL);
                 return;
+            }
+        }
+        if (createCheats) {
+            fd = openFile(cheatPath, O_WRONLY | O_CREAT | O_TRUNC);
+            if (fd >= 0) {
+                if (enableHDTVFix)
+                    write(fd, "$", 1);
+                write(fd, cheats, strlen(cheats));
+                close(fd);
             }
         }
         if (gRememberLastPlayed) {
