@@ -374,9 +374,20 @@ static int appIsPOPSLauncher(const app_info_t *app)
     return app->popstarter || strstr(app->path, "APPS") == NULL;
 }
 
+static int appResolveMode(const app_info_t *app)
+{
+    /* pfs0和pfs1只是可变挂载点，HDD POPS必须使用扫描时保存的稳定来源。 */
+    if (app->popstarter &&
+        (app->popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
+         app->popsHddSource == OPL_HDD_POPS_SOURCE_OPL))
+        return HDD_MODE;
+
+    return oplPath2Mode(app->path);
+}
+
 static int appGetPOPSBDMDeviceType(const app_info_t *app)
 {
-    int mode = oplPath2Mode(app->path);
+    int mode = appResolveMode(app);
 
     if (mode >= BDM_MODE && mode <= BDM_MODE4)
         return bdmGetDeviceType(mode);
@@ -1427,7 +1438,7 @@ static void appPreparePOPSLauncher(void)
     int mode;
 
     appPOPSPrepareResult = 0;
-    mode = oplPath2Mode(appsList[appPOPSPrepareID].path);
+    mode = appResolveMode(&appsList[appPOPSPrepareID]);
     driver = NULL;
     driverSize = 0;
     useEEInjection = mode == ETH_MODE ||
@@ -1519,22 +1530,29 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         int enableHDTVFix;
         int createCheats = 0;
         int requiresHDDOPLInjection;
+        int restoreHDDPOPSPartition = 0;
         int mode;
 
         // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
-        mode = oplPath2Mode(appsList[id].path);
+        mode = appResolveMode(&appsList[id]);
         requiresHDDOPLInjection = mode == HDD_MODE && appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL;
 
         if (mode == HDD_MODE) {
             const char *resourcePartition = requiresHDDOPLInjection ? appsList[id].popsHddPartition : "hdd0:__common";
-            const char *resourcePath = requiresHDDOPLInjection ? appsList[id].path : OPL_HDD_POPS_MOUNTPOINT "POPS";
+            const char *resourcePath = requiresHDDOPLInjection ? appsList[id].path : OPL_HDD_POPS_SCRATCH_MOUNTPOINT "POPS";
             const char *resourceRelativePath;
             char resourceLocation[APP_HDD_PARTITION_MAX + APP_PATH_MAX + 2];
+            iox_stat_t resourceStat;
+            int resourceMounted;
 
             if (requiresHDDOPLInjection &&
                 (strncmp(resourcePartition, "hdd0:", 5) != 0 || resourcePartition[5] == '\0' ||
                  strncmp(appsList[id].path, "pfs0:", 5) != 0 || appsList[id].path[5] == '\0')) {
                 guiMsgBox("目录式APA游戏缺少来源分区信息", 0, NULL);
+                return;
+            }
+            if (requiresHDDOPLInjection && strcmp(resourcePartition, gOPLPart) != 0) {
+                guiMsgBox("目录式APA游戏的来源分区已经变化，请刷新游戏列表", 0, NULL);
                 return;
             }
 
@@ -1550,8 +1568,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                      strncmp(resourcePartition, "hdd0:", 5) == 0 ? resourcePartition + 5 : resourcePartition,
                      resourceRelativePath);
 
-            fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-            if (fileXioMount(OPL_HDD_POPS_MOUNTPOINT, resourcePartition, FIO_MT_RDWR) == 0) {
+            /* 目录式APA只使用固定的pfs0；pfs1仅供独立APA分区临时切换。 */
+            if (requiresHDDOPLInjection) {
+                resourceMounted = fileXioGetStat(resourcePath, &resourceStat) >= 0;
+            } else {
+                restoreHDDPOPSPartition = 1;
+                resourceMounted = oplEnsureHDDPOPSScratchPartition(resourcePartition) == 0;
+            }
+
+            if (resourceMounted) {
                 char missingFiles[32];
 
                 missingFiles[0] = '\0';
@@ -1577,13 +1602,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
                     snprintf(message, sizeof(message), "%s 目录下缺少 %s", resourceLocation, missingFiles);
                     guiMsgBox(message, 0, NULL);
-                    oplRestoreHDDOPLPartition();
+                    if (restoreHDDPOPSPartition)
+                        oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
                     return;
                 }
 
                 if (requiresHDDOPLInjection && appPreparePOPSHDDOPLVCDLink(&appsList[id]) < 0) {
                     guiMsgBox("无法为目录式APA分区准备原生VCD入口，请检查POPS文件和分区根目录", 0, NULL);
-                    oplRestoreHDDOPLPartition();
+                    if (restoreHDDPOPSPartition)
+                        oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
                     return;
                 }
 
@@ -1593,7 +1620,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                     guiMsgBox("无法挂载目录式APA分区的POPS资源目录", 0, NULL);
                 else
                     cheatPath[0] = '\0';
-                oplRestoreHDDOPLPartition();
+                if (restoreHDDPOPSPartition)
+                    oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
                 if (requiresHDDOPLInjection)
                     return;
             }
@@ -1627,7 +1655,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
         if (requiresHDDOPLInjection && !(appPOPSPrepareResult & APP_POPS_PREPARE_EE_READY)) {
             guiMsgBox("无法启用目录式APA的POPS内存补丁", 0, NULL);
-            oplRestoreHDDOPLPartition();
+            if (restoreHDDPOPSPartition)
+                oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
             return;
         }
 
@@ -1640,14 +1669,15 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             if (snprintf(popstarterArg, sizeof(popstarterArg), "%s:pfs:/%s/%s",
                          appsList[id].popsHddPartition, relativePath, appsList[id].boot) >= (int)sizeof(popstarterArg)) {
                 guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
-                oplRestoreHDDOPLPartition();
+                if (restoreHDDPOPSPartition)
+                    oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
                 return;
             }
         } else if (snprintf(popstarterArg, sizeof(popstarterArg), "uLE:%s",
                             appsList[id].boot) >= (int)sizeof(popstarterArg)) {
             guiMsgBox("POPSTARTER启动参数过长", 0, NULL);
-            if (mode == HDD_MODE)
-                oplRestoreHDDOPLPartition();
+            if (restoreHDDPOPSPartition)
+                oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
             return;
         }
 
@@ -1673,7 +1703,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             } else {
                 if (requiresHDDOPLInjection) {
                     guiMsgBox("无法准备目录式APA的POPS内存补丁", 0, NULL);
-                    oplRestoreHDDOPLPartition();
+                    if (restoreHDDPOPSPartition)
+                        oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
                     return;
                 }
                 launchELF = popstarter_elf;
@@ -1721,8 +1752,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
         LoadELFFromMemoryNoResetWithResidentData(launchELF, residentData, residentSize, 1, argv);
-        if (mode == HDD_MODE)
-            oplRestoreHDDOPLPartition();
+        if (restoreHDDPOPSPartition)
+            oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
         return;
     }
 
@@ -1826,7 +1857,32 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
         configSetStr(config, CONFIG_ITEM_NAME, appsList[id].boot);
         configSetStr(config, CONFIG_ITEM_LONGNAME, appsList[id].title);
         configSetStr(config, CONFIG_ITEM_ALTSTARTUP, appsList[id].argv1); // reuse AltStartup for argument 1
-        snprintf(path, sizeof(path), "%s/%s", appsList[id].path, appsList[id].boot);
+        if (appsList[id].popstarter &&
+            (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
+             appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL) &&
+            appsList[id].popsHddPartition[0] != '\0' && appsList[id].vcdName[0] != '\0') {
+            const char *partition = appsList[id].popsHddPartition;
+            const char *relativePath = appsList[id].path;
+            const char *separator;
+
+            /* 信息页显示真实APA位置，不暴露pfs0/pfs1临时挂载槽位。 */
+            if (strncmp(partition, "hdd0:", 5) == 0)
+                partition += 5;
+
+            if (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY) {
+                snprintf(path, sizeof(path), "%s:%s", partition, appsList[id].vcdName);
+            } else {
+                separator = strchr(relativePath, ':');
+                if (separator != NULL)
+                    relativePath = separator + 1;
+                while (*relativePath == '/')
+                    relativePath++;
+
+                snprintf(path, sizeof(path), "%s:%s/%s", partition, relativePath, appsList[id].vcdName);
+            }
+        } else {
+            snprintf(path, sizeof(path), "%s/%s", appsList[id].path, appsList[id].boot);
+        }
         configSetStr(config, CONFIG_ITEM_STARTUP, path);
         configSetStr(config, CONFIG_ITEM_MEDIA, "APP");
         configSetStr(config, CONFIG_ITEM_FORMAT, "ELF");
@@ -1853,7 +1909,14 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
                 break;
             }
         } else if (value == appsList[id].startup) {
-            appGetBoot(device, sizeof(device), appsList[id].path);
+            if (appsList[id].popstarter &&
+                (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
+                 appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL)) {
+                /* HDD POPS的ART固定来自工作分区，不能按pfs1临时槽位判断设备。 */
+                appGetBoot(device, sizeof(device), gHDDPrefix);
+            } else {
+                appGetBoot(device, sizeof(device), appsList[id].path);
+            }
             break;
         }
     }

@@ -343,14 +343,17 @@ int hddLoadSupportModules(void)
                            "-n"
                            "\0"
                            "20";
-    static char pfsarg[] = "\0"
+    static char pfsarg[] = "-m" // 最大挂载点数量
+                           "\0"
+                           "2" // 同时保留pfs0和pfs1
+                           "\0"
                            "-o" // max open
                            "\0"
-                           "10" // Default value: 2
+                           "6" // Default value: 2
                            "\0"
                            "-n" // Number of buffers
                            "\0"
-                           "40"; // Default value: 8 | Max value: 127
+                           "24"; // Default value: 8 | Max value: 127
 
     LOG("HDDSUPPORT LoadSupportModules\n");
 
