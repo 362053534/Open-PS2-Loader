@@ -20,6 +20,10 @@
 
 static int appForceUpdate = 1;
 static int appItemCount = 0;
+static int appAutoListInitialized;
+static int appUpdateAllSources;
+static u32 appPendingSourceMask;
+static u32 appUpdateSourceMask;
 static int appPOPSPrepareStatus;
 static int appPOPSPrepareResult;
 static int appPOPSPrepareID;
@@ -35,6 +39,15 @@ struct app_info_linked
     struct app_info_linked *next;
     app_info_t app;
 };
+
+typedef struct
+{
+    struct app_info_linked **appsLinkedList;
+    int sourceMode;
+} app_scan_context_t;
+
+#define APP_SOURCE_BIT(mode)       (1U << (mode))
+#define APP_AUTO_SOURCE_MASK       ((1U << (APP_SOURCE_MC + 1)) - 1)
 
 // forward declaration
 static item_list_t appItemList;
@@ -951,6 +964,10 @@ void appInit(item_list_t *itemList)
 {
     LOG("APPSUPPORT Init\n");
     appForceUpdate = !(gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO);
+    appAutoListInitialized = 0;
+    appUpdateAllSources = 0;
+    // ETH和HDD可能先于APPS初始化完成，必须保留它们已经登记的来源更新。
+    appUpdateSourceMask = 0;
     configGetInt(configGetByType(CONFIG_OPL), "app_frames_delay", &appItemList.delay);
     appFreeLegacyConfig();
     if (!gAutoDetectPS1Apps)
@@ -972,11 +989,44 @@ void appForceRefresh(void)
     ioPutRequest(IO_MENU_UPDATE_DEFFERED, &appItemList.mode);
 }
 
+void appRequestSourceRefresh(int mode)
+{
+    if (!gAutoDetectPS1Apps || mode < BDM_MODE || mode > HDD_MODE)
+        return;
+
+    appPendingSourceMask |= APP_SOURCE_BIT(mode);
+    if (gAPPStartMode != START_MODE_DISABLED && appItemList.enabled)
+        ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &appItemList.mode);
+}
+
 static int appNeedsUpdate(item_list_t *itemList)
 {
     int update;
 
     update = 0;
+    appUpdateAllSources = 0;
+    appUpdateSourceMask = 0;
+
+    if (gAutoDetectPS1Apps) {
+        // 自动识别使用来源掩码，旧的全局标记只在传统CFG模式消费。
+        oplShouldAppsUpdate();
+        if (appForceUpdate) {
+            appForceUpdate = 0;
+            appPendingSourceMask = 0;
+            appUpdateAllSources = 1;
+            update = 1;
+        } else if (appPendingSourceMask) {
+            if (appAutoListInitialized)
+                appUpdateSourceMask = appPendingSourceMask;
+            else
+                appUpdateAllSources = 1;
+            appPendingSourceMask = 0;
+            update = 1;
+        }
+
+        return update;
+    }
+
     if (appForceUpdate) {
         appForceUpdate = 0;
         update = 1;
@@ -1054,6 +1104,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
         app->app.popstarter = 0;
         app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
         app->app.popsHddPartition[0] = '\0';
+        app->app.sourceMode = APP_SOURCE_NONE;
         count++;
         cur = cur->next;
     }
@@ -1104,6 +1155,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         app->app.popstarter = 0;
         app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
         app->app.popsHddPartition[0] = '\0';
+        app->app.sourceMode = APP_SOURCE_NONE;
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -1122,7 +1174,8 @@ static int appIsNumberedVcdName(const char *vcdName, int nameLength)
 
 static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix, int hddSource, const char *hddPartition)
 {
-    struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
+    app_scan_context_t *context = (app_scan_context_t *)arg;
+    struct app_info_linked **appsLinkedList = context->appsLinkedList;
     struct app_info_linked *app;
     char title[APP_TITLE_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
@@ -1172,22 +1225,13 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
         startup[sizeof(startup) - 1] = '\0';
     }
 
-    if (*appsLinkedList == NULL) {
-        *appsLinkedList = malloc(sizeof(struct app_info_linked));
-        app = *appsLinkedList;
-        app->next = NULL;
-    } else {
-        app = malloc(sizeof(struct app_info_linked));
-        if (app != NULL) {
-            app->next = *appsLinkedList;
-            *appsLinkedList = app;
-        }
-    }
-
-    if (app == NULL) {
+    app = malloc(sizeof(struct app_info_linked));
+    if (!app) {
         LOG("APPSUPPORT unable to allocate memory.\n");
         return -1;
     }
+    app->next = *appsLinkedList;
+    *appsLinkedList = app;
 
     strcpy(app->app.title, title);
     strcpy(app->app.boot, boot);
@@ -1202,6 +1246,7 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     app->app.generated = 1;
     app->app.popstarter = 1;
     app->app.popsHddSource = hddSource;
+    app->app.sourceMode = context->sourceMode;
     if (hddPartition != NULL) {
         strncpy(app->app.popsHddPartition, hddPartition, APP_HDD_PARTITION_MAX);
         app->app.popsHddPartition[APP_HDD_PARTITION_MAX] = '\0';
@@ -1229,7 +1274,8 @@ static int appScanHDDPOPSCallback(const char *path, const char *vcdName, int sou
 
 static int appScanELFCallback(const char *path, const char *elfName, void *arg)
 {
-    struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
+    app_scan_context_t *context = (app_scan_context_t *)arg;
+    struct app_info_linked **appsLinkedList = context->appsLinkedList;
     struct app_info_linked *app;
     char title[APP_TITLE_MAX + 1];
     int titleLength;
@@ -1239,22 +1285,13 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
         return 1;
     }
 
-    if (*appsLinkedList == NULL) {
-        *appsLinkedList = malloc(sizeof(struct app_info_linked));
-        app = *appsLinkedList;
-        app->next = NULL;
-    } else {
-        app = malloc(sizeof(struct app_info_linked));
-        if (app != NULL) {
-            app->next = *appsLinkedList;
-            *appsLinkedList = app;
-        }
-    }
-
-    if (app == NULL) {
+    app = malloc(sizeof(struct app_info_linked));
+    if (!app) {
         LOG("APPSUPPORT unable to allocate memory.\n");
         return -1;
     }
+    app->next = *appsLinkedList;
+    *appsLinkedList = app;
 
     titleLength = strlen(elfName) - 4; // Remove the .ELF extension.
     memcpy(title, elfName, titleLength);
@@ -1270,46 +1307,231 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
     app->app.popstarter = 0;
     app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
     app->app.popsHddPartition[0] = '\0';
+    app->app.sourceMode = context->sourceMode;
 
     return 0;
+}
+
+static void appFreeLinkedList(struct app_info_linked **appsLinkedList)
+{
+    struct app_info_linked *appNext;
+
+    while (*appsLinkedList) {
+        appNext = (*appsLinkedList)->next;
+        free(*appsLinkedList);
+        *appsLinkedList = appNext;
+    }
+}
+
+static void appMoveLinkedList(app_info_t *target, int *targetCount, struct app_info_linked **appsLinkedList)
+{
+    struct app_info_linked *app, *appNext, *reversedList;
+
+    reversedList = NULL;
+    app = *appsLinkedList;
+    while (app) {
+        appNext = app->next;
+        app->next = reversedList;
+        reversedList = app;
+        app = appNext;
+    }
+
+    while (reversedList) {
+        memcpy(&target[*targetCount], &reversedList->app, sizeof(app_info_t));
+        (*targetCount)++;
+        appNext = reversedList->next;
+        free(reversedList);
+        reversedList = appNext;
+    }
+    *appsLinkedList = NULL;
+}
+
+static void appCopyCachedSource(app_info_t *target, int *targetCount, int sourceMode, int popstarter)
+{
+    int i;
+
+    for (i = 0; i < appItemCount; i++) {
+        if (appsList[i].sourceMode == sourceMode && !!appsList[i].popstarter == popstarter) {
+            memcpy(&target[*targetCount], &appsList[i], sizeof(app_info_t));
+            (*targetCount)++;
+        }
+    }
+}
+
+static int appScanAutoAppsSource(int sourceMode, struct app_info_linked **appsLinkedList)
+{
+    app_scan_context_t context;
+
+    context.appsLinkedList = appsLinkedList;
+    context.sourceMode = sourceMode;
+
+    if (sourceMode == APP_SOURCE_MC)
+        return oplScanMCApps(&appScanELFCallback, &context);
+    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
+        return oplScanBDMAppsByMode(sourceMode, &appScanELFCallback, &context);
+    if (sourceMode == ETH_MODE)
+        return oplScanSMBApps(&appScanELFCallback, &context);
+    if (sourceMode == HDD_MODE)
+        return oplScanHDDApps(&appScanELFCallback, &context);
+
+    return 0;
+}
+
+static int appScanAutoPOPSSource(int sourceMode, struct app_info_linked **appsLinkedList)
+{
+    app_scan_context_t context;
+
+    context.appsLinkedList = appsLinkedList;
+    context.sourceMode = sourceMode;
+
+    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
+        return oplScanBDMPOPSByMode(sourceMode, &appScanBDMPOPSCallback, &context);
+    if (sourceMode == ETH_MODE)
+        return oplScanSMBPOPS(&appScanSMBPOPSCallback, &context);
+    if (sourceMode == HDD_MODE)
+        return oplScanHDDPOPS(&appScanHDDPOPSCallback, &context);
+
+    return 0;
+}
+
+static void appRestoreAutoRefresh(u32 sourceMask, int fullUpdate)
+{
+    if (fullUpdate)
+        appForceUpdate = 1;
+    else
+        appPendingSourceMask |= sourceMask;
+}
+
+static int appUpdateAutoItemList(void)
+{
+    struct app_info_linked *newAppsLists[MODE_COUNT];
+    struct app_info_linked *newPOPSLists[MODE_COUNT];
+    int newAppsCounts[MODE_COUNT];
+    int newPOPSCounts[MODE_COUNT];
+    app_info_t *newAppsList;
+    u32 sourceMask;
+    int fullUpdate, newItemCount, outputCount;
+    int sourceMode, i;
+
+    memset(newAppsLists, 0, sizeof(newAppsLists));
+    memset(newPOPSLists, 0, sizeof(newPOPSLists));
+    memset(newAppsCounts, 0, sizeof(newAppsCounts));
+    memset(newPOPSCounts, 0, sizeof(newPOPSCounts));
+
+    fullUpdate = appUpdateAllSources || !appAutoListInitialized;
+    sourceMask = fullUpdate ? APP_AUTO_SOURCE_MASK : appUpdateSourceMask & APP_AUTO_SOURCE_MASK;
+    appUpdateAllSources = 0;
+    appUpdateSourceMask = 0;
+    if (!sourceMask)
+        return appItemCount;
+
+    for (sourceMode = BDM_MODE; sourceMode <= APP_SOURCE_MC; sourceMode++) {
+        if (!(sourceMask & APP_SOURCE_BIT(sourceMode)))
+            continue;
+
+        newAppsCounts[sourceMode] = appScanAutoAppsSource(sourceMode, &newAppsLists[sourceMode]);
+        if (newAppsCounts[sourceMode] < 0)
+            break;
+
+        newPOPSCounts[sourceMode] = appScanAutoPOPSSource(sourceMode, &newPOPSLists[sourceMode]);
+        if (newPOPSCounts[sourceMode] < 0)
+            break;
+    }
+
+    if (sourceMode <= APP_SOURCE_MC) {
+        for (i = BDM_MODE; i <= APP_SOURCE_MC; i++) {
+            appFreeLinkedList(&newAppsLists[i]);
+            appFreeLinkedList(&newPOPSLists[i]);
+        }
+        appRestoreAutoRefresh(sourceMask, fullUpdate);
+        return appItemCount;
+    }
+
+    newItemCount = 0;
+    for (sourceMode = BDM_MODE; sourceMode <= APP_SOURCE_MC; sourceMode++)
+        newItemCount += newAppsCounts[sourceMode] + newPOPSCounts[sourceMode];
+    if (!fullUpdate) {
+        for (i = 0; i < appItemCount; i++) {
+            sourceMode = appsList[i].sourceMode;
+            if (sourceMode < BDM_MODE || sourceMode > APP_SOURCE_MC || !(sourceMask & APP_SOURCE_BIT(sourceMode)))
+                newItemCount++;
+        }
+    }
+
+    newAppsList = NULL;
+    if (newItemCount > 0) {
+        newAppsList = malloc(newItemCount * sizeof(app_info_t));
+        if (!newAppsList) {
+            LOG("APPSUPPORT unable to allocate memory.\n");
+            for (i = BDM_MODE; i <= APP_SOURCE_MC; i++) {
+                appFreeLinkedList(&newAppsLists[i]);
+                appFreeLinkedList(&newPOPSLists[i]);
+            }
+            appRestoreAutoRefresh(sourceMask, fullUpdate);
+            return appItemCount;
+        }
+    }
+
+    outputCount = 0;
+    if (sourceMask & APP_SOURCE_BIT(APP_SOURCE_MC))
+        appMoveLinkedList(newAppsList, &outputCount, &newAppsLists[APP_SOURCE_MC]);
+    else
+        appCopyCachedSource(newAppsList, &outputCount, APP_SOURCE_MC, 0);
+
+    for (sourceMode = BDM_MODE; sourceMode <= HDD_MODE; sourceMode++) {
+        if (sourceMask & APP_SOURCE_BIT(sourceMode))
+            appMoveLinkedList(newAppsList, &outputCount, &newAppsLists[sourceMode]);
+        else
+            appCopyCachedSource(newAppsList, &outputCount, sourceMode, 0);
+    }
+    for (sourceMode = BDM_MODE; sourceMode <= HDD_MODE; sourceMode++) {
+        if (sourceMask & APP_SOURCE_BIT(sourceMode))
+            appMoveLinkedList(newAppsList, &outputCount, &newPOPSLists[sourceMode]);
+        else
+            appCopyCachedSource(newAppsList, &outputCount, sourceMode, 1);
+    }
+
+    // 未带来源的旧条目只在局部更新时保留，完整更新会统一重建来源标记。
+    if (!fullUpdate) {
+        for (i = 0; i < appItemCount; i++) {
+            sourceMode = appsList[i].sourceMode;
+            if (sourceMode < BDM_MODE || sourceMode > APP_SOURCE_MC) {
+                memcpy(&newAppsList[outputCount], &appsList[i], sizeof(app_info_t));
+                outputCount++;
+            }
+        }
+    }
+
+    if (appsList)
+        free(appsList);
+    appsList = newAppsList;
+    appItemCount = outputCount;
+    appAutoListInitialized = 1;
+
+    // 更新期间若又收到来源变化，必须追加一轮，不能被当前在途请求吞掉。
+    if (appPendingSourceMask)
+        ioPutRequest(IO_MENU_UPDATE_DEFFERED, &appItemList.mode);
+
+    LOG("APPSUPPORT %d apps loaded\n", appItemCount);
+    return appItemCount;
 }
 
 static int appUpdateItemList(item_list_t *itemList)
 {
     struct app_info_linked *appsLinkedList, *appNext;
 
+    if (gAutoDetectPS1Apps)
+        return appUpdateAutoItemList();
+
     appFreeList();
 
     appsLinkedList = NULL;
 
-    if (gAutoDetectPS1Apps) {
-        // Add ELF files found in APPS folders on memory cards.
-        appItemCount += oplScanMCApps(&appScanELFCallback, &appsLinkedList);
+    // Get legacy apps list first, so it is possible to use appGetConfigValue(id).
+    appItemCount += addAppsLegacyList(&appsLinkedList);
 
-        // Add ELF files found in APPS folders on BDM devices.
-        appItemCount += oplScanBDMApps(&appScanELFCallback, &appsLinkedList);
-
-        // Add ELF files found in the SMB APPS folder.
-        appItemCount += oplScanSMBApps(&appScanELFCallback, &appsLinkedList);
-
-        // Add ELF files found in the APA HDD APPS folder.
-        appItemCount += oplScanHDDApps(&appScanELFCallback, &appsLinkedList);
-
-        // Add a POPSTARTER entry for every VCD found on BDM devices.
-        appItemCount += oplScanBDMPOPS(&appScanBDMPOPSCallback, &appsLinkedList);
-
-        // Add a POPSTARTER entry for every VCD found in the SMB POPS folder.
-        appItemCount += oplScanSMBPOPS(&appScanSMBPOPSCallback, &appsLinkedList);
-
-        // Add a POPSTARTER entry for every VCD found in the APA HDD POPS partition.
-        appItemCount += oplScanHDDPOPS(&appScanHDDPOPSCallback, &appsLinkedList);
-    } else {
-        // Get legacy apps list first, so it is possible to use appGetConfigValue(id).
-        appItemCount += addAppsLegacyList(&appsLinkedList);
-
-        // Scan title.cfg files on devices.
-        appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
-    }
+    // Scan title.cfg files on devices.
+    appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
 
     // Generate apps list
     if (appItemCount > 0) {
@@ -1330,6 +1552,7 @@ static int appUpdateItemList(item_list_t *itemList)
         }
     }
 
+    appAutoListInitialized = 0;
     LOG("APPSUPPORT %d apps loaded\n", appItemCount);
 
     return appItemCount;
@@ -1954,6 +2177,8 @@ static void appCleanUp(item_list_t *itemList, int exception)
 
         appFreeList();
         appFreeLegacyConfig();
+        appAutoListInitialized = 0;
+        appPendingSourceMask = 0;
     }
 }
 
@@ -1965,6 +2190,8 @@ static void appShutdown(item_list_t *itemList)
 
         appFreeList();
         appFreeLegacyConfig();
+        appAutoListInitialized = 0;
+        appPendingSourceMask = 0;
     }
 }
 

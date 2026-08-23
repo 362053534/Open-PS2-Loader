@@ -405,6 +405,10 @@ void menuRefreshGameLists(void)
     // TXT映射改变了所有条目的显示名，这里保留独立的全局重建入口。
     for (int i = 0; i < MODE_COUNT; i++) {
         int deviceType = bdmGetDeviceType(i);
+        if (i == APP_MODE && gAutoDetectPS1Apps && list_support[i].support && list_support[i].support->enabled) {
+            appForceRefresh();
+            continue;
+        }
         if (list_support[i].support && list_support[i].support->enabled &&
             (!((i >= BDM_MODE && i <= BDM_MODE4) &&
                ((!gEnableUSB && !gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) ||
@@ -753,9 +757,10 @@ static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void 
 {
     struct dirent *pdirent;
     DIR *pdir;
-    int count, ret, nameLength;
+    int count, ret, nameLength, failed;
 
     count = 0;
+    failed = 0;
     if ((pdir = opendir(popsPath)) != NULL) {
         while ((pdirent = readdir(pdir)) != NULL) {
             if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
@@ -768,23 +773,26 @@ static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void 
             ret = callback(popsPath, pdirent->d_name, arg);
             if (ret == 0)
                 count++;
-            else if (ret < 0) // Stopped because of unrecoverable error.
+            else if (ret < 0) { // Stopped because of unrecoverable error.
+                failed = 1;
                 break;
+            }
         }
 
         closedir(pdir);
     }
 
-    return count;
+    return failed ? -1 : count;
 }
 
 static int scanAppELFs(int (*callback)(const char *path, const char *elfName, void *arg), void *arg, const char *appsPath)
 {
     struct dirent *pdirent;
     DIR *pdir;
-    int count, ret, nameLength;
+    int count, ret, nameLength, failed;
 
     count = 0;
+    failed = 0;
     if ((pdir = opendir(appsPath)) != NULL) {
         while ((pdirent = readdir(pdir)) != NULL) {
             if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
@@ -797,14 +805,16 @@ static int scanAppELFs(int (*callback)(const char *path, const char *elfName, vo
             ret = callback(appsPath, pdirent->d_name, arg);
             if (ret == 0)
                 count++;
-            else if (ret < 0) // Stopped because of unrecoverable error.
+            else if (ret < 0) { // Stopped because of unrecoverable error.
+                failed = 1;
                 break;
+            }
         }
 
         closedir(pdir);
     }
 
-    return count;
+    return failed ? -1 : count;
 }
 
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
@@ -836,59 +846,88 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
 
 int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
-    int i, count;
-    item_list_t *listSupport;
-    char popsPath[128];
+    int i, count, result;
 
     count = 0;
     for (i = BDM_MODE; i <= BDM_MODE4; i++) {
-        listSupport = list_support[i].support;
-        if ((gBDMStartMode != START_MODE_DISABLED) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
-            char *prefix = listSupport->itemGetPrefix(listSupport);
-
-            if (prefix[0] == '\0')
-                continue;
-
-            snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
-            count += scanPOPS(callback, arg, popsPath);
-        }
+        result = oplScanBDMPOPSByMode(i, callback, arg);
+        if (result < 0)
+            return result;
+        count += result;
     }
 
     return count;
+}
+
+int oplScanBDMPOPSByMode(int mode, int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char popsPath[128];
+    char *prefix;
+
+    if (mode < BDM_MODE || mode > BDM_MODE4 || gBDMStartMode == START_MODE_DISABLED)
+        return 0;
+
+    listSupport = list_support[mode].support;
+    if (!listSupport || !listSupport->enabled || !listSupport->itemGetPrefix)
+        return 0;
+
+    prefix = listSupport->itemGetPrefix(listSupport);
+    if (!prefix || !prefix[0])
+        return 0;
+
+    snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
+    return scanPOPS(callback, arg, popsPath);
 }
 
 int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
 {
-    int i, count;
-    item_list_t *listSupport;
-    char appsPath[128];
+    int i, count, result;
 
     count = 0;
     for (i = BDM_MODE; i <= BDM_MODE4; i++) {
-        listSupport = list_support[i].support;
-        if ((gBDMStartMode != START_MODE_DISABLED) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
-            char *prefix = listSupport->itemGetPrefix(listSupport);
-
-            if (prefix[0] == '\0')
-                continue;
-
-            snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
-            count += scanAppELFs(callback, arg, appsPath);
-        }
+        result = oplScanBDMAppsByMode(i, callback, arg);
+        if (result < 0)
+            return result;
+        count += result;
     }
 
     return count;
 }
 
+int oplScanBDMAppsByMode(int mode, int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char appsPath[128];
+    char *prefix;
+
+    if (mode < BDM_MODE || mode > BDM_MODE4 || gBDMStartMode == START_MODE_DISABLED)
+        return 0;
+
+    listSupport = list_support[mode].support;
+    if (!listSupport || !listSupport->enabled || !listSupport->itemGetPrefix)
+        return 0;
+
+    prefix = listSupport->itemGetPrefix(listSupport);
+    if (!prefix || !prefix[0])
+        return 0;
+
+    snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+    return scanAppELFs(callback, arg, appsPath);
+}
+
 int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
 {
-    int i, count;
+    int i, count, result;
     char appsPath[128];
 
     count = 0;
     for (i = 0; i < 2; i++) {
         snprintf(appsPath, sizeof(appsPath), "mc%d:APPS", i);
-        count += scanAppELFs(callback, arg, appsPath);
+        result = scanAppELFs(callback, arg, appsPath);
+        if (result < 0)
+            return result;
+        count += result;
     }
 
     return count;
@@ -1026,10 +1065,15 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int so
 
     /* 目录式POPS始终使用当前配置的OPL分区，不能回退到写死的+OPL。 */
     result = oplScanHDDPOPSPath(popsPath, OPL_HDD_POPS_SOURCE_OPL, gOPLPart, callback, arg);
+    if (result < 0)
+        return result;
     /* 直接查询APA分区表，避免用一次失败的挂载来判断__.POPS是否存在。 */
     if (strcmp(gOPLPart, OPL_HDD_POPS_PARTITION) != 0 && fileXioGetStat(OPL_HDD_POPS_PARTITION, &stat) >= 0) {
-        result += oplScanHDDPOPSPartition(OPL_HDD_POPS_PARTITION, OPL_HDD_POPS_SCRATCH_MOUNTPOINT,
-                                          OPL_HDD_POPS_SOURCE_LEGACY, callback, arg);
+        int legacyResult = oplScanHDDPOPSPartition(OPL_HDD_POPS_PARTITION, OPL_HDD_POPS_SCRATCH_MOUNTPOINT,
+                                                   OPL_HDD_POPS_SOURCE_LEGACY, callback, arg);
+        if (legacyResult < 0)
+            return legacyResult;
+        result += legacyResult;
     }
 
     return result;
@@ -1184,12 +1228,10 @@ void menuDeferredUpdate(void *data)
 
         // If other modes have been updated, then the apps list should be updated too.
         if (mod->support->mode != APP_MODE) {
-            shouldAppsUpdate = 1;
-
-            // 来源设备更新后重建自动识别的APPS列表。
-            if (gAutoDetectPS1Apps && gAPPStartMode != START_MODE_DISABLED &&
-                list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
-                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
+            if (gAutoDetectPS1Apps)
+                appRequestSourceRefresh(mod->support->mode);
+            else
+                shouldAppsUpdate = 1;
         }
     }
 }

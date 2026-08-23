@@ -19,6 +19,9 @@
 
 #define APP_TITLE_CONFIG_FILE "title.cfg"
 
+#define APP_SOURCE_NONE -1
+#define APP_SOURCE_MC   APP_MODE
+
 typedef struct
 {
     char title[APP_TITLE_MAX + 1];
@@ -33,11 +36,13 @@ typedef struct
     u8 generated;
     u8 popstarter;
     u8 popsHddSource;
+    s8 sourceMode;
 } app_info_t;
 
 void appInit(item_list_t *itemList);
 item_list_t *appGetObject(int initOnly);
 void appForceRefresh(void);
+void appRequestSourceRefresh(int mode);
 void appPostUpdateCallback(int mode);
 
 #endif

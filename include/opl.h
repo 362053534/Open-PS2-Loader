@@ -85,9 +85,11 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg);
 int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
+int oplScanBDMAppsByMode(int mode, int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanSMBApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
+int oplScanBDMPOPSByMode(int mode, int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg), void *arg);
 int oplEnsureHDDPOPSScratchPartition(const char *partition);
