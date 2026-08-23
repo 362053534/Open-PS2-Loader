@@ -987,6 +987,15 @@ int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *
 
 static char hddPOPSScratchPartition[128];
 
+static void oplReleaseHDDPOPSScratchPartition(void)
+{
+    if (hddPOPSScratchPartition[0] == '\0')
+        return;
+
+    fileXioUmount(OPL_HDD_POPS_SCRATCH_MOUNTPOINT);
+    hddPOPSScratchPartition[0] = '\0';
+}
+
 int oplEnsureHDDPOPSScratchPartition(const char *partition)
 {
     int result;
@@ -2602,6 +2611,7 @@ void deinit(int exception, int modeSelected)
     unloadPads();
 
     deinitAllSupport(exception, modeSelected);
+    oplReleaseHDDPOPSScratchPartition();
 
     audioEnd();
     guiEnd();
@@ -2917,6 +2927,7 @@ void miniDeinit(config_set_t *configSet)
     ds34bt_reset();
 #endif
     configFree(configSet);
+    oplReleaseHDDPOPSScratchPartition();
 
     ioEnd();
     configEnd();
