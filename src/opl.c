@@ -347,37 +347,62 @@ static void retryBDMErrors(void)
 
 static void itemExecRefresh(struct menu_item *curMenu)
 {
-    unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
+    item_list_t *support;
+    int isBDMMode;
 
-    // 错误设备重试期间禁止重复刷新，避免重置正在执行的初始化流程。
-    if (bdmManualTrigger) {
+    if (!curMenu || !curMenu->userdata) {
         sfxPlay(SFX_CONFIRM);
         return;
     }
 
-    if (retryTypes && gBDMStartMode != START_MODE_DISABLED) {
-        bdmManualTrigger = 1;
-        if (ioPutRequestUnique(IO_CUSTOM_SIMPLEACTION, &retryBDMErrors) != IO_OK)
-            bdmManualTrigger = 0;
+    support = curMenu->userdata;
+    if (!support->enabled || support->mode < BDM_MODE || support->mode >= MODE_COUNT) {
         sfxPlay(SFX_CONFIRM);
         return;
     }
 
-    //// 只刷新当前页面
-    //item_list_t *support = curMenu->userdata;
-    //if (support && support->enabled) {
-    //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
-    //    sfxPlay(SFX_CONFIRM);
-    //}
-
-    // 停留在SMB/ETH页时强制重建当前列表（SMB目录mtime常不可靠）
-    if (curMenu && curMenu->userdata) {
-        item_list_t *support = curMenu->userdata;
-        if (support->enabled && support->mode == ETH_MODE)
-            forcedMenuUpdates[ETH_MODE] = 1;
+    if (support->mode == APP_MODE) {
+        appForceRefresh();
+        sfxPlay(SFX_CONFIRM);
+        return;
     }
 
-    // 刷新所有页面
+    isBDMMode = support->mode >= BDM_MODE && support->mode <= BDM_MODE4;
+    if (isBDMMode) {
+        bdm_device_data_t *pDeviceData = support->priv;
+        unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
+
+        // 错误恢复只由BDM页触发，避免刷新其他页时重置BDM初始化。
+        if (bdmManualTrigger) {
+            sfxPlay(SFX_CONFIRM);
+            return;
+        }
+
+        if (pDeviceData && pDeviceData->bdmPrefix[0] != '\0') {
+            forcedMenuUpdates[support->mode] = 1;
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+        } else if (!retryTypes) {
+            // 空页不强制重建，但仍允许已到达的插拔事件驱动设备识别。
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+        }
+
+        if (retryTypes && gBDMStartMode != START_MODE_DISABLED) {
+            bdmManualTrigger = 1;
+            if (ioPutRequestUnique(IO_CUSTOM_SIMPLEACTION, &retryBDMErrors) != IO_OK)
+                bdmManualTrigger = 0;
+        }
+    } else {
+        // 手动刷新必须重建当前页，不依赖目录时间戳是否可靠。
+        forcedMenuUpdates[support->mode] = 1;
+        ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+    }
+
+    sfxPlay(SFX_CONFIRM);
+}
+
+void menuRefreshGameLists(void)
+{
+    // TXT映射改变了所有条目的显示名，这里保留独立的全局重建入口。
     for (int i = 0; i < MODE_COUNT; i++) {
         int deviceType = bdmGetDeviceType(i);
         if (list_support[i].support && list_support[i].support->enabled &&
@@ -387,14 +412,9 @@ static void itemExecRefresh(struct menu_item *curMenu)
                 (deviceType == BDM_TYPE_ILINK && !gEnableILK) ||
                 (deviceType == BDM_TYPE_SDC && !gEnableMX4SIO) ||
                 (deviceType == BDM_TYPE_ATA && !gEnableBdmHDD)))))
-            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     }
     sfxPlay(SFX_CONFIRM);
-}
-
-void menuRefreshGameLists(void)
-{
-    itemExecRefresh(NULL);
 }
 
 static void itemExecCross(struct menu_item *curMenu)
@@ -1148,14 +1168,17 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
 void menuDeferredUpdate(void *data)
 {
     short int *mode = data;
+    int forcedUpdate;
+    int needsUpdate;
 
     opl_io_module_t *mod = &list_support[*mode];
     if (!mod->support)
         return;
 
-    // A settings change can request one full rebuild even when no source files
-    // have changed. This is used by TXT mapping after the user presses Refresh.
-    if (forcedMenuUpdates[*mode] || mod->support->itemNeedsUpdate(mod->support)) {
+    forcedUpdate = forcedMenuUpdates[*mode];
+    // 强制重建不能跳过设备状态检查，否则同时发生的热插拔事件会被遗留。
+    needsUpdate = mod->support->itemNeedsUpdate(mod->support);
+    if (forcedUpdate || needsUpdate) {
         forcedMenuUpdates[*mode] = 0;
         updateMenuFromGameList(mod);
 
