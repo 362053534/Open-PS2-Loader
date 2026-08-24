@@ -991,11 +991,14 @@ static char hddPOPSScratchPartition[128];
 
 static void oplReleaseHDDPOPSScratchPartition(void)
 {
+    int result;
+
     if (hddPOPSScratchPartition[0] == '\0')
         return;
 
-    fileXioUmount(OPL_HDD_POPS_SCRATCH_MOUNTPOINT);
-    hddPOPSScratchPartition[0] = '\0';
+    result = fileXioUmount(OPL_HDD_POPS_SCRATCH_MOUNTPOINT);
+    if (result == 0)
+        hddPOPSScratchPartition[0] = '\0';
 }
 
 int oplEnsureHDDPOPSScratchPartition(const char *partition)
@@ -2617,8 +2620,10 @@ void deinit(int exception, int modeSelected)
 #endif
     unloadPads();
 
+    // 关闭APA模块前先释放pfs1，避免底层存储已关闭后同步卸载永久等待。
+    if (!(exception & UNMOUNT_EXCEPTION))
+        oplReleaseHDDPOPSScratchPartition();
     deinitAllSupport(exception, modeSelected);
-    oplReleaseHDDPOPSScratchPartition();
 
     audioEnd();
     guiEnd();
