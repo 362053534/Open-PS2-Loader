@@ -1716,6 +1716,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
 
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
         char cheatPath[APP_PATH_MAX + 14];
+        char cheatPrompt[APP_HDD_PARTITION_MAX + APP_PATH_MAX + 64];
         char popstarterArg[APP_HDD_PARTITION_MAX + APP_PATH_MAX + APP_BOOT_MAX + sizeof(":pfs://") + 1];
         char *argv[1];
         pops_boot_mailbox_t bootMailbox;
@@ -1781,6 +1782,8 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         int requiresHDDOPLInjection;
         int restoreHDDPOPSPartition = 0;
         int mode;
+
+        snprintf(cheatPrompt, sizeof(cheatPrompt), "若黑屏，请删除 POPS/CHEATS.TXT 即可重新选择分辨率");
 
         // 初次启动时写入玩家选择的 POPStarter 分辨率配置。
         mode = appResolveMode(&appsList[id]);
@@ -1864,6 +1867,9 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                 }
 
                 snprintf(cheatPath, sizeof(cheatPath), "%s/CHEATS.TXT", resourcePath);
+                snprintf(cheatPrompt, sizeof(cheatPrompt),
+                         "若黑屏，请删除 %s/POPS/CHEATS.TXT 即可重新选择分辨率",
+                         requiresHDDOPLInjection ? resourcePartition + 5 : "__common");
             } else {
                 if (requiresHDDOPLInjection)
                     guiMsgBox("无法挂载目录式APA分区的POPS资源目录", 0, NULL);
@@ -1893,7 +1899,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             else {
                 enableHDTVFix = guiMsgBoxCustom("初次启动，请选择适合的分辨率，避免黑屏！", "480i (液晶)", "240p (CRT)", NULL);
 
-                guiMsgBox("若黑屏，请删除 POPS/CHEATS.TXT 即可重新选择分辨率", 0, NULL);
+                guiMsgBox(cheatPrompt, 0, NULL);
                 createCheats = 1;
             }
         }
