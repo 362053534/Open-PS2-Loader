@@ -1175,6 +1175,8 @@ config_set_t *oplGetLegacyAppsInfo(char *name)
 static void updateMenuFromGameList(opl_io_module_t *mdl)
 {
     guiExecDeferredOps();
+    // 列表重建后旧游戏可能复用相同索引，先强制丢弃上一轮ART缓存状态。
+    ForceRefreshPrevTexCache = 1;
     clearMenuGameList(mdl);
 
     const char *temp = NULL;
