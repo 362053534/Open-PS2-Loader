@@ -1782,6 +1782,8 @@ void guiMainLoop(void)
             if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
+                    // 须在首次淡出前应用完整菜单，否则本帧仍会绘制旧列表。
+                    guiExecDeferredOps();
                     // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页
                     if (gBDMStartMode == START_MODE_AUTO)
                         bdmTryActivateStartupPlaceholder();
