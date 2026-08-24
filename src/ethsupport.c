@@ -530,7 +530,7 @@ static int ethUpdateGameList(item_list_t *itemList)
         }
     } else {
         int i, count;
-        ShareEntry_t sharelist[128];
+        ShareEntry_t sharelist[128] __attribute__((aligned(64)));
         smbGetShareList_in_t getsharelist;
 
         if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
