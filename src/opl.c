@@ -581,7 +581,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
             // ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-            if (mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone)
+            // 自动识别的首次APPS扫描统一等待BDM列表阶段完成，避免每个来源各触发一次扫描。
+            if ((mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone) &&
+                !(mode == APP_MODE && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO && !mainScreenInitDone))
                 menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
         }
     } else {
@@ -1234,6 +1236,9 @@ void menuDeferredUpdate(void *data)
     if (forcedUpdate || needsUpdate) {
         forcedMenuUpdates[*mode] = 0;
         updateMenuFromGameList(mod);
+
+        if (mod->support->mode == APP_MODE)
+            appPostUpdateCallback(mod->support->mode);
 
         // If other modes have been updated, then the apps list should be updated too.
         if (mod->support->mode != APP_MODE) {

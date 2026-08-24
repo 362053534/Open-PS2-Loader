@@ -1779,7 +1779,7 @@ void guiMainLoop(void)
             //     fclose(debugFile);
             // }
 
-            if (bdmStartupStatus & BDM_STARTUP_STATUS_READY) {
+            if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
                     // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页

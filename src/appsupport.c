@@ -24,6 +24,7 @@ static int appAutoListInitialized;
 static int appUpdateAllSources;
 static u32 appPendingSourceMask;
 static u32 appUpdateSourceMask;
+static volatile int appInitialScanState;
 static int appPOPSPrepareStatus;
 static int appPOPSPrepareResult;
 static int appPOPSPrepareID;
@@ -48,6 +49,12 @@ typedef struct
 
 #define APP_SOURCE_BIT(mode)       (1U << (mode))
 #define APP_AUTO_SOURCE_MASK       ((1U << (APP_SOURCE_MC + 1)) - 1)
+
+enum {
+    APP_INITIAL_SCAN_COMPLETE,
+    APP_INITIAL_SCAN_PENDING,
+    APP_INITIAL_SCAN_QUEUED
+};
 
 // forward declaration
 static item_list_t appItemList;
@@ -963,9 +970,10 @@ static char *appGetBoot(char *device, int max, char *path)
 void appInit(item_list_t *itemList)
 {
     LOG("APPSUPPORT Init\n");
-    appForceUpdate = !(gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO);
+    appForceUpdate = 1;
     appAutoListInitialized = 0;
     appUpdateAllSources = 0;
+    appInitialScanState = gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO ? APP_INITIAL_SCAN_PENDING : APP_INITIAL_SCAN_COMPLETE;
     // ETH和HDD可能先于APPS初始化完成，必须保留它们已经登记的来源更新。
     appUpdateSourceMask = 0;
     configGetInt(configGetByType(CONFIG_OPL), "app_frames_delay", &appItemList.delay);
@@ -995,8 +1003,26 @@ void appRequestSourceRefresh(int mode)
         return;
 
     appPendingSourceMask |= APP_SOURCE_BIT(mode);
-    if (gAPPStartMode != START_MODE_DISABLED && appItemList.enabled)
+    // 首次扫描统一放到BDM列表阶段之后，初始化期间只累计来源变化。
+    if (appInitialScanState == APP_INITIAL_SCAN_COMPLETE && gAPPStartMode != START_MODE_DISABLED && appItemList.enabled)
         ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &appItemList.mode);
+}
+
+int appStartInitialScan(void)
+{
+    if (appInitialScanState == APP_INITIAL_SCAN_PENDING) {
+        appInitialScanState = APP_INITIAL_SCAN_QUEUED;
+        if (ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &appItemList.mode) != IO_OK)
+            appInitialScanState = APP_INITIAL_SCAN_PENDING;
+    }
+
+    return appInitialScanState == APP_INITIAL_SCAN_COMPLETE;
+}
+
+void appPostUpdateCallback(int mode)
+{
+    if (mode == APP_MODE && appInitialScanState != APP_INITIAL_SCAN_COMPLETE)
+        appInitialScanState = APP_INITIAL_SCAN_COMPLETE;
 }
 
 static int appNeedsUpdate(item_list_t *itemList)
@@ -2179,6 +2205,7 @@ static void appCleanUp(item_list_t *itemList, int exception)
         appFreeLegacyConfig();
         appAutoListInitialized = 0;
         appPendingSourceMask = 0;
+        appInitialScanState = APP_INITIAL_SCAN_COMPLETE;
     }
 }
 
@@ -2192,6 +2219,7 @@ static void appShutdown(item_list_t *itemList)
         appFreeLegacyConfig();
         appAutoListInitialized = 0;
         appPendingSourceMask = 0;
+        appInitialScanState = APP_INITIAL_SCAN_COMPLETE;
     }
 }
 
