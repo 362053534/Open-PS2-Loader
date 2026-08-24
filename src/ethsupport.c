@@ -13,6 +13,7 @@
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
 #include "modules/iopcore/common/cdvd_config.h"
+#include <time.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioDevctl(ethBase, SMB_***)
@@ -28,6 +29,12 @@ static time_t ethModifiedDVDPrev;
 static int ethGameCount = 0;
 static unsigned char ethModulesLoaded = 0;
 static base_game_info_t *ethGames = NULL;
+
+// 共享列表需要区分“尚未返回”和“返回空列表”，否则主界面无法确定初始化是否结束。
+static int ethShareListPending = 1;
+static int ethShareListFailed = 0;
+static int ethShareListRetryUsed = 0;
+static int ethNetworkTimeout = 0;
 
 static struct ip4_addr lastIP;
 static struct ip4_addr lastNM;
@@ -275,6 +282,7 @@ int ethApplyConfig(void)
 static void ethInitSMB(void)
 {
     int ret;
+    clock_t initStart = clock();
 
     WaitSema(ethInitSemaID);
     ret = ethInitApplyConfig();
@@ -297,6 +305,9 @@ static void ethInitSMB(void)
     }
 
     SignalSema(ethInitSemaID);
+
+    // 长时间等待通常表示底层网络超时，这类失败不再重复发起自动重连。
+    ethNetworkTimeout = (clock() - initStart) >= (25 * CLOCKS_PER_SEC);
 
     if (ret != 0 || (gNetworkStartup != 0 && (gPCShareName[0] || !(gNetworkStartup >= ERROR_ETH_SMB_OPENSHARE))))
         ethDisplayErrorStatus();
@@ -457,6 +468,10 @@ void ethInit(item_list_t *itemList)
         thmReinit(ethBase);
         ethULSizePrev = -2;
         ethGameCount = 0;
+        ethShareListPending = 1;
+        ethShareListFailed = 0;
+        ethShareListRetryUsed = 0;
+        ethNetworkTimeout = 0;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &ethInitSMB);
         ethInitSMB();
     } else {
@@ -467,6 +482,10 @@ void ethInit(item_list_t *itemList)
         ethModifiedDVDPrev = 0;
         ethGameCount = 0;
         ethGames = NULL;
+        ethShareListPending = 1;
+        ethShareListFailed = 0;
+        ethShareListRetryUsed = 0;
+        ethNetworkTimeout = 0;
         configGetInt(configGetByType(CONFIG_OPL), "eth_frames_delay", &ethGameList.delay);
         gNetworkStartup = ERROR_ETH_NOT_STARTED;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &smbLoadModules);
@@ -480,6 +499,22 @@ item_list_t *ethGetObject(int initOnly)
     if (initOnly && !ethGameList.enabled)
         return NULL;
     return &ethGameList;
+}
+
+int ethIsShareListPending(void)
+{
+    return !gPCShareName[0] && ethShareListPending;
+}
+
+int ethCanRetryShareList(void)
+{
+    return !gPCShareName[0] && ethShareListFailed && !ethShareListRetryUsed && !ethNetworkTimeout;
+}
+
+void ethMarkShareListRetry(void)
+{
+    ethShareListRetryUsed = 1;
+    ethShareListPending = 1;
 }
 
 static int ethNeedsUpdate(item_list_t *itemList)
@@ -530,16 +565,30 @@ static int ethUpdateGameList(item_list_t *itemList)
         }
     } else {
         int i, count;
+        clock_t requestStart;
         ShareEntry_t sharelist[128] __attribute__((aligned(64)));
         smbGetShareList_in_t getsharelist;
 
-        if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
-            return 0;
+        if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE) {
+            // 自动模式的第二次请求只补做一次网络重连，避免失败后无限占用后台线程。
+            if (ethShareListRetryUsed)
+                ethInitSMB();
+
+            if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE) {
+                ethShareListPending = 0;
+                ethShareListFailed = 1;
+                return 0;
+            }
+        }
 
         getsharelist.EE_addr = (void *)&sharelist[0];
         getsharelist.maxent = 128;
 
+        requestStart = clock();
         count = fileXioDevctl(ethBase, SMB_DEVCTL_GETSHARELIST, (void *)&getsharelist, sizeof(getsharelist), NULL, 0);
+        if ((clock() - requestStart) >= (25 * CLOCKS_PER_SEC))
+            ethNetworkTimeout = 1;
+
         if (count > 0) {
             free(ethGames);
             ethGames = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count);
@@ -556,9 +605,20 @@ static int ethUpdateGameList(item_list_t *itemList)
                 g->sizeMB = 0;
             }
             ethGameCount = count;
+            ethShareListPending = 0;
+            ethShareListFailed = 0;
         } else if (count < 0) {
             gNetworkStartup = ERROR_ETH_SMB_LISTSHARES;
             ethDisplayErrorStatus();
+            ethShareListPending = 0;
+            ethShareListFailed = 1;
+        } else {
+            // 0也是确定结果，表示服务器没有共享目录，不能继续等待或反复扫描。
+            free(ethGames);
+            ethGames = NULL;
+            ethGameCount = 0;
+            ethShareListPending = 0;
+            ethShareListFailed = 0;
         }
     }
     return ethGameCount;

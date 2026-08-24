@@ -1779,7 +1779,19 @@ void guiMainLoop(void)
             //     fclose(debugFile);
             // }
 
-            if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) && appStartInitialScan()) {
+            // SMB自动模式下，首次请求和唯一一次失败重试都在主界面初始化完成前发起。
+            if (gETHStartMode == START_MODE_AUTO) {
+                item_list_t *ethSupport = ethGetObject(1);
+                if (ethSupport) {
+                    if (ethIsShareListPending())
+                        ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
+                    else if (ethCanRetryShareList() && ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode) == IO_OK)
+                        ethMarkShareListRetry();
+                }
+            }
+
+            if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) &&
+                (gETHStartMode != START_MODE_AUTO || gDefaultDevice != ETH_MODE || !ethIsShareListPending()) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
                     // 须在首次淡出前应用完整菜单，否则本帧仍会绘制旧列表。
@@ -1801,12 +1813,6 @@ void guiMainLoop(void)
                     // 设备初始化完成后再启动背景音乐，避免音乐所在设备尚未挂载。
                     if (gEnableBGM)
                         bgmStart();
-                    // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
-                    if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {
-                        item_list_t *ethSupport = ethGetObject(1);
-                        if (ethSupport && ethSupport->itemGetCount(ethSupport) == 0)
-                            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
-                    }
                     theardInitDone = 0;
                     // BDM自动模式时，启动变量直接改为1
                     if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)

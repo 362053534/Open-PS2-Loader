@@ -23,5 +23,8 @@ int ethGetNetConfig(u8 *ip_address, u8 *netmask, u8 *gateway);
 int ethApplyConfig(void);
 int ethGetDHCPStatus(void);
 item_list_t *ethGetObject(int initOnly);
+int ethIsShareListPending(void);
+int ethCanRetryShareList(void);
+void ethMarkShareListRetry(void);
 
 #endif
