@@ -12,6 +12,7 @@
 #define SMB_RECONNECT_INTERVAL_US 2000000
 #define SMB_RECOVERY_WAIT_US      100000
 #define SMB_ECHO_IDLE_TICKS       60
+#define SMB_ECHO_RETRY_COUNT      2
 #define SMB_CONNECTION_WAIT_LINK  3
 #define SMB_CONNECTION_RETRY_WAIT 4
 
@@ -47,6 +48,7 @@ static volatile int smbReconnectEnabled;
 static volatile int smbReconnectResult;
 static volatile int smbTrayOpen;
 static volatile unsigned int smbIdleTicks;
+static volatile unsigned int smbEchoRetryCount;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
 
@@ -131,14 +133,22 @@ static void smbReconnectThread(void *arg)
                 result = smb_Echo();
                 if (result > 0) {
                     smbIdleTicks = 0;
+                    smbEchoRetryCount = 0;
                 } else if (result < 0) {
-                    smbIdleTicks = 0;
-                    smbReconnectResult = SMB_RECONNECT_PENDING;
-                    smbConnectionState = 2;
+                    // 单次网络抖动不足以判定断线，连续补测两次仍失败才重连。
+                    if (smbEchoRetryCount < SMB_ECHO_RETRY_COUNT) {
+                        smbEchoRetryCount++;
+                    } else {
+                        smbIdleTicks = 0;
+                        smbEchoRetryCount = 0;
+                        smbReconnectResult = SMB_RECONNECT_PENDING;
+                        smbConnectionState = 2;
+                    }
                 }
             }
         } else {
             smbIdleTicks = 0;
+            smbEchoRetryCount = 0;
         }
 
         if (smbReconnectEnabled && smbConnectionState == 2) {
@@ -180,6 +190,7 @@ static void smbReconnectThread(void *arg)
                 smbReconnectResult = SMB_RECONNECT_SUCCESS;
                 smbConnectionState = 1;
                 smbIdleTicks = 0;
+                smbEchoRetryCount = 0;
                 continue;
             }
 
@@ -238,6 +249,7 @@ void DeviceFSInit(void)
     smbReconnectEnabled = 1;
     smbReconnectResult = SMB_RECONNECT_IDLE;
     smbIdleTicks = 0;
+    smbEchoRetryCount = 0;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
     } else {
@@ -257,6 +269,7 @@ void DeviceUnmount(void)
     smbReconnectEnabled = 0;
     smbReconnectResult = SMB_RECONNECT_IDLE;
     smbIdleTicks = 0;
+    smbEchoRetryCount = 0;
     if (smbConnectionState == 1)
         smb_CloseAll();
     smbConnectionState = 2;
@@ -320,6 +333,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 if (result >= 0) {
                     smbReconnectResult = SMB_RECONNECT_IDLE;
                     smbIdleTicks = 0;
+                    smbEchoRetryCount = 0;
                     if (smbTrayOpen) {
                         sceCdTrayReq(SCECdTrayClose, NULL);
                         smbTrayOpen = 0;
@@ -328,6 +342,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 }
 
                 smbIdleTicks = 0;
+                smbEchoRetryCount = 0;
 
                 // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
                 smbReconnectResult = SMB_RECONNECT_PENDING;
