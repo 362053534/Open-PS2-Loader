@@ -327,7 +327,23 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
 
     char fullName[256];
 
-    if ((dir = opendir(path)) != NULL) {
+    dir = opendir(path);
+    if (!dir) {
+        size_t pathLen = strlen(path);
+
+        // 部分区分大小写的文件系统使用小写目录名，扫描失败时仅回退到约定的小写形式。
+        if (type == SCECdPS2CD && pathLen >= 2) {
+            path[pathLen - 2] = 'c';
+            path[pathLen - 1] = 'd';
+        } else if (type == SCECdPS2DVD && pathLen >= 3) {
+            path[pathLen - 3] = 'd';
+            path[pathLen - 2] = 'v';
+            path[pathLen - 1] = 'd';
+        }
+        dir = opendir(path);
+    }
+
+    if (dir) {
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
@@ -1662,6 +1678,23 @@ void sbRebuildULCfg(base_game_info_t **list, const char *prefix, int gamecount, 
     }
 }
 
+static const char *sbGetISODirectoryName(const char *prefix, char media)
+{
+    const char *directory = media == SCECdPS2CD ? "CD" : "DVD";
+    char path[256];
+    DIR *dir;
+
+    snprintf(path, sizeof(path), "%s%s", prefix, directory);
+    dir = opendir(path);
+    if (dir) {
+        closedir(dir);
+        return directory;
+    }
+
+    // 后续文件操作必须沿用扫描阶段找到的小写目录，否则列表存在但镜像无法打开。
+    return media == SCECdPS2CD ? "cd" : "dvd";
+}
+
 static void sbCreatePath_name(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part, const char *game_name)
 {
     switch (game->format) {
@@ -1670,10 +1703,10 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
-            snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, gTxtRename ? game->indexName : game->name, game->extension);
+            snprintf(path, 256, "%s%s%s%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, gTxtRename ? game->indexName : game->name, game->extension);
             break;
         case GAME_FORMAT_OLD_ISO:
-            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, gTxtRename ? game->indexName : game->name, game->extension);
+            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, game->startup, gTxtRename ? game->indexName : game->name, game->extension);
             break;
     }
 }
@@ -1731,7 +1764,7 @@ config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const
     if ((game->sizeMB == 0) && (game->format != GAME_FORMAT_OLD_ISO)) {
         char gamepath[256];
 
-        snprintf(gamepath, sizeof(gamepath), "%s%s%s%s%s%s", prefix, sep, game->media == SCECdPS2CD ? "CD" : "DVD", sep, game->indexName, game->extension);
+        snprintf(gamepath, sizeof(gamepath), "%s%s%s%s%s%s", prefix, sep, sbGetISODirectoryName(prefix, game->media), sep, game->indexName, game->extension);
 
         if (stat(gamepath, &st) == 0)
             game->sizeMB = st.st_size >> 20;
@@ -1743,9 +1776,9 @@ config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const
     configSetInt(config, CONFIG_ITEM_SIZE, game->sizeMB);
 
     if (game->format != GAME_FORMAT_USBLD) {
-        if (!strcmp(game->extension, ".iso"))
+        if (!strcasecmp(game->extension, ".iso"))
             configSetStr(config, CONFIG_ITEM_FORMAT, "ISO");
-        else if (!strcmp(game->extension, ".zso"))
+        else if (!strcasecmp(game->extension, ".zso"))
             configSetStr(config, CONFIG_ITEM_FORMAT, "ZSO");
     } else if (game->format == GAME_FORMAT_USBLD)
         configSetStr(config, CONFIG_ITEM_FORMAT, "UL");
