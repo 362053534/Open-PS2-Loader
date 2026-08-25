@@ -62,7 +62,7 @@ static StmCallback_t Stm0Callback = NULL;
 static iop_sys_clock_t gCallbackSysClock;
 
 // [DEBUG-zf64] 只约束故障现场出现的 64 扇区请求，避免改变其它读盘路径的时序。
-#define ZEONIC_64_SECTOR_MIN_US 100000
+#define ZEONIC_64_SECTOR_MIN_US 275000
 #define ZEONIC_64_SECTOR_DELAY_EVENT 0x2000
 static unsigned char zeonic64DelayPending;
 
