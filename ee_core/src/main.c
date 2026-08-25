@@ -15,6 +15,10 @@
 #include "cheat_api.h"
 #include "coreconfig.h"
 
+#if OPL_DIAG_VARIANT == 2
+#include <ee_regs.h>
+#endif
+
 int isInit = 0;
 
 // Global data
@@ -31,6 +35,29 @@ DISABLE_PATCHED_FUNCTIONS();      // Disable the patched functionalities
 DISABLE_EXTRA_TIMERS_FUNCTIONS(); // Disable the extra functionalities for timers
 
 struct EECoreConfig_t g_ee_core_config = {.magic[0] = EE_CORE_MAGIC_0, .magic[1] = EE_CORE_MAGIC_1};
+
+#if OPL_DIAG_VARIANT == 2
+static void ResetGraphicsPipeline(void)
+{
+    u32 dmaEnable;
+
+    // 冻结 DMAC 后再清理图形通道，避免清理动作与尚未结束的菜单 DMA 竞争。
+    asm volatile("sync.l\n");
+    dmaEnable = *R_EE_D_ENABLER;
+    *R_EE_D_ENABLEW = dmaEnable | 0x10000;
+    *R_EE_D0_CHCR = 0;
+    *R_EE_D1_CHCR = 0;
+    *R_EE_D2_CHCR = 0;
+    *R_EE_VIF0_FBRST = 1;
+    *R_EE_VIF0_FBRST = 0;
+    *R_EE_VIF1_FBRST = 1;
+    *R_EE_VIF1_FBRST = 0;
+    *R_EE_GIF_CTRL = 1;
+    *R_EE_GIF_CTRL = 0;
+    *R_EE_D_ENABLEW = dmaEnable;
+    asm volatile("sync.l\n");
+}
+#endif
 
 static int eecoreInit(int argc, char **argv)
 {
@@ -134,6 +161,16 @@ int main(int argc, char **argv)
     } else {
         argOffset = eecoreInit(argc, argv);
         isInit = 1;
+
+#if OPL_DIAG_VARIANT == 2
+        ResetGraphicsPipeline();
+#elif OPL_DIAG_VARIANT == 3
+        // 单独验证交接时 EE 缓存残留；不改变游戏运行后的 VIF 同步关系。
+        FlushCache(0);
+        FlushCache(2);
+        asm volatile("sync.l\n");
+#endif
+
 
         LoadExecPS2(argv[argOffset], argc - 1 - argOffset, &argv[1 + argOffset]);
     }

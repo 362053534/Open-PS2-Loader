@@ -36,6 +36,9 @@ IGS ?= $(EXTRA_FEATURES)
 #Enables/disables pad emulator
 PADEMU ?= 1
 
+# 用于制作只改变游戏交接行为的实机诊断版本：0 为正常构建，1/2/3 为分层实验。
+DIAG_VARIANT ?= 0
+
 #Enables/disables building of an edition of OPL that will support the DTL-T10000 (SDK v2.3+)
 DTL_T10000 ?= 0
 
@@ -215,6 +218,8 @@ else
 endif
 
 EE_CFLAGS += -fsingle-precision-constant -DOPL_VERSION=\"$(OPL_VERSION)\"
+EE_CFLAGS += -DOPL_DIAG_VARIANT=$(DIAG_VARIANT)
+EECORE_EXTRA_FLAGS += DIAG_VARIANT=$(DIAG_VARIANT)
 
 # There are a few places where the config key/value are truncated, so disable these warnings
 EE_CFLAGS += -Wno-format-truncation -Wno-stringop-truncation

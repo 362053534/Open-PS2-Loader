@@ -814,6 +814,15 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     void *eeloadCopy, *initUserMemory;
     struct GsmConfig_t gsm_config;
 
+#if OPL_DIAG_VARIANT == 1
+    // 复用现有模式3和模式6，确保实验只隔离驻留钩子，不引入另一套卸载流程。
+    compatflags |= COMPAT_MODE_3 | COMPAT_MODE_6;
+#ifdef PADEMU
+    gEnablePadEmu = 0;
+#endif
+#endif
+
+
     ethGetNetConfig(local_ip_address, local_netmask, local_gateway);
 #if (!defined(__DEBUG) && !defined(_DTL_T10000))
     AddHistoryRecordUsingFullPath(filename);
@@ -910,18 +919,27 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     config->HDDSpindown = gHDDSpindown;
     config->g_ps2_ETHOpMode = gETHOpMode;
 
+#if OPL_DIAG_VARIANT != 1
     if (GetCheatsEnabled()) {
         set_cheats_list();
         config->gCheatList = GetCheatsList();
     } else
         config->gCheatList = NULL;
+#else
+    config->gCheatList = NULL;
+#endif
+
 
     sprintf(config->g_ps2_ip, "%u.%u.%u.%u", local_ip_address[0], local_ip_address[1], local_ip_address[2], local_ip_address[3]);
     sprintf(config->g_ps2_netmask, "%u.%u.%u.%u", local_netmask[0], local_netmask[1], local_netmask[2], local_netmask[3]);
     sprintf(config->g_ps2_gateway, "%u.%u.%u.%u", local_gateway[0], local_gateway[1], local_gateway[2], local_gateway[3]);
 
     // GSM now.
+#if OPL_DIAG_VARIANT == 1
+    config->EnableGSMOp = 0;
+#else
     config->EnableGSMOp = GetGSMEnabled();
+#endif
     if (config->EnableGSMOp) {
         PrepareGSM(NULL, &gsm_config);
         config->GsmConfig.interlace = gsm_config.interlace;
@@ -938,9 +956,15 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     }
 
 #ifdef PADEMU
+#if OPL_DIAG_VARIANT == 1
+    config->EnablePadEmuOp = 0;
+    config->PadEmuSettings = 0;
+    config->PadMacroSettings = 0;
+#else
     config->EnablePadEmuOp = gEnablePadEmu;
     config->PadEmuSettings = (unsigned int)(gPadEmuSettings >> 8);
     config->PadMacroSettings = (unsigned int)(gPadMacroSettings);
+#endif
 #endif
 
     config->CustomOSDConfigParam.spdifMode = PARAM.spdifMode;
@@ -952,8 +976,11 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     config->CustomOSDConfigParam.language = PARAM.language;
     config->CustomOSDConfigParam.timezoneOffset = PARAM.timezoneOffset;
 
+#if OPL_DIAG_VARIANT == 1
+    config->enforceLanguage = 0;
+#else
     config->enforceLanguage = gOSDLanguageEnable;
-
+#endif
     config->eeloadCopy = eeloadCopy;
     config->initUserMemory = initUserMemory;
 

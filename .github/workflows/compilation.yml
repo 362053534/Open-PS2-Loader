@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    if: github.ref != 'refs/heads/codex/vif-diagnostics'
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -45,6 +46,7 @@ jobs:
           README.md
 
   build-variants:
+    if: github.ref != 'refs/heads/codex/vif-diagnostics'
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +81,7 @@ jobs:
         path: OPNPS2LD*.ELF
 
   merge-variants:
+    if: github.ref != 'refs/heads/codex/vif-diagnostics'
     runs-on: ubuntu-latest
     needs: build-variants
     steps:
@@ -89,7 +92,43 @@ jobs:
           pattern: OPNPS2LD-VARIANTS*
           delete-merged: true
 
+
+  build-vif-diagnostics:
+    if: github.ref == 'refs/heads/codex/vif-diagnostics'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - diag: 1
+            name: resident-min
+          - diag: 2
+            name: vifreset
+          - diag: 3
+            name: cacheflush
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v6
+
+    - name: Prepare repository
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git fetch --prune --unshallow
+
+    - name: Compile VIF diagnostic variant
+      run: |
+        make --trace DIAG_VARIANT=${{ matrix.diag }} PADEMU=0 EXTRA_FEATURES=0 NOT_PACKED=1 LOCALVERSION=vif-${{ matrix.name }}
+        mv opl.elf OPNPS2LD-vif-${{ matrix.name }}.ELF
+
+    - name: Upload VIF diagnostic ELF
+      uses: actions/upload-artifact@v7
+      with:
+        name: OPNPS2LD-vif-${{ matrix.name }}
+        path: OPNPS2LD-vif-${{ matrix.name }}.ELF
+
   build-lang:
+    if: github.ref != 'refs/heads/codex/vif-diagnostics'
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -115,6 +154,7 @@ jobs:
           OPNPS2LD-LANGS-*.zip
 
   build-debug:
+    if: github.ref != 'refs/heads/codex/vif-diagnostics'
     strategy:
       fail-fast: false
       matrix:
@@ -151,6 +191,7 @@ jobs:
         path: opl-*.elf
 
   merge-debug:
+    if: github.ref != 'refs/heads/codex/vif-diagnostics'
     runs-on: ubuntu-latest
     needs: build-debug
     steps:
