@@ -61,6 +61,11 @@ static int cdvdman_ReadingThreadID;
 static StmCallback_t Stm0Callback = NULL;
 static iop_sys_clock_t gCallbackSysClock;
 
+// [DEBUG-zf64] 只约束故障现场出现的 64 扇区请求，避免改变其它读盘路径的时序。
+#define ZEONIC_64_SECTOR_MIN_US 100000
+#define ZEONIC_64_SECTOR_DELAY_EVENT 0x2000
+static unsigned char zeonic64DelayPending;
+
 // buffers
 u8 cdvdman_buf[CDVDMAN_BUF_SECTORS * 2048];
 
@@ -457,6 +462,42 @@ static int cdvdman_common_lock(int IntrContext)
     return 1;
 }
 
+static unsigned int zeonic64DelayAlarmCb(void *arg)
+{
+    (void)arg;
+    iSetEventFlag(cdvdman_stat.intr_ef, ZEONIC_64_SECTOR_DELAY_EVENT);
+    return 0;
+}
+
+static void zeonic64StartReadDelay(u32 sectors, int IntrContext)
+{
+    iop_sys_clock_t delayClock;
+    int alarmResult;
+
+    zeonic64DelayPending = 0;
+    if (sectors != 64)
+        return;
+
+    if (IntrContext)
+        iClearEventFlag(cdvdman_stat.intr_ef, ~ZEONIC_64_SECTOR_DELAY_EVENT);
+    else
+        ClearEventFlag(cdvdman_stat.intr_ef, ~ZEONIC_64_SECTOR_DELAY_EVENT);
+
+    USec2SysClock(ZEONIC_64_SECTOR_MIN_US, &delayClock);
+    alarmResult = IntrContext ? iSetAlarm(&delayClock, &zeonic64DelayAlarmCb, NULL) :
+                                SetAlarm(&delayClock, &zeonic64DelayAlarmCb, NULL);
+    if (alarmResult >= 0)
+        zeonic64DelayPending = 1;
+}
+
+static void zeonic64WaitReadDelay(void)
+{
+    if (zeonic64DelayPending) {
+        WaitEventFlag(cdvdman_stat.intr_ef, ZEONIC_64_SECTOR_DELAY_EVENT, WEF_AND, NULL);
+        zeonic64DelayPending = 0;
+    }
+}
+
 int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
     int IsIntrContext, OldState;
@@ -477,6 +518,8 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
     cdvdman_stat.cdread_buf = buf;
 
     CpuResumeIntr(OldState);
+
+    zeonic64StartReadDelay(sectors, IsIntrContext);
 
     if (IsIntrContext)
         iSignalSema(cdrom_rthread_sema);
@@ -502,7 +545,9 @@ int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
     CpuResumeIntr(OldState);
 
+    zeonic64StartReadDelay(sectors, IsIntrContext);
     cdvdman_read(lsn, sectors, sector_size, buf);
+    zeonic64WaitReadDelay();
 
     cdvdman_cb_event(SCECdFuncRead);
     sync_flag = 0;
@@ -743,6 +788,7 @@ static void cdvdman_cdread_Thread(void *args)
         WaitSema(cdrom_rthread_sema);
 
         cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+        zeonic64WaitReadDelay();
 
         /* This streaming callback is not compatible with the original SONY stream channel 0 (IOP) callback's design.
        The original is run from the interrupt handler, but we want it to run
