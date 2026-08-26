@@ -738,7 +738,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     hdl_header = (hdl_apa_header *)IOBuffer;
     if (hdl_header->num_partitions <= 0 || hdl_header->num_partitions > HDL_MAX_PART_SPECS) {
-        guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
         return;
     }
 

@@ -243,7 +243,7 @@ gui_strings:
 - label: SELECTBUTTON
   string: 确定键
 - label: ERR_FRAGMENTED
-  string: 错误，游戏有碎片
+  string: 当前游戏有%d个碎片，请整理碎片后重试。
 - label: ERR_FILE_INVALID
   string: 错误，无法运行该项目
 - label: TEST

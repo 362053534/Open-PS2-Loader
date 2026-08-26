@@ -243,7 +243,7 @@ gui_strings:
 - label: SELECTBUTTON
   string: Select Button
 - label: ERR_FRAGMENTED
-  string: Error, the game is fragmented.
+  string: The current game has %d fragments. Defragment it and try again.
 - label: ERR_FILE_INVALID
   string: Error, could not run the item.
 - label: TEST

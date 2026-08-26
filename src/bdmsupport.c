@@ -720,11 +720,20 @@ vmc_prepared:;
             }
         } else
             iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * iFragCapacity);
-        if (iFragCount <= 0 || iFragCount > iFragCapacity) {
-            // 碎片表无效、不完整或超出容量。
+        if (iFragCount > iFragCapacity) {
+            char error[128];
+
+            snprintf(error, sizeof(error), _l(_STR_ERR_FRAGMENTED), iTotalFragCount + iFragCount);
             close(fd);
             sbUnprepare(&settings->common);
-            guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+            guiMsgBox(error, 0, NULL);
+            return;
+        }
+        if (iFragCount <= 0) {
+            // 碎片表无效或不完整时无法安全启动游戏。
+            close(fd);
+            sbUnprepare(&settings->common);
+            guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
             return;
         }
 
@@ -733,7 +742,7 @@ vmc_prepared:;
             if (settings->frags[iTotalFragCount + j].count == 0) {
                 close(fd);
                 sbUnprepare(&settings->common);
-                guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+                guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
                 return;
             }
         }
