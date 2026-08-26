@@ -13,8 +13,6 @@
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
 #include "modules/iopcore/common/cdvd_config.h"
-#include <time.h>
-
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioDevctl(ethBase, SMB_***)
 
@@ -34,7 +32,6 @@ static base_game_info_t *ethGames = NULL;
 static int ethShareListPending = 1;
 static int ethShareListFailed = 0;
 static int ethShareListRetryUsed = 0;
-static int ethNetworkTimeout = 0;
 
 static struct ip4_addr lastIP;
 static struct ip4_addr lastNM;
@@ -282,7 +279,6 @@ int ethApplyConfig(void)
 static void ethInitSMB(void)
 {
     int ret;
-    clock_t initStart = clock();
 
     WaitSema(ethInitSemaID);
     ret = ethInitApplyConfig();
@@ -305,9 +301,6 @@ static void ethInitSMB(void)
     }
 
     SignalSema(ethInitSemaID);
-
-    // 长时间等待通常表示底层网络超时，这类失败不再重复发起自动重连。
-    ethNetworkTimeout = (clock() - initStart) >= (25 * CLOCKS_PER_SEC);
 
     if (ret != 0 || (gNetworkStartup != 0 && (gPCShareName[0] || !(gNetworkStartup >= ERROR_ETH_SMB_OPENSHARE))))
         ethDisplayErrorStatus();
@@ -471,7 +464,6 @@ void ethInit(item_list_t *itemList)
         ethShareListPending = 1;
         ethShareListFailed = 0;
         ethShareListRetryUsed = 0;
-        ethNetworkTimeout = 0;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &ethInitSMB);
         ethInitSMB();
     } else {
@@ -485,7 +477,6 @@ void ethInit(item_list_t *itemList)
         ethShareListPending = 1;
         ethShareListFailed = 0;
         ethShareListRetryUsed = 0;
-        ethNetworkTimeout = 0;
         configGetInt(configGetByType(CONFIG_OPL), "eth_frames_delay", &ethGameList.delay);
         gNetworkStartup = ERROR_ETH_NOT_STARTED;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &smbLoadModules);
@@ -508,7 +499,7 @@ int ethIsShareListPending(void)
 
 int ethCanRetryShareList(void)
 {
-    return !gPCShareName[0] && ethShareListFailed && !ethShareListRetryUsed && !ethNetworkTimeout;
+    return !gPCShareName[0] && ethShareListFailed && !ethShareListRetryUsed;
 }
 
 void ethMarkShareListRetry(void)
@@ -565,7 +556,6 @@ static int ethUpdateGameList(item_list_t *itemList)
         }
     } else {
         int i, count;
-        clock_t requestStart;
         ShareEntry_t sharelist[128] __attribute__((aligned(64)));
         smbGetShareList_in_t getsharelist;
 
@@ -584,10 +574,7 @@ static int ethUpdateGameList(item_list_t *itemList)
         getsharelist.EE_addr = (void *)&sharelist[0];
         getsharelist.maxent = 128;
 
-        requestStart = clock();
         count = fileXioDevctl(ethBase, SMB_DEVCTL_GETSHARELIST, (void *)&getsharelist, sizeof(getsharelist), NULL, 0);
-        if ((clock() - requestStart) >= (25 * CLOCKS_PER_SEC))
-            ethNetworkTimeout = 1;
 
         if (count > 0) {
             free(ethGames);
@@ -613,12 +600,12 @@ static int ethUpdateGameList(item_list_t *itemList)
             ethShareListPending = 0;
             ethShareListFailed = 1;
         } else {
-            // 0也是确定结果，表示服务器没有共享目录，不能继续等待或反复扫描。
+            // 空列表可能来自共享服务尚未准备完成，因此也允许补做唯一一次重试。
             free(ethGames);
             ethGames = NULL;
             ethGameCount = 0;
             ethShareListPending = 0;
-            ethShareListFailed = 0;
+            ethShareListFailed = 1;
         }
     }
     return ethGameCount;
