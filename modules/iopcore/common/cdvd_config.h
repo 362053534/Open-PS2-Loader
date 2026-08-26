@@ -62,7 +62,7 @@ struct cdvdman_settings_smb
 } __attribute__((packed));
 
 #define BDM_MAX_FILES 1  // ISO
-#define BDM_MAX_FRAGS 65 // 65 * 8bytes = 520bytes
+#define BDM_MAX_FRAGS 128 // 128项，每项8字节，共1024字节
 
 struct cdvdman_fragfile
 {

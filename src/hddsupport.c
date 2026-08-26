@@ -21,6 +21,7 @@
 #include <hdd-ioctl.h>
 
 #define OPL_HDD_MODE_PS2LOGO_OFFSET 0x17F8
+#define HDL_MAX_PART_SPECS           65
 
 #include "../modules/isofs/zso.h"
 
@@ -58,7 +59,7 @@ typedef struct
         u32 part_offset;
         u32 data_start;
         u32 part_size;
-    } part_specs[65];
+    } part_specs[HDL_MAX_PART_SPECS];
 } hdl_apa_header;
 
 // forward declaration
@@ -736,7 +737,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     }
 
     hdl_header = (hdl_apa_header *)IOBuffer;
-    if (hdl_header->num_partitions <= 0 || hdl_header->num_partitions > BDM_MAX_FRAGS) {
+    if (hdl_header->num_partitions <= 0 || hdl_header->num_partitions > HDL_MAX_PART_SPECS) {
         guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
         return;
     }
