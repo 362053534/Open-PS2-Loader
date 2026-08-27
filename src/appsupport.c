@@ -12,6 +12,7 @@
 #include "include/bdmsupport.h"
 #include "include/ethsupport.h"
 #include "include/hddsupport.h"
+#include "include/supportbase.h"
 
 #include <elf-loader.h>
 #define NEWLIB_PORT_AWARE
@@ -46,6 +47,28 @@ typedef struct
     struct app_info_linked **appsLinkedList;
     int sourceMode;
 } app_scan_context_t;
+
+#define POPS_CACHE_NAME_MAX (APP_BOOT_MAX + 1)
+#define POPS_CACHE_ID_MAX   12
+#define POPS_CACHE_PATH_MAX 256
+
+typedef struct
+{
+    char vcdName[POPS_CACHE_NAME_MAX];
+    char parsedId[POPS_CACHE_ID_MAX];
+} pops_id_cache_entry_t;
+
+typedef struct
+{
+    pops_id_cache_entry_t *entries;
+    int count;
+    int capacity;
+} pops_id_cache_t;
+
+static pops_id_cache_t popsCacheLoaded;
+static pops_id_cache_t popsCacheCurrent;
+static char popsCachePrefix[POPS_CACHE_PATH_MAX];
+static int popsCacheActive;
 
 #define APP_SOURCE_BIT(mode)       (1U << (mode))
 #define APP_AUTO_SOURCE_MASK       ((1U << (APP_SOURCE_MC + 1)) - 1)
@@ -1191,11 +1214,210 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
     return -1;
 }
 
+static void appPOPSCacheFree(pops_id_cache_t *cache)
+{
+    if (cache->entries != NULL)
+        free(cache->entries);
+    cache->entries = NULL;
+    cache->count = 0;
+    cache->capacity = 0;
+}
+
+static int appPOPSCacheReserve(pops_id_cache_t *cache, int count)
+{
+    pops_id_cache_entry_t *entries;
+    int capacity;
+
+    if (count <= cache->capacity)
+        return 0;
+
+    capacity = cache->capacity > 0 ? cache->capacity : 32;
+    while (capacity < count) {
+        if (capacity > 0x3fffffff)
+            return -1;
+        capacity *= 2;
+    }
+
+    entries = realloc(cache->entries, capacity * sizeof(pops_id_cache_entry_t));
+    if (entries == NULL)
+        return -1;
+
+    cache->entries = entries;
+    cache->capacity = capacity;
+    return 0;
+}
+
+static int appPOPSCacheAppendEntry(pops_id_cache_t *cache, const char *vcdName, const char *parsedId)
+{
+    pops_id_cache_entry_t *entry;
+
+    if (appPOPSCacheReserve(cache, cache->count + 1) < 0)
+        return -1;
+
+    entry = &cache->entries[cache->count++];
+    strcpy(entry->vcdName, vcdName);
+    strcpy(entry->parsedId, parsedId);
+    return 0;
+}
+
+static int appPOPSCacheCompare(const void *left, const void *right)
+{
+    const pops_id_cache_entry_t *a = (const pops_id_cache_entry_t *)left;
+    const pops_id_cache_entry_t *b = (const pops_id_cache_entry_t *)right;
+
+    return strcmp(a->vcdName, b->vcdName);
+}
+
+static const pops_id_cache_entry_t *appPOPSCacheFindLoaded(const char *vcdName)
+{
+    pops_id_cache_entry_t key;
+
+    if (popsCacheLoaded.count == 0)
+        return NULL;
+
+    memset(&key, 0, sizeof(key));
+    strncpy(key.vcdName, vcdName, sizeof(key.vcdName) - 1);
+    return (const pops_id_cache_entry_t *)bsearch(&key, popsCacheLoaded.entries, popsCacheLoaded.count,
+                                                   sizeof(pops_id_cache_entry_t), appPOPSCacheCompare);
+}
+
+static int appPOPSCacheBuildFilename(char *filename, const char *prefix)
+{
+    size_t length;
+
+    if (prefix == NULL || prefix[0] == '\0')
+        return -1;
+
+    length = strlen(prefix);
+    if (length > 0 && (prefix[length - 1] == '/' || prefix[length - 1] == ':'))
+        return snprintf(filename, POPS_CACHE_PATH_MAX, "%sCACHE/Cache_POPS.bin", prefix) >= POPS_CACHE_PATH_MAX ? -1 : 0;
+
+    return snprintf(filename, POPS_CACHE_PATH_MAX, "%s/CACHE/Cache_POPS.bin", prefix) >= POPS_CACHE_PATH_MAX ? -1 : 0;
+}
+
+static void appPOPSCacheLoad(void)
+{
+    char filename[POPS_CACHE_PATH_MAX];
+    FILE *file;
+    long size;
+    int count, i, validCount;
+
+    if (appPOPSCacheBuildFilename(filename, popsCachePrefix) < 0)
+        return;
+    file = fopen(filename, "rb");
+    if (file == NULL)
+        return;
+
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return;
+    }
+
+    count = size / sizeof(pops_id_cache_entry_t);
+    if (count <= 0 || appPOPSCacheReserve(&popsCacheLoaded, count) < 0 ||
+        (int)fread(popsCacheLoaded.entries, sizeof(pops_id_cache_entry_t), count, file) != count) {
+        fclose(file);
+        appPOPSCacheFree(&popsCacheLoaded);
+        return;
+    }
+    fclose(file);
+
+    validCount = 0;
+    for (i = 0; i < count; i++) {
+        pops_id_cache_entry_t *entry = &popsCacheLoaded.entries[i];
+
+        if (memchr(entry->vcdName, '\0', sizeof(entry->vcdName)) == NULL ||
+            memchr(entry->parsedId, '\0', sizeof(entry->parsedId)) == NULL || entry->vcdName[0] == '\0' ||
+            sbIsValidStartupExecName(entry->parsedId) != 0)
+            continue;
+
+        if (validCount != i)
+            memcpy(&popsCacheLoaded.entries[validCount], entry, sizeof(*entry));
+        validCount++;
+    }
+    popsCacheLoaded.count = validCount;
+    if (popsCacheLoaded.count > 1)
+        qsort(popsCacheLoaded.entries, popsCacheLoaded.count, sizeof(pops_id_cache_entry_t), appPOPSCacheCompare);
+}
+
+static void appPOPSCacheBegin(const char *cachePrefix)
+{
+    appPOPSCacheFree(&popsCacheLoaded);
+    appPOPSCacheFree(&popsCacheCurrent);
+    popsCachePrefix[0] = '\0';
+    popsCacheActive = 0;
+
+    if (cachePrefix == NULL || cachePrefix[0] == '\0' || strlen(cachePrefix) >= sizeof(popsCachePrefix))
+        return;
+
+    strcpy(popsCachePrefix, cachePrefix);
+    popsCacheActive = 1;
+    appPOPSCacheLoad();
+}
+
+static void appPOPSCacheCommit(void)
+{
+    char filename[POPS_CACHE_PATH_MAX];
+    FILE *file;
+    int i, writeCount;
+    int unchanged;
+
+    if (!popsCacheActive)
+        return;
+
+    if (popsCacheCurrent.count > 1)
+        qsort(popsCacheCurrent.entries, popsCacheCurrent.count, sizeof(pops_id_cache_entry_t), appPOPSCacheCompare);
+    writeCount = 0;
+    for (i = 0; i < popsCacheCurrent.count; i++) {
+        if (writeCount == 0 || strcmp(popsCacheCurrent.entries[i].vcdName, popsCacheCurrent.entries[writeCount - 1].vcdName) != 0) {
+            if (writeCount != i)
+                memcpy(&popsCacheCurrent.entries[writeCount], &popsCacheCurrent.entries[i], sizeof(pops_id_cache_entry_t));
+            writeCount++;
+        }
+    }
+    popsCacheCurrent.count = writeCount;
+
+    unchanged = popsCacheCurrent.count == popsCacheLoaded.count &&
+                (writeCount == 0 || memcmp(popsCacheCurrent.entries, popsCacheLoaded.entries,
+                                           writeCount * sizeof(pops_id_cache_entry_t)) == 0);
+    if (unchanged)
+        return;
+
+    if (appPOPSCacheBuildFilename(filename, popsCachePrefix) < 0)
+        return;
+    if (popsCacheCurrent.count == 0) {
+        remove(filename);
+        return;
+    }
+
+    file = fopen(filename, "wb");
+    if (file == NULL) {
+        LOG("APPSUPPORT unable to write POPS ID cache: %s\n", filename);
+        return;
+    }
+    if ((int)fwrite(popsCacheCurrent.entries, sizeof(pops_id_cache_entry_t), popsCacheCurrent.count, file) != popsCacheCurrent.count)
+        LOG("APPSUPPORT POPS ID cache write failed: %s\n", filename);
+    fclose(file);
+}
+
+static void appPOPSCacheEnd(void)
+{
+    appPOPSCacheFree(&popsCacheLoaded);
+    appPOPSCacheFree(&popsCacheCurrent);
+    popsCachePrefix[0] = '\0';
+    popsCacheActive = 0;
+}
+
 static int appIsNumberedVcdName(const char *vcdName, int nameLength)
 {
-    // 对齐旧ISO：SCUS_XXX.XX.显示名.VCD（编号11字符 + '.' + 标题 + .VCD）
-    return nameLength >= 17 && vcdName[4] == '_' && vcdName[8] == '.' && vcdName[11] == '.' &&
-           strcasecmp(&vcdName[nameLength - 4], ".VCD") == 0;
+    char startup[POPS_CACHE_ID_MAX];
+
+    if (nameLength < 17 || vcdName[11] != '.' || strcasecmp(&vcdName[nameLength - 4], ".VCD") != 0)
+        return 0;
+
+    memcpy(startup, vcdName, POPS_CACHE_ID_MAX - 1);
+    startup[POPS_CACHE_ID_MAX - 1] = '\0';
+    return sbIsValidStartupExecName(startup) == 0;
 }
 
 static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, const char *elfPrefix, int hddSource, const char *hddPartition)
@@ -1206,6 +1428,8 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
     char title[APP_TITLE_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
     char startup[APP_BOOT_MAX + 1];
+    char vcdPath[APP_PATH_MAX + POPS_CACHE_NAME_MAX + 2];
+    const pops_id_cache_entry_t *cachedId;
     int nameLength, titleLength, pathLength;
 
     if (hddPartition != NULL && strlen(hddPartition) > APP_HDD_PARTITION_MAX) {
@@ -1246,9 +1470,25 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
             LOG("APPSUPPORT POPS ELF filename is too long: %s\n", vcdName);
             return 1;
         }
-        // 无前缀：封面下方/ART KEY 与boot一致
-        strncpy(startup, boot, sizeof(startup));
-        startup[sizeof(startup) - 1] = '\0';
+
+        cachedId = popsCacheActive ? appPOPSCacheFindLoaded(vcdName) : NULL;
+        if (cachedId != NULL) {
+            strcpy(startup, cachedId->parsedId);
+            if (appPOPSCacheAppendEntry(&popsCacheCurrent, vcdName, startup) < 0)
+                return -1;
+        } else {
+            if (snprintf(vcdPath, sizeof(vcdPath), "%s/%s", path, vcdName) >= (int)sizeof(vcdPath))
+                return 1;
+
+            if (sbGetPOPSStartupExecName(vcdPath, startup, APP_BOOT_MAX) == 0) {
+                if (popsCacheActive && appPOPSCacheAppendEntry(&popsCacheCurrent, vcdName, startup) < 0)
+                    return -1;
+            } else {
+                // 无法解析时保留旧链路，确保游戏仍可启动。
+                strncpy(startup, boot, sizeof(startup));
+                startup[sizeof(startup) - 1] = '\0';
+            }
+        }
     }
 
     app = malloc(sizeof(struct app_info_linked));
@@ -1406,18 +1646,29 @@ static int appScanAutoAppsSource(int sourceMode, struct app_info_linked **appsLi
 static int appScanAutoPOPSSource(int sourceMode, struct app_info_linked **appsLinkedList)
 {
     app_scan_context_t context;
+    const char *cachePrefix;
+    int result;
 
     context.appsLinkedList = appsLinkedList;
     context.sourceMode = sourceMode;
 
-    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
-        return oplScanBDMPOPSByMode(sourceMode, &appScanBDMPOPSCallback, &context);
-    if (sourceMode == ETH_MODE)
-        return oplScanSMBPOPS(&appScanSMBPOPSCallback, &context);
-    if (sourceMode == HDD_MODE)
-        return oplScanHDDPOPS(&appScanHDDPOPSCallback, &context);
+    cachePrefix = oplGetPOPSCachePrefix(sourceMode);
+    appPOPSCacheBegin(cachePrefix);
 
-    return 0;
+    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
+        result = oplScanBDMPOPSByMode(sourceMode, &appScanBDMPOPSCallback, &context);
+    else if (sourceMode == ETH_MODE)
+        result = oplScanSMBPOPS(&appScanSMBPOPSCallback, &context);
+    else if (sourceMode == HDD_MODE)
+        result = oplScanHDDPOPS(&appScanHDDPOPSCallback, &context);
+    else
+        result = 0;
+
+    if (result >= 0)
+        appPOPSCacheCommit();
+    appPOPSCacheEnd();
+
+    return result;
 }
 
 static void appRestoreAutoRefresh(u32 sourceMask, int fullUpdate)

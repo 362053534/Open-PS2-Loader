@@ -28,7 +28,7 @@ typedef struct
     char path[APP_PATH_MAX + 1];
     char boot[APP_BOOT_MAX + 1];
     char vcdName[APP_BOOT_MAX + 1];
-    // 封面下方文字 / ART KEY（有编号前缀的VCD为11字符编号，其它与boot一致）
+    // 封面下方文字 / ART KEY（有编号前缀或成功解析的无前缀VCD使用11字符编号）
     char startup[APP_BOOT_MAX + 1];
     char argv1[APP_ARGV1_MAX + 1];
     char popsHddPartition[APP_HDD_PARTITION_MAX + 1];

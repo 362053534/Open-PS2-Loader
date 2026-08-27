@@ -1183,6 +1183,26 @@ static u64 ReadLE64(const u8 *data)
     return value;
 }
 
+int sbIsValidStartupExecName(const char *startup)
+{
+    int i;
+
+    if (startup == NULL || strlen(startup) != GAME_STARTUP_MAX - 1)
+        return -1;
+
+    for (i = 0; i < 4; i++) {
+        if ((startup[i] < 'A' || startup[i] > 'Z') && (startup[i] < 'a' || startup[i] > 'z'))
+            return -1;
+    }
+
+    if (startup[4] != '_' || startup[8] != '.' ||
+        startup[5] < '0' || startup[5] > '9' || startup[6] < '0' || startup[6] > '9' || startup[7] < '0' || startup[7] > '9' ||
+        startup[9] < '0' || startup[9] > '9' || startup[10] < '0' || startup[10] > '9')
+        return -1;
+
+    return 0;
+}
+
 static int ReadImageSector(int fd, int compressed, u32 sector)
 {
     if (compressed)
@@ -1222,18 +1242,113 @@ static int CopyStartupName(const u8 *name, u32 nameLength, int udf, char *filena
     for (i = 0; i < 4; i++) {
         if (startup[i] >= 'a' && startup[i] <= 'z')
             startup[i] -= 'a' - 'A';
-        else if (startup[i] < 'A' || startup[i] > 'Z')
-            return -1;
     }
 
-    if (startup[4] != '_' || startup[8] != '.' ||
-        startup[5] < '0' || startup[5] > '9' || startup[6] < '0' || startup[6] > '9' || startup[7] < '0' || startup[7] > '9' ||
-        startup[9] < '0' || startup[9] > '9' || startup[10] < '0' || startup[10] > '9')
+    startup[GAME_STARTUP_MAX - 1] = '\0';
+    if (sbIsValidStartupExecName(startup) != 0)
         return -1;
 
     memcpy(filename, startup, GAME_STARTUP_MAX - 1);
     filename[GAME_STARTUP_MAX - 1] = '\0';
     return 0;
+}
+
+static int ReadPOPSVCDSector(int fd, u32 sector)
+{
+    u64 offset = 0x100000ULL + (u64)sector * 2352ULL + 24ULL;
+
+    return lseek64(fd, offset, SEEK_SET) == offset && read(fd, IOBuffer, sizeof(IOBuffer)) == sizeof(IOBuffer) ? 0 : -1;
+}
+
+static int CopyPOPSVolumeId(const u8 *volumeId, char *filename, int maxlength)
+{
+    char startup[GAME_STARTUP_MAX];
+    int length = 0;
+    int i;
+
+    if (maxlength < GAME_STARTUP_MAX - 1)
+        return -1;
+
+    while (length < 32 && volumeId[length] != '\0' && volumeId[length] != ' ')
+        length++;
+
+    if (length == 9) {
+        memcpy(startup, volumeId, 4);
+        startup[4] = '_';
+        memcpy(&startup[5], &volumeId[4], 3);
+        startup[8] = '.';
+        memcpy(&startup[9], &volumeId[7], 2);
+    } else if (length == GAME_STARTUP_MAX - 1) {
+        memcpy(startup, volumeId, GAME_STARTUP_MAX - 1);
+    } else {
+        return -1;
+    }
+
+    startup[GAME_STARTUP_MAX - 1] = '\0';
+    for (i = 0; i < 4; i++) {
+        if (startup[i] >= 'a' && startup[i] <= 'z')
+            startup[i] -= 'a' - 'A';
+    }
+
+    if (sbIsValidStartupExecName(startup) != 0)
+        return -1;
+
+    memcpy(filename, startup, GAME_STARTUP_MAX);
+    return 0;
+}
+
+int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
+{
+    int fd, result = -1;
+    u8 volumeId[32];
+    u32 rootLBA, rootSize, sector;
+
+    if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
+        return -1;
+
+    /* POPS VCD的ISO数据位于固定头部之后，物理扇区包含24字节附加头。 */
+    if (ReadPOPSVCDSector(fd, 16) == 0 && IOBuffer[0] == 1 && !memcmp(&IOBuffer[1], "CD001", 5) && IOBuffer[156] >= 34) {
+        memcpy(volumeId, &IOBuffer[40], sizeof(volumeId));
+        rootLBA = ReadLE32(&IOBuffer[158]);
+        rootSize = ReadLE32(&IOBuffer[166]);
+
+        for (sector = 0; sector < (rootSize + 2047) / 2048 && result != 0; sector++) {
+            u32 position = 0;
+            u32 sectorSize = rootSize - sector * 2048;
+
+            if (sectorSize > 2048)
+                sectorSize = 2048;
+            if (ReadPOPSVCDSector(fd, rootLBA + sector) != 0)
+                break;
+
+            while (position < sectorSize) {
+                const u8 recordLength = IOBuffer[position];
+                const u8 *name;
+                u8 nameLength;
+
+                if (!recordLength)
+                    break;
+                if (recordLength < 34 || position + recordLength > sectorSize)
+                    break;
+
+                nameLength = IOBuffer[position + 32];
+                name = &IOBuffer[position + 33];
+                if (!(IOBuffer[position + 25] & 2) && 33 + nameLength <= recordLength &&
+                    CopyStartupName(name, nameLength, 0, filename, maxlength) == 0) {
+                    result = 0;
+                    break;
+                }
+
+                position += recordLength;
+            }
+        }
+
+        if (result != 0)
+            result = CopyPOPSVolumeId(volumeId, filename, maxlength);
+    }
+
+    close(fd);
+    return result;
 }
 
 static int HasUDF(int fd, int compressed)

@@ -1093,6 +1093,32 @@ int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int so
     return result;
 }
 
+const char *oplGetPOPSCachePrefix(int sourceMode)
+{
+    item_list_t *listSupport;
+
+    // APA 的两个 POPS 来源共用已挂载的 OPL 分区根目录。
+    if (sourceMode == HDD_MODE) {
+        listSupport = list_support[HDD_MODE].support;
+        if (listSupport == NULL || !listSupport->enabled || gOPLPart[0] == '\0' ||
+            gHDDPrefix == NULL || gHDDPrefix[0] == '\0')
+            return NULL;
+        return "pfs0:";
+    }
+
+    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
+        listSupport = list_support[sourceMode].support;
+    else if (sourceMode == ETH_MODE)
+        listSupport = list_support[ETH_MODE].support;
+    else
+        return NULL;
+
+    if (listSupport == NULL || !listSupport->enabled || listSupport->itemGetPrefix == NULL)
+        return NULL;
+
+    return listSupport->itemGetPrefix(listSupport);
+}
+
 int oplShouldAppsUpdate(void)
 {
     int result;

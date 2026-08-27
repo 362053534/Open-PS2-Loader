@@ -92,6 +92,7 @@ int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *
 int oplScanBDMPOPSByMode(int mode, int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg), void *arg);
+const char *oplGetPOPSCachePrefix(int sourceMode);
 int oplEnsureHDDPOPSScratchPartition(const char *partition);
 int oplShouldAppsUpdate(void);
 config_set_t *oplGetLegacyAppsConfig(void);
