@@ -30,7 +30,6 @@ static base_game_info_t *ethGames = NULL;
 
 // 共享列表需要区分“尚未返回”和“返回空列表”，否则主界面无法确定初始化是否结束。
 static int ethShareListPending = 1;
-static int ethShareListFailed = 0;
 static int ethShareListRetryUsed = 0;
 
 static struct ip4_addr lastIP;
@@ -453,8 +452,11 @@ static void smbLoadModules(void)
 
 void ethInit(item_list_t *itemList)
 {
-    if (ethInitSema() < 0)
+    if (ethInitSema() < 0) {
+        // 初始化入口失败后必须结束等待，否则默认SMB页面会永久停留在欢迎界面。
+        ethShareListPending = 0;
         return;
+    }
 
     if (gNetworkStartup >= ERROR_ETH_SMB_CONN) {
         LOG("ETHSUPPORT Re-Init\n");
@@ -462,7 +464,6 @@ void ethInit(item_list_t *itemList)
         ethULSizePrev = -2;
         ethGameCount = 0;
         ethShareListPending = 1;
-        ethShareListFailed = 0;
         ethShareListRetryUsed = 0;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &ethInitSMB);
         ethInitSMB();
@@ -475,7 +476,6 @@ void ethInit(item_list_t *itemList)
         ethGameCount = 0;
         ethGames = NULL;
         ethShareListPending = 1;
-        ethShareListFailed = 0;
         ethShareListRetryUsed = 0;
         configGetInt(configGetByType(CONFIG_OPL), "eth_frames_delay", &ethGameList.delay);
         gNetworkStartup = ERROR_ETH_NOT_STARTED;
@@ -495,17 +495,6 @@ item_list_t *ethGetObject(int initOnly)
 int ethIsShareListPending(void)
 {
     return !gPCShareName[0] && ethShareListPending;
-}
-
-int ethCanRetryShareList(void)
-{
-    return !gPCShareName[0] && ethShareListFailed && !ethShareListRetryUsed;
-}
-
-void ethMarkShareListRetry(void)
-{
-    ethShareListRetryUsed = 1;
-    ethShareListPending = 1;
 }
 
 static int ethNeedsUpdate(item_list_t *itemList)
@@ -555,26 +544,32 @@ static int ethUpdateGameList(item_list_t *itemList)
             ethDisplayErrorStatus();
         }
     } else {
-        int i, count;
+        int i, count, attempt;
+        int shareListAttempts = gETHStartMode == START_MODE_AUTO && ethShareListPending && !ethShareListRetryUsed ? 2 : 1;
         ShareEntry_t sharelist[128] __attribute__((aligned(64)));
         smbGetShareList_in_t getsharelist;
-
-        if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE) {
-            // 自动模式的第二次请求只补做一次网络重连，避免失败后无限占用后台线程。
-            if (ethShareListRetryUsed)
-                ethInitSMB();
-
-            if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE) {
-                ethShareListPending = 0;
-                ethShareListFailed = 1;
-                return 0;
-            }
-        }
 
         getsharelist.EE_addr = (void *)&sharelist[0];
         getsharelist.maxent = 128;
 
-        count = fileXioDevctl(ethBase, SMB_DEVCTL_GETSHARELIST, (void *)&getsharelist, sizeof(getsharelist), NULL, 0);
+        // 显式限制为最多两次，避免GUI与IO线程分别追加请求后失去次数边界。
+        for (attempt = 0; attempt < shareListAttempts; attempt++) {
+            if (attempt > 0) {
+                ethShareListRetryUsed = 1;
+
+                // 首次连接未完成时，唯一一次重试先补做网络初始化，避免对无效会话枚举共享。
+                if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
+                    ethInitSMB();
+            }
+
+            if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
+                count = -1;
+            else
+                count = fileXioDevctl(ethBase, SMB_DEVCTL_GETSHARELIST, (void *)&getsharelist, sizeof(getsharelist), NULL, 0);
+
+            if (count > 0)
+                break;
+        }
 
         if (count > 0) {
             free(ethGames);
@@ -593,19 +588,15 @@ static int ethUpdateGameList(item_list_t *itemList)
             }
             ethGameCount = count;
             ethShareListPending = 0;
-            ethShareListFailed = 0;
         } else if (count < 0) {
             gNetworkStartup = ERROR_ETH_SMB_LISTSHARES;
             ethDisplayErrorStatus();
             ethShareListPending = 0;
-            ethShareListFailed = 1;
         } else {
-            // 空列表可能来自共享服务尚未准备完成，因此也允许补做唯一一次重试。
             free(ethGames);
             ethGames = NULL;
             ethGameCount = 0;
             ethShareListPending = 0;
-            ethShareListFailed = 1;
         }
     }
     return ethGameCount;

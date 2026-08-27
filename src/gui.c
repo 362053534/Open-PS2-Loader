@@ -1779,17 +1779,6 @@ void guiMainLoop(void)
             //     fclose(debugFile);
             // }
 
-            // SMB自动模式下，首次请求和唯一一次失败重试都在主界面初始化完成前发起。
-            if (gETHStartMode == START_MODE_AUTO) {
-                item_list_t *ethSupport = ethGetObject(1);
-                if (ethSupport) {
-                    if (ethIsShareListPending())
-                        ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
-                    else if (ethCanRetryShareList() && ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode) == IO_OK)
-                        ethMarkShareListRetry();
-                }
-            }
-
             if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) &&
                 (gETHStartMode != START_MODE_AUTO || gDefaultDevice != ETH_MODE || !ethIsShareListPending()) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
