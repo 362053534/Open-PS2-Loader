@@ -47,8 +47,11 @@ static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
 static volatile int smbReconnectResult;
 static volatile int smbTrayOpen;
+static volatile int smbReconnectStopping;
+static volatile int smbReconnectStopped;
 static volatile unsigned int smbIdleTicks;
 static volatile unsigned int smbEchoRetryCount;
+static int smbReconnectThreadID = -1;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
 
@@ -124,6 +127,12 @@ static void smbReconnectThread(void *arg)
     (void)arg;
 
     while (1) {
+        if (smbReconnectStopping) {
+            smbReconnectStopped = 1;
+            SleepThread();
+            continue;
+        }
+
         if (smbReconnectEnabled && smbConnectionState == 1) {
             // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
             if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
@@ -231,7 +240,11 @@ void DeviceInit(void)
     thread.stacksize = 0x1000;
     thread.priority = 40;
 
-    StartThread(CreateThread(&thread), NULL);
+    smbReconnectThreadID = CreateThread(&thread);
+    if (smbReconnectThreadID >= 0)
+        StartThread(smbReconnectThreadID, NULL);
+    else
+        smbReconnectStopped = 1;
 }
 
 void DeviceDeinit(void)
@@ -246,6 +259,8 @@ int DeviceReady(void)
 
 void DeviceFSInit(void)
 {
+    smbReconnectStopping = 0;
+    smbReconnectStopped = 0;
     smbReconnectEnabled = 1;
     smbReconnectResult = SMB_RECONNECT_IDLE;
     smbIdleTicks = 0;
@@ -261,6 +276,15 @@ void DeviceFSInit(void)
 
 void DeviceLock(void)
 {
+    // IGR必须先让后台重连进入静止状态，避免等待锁时又产生新的SMB操作。
+    smbReconnectStopping = 1;
+    smbReconnectEnabled = 0;
+    smb_AbortConnection();
+    if (smbReconnectThreadID >= 0) {
+        while (!smbReconnectStopped)
+            DelayThread(1000);
+    }
+
     WaitSema(smb_io_sema);
 }
 

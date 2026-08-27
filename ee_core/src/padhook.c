@@ -106,6 +106,11 @@ static void t_loadElf(void)
     FlushCache(0);
 
     ret = LoadElf(argv[0], &elf);
+    if (ret) {
+        // 设备在IOP重启后可能尚未立即就绪，统一补一次有限重试。
+        delay(1);
+        ret = LoadElf(argv[0], &elf);
+    }
 
     if (!ret) {
 
