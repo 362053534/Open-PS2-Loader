@@ -38,7 +38,6 @@ int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen, unsig
 int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
-int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 static u32 ServerCapabilities;
@@ -71,7 +70,6 @@ static void ps2ip_init(void)
     plwip_send = info.exports[11];
     plwip_socket = info.exports[13];
     plwip_setsockopt = info.exports[19];
-    plwip_shutdown = info.exports[46];
     pinet_addr = info.exports[24];
 
     if (getModInfo("netman\0\0", &info))
@@ -129,7 +127,8 @@ static void smbReconnectThread(void *arg)
     while (1) {
         if (smbReconnectStopping) {
             smbReconnectStopped = 1;
-            SleepThread();
+            // 不永久休眠线程，避免下一次重新初始化时无法恢复重连线程。
+            DelayThread(SMB_RECONNECT_INTERVAL_US);
             continue;
         }
 
@@ -279,7 +278,7 @@ void DeviceLock(void)
     // IGR必须先让后台重连进入静止状态，避免等待锁时又产生新的SMB操作。
     smbReconnectStopping = 1;
     smbReconnectEnabled = 0;
-    smb_AbortConnection();
+    // 不在此处调用关闭网络的RPC，避免与后台线程正在等待的recv发生RPC互锁。
     if (smbReconnectThreadID >= 0) {
         while (!smbReconnectStopped)
             DelayThread(1000);

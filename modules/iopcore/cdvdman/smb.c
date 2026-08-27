@@ -34,9 +34,6 @@
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
-#ifndef SHUT_RDWR
-#define SHUT_RDWR 2
-#endif
 
 int smb_io_sema = -1;
 
@@ -51,7 +48,6 @@ extern int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen
 extern int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 extern int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
-extern int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 extern u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -870,12 +866,4 @@ int smb_Disconnect(void)
     }
 
     return 1;
-}
-
-int smb_AbortConnection(void)
-{
-    if (main_socket >= 0 && plwip_shutdown)
-        return plwip_shutdown(main_socket, SHUT_RDWR);
-
-    return -1;
 }
