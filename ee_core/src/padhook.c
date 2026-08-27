@@ -207,7 +207,7 @@ static void IGR_Thread(void *arg)
             DisableGSM();
         }
 
-        if (config->gCheatList) {
+        if (config->gCheatList || HasBuiltInCheats()) {
             if (EnableDebug)
                 DBGCOL(0xFF0000, IGR, "Stopping CheatEngine");
             DPRINTF("Stopping PS2RD Cheat Engine...\n");
