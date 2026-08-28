@@ -66,6 +66,7 @@ item_list_t *hddGetObject(int initOnly);
 void hddLoadModules(void);
 void hddLoadModulesBDM(void);
 int hddLoadSupportModules(void);
+void hddReportSupportError(void);
 void hddSetConfigSource(void);
 int hddIsConfigSource(void);
 int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs);
