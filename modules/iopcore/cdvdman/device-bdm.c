@@ -64,33 +64,9 @@ void bdm_connect_bd(struct block_device *bd)
     DPRINTF("connecting device %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
 
     if (g_bd == NULL && bd->devNr == cdvdman_settings.bdDeviceId) {
-        unsigned int i;
-        u32 stride = bdm_get_checkpoint_stride(cdvdman_settings.fragfile[0].frag_count);
-        u32 checkpoint_count = bdm_get_checkpoint_count(cdvdman_settings.fragfile[0].frag_count, stride);
-
         DPRINTF("attaching to %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
         g_bd = bd;
-        if (g_frag_table != NULL && cdvdman_settings.fragsAre512ByteSectors && bd->sectorSize != 512) {
-            unsigned int sectors_per_pfs_sector = bd->sectorSize >> 9;
-
-            while (sectors_per_pfs_sector > 1) {
-                for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++) {
-                    g_frag_table[i].sector >>= 1;
-                    g_frag_table[i].count >>= 1;
-                }
-                sectors_per_pfs_sector >>= 1;
-            }
-            cdvdman_settings.fragsAre512ByteSectors = 0;
-        }
         bd_defrag_index_reset(&g_bd_defrag_index);
-        if (g_frag_table != NULL &&
-            bd_defrag_index_build(&g_bd_defrag_index,
-                                  &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                  cdvdman_settings.fragfile[0].frag_count,
-                                  stride,
-                                  g_bd_defrag_checkpoints,
-                                  checkpoint_count) < 0)
-            DPRINTF("fragment index build failed\n");
         bd_defrag_cursor_reset(&g_bd_defrag_cursor);
         g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
         g_bd_sectors_per_sector = (2048 / bd->sectorSize);
@@ -140,21 +116,19 @@ static int bdm_load_fragment_table(void)
         return -1;
 
     while (offset < bytes) {
-        SifDmaTransfer_t dma;
-        int id;
+        SifRpcReceiveData_t receive;
         u32 chunk = bytes - offset;
+
         if (chunk > 16384)
             chunk = 16384;
 
-        dma.src = (void *)(address + offset);
-        dma.dest = (u8 *)g_frag_table + offset;
-        dma.size = chunk;
-        dma.attr = 0;
-        do {
-            id = sceSifSetDma(&dma, 1);
-        } while (!id);
-        while (sceSifDmaStat(id) >= 0)
-            ;
+        /* IOP侧的sceSifSetDma只适用于IOP→EE，反向读取必须通过SIFCMD请求。 */
+        if (sceSifGetOtherData(&receive, (void *)(address + offset),
+                               (u8 *)g_frag_table + offset, chunk, 0) < 0) {
+            FreeSysMemory(g_frag_table);
+            g_frag_table = NULL;
+            return -1;
+        }
         offset += chunk;
     }
 
@@ -175,6 +149,45 @@ static int bdm_load_fragment_table(void)
     return 0;
 }
 
+static int bdm_prepare_fragment_table(void)
+{
+    unsigned int i;
+    u32 fragcount = cdvdman_settings.fragfile[0].frag_count;
+    u32 stride = bdm_get_checkpoint_stride(fragcount);
+    u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
+
+    if (g_bd == NULL)
+        return -1;
+
+    if (g_frag_table == NULL && bdm_load_fragment_table() < 0)
+        return -1;
+
+    if (cdvdman_settings.fragsAre512ByteSectors && g_bd->sectorSize != 512) {
+        unsigned int sectors_per_pfs_sector = g_bd->sectorSize >> 9;
+
+        while (sectors_per_pfs_sector > 1) {
+            for (i = 0; i < fragcount; i++) {
+                g_frag_table[i].sector >>= 1;
+                g_frag_table[i].count >>= 1;
+            }
+            sectors_per_pfs_sector >>= 1;
+        }
+        cdvdman_settings.fragsAre512ByteSectors = 0;
+    }
+
+    bd_defrag_index_reset(&g_bd_defrag_index);
+    if (bd_defrag_index_build(&g_bd_defrag_index,
+                              &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
+                              fragcount,
+                              stride,
+                              g_bd_defrag_checkpoints,
+                              checkpoint_count) < 0)
+        DPRINTF("fragment index build failed; using linear lookup\n");
+    bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+
+    return 0;
+}
+
 void DeviceInit(void)
 {
     iop_sema_t smp;
@@ -190,8 +203,6 @@ void DeviceInit(void)
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
     bd_defrag_index_reset(&g_bd_defrag_index);
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
-    if (bdm_load_fragment_table() < 0)
-        DPRINTF("fragment table transfer failed\n");
 
     RegisterLibraryEntries(&_exp_bdm);
 
@@ -250,6 +261,14 @@ void DeviceFSInit(void)
     DPRINTF("Waiting for device...\n");
     WaitSema(bdm_io_sema);
     DPRINTF("Waiting for device...done!\n");
+
+    /*
+     * IOPRP启动期间EE侧SIFCMD仍在重建，不能依赖此时的跨处理器拉取。
+     * 文件系统首次使用时设备和SIF链路均已就绪，适合作为传输边界。
+     */
+    if (bdm_prepare_fragment_table() < 0)
+        DPRINTF("fragment table transfer failed\n");
+
     SignalSema(bdm_io_sema);
 }
 
