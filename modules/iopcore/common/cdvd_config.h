@@ -62,12 +62,11 @@ struct cdvdman_settings_smb
 } __attribute__((packed));
 
 #define BDM_MAX_FILES 1  // ISO
-#define BDM_MAX_FRAGS 128 // 128项，每项8字节，共1024字节
 
 struct cdvdman_fragfile
 {
-    u8 frag_start; /// First fragment in the fragment table
-    u8 frag_count; /// Munber of fragments in the fragment table
+    u32 frag_start; /// First fragment in the fragment table
+    u32 frag_count; /// Munber of fragments in the fragment table
 } __attribute__((packed));
 
 struct cdvdman_settings_bdm
@@ -87,8 +86,9 @@ struct cdvdman_settings_bdm
     // Indicates that the fragment table uses 512-byte APA/PFS sectors.
     u32 fragsAre512ByteSectors;
 
-    // Fragment table, containing the fragments of all files
-    bd_fragment_t frags[BDM_MAX_FRAGS];
+    // 碎片表在启动后由 EE 传入 IOP，避免配置区被固定数组限制。
+    u32 frag_table_ee_addr;
+    u32 frag_table_bytes;
 } __attribute__((packed));
 
 #define CDVDMAN_SETTINGS_DEFAULT_COMMON                    \

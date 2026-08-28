@@ -23,6 +23,7 @@
 #include "include/extern_irx.h"
 #include "../ee_core/include/modules.h"
 #include "../ee_core/include/coreconfig.h"
+#include "modules/iopcore/common/cdvd_config.h"
 #include <osd_config.h>
 #include "include/pggsm.h"
 #include "include/cheatman.h"
@@ -460,13 +461,14 @@ static void *GetModStorageLocation(const char *startup, unsigned compatFlags)
     return ((void *)OPL_MOD_STORAGE);
 }
 
-static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, unsigned int modules, void *ModuleStorage, int size_cdvdman_irx, void **cdvdman_irx, int size_mcemu_irx, void **mcemu_irx)
+static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, unsigned int modules, void *ModuleStorage, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, void *frag_table, unsigned int frag_count)
 { // Send IOP modules that core must use to Kernel RAM
     irxtab_t *irxtable;
     irxptr_t *irxptr_tab;
     void *irxptr, *ioprp_image;
     int i, modcount;
     unsigned int curIrxSize, size_ioprp_image, total_size;
+    unsigned int cdvdman_offset = 0;
 
     if (!strcmp(mode_str, "BDM_USB_MODE"))
         modules |= CORE_IRX_USB;
@@ -486,7 +488,7 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
     size_ioprp_image = size_IOPRP_img + size_cdvdman_irx + size_cdvdfsv_irx + size_eesync_irx + 256;
     LOG("IOPRP image size calculated: %d\n", size_ioprp_image);
     ioprp_image = malloc(size_ioprp_image);
-    size_ioprp_image = patch_IOPRP_image(ioprp_image, cdvdman_irx, size_cdvdman_irx);
+    size_ioprp_image = patch_IOPRP_image(ioprp_image, cdvdman_irx, size_cdvdman_irx, &cdvdman_offset);
     LOG("IOPRP image size actual:     %d\n", size_ioprp_image);
 
     modcount = 0;
@@ -619,6 +621,25 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
             total_size += ((curIrxSize + 0xF) & ~0xF);
         } else {
             irxptr_tab[i].ptr = NULL;
+        }
+    }
+
+    if (frag_table != NULL && frag_count > 0) {
+        u64 frag_bytes64 = (u64)frag_count * sizeof(bd_fragment_t);
+        if (frag_bytes64 <= 0xFFFFFFFFULL) {
+            unsigned int frag_bytes = (unsigned int)frag_bytes64;
+            unsigned int frag_transfer_bytes = (frag_bytes + 0xF) & ~0xF;
+            void *frag_dst = irxptr;
+            memcpy(frag_dst, frag_table, frag_bytes);
+            if (frag_transfer_bytes > frag_bytes)
+                memset((u8 *)frag_dst + frag_bytes, 0, frag_transfer_bytes - frag_bytes);
+            struct cdvdman_settings_bdm *settings = (struct cdvdman_settings_bdm *)((u8 *)irxptr_tab[1].ptr + cdvdman_offset + cdvdman_settings_offset);
+            settings->frag_table_ee_addr = (u32)frag_dst;
+            settings->frag_table_bytes = frag_transfer_bytes;
+            settings->fragfile[0].frag_start = 0;
+            settings->fragfile[0].frag_count = frag_count;
+            irxptr = (void *)((u8 *)irxptr + ((frag_bytes + 0xF) & ~0xF));
+            total_size += ((frag_bytes + 0xF) & ~0xF);
         }
     }
 
@@ -799,7 +820,7 @@ void sysPrintEECoreConfig(struct EECoreConfig_t *config)
 }
 #endif
 
-void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags)
+void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags, void *frag_table, unsigned int frag_count)
 {
     unsigned int modules, ModuleStorageSize;
     void *ModuleStorage, *ModuleStorageEnd;
@@ -849,7 +870,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     modules |= CORE_IRX_VMC;
 
     LOG("SYSTEM LaunchLoaderElf loading modules\n");
-    ModuleStorageSize = (sendIrxKernelRAM(filename, mode_str, modules, ModuleStorage, size_cdvdman_irx, cdvdman_irx, size_mcemu_irx, mcemu_irx) + 0x3F) & ~0x3F;
+    ModuleStorageSize = (sendIrxKernelRAM(filename, mode_str, modules, ModuleStorage, size_cdvdman_irx, cdvdman_irx, cdvdman_settings_offset, size_mcemu_irx, mcemu_irx, frag_table, frag_count) + 0x3F) & ~0x3F;
 
     ModuleStorageEnd = (void *)((u8 *)ModuleStorage + ModuleStorageSize);
 

@@ -559,8 +559,10 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     u32 layer1_start, layer1_offset;
     unsigned short int layer1_part;
     apa_sub_t parts[APA_MAXSUB + 1];
-    pfs_blockinfo_t blocks[BDM_MAX_FRAGS];
+    pfs_blockinfo_t blocks[128];
     int hddPartCount = 0;
+    bd_fragment_t *frag_table = NULL;
+    unsigned int frag_capacity = 0;
 
     bdm_device_data_t *pDeviceData = NULL;
 
@@ -676,10 +678,10 @@ vmc_prepared:;
     if (settings == NULL) {
         return;
     }
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-    memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
-#pragma GCC diagnostic pop
+    settings->fragfile[0].frag_start = 0;
+    settings->fragfile[0].frag_count = 0;
+    settings->frag_table_ee_addr = 0;
+    settings->frag_table_bytes = 0;
     int iTotalFragCount = 0;
 
     //
@@ -701,25 +703,67 @@ vmc_prepared:;
 
         // Get fragment list
         int iFragCount;
-        int iFragCapacity = BDM_MAX_FRAGS - iTotalFragCount;
+        int iFragCapacity;
         if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
+            iFragCapacity = (int)(sizeof(blocks) / sizeof(blocks[0]));
             iFragCount = hddGetFileBlockInfo(partname, parts, blocks, iFragCapacity);
             if (iFragCount > 0) {
                 int j;
 
                 iFragCount--;
+                if ((unsigned int)(iTotalFragCount + iFragCount) > frag_capacity) {
+                    unsigned int new_capacity = frag_capacity ? frag_capacity : 64;
+                    while (new_capacity < (unsigned int)(iTotalFragCount + iFragCount))
+                        new_capacity *= 2;
+                    bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
+                    if (new_table == NULL) {
+                        close(fd);
+                        sbUnprepare(&settings->common);
+                        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+                        return;
+                    }
+                    if (frag_table != NULL) {
+                        memcpy(new_table, frag_table, iTotalFragCount * sizeof(bd_fragment_t));
+                        free(frag_table);
+                    }
+                    frag_table = new_table;
+                    frag_capacity = new_capacity;
+                }
                 for (j = 0; j < iFragCount; j++) {
                     if (blocks[j + 1].subpart >= hddPartCount) {
                         iFragCount = -1;
                         break;
                     }
-                    settings->frags[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
-                    settings->frags[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
+                    frag_table[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
+                    frag_table[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
                 }
                 settings->fragsAre512ByteSectors = 1;
             }
-        } else
-            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * iFragCapacity);
+        } else {
+            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, NULL, 0);
+            iFragCapacity = iFragCount;
+            if (iFragCount > 0) {
+                if ((unsigned int)(iTotalFragCount + iFragCount) > frag_capacity) {
+                    unsigned int new_capacity = frag_capacity ? frag_capacity : 64;
+                    while (new_capacity < (unsigned int)(iTotalFragCount + iFragCount))
+                        new_capacity *= 2;
+                    bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
+                    if (new_table == NULL) {
+                        close(fd);
+                        sbUnprepare(&settings->common);
+                        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+                        return;
+                    }
+                    if (frag_table != NULL) {
+                        memcpy(new_table, frag_table, iTotalFragCount * sizeof(bd_fragment_t));
+                        free(frag_table);
+                    }
+                    frag_table = new_table;
+                    frag_capacity = new_capacity;
+                }
+                iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, &frag_table[iTotalFragCount], sizeof(bd_fragment_t) * iFragCount);
+            }
+        }
         if (iFragCount > iFragCapacity) {
             char error[128];
 
@@ -739,7 +783,7 @@ vmc_prepared:;
 
         int j;
         for (j = 0; j < iFragCount; j++) {
-            if (settings->frags[iTotalFragCount + j].count == 0) {
+            if (frag_table[iTotalFragCount + j].count == 0) {
                 close(fd);
                 sbUnprepare(&settings->common);
                 guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
@@ -853,17 +897,17 @@ vmc_prepared:;
     LOG("bdm pre sysLaunchLoaderElf\n");
     if (!strcmp(bdmCurrentDriver, "usb")) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_USBD;
-        sysLaunchLoaderElf(filename, "BDM_USB_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_USB_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "sd") && strlen(bdmCurrentDriver) == 2) {
         settings->common.fakemodule_flags |= 0 /* TODO! fake ilinkman ? */;
-        sysLaunchLoaderElf(filename, "BDM_ILK_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_ILK_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "sdc") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= 0;
-        sysLaunchLoaderElf(filename, "BDM_M4S_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_M4S_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
-        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, size_mcemu_irx, usePfsVMC ? pfs_bdm_mcemu_irx : bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, index, size_mcemu_irx, usePfsVMC ? pfs_bdm_mcemu_irx : bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     }
 }
 

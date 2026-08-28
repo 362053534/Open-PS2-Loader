@@ -6,6 +6,7 @@
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
+#include <errno.h>
 
 typedef struct // size = 1024
 {
@@ -423,13 +424,16 @@ int hddGetFileBlockInfo(const char *name, const apa_sub_t *subs, pfs_blockinfo_t
     pfs_inode_t *inode;
     int result;
 
+    if (blocks == NULL || max <= 0)
+        return -EINVAL;
+
     if ((result = fileXioGetStat(name, &stat)) >= 0) {
         lba = subs[stat.private_4].start + stat.private_5;
         inode = (pfs_inode_t *)IOBuffer;
 
         if (hddReadSectors(lba, sizeof(pfs_inode_t) / 512, inode) == 0) {
-            if (inode->number_data < max) {
-                memcpy(blocks, inode->data, max * sizeof(pfs_blockinfo_t));
+            if (inode->number_data <= (u32)max) {
+                memcpy(blocks, inode->data, inode->number_data * sizeof(pfs_blockinfo_t));
                 result = inode->number_data;
             } else
                 result = -ENOMEM;
