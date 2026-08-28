@@ -8,6 +8,7 @@
 */
 
 #include <iopcontrol.h>
+#include <libcdvd-common.h>
 
 #include "ee_core.h"
 #include "iopmgr.h"
@@ -21,6 +22,30 @@ extern int _iop_reboot_count;
 static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
 static const char udnl_prefix[] = "rom0:UDNL ";
+
+#define CDVD_INIT_RPC_ID 0x80000592
+static SifRpcClientData_t cdvd_init_rpc_client __attribute__((aligned(64)));
+static int cdvd_init_rpc_mode __attribute__((aligned(64)));
+
+static int InitBDMCDVDMan(void)
+{
+    memset(&cdvd_init_rpc_client, 0, sizeof(cdvd_init_rpc_client));
+
+    /*
+     * 复用CDVDFSV现有初始化RPC，可让所有BDM设备在PS2LOGO运行前进入
+     * DeviceFSInit，同时避免EE Core引入完整libcdvd状态。
+     */
+    while (1) {
+        if (SifBindRpc(&cdvd_init_rpc_client, CDVD_INIT_RPC_ID, 0) >= 0 &&
+            cdvd_init_rpc_client.server != NULL)
+            break;
+    }
+
+    cdvd_init_rpc_mode = SCECdINIT;
+    return SifCallRpc(&cdvd_init_rpc_client, 0, 0,
+                      &cdvd_init_rpc_mode, sizeof(cdvd_init_rpc_mode),
+                      NULL, 0, NULL, NULL);
+}
 
 /*
  * 游戏可能通过 ROM UDNL 以 ROM IOPRP 重置 IOP，例如：
@@ -181,6 +206,14 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
             break;
     };
+
+    if (config->GameMode == BDM_USB_MODE ||
+        config->GameMode == BDM_ILK_MODE ||
+        config->GameMode == BDM_M4S_MODE ||
+        config->GameMode == BDM_HDD_MODE) {
+        if (InitBDMCDVDMan() < 0)
+            DPRINTF("BDM CDVD initialization RPC failed\n");
+    }
 }
 
 /*----------------------------------------------------------------*/

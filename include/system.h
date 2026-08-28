@@ -18,7 +18,7 @@ void sysPowerOff(void);
 int sysInitDECI2(void);
 #endif
 
-void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags);
+void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags, void *frag_table, unsigned int frag_count);
 
 int sysExecElf(const char *path);
 int sysLoadModuleBuffer(void *buffer, int size, int argc, char *argv);

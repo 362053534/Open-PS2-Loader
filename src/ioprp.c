@@ -29,13 +29,15 @@ static inline void Align_offsets(void *base_address, unsigned int *offset_in, st
 /*----------------------------------------------------------------------------------------
     Replace modules in a IOPRP image.
 ------------------------------------------------------------------------------------------*/
-unsigned int patch_IOPRP_image(void *ioprp_image, void *cdvdman_module, unsigned int size_cdvdman)
+unsigned int patch_IOPRP_image(void *ioprp_image, void *cdvdman_module, unsigned int size_cdvdman, unsigned int *cdvdman_offset)
 {
     unsigned int offset_in, offset_out; /* For processing purposes */
     struct romdir_entry *romdir_in, *romdir_out;
 
     offset_in = 0;
     offset_out = 0;
+    if (cdvdman_offset != NULL)
+        *cdvdman_offset = 0;
 
     romdir_in = (struct romdir_entry *)IOPRP_img;
     romdir_out = (struct romdir_entry *)ioprp_image;
@@ -43,8 +45,11 @@ unsigned int patch_IOPRP_image(void *ioprp_image, void *cdvdman_module, unsigned
     while (romdir_in->fileName[0] != '\0') {
         memset(romdir_out, 0, sizeof(struct romdir_entry));
 
-        if (!strcmp(romdir_in->fileName, "CDVDMAN"))
+        if (!strcmp(romdir_in->fileName, "CDVDMAN")) {
+            if (cdvdman_offset != NULL)
+                *cdvdman_offset = offset_out;
             patch_CDVDMAN((void *)((u8 *)ioprp_image + offset_out), romdir_out, cdvdman_module, size_cdvdman);
+        }
         else if (!strcmp(romdir_in->fileName, "CDVDFSV"))
             patch_CDVDFSV((void *)((u8 *)ioprp_image + offset_out), romdir_out);
         else if (!strcmp(romdir_in->fileName, "EESYNC"))

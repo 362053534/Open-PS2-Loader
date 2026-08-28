@@ -14,6 +14,7 @@
 #include <loadcore.h>
 #include <stdio.h>
 #include <sifman.h>
+#include <sifcmd.h>
 #include <sysclib.h>
 #include <sysmem.h>
 #include <thbase.h>

@@ -786,7 +786,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
 
     // adjust ZSO cache
     settings->common.zso_cache = smbCacheSize;
-    sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask);
+    sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, 0, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask, NULL, 0);
 }
 
 static config_set_t *ethGetConfig(item_list_t *itemList, int id)
