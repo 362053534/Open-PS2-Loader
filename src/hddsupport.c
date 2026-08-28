@@ -36,6 +36,8 @@ static unsigned char hddSupportModulesLoaded = 0;
 static unsigned char hddModulesLoading = 0;
 static unsigned char hddConfigSource = 0;
 static unsigned char hddConfigModulesRetained = 0;
+static int hddSupportErrorCode = ERROR_HDD_NOT_DETECTED;
+static int hddSupportErrorMessage = _STR_HDD_NOT_CONNECTED_ERROR;
 
 static char *hddPrefix = "pfs0:";
 static hdl_games_list_t hddGames;
@@ -71,6 +73,11 @@ static int artUseBuckets_APA = 0;
 static int hddLoadGameListCache(hdl_games_list_t *cache);
 static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *game_list);
 
+void hddReportSupportError(void)
+{
+    setErrorMessageWithCode(hddSupportErrorMessage, hddSupportErrorCode);
+}
+
 static int hddInitModules(void)
 {
     int result, retryCount = 0;
@@ -88,8 +95,13 @@ static int hddInitModules(void)
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
     while ((result = hddLoadSupportModules())) {
         if (++retryCount >= 20)
-            return result;
+            break;
         usleep(100000);
+    }
+
+    if (result) {
+        hddReportSupportError();
+        return result;
     }
 
     // update Themes
@@ -357,6 +369,8 @@ int hddLoadSupportModules(void)
                            "24"; // Default value: 8 | Max value: 127
 
     LOG("HDDSUPPORT LoadSupportModules\n");
+    hddSupportErrorCode = ERROR_HDD_NOT_DETECTED;
+    hddSupportErrorMessage = _STR_HDD_NOT_CONNECTED_ERROR;
 
     // Check if the drive contains MBR/GPT partition data before we load the APA/PFS modules. If the drive is not
     // APA then loading the APA irx modules can corrupt the drive as it will try to write APA partition data.
@@ -371,14 +385,16 @@ int hddLoadSupportModules(void)
         int ret = sysLoadModuleBuffer(&ps2hdd_irx, size_ps2hdd_irx, sizeof(hddarg), hddarg);
         if (ret < 0) {
             LOG("HDD: No HardDisk Drive detected.\n");
-            setErrorMessageWithCode(_STR_HDD_NOT_CONNECTED_ERROR, ERROR_HDD_MODULE_HDD_FAILURE);
+            hddSupportErrorCode = ERROR_HDD_MODULE_HDD_FAILURE;
+            hddSupportErrorMessage = _STR_HDD_NOT_CONNECTED_ERROR;
             return -1;
         }
 
         // Check if a HDD unit is connected
         if (hddCheck() < 0) {
             LOG("HDD: No HardDisk Drive detected.\n");
-            setErrorMessageWithCode(_STR_HDD_NOT_CONNECTED_ERROR, ERROR_HDD_NOT_DETECTED);
+            hddSupportErrorCode = ERROR_HDD_NOT_DETECTED;
+            hddSupportErrorMessage = _STR_HDD_NOT_CONNECTED_ERROR;
             return -1;
         }
 
@@ -386,7 +402,8 @@ int hddLoadSupportModules(void)
         ret = sysLoadModuleBuffer(&ps2fs_irx, size_ps2fs_irx, sizeof(pfsarg), pfsarg);
         if (ret < 0) {
             LOG("HDD: HardDisk Drive not formatted (PFS).\n");
-            setErrorMessageWithCode(_STR_HDD_NOT_FORMATTED_ERROR, ERROR_HDD_MODULE_PFS_FAILURE);
+            hddSupportErrorCode = ERROR_HDD_MODULE_PFS_FAILURE;
+            hddSupportErrorMessage = _STR_HDD_NOT_FORMATTED_ERROR;
             return -1;
         }
 

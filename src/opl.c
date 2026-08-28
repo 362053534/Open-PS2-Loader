@@ -1744,7 +1744,7 @@ static int checkLoadConfigBDM(int types)
 
 static int checkLoadConfigHDD(int types)
 {
-    int value, retryCount = 0;
+    int value, supportResult, retryCount = 0;
     char path[64];
 
     hddLoadModules();
@@ -1752,9 +1752,11 @@ static int checkLoadConfigHDD(int types)
         return 0;
 
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
-    while (hddLoadSupportModules()) {
-        if (++retryCount >= 20)
+    while ((supportResult = hddLoadSupportModules())) {
+        if (++retryCount >= 20) {
+            hddReportSupportError();
             return 0;
+        }
         usleep(100000);
     }
 
@@ -2922,12 +2924,14 @@ static void miniInit(int mode)
         hddLoadModules();
         // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
         if (hddLoadModulesSuccess) {
-            int retryCount = 0;
-            while (hddLoadSupportModules()) {
+            int supportResult, retryCount = 0;
+            while ((supportResult = hddLoadSupportModules())) {
                 if (++retryCount >= 20)
                     break;
                 usleep(100000);
             }
+            if (supportResult)
+                hddReportSupportError();
         }
     }
 
