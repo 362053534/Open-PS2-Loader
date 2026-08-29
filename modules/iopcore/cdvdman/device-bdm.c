@@ -270,8 +270,8 @@ void DeviceFSInit(void)
     DPRINTF("Waiting for device...done!\n");
 
     /*
-     * IOPRP启动期间EE侧SIFCMD仍在重建，不能依赖此时的跨处理器拉取。
-     * 文件系统首次使用时设备和SIF链路均已就绪，适合作为传输边界。
+     * EE Core会在PS2LOGO运行前主动初始化CDVDMAN，避免首个光盘请求
+     * 才开始跨处理器传输；游戏后续主动初始化时仍复用同一路径。
      */
     if (bdm_prepare_fragment_table() < 0)
         DPRINTF("fragment table transfer failed\n");
