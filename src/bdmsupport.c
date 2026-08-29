@@ -546,6 +546,40 @@ static void bdmRenameGame(item_list_t *itemList, int id, char *newName)
     pDeviceData->ForceRefresh = 1;
 }
 
+static int bdmGetFragmentList(int iop_fd, bd_fragment_t *fragments, int fragment_count)
+{
+    if ((unsigned int)fragment_count <= CTL_BUF_SIZE / sizeof(bd_fragment_t))
+        return fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0,
+                             fragments, fragment_count * sizeof(bd_fragment_t));
+
+    // fileXio控制返回缓冲区只有2048字节，大碎片表必须沿FAT游标分批取回。
+    unsigned char page_buffer[CTL_BUF_SIZE] __attribute__((aligned(64)));
+    bd_fraglist_page_t *page = (bd_fraglist_page_t *)page_buffer;
+    bd_fraglist_cursor_t cursor;
+    const int page_capacity = (CTL_BUF_SIZE - sizeof(*page)) / sizeof(bd_fragment_t);
+    int total = 0;
+
+    memset(&cursor, 0, sizeof(cursor));
+    while (total < fragment_count) {
+        int result = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST_PAGE,
+                                   &cursor, sizeof(cursor), page, sizeof(page_buffer));
+        if (result <= 0 || result != (int)page->fragment_count ||
+            result > page_capacity || total + result > fragment_count)
+            return -1;
+
+        memcpy(&fragments[total], page->fragments, result * sizeof(bd_fragment_t));
+        total += result;
+        cursor = page->cursor;
+
+        if ((cursor.clusters_remaining == 0) != (cursor.next_cluster == 0))
+            return -1;
+        if (cursor.clusters_remaining == 0)
+            break;
+    }
+
+    return total == fragment_count && cursor.clusters_remaining == 0 ? total : -1;
+}
+
 void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, fd, iop_fd, index, compatmask = 0;
@@ -761,7 +795,7 @@ vmc_prepared:;
                     frag_table = new_table;
                     frag_capacity = new_capacity;
                 }
-                iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, &frag_table[iTotalFragCount], sizeof(bd_fragment_t) * iFragCount);
+                iFragCount = bdmGetFragmentList(iop_fd, &frag_table[iTotalFragCount], iFragCount);
             }
         }
         if (iFragCount > iFragCapacity) {
