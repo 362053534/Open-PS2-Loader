@@ -951,8 +951,9 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&pDeviceData->bdmGames[id], pDeviceData->bdmPrefix, "/");
 }
 
-static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int bdmGetImage(item_list_t *itemList, int id, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
+    (void)id;
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
 
     if (!value || pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)

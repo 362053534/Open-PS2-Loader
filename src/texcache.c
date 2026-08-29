@@ -52,6 +52,7 @@ typedef struct
     s32 wakeupId;
     image_cache_t *cache;
     item_list_t *list;
+    int itemId;
     int cacheId;
     char *value;
 } load_image_request_t;
@@ -131,7 +132,7 @@ static void cacheLoadImage1(void *data)
     }
 
     // 加载图片
-    int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24);
+    int result = handler->itemGetImage(handler, ioReq->itemId, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24);
 
     if (result < 0) {
         ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
@@ -198,7 +199,7 @@ static void *cacheLoadImage(void *data)
         }
 
         // 加载图片
-        int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24);
+        int result = handler->itemGetImage(handler, ioReq->itemId, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24);
 
         if (result < 0) {
             ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
@@ -402,7 +403,7 @@ void cacheDestroyCache(image_cache_t *cache)
     free(cache);
 }
 
-GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
+GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int itemId, int *cacheId, int *UID, char *value)
 {
     // 默认情况下，触发重复按键时，就会跳过所有Qr
     if (padGetRepeating()) {
@@ -579,6 +580,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             pthread_mutex_unlock(&texLoadingMutex);
             load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
             req->cache = cache;
+            req->itemId = itemId;
             req->cacheId = *cacheId;
             req->list = list;
             req->value = value;
@@ -607,6 +609,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         texLoading = 1;
                     pthread_mutex_unlock(&texLoadingMutex);
                     req1.cache = cache;
+                    req1.itemId = itemId;
                     req1.cacheId = *cacheId;
                     req1.list = list;
                     req1.value = value;
@@ -636,6 +639,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         texLoading = 1;
                     pthread_mutex_unlock(&texLoadingMutex);
                     req2.cache = cache;
+                    req2.itemId = itemId;
                     req2.cacheId = *cacheId;
                     req2.list = list;
                     req2.value = value;
@@ -665,6 +669,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         texLoading = 1;
                     pthread_mutex_unlock(&texLoadingMutex);
                     req3.cache = cache;
+                    req3.itemId = itemId;
                     req3.cacheId = *cacheId;
                     req3.list = list;
                     req3.value = value;
@@ -694,6 +699,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 pthread_mutex_unlock(&texLoadingMutex);
                 load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
                 req->cache = cache;
+                req->itemId = itemId;
                 req->cacheId = *cacheId;
                 req->list = list;
                 req->value = value;

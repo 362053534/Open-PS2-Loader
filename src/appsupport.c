@@ -2402,31 +2402,30 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
     return config;
 }
 
-static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static void appGetImageDevice(int id, char *device, int deviceSize)
+{
+    if (appsList[id].legacy) {
+        struct config_value_t *cur = appGetConfigValue(id);
+        appGetBoot(device, deviceSize, cur->val);
+    } else if (appsList[id].popstarter &&
+               (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
+                appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL)) {
+        /* HDD POPS的ART固定来自工作分区，不能按pfs1临时槽位判断设备。 */
+        appGetBoot(device, deviceSize, gHDDPrefix);
+    } else {
+        appGetBoot(device, deviceSize, appsList[id].path);
+    }
+}
+
+static int appGetImage(item_list_t *itemList, int id, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
     char device[8] = "", *startup;
-    int id;
+    int sourceMode;
 
-    for (id = 0; id < appItemCount; id++) {
-        if (appsList[id].legacy) {
-            struct config_value_t *cur = appGetConfigValue(id);
-            if (value == appGetELFName(cur->val)) {
-                appGetBoot(device, sizeof(device), cur->val);
-                break;
-            }
-        } else if (value == appsList[id].startup) {
-            if (appsList[id].popstarter &&
-                (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
-                 appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL)) {
-                /* HDD POPS的ART固定来自工作分区，不能按pfs1临时槽位判断设备。 */
-                appGetBoot(device, sizeof(device), gHDDPrefix);
-            } else {
-                appGetBoot(device, sizeof(device), appsList[id].path);
-            }
-            break;
-        }
-    }
+    if (id < 0 || id >= appItemCount)
+        return -1;
 
+    appGetImageDevice(id, device, sizeof(device));
     startup = appGetBoot(device, sizeof(device), value);
 
     if (!strcmp(folder, "ART")) {
@@ -2437,9 +2436,19 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
             snprintf(path, sizeof(path), "%sART/%s_%s", device, startup, suffix);
             return texDiscoverLoad(resultTex, path, -1);
         }
+
+        sourceMode = appsList[id].sourceMode;
+        if (sourceMode >= BDM_MODE && sourceMode <= HDD_MODE)
+            return oplGetAppImageByMode(sourceMode, folder, isRelative, startup, suffix, resultTex, psm);
+
         return oplGetAppImage(device, folder, isRelative, startup, suffix, resultTex, psm);
-    } else
+    } else {
+        sourceMode = appsList[id].sourceMode;
+        if (sourceMode >= BDM_MODE && sourceMode <= HDD_MODE)
+            return oplGetAppImageByMode(sourceMode, folder, isRelative, value, suffix, resultTex, psm);
+
         return oplGetAppImage(device, folder, isRelative, value, suffix, resultTex, psm);
+    }
 }
 
 static int appGetTextId(item_list_t *itemList)

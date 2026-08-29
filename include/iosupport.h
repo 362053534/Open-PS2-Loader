@@ -137,7 +137,7 @@ typedef struct _item_list_t
 
     config_set_t *(*itemGetConfig)(item_list_t *itemList, int id);
 
-    int (*itemGetImage)(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
+    int (*itemGetImage)(item_list_t *itemList, int id, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 
     void (*itemCleanUp)(item_list_t *itemList, int exception);
 

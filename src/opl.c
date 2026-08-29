@@ -665,6 +665,20 @@ int oplPath2Mode(const char *path)
     return -1;
 }
 
+int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+{
+    item_list_t *listSupport;
+
+    if (mode >= 0 && mode < MODE_COUNT) {
+        listSupport = list_support[mode].support;
+        if ((listSupport != NULL) && (listSupport->enabled) &&
+            listSupport->itemGetImage(listSupport, -1, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+            return 0;
+    }
+
+    return -1;
+}
+
 int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
     //int i, remaining, elfbootmode;
@@ -676,7 +690,7 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
         if (elfbootmode >= 0) {
             listSupport = list_support[elfbootmode].support;
             if ((listSupport != NULL) && (listSupport->enabled)) {
-                if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+                if (listSupport->itemGetImage(listSupport, -1, folder, isRelative, value, suffix, resultTex, psm) >= 0)
                     return 0;
             }
         }
@@ -692,7 +706,7 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
     //    //            continue;
     //
     //    //        if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->appsPriority == priority)) {
-    //    //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+    //    //            if (listSupport->itemGetImage(listSupport, -1, folder, isRelative, value, suffix, resultTex, psm) >= 0)
     //    //                return 0;
     //    //            remaining--;
     //    //        }
@@ -702,7 +716,7 @@ int oplGetAppImage(const char *device, char *folder, int isRelative, char *value
     //    for (int i = HDD_MODE; i >= 0; i--) {
     //        listSupport = list_support[i].support;
     //        if ((listSupport != NULL) && (listSupport->enabled)) {
-    //            if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+    //            if (listSupport->itemGetImage(listSupport, -1, folder, isRelative, value, suffix, resultTex, psm) >= 0)
     //                return 0;
     //        }
     //    }

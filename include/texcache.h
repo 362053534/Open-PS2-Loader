@@ -57,7 +57,7 @@ image_cache_t *cacheInitCache(int userId, const char *prefix, int isPrefixRelati
  */
 void cacheDestroyCache(image_cache_t *cache);
 
-GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value);
+GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int itemId, int *cacheId, int *UID, char *value);
 
 extern int ForceRefreshPrevTexCache;
 extern int forceSkipQr;

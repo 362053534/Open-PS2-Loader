@@ -863,8 +863,9 @@ static config_set_t *hddGetConfig(item_list_t *itemList, int id)
     return config;
 }
 
-static int hddGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int hddGetImage(item_list_t *itemList, int id, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
+    (void)id;
     if (!value)
         return ERR_BAD_FILE;
 

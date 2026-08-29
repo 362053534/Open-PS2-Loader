@@ -794,8 +794,9 @@ static config_set_t *ethGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&ethGames[id], ethPrefix, "\\");
 }
 
-static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int ethGetImage(item_list_t *itemList, int id, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
+    (void)id;
     if (!value)
         return ERR_BAD_FILE;
 
