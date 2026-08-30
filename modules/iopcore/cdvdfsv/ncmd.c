@@ -65,33 +65,6 @@ static inline void cdvd_readchain(void *buf);
 static inline void rpcNCmd_cdreadDiskID(void *buf);
 static inline void rpcNCmd_cdgetdisktype(void *buf);
 
-/* PCSX2 FastSeek 是 30ms，且发生在第一笔扇区 DMA 进 IOP 之前。
-   OPL 默认 8 扇区一到就 sysmemSendEE，VIF1 还在抽旧 dest 就会把命令槽写成顶点。
-   只对非连续 LSN 补这段时间；<16 扇区当连续，避免 FMV/顺序读变慢。 */
-#define CDVDFSV_FASTSEEK_USEC 30000
-#define CDVDFSV_CONTIG_DELTA  16
-
-static u32 s_ee_next_lsn = 0xFFFFFFFF;
-
-static void cdvdfsv_hold_ee_dest(u32 lsn)
-{
-    u32 delta;
-
-    if (s_ee_next_lsn == 0xFFFFFFFF)
-        return;
-
-    delta = (lsn >= s_ee_next_lsn) ? (lsn - s_ee_next_lsn) : (s_ee_next_lsn - lsn);
-    if (delta < CDVDFSV_CONTIG_DELTA)
-        return;
-
-    DelayThread(CDVDFSV_FASTSEEK_USEC);
-}
-
-static void cdvdfsv_note_ee_lsn(u32 lsn, u32 sectors)
-{
-    s_ee_next_lsn = lsn + sectors;
-}
-
 enum CD_NCMD_CMDS {
     CD_NCMD_READ = 1,
     CD_NCMD_CDDAREAD,
@@ -136,8 +109,6 @@ static inline void cdvd_readee(void *buf)
     void *eeaddr_64b, *eeaddr2_64b;
     cdvdfsv_readee_t readee;
     RpcCdvd_t *r = (RpcCdvd_t *)buf;
-    u32 start_lsn;
-    u32 start_sectors;
 
     if (r->sectors == 0) {
         *(int *)buf = 0;
@@ -157,10 +128,6 @@ static inline void cdvd_readee(void *buf)
     r->buf = (void *)((u32)r->buf & 0x1fffffff);
 
     sceCdDiskReady(0);
-
-    start_lsn = r->lsn;
-    start_sectors = r->sectors;
-    cdvdfsv_hold_ee_dest(start_lsn);
 
     sectors_to_read = r->sectors;
     bytesent = 0;
@@ -201,7 +168,6 @@ static inline void cdvd_readee(void *buf)
                 *((u32 *)&curlsn_buf[0]) = nbytes;
                 sysmemSendEE((void *)curlsn_buf, (void *)r->eeaddr2, 16);
 
-                cdvdfsv_note_ee_lsn(start_lsn, start_sectors - sectors_to_read);
                 *(int *)buf = nbytes;
                 return;
             }
@@ -346,19 +312,16 @@ static inline void cdvd_readchain(void *buf)
             while (sceCdRead(lsn, tsectors, (void *)addr, NULL) == 0)
                 sceCdSync(0);
             sceCdSync(0);
-            cdvdfsv_note_ee_lsn(lsn, tsectors);
 
             readpos += tsectors * 2048;
         } else { // EE addr
             while (tsectors > 0) {
                 nsectors = (tsectors > CDVDMAN_FS_SECTORS) ? CDVDMAN_FS_SECTORS : tsectors;
 
-                cdvdfsv_hold_ee_dest(lsn);
                 while (sceCdRead(lsn, nsectors, cdvdfsv_buf, NULL) == 0)
                     sceCdSync(0);
                 sceCdSync(0);
                 sysmemSendEE(cdvdfsv_buf, (void *)addr, nsectors * 2048);
-                cdvdfsv_note_ee_lsn(lsn, nsectors);
 
                 lsn += nsectors;
                 tsectors -= nsectors;
@@ -415,7 +378,6 @@ static void *cbrpc_cdvdNcmds(int fno, void *buf, int size)
             break;
         case CD_NCMD_SEEK:
             *(int *)buf = sceCdSeek(*(u32 *)buf);
-            s_ee_next_lsn = *(u32 *)buf;
             break;
         case CD_NCMD_STANDBY:
             *(int *)buf = sceCdStandby();

@@ -71,6 +71,29 @@ unsigned char sync_flag;
 unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
 
+/* PCSX2 FastSeek：命令已经受理、第一笔扇区进缓冲之前 30ms。
+   不能放在 cdvdfsv NCMD、sceCdRead 之前：那时 sync_flag 仍为 0，吉翁 sceCdStRead
+   预填会抢走设备，cdvd_readee 的 while (sceCdRead==0) 永远转，读条结束后黑屏。
+   读线程里 status=Read 且 sync_flag=1，流式填充会失败并改闹钟；EE dest 也还没 sysmemSendEE。
+   sceCdSeek 在 OPL 里是瞬间完成的，不在这里记磁头，否则随后那笔读会被当成连续、seek 惩罚丢失。 */
+#define CDVDMAN_FASTSEEK_USEC 30000
+#define CDVDMAN_CONTIG_DELTA  16
+
+static u32 s_next_lsn = 0xFFFFFFFF;
+
+static void cdvdman_fastseek(u32 lsn, u32 sectors)
+{
+    u32 delta;
+
+    if (s_next_lsn != 0xFFFFFFFF) {
+        delta = (lsn >= s_next_lsn) ? (lsn - s_next_lsn) : (s_next_lsn - lsn);
+        if (delta >= CDVDMAN_CONTIG_DELTA)
+            DelayThread(CDVDMAN_FASTSEEK_USEC);
+    }
+
+    s_next_lsn = lsn + sectors;
+}
+
 #ifdef __USE_DEV9
 static int POFFThreadID;
 #endif
@@ -367,6 +390,7 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
     cdvdman_stat.status = SCECdStatRead;
+    cdvdman_fastseek(lsn, sectors);
 
     // OPL only has 2048 bytes no matter what. For other sizes we have to copy to the offset and prepoluate the sector header data (the extra bytes.)
     u32 offset = 0;
