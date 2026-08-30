@@ -73,9 +73,12 @@ static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. 
 
 /* PCSX2 FastSeek：命令已经受理、第一笔扇区进缓冲之前 30ms。
    不能放在 cdvdfsv NCMD、sceCdRead 之前：那时 sync_flag 仍为 0，吉翁 sceCdStRead
-   预填会抢走设备，cdvd_readee 的 while (sceCdRead==0) 永远转，读条结束后黑屏。
+   预填会抢走设备，cdvd_readee 的 while (sceCdRead==0) 永远转。
    读线程里 status=Read 且 sync_flag=1，流式填充会失败并改闹钟；EE dest 也还没 sysmemSendEE。
-   sceCdSeek 在 OPL 里是瞬间完成的，不在这里记磁头，否则随后那笔读会被当成连续、seek 惩罚丢失。 */
+   流式填充必须跳过这段等待：关卡读条结束后 StStart 跳到 BGM LSN，cdvdfsv 的
+   sceCdStRead(..., mode=0) 非阻塞，缓冲空就返回 0，游戏会当成失败然后黑屏。
+   VIF70 只拖 CDA 的 sceCdRead，从不拖流式，所以 6/6 没有这个黑屏。
+   sceCdSeek 在 OPL 里是瞬间完成的，不在这里记磁头，否则随后那笔读会被当成连续。 */
 #define CDVDMAN_FASTSEEK_USEC 30000
 #define CDVDMAN_CONTIG_DELTA  16
 
@@ -85,7 +88,7 @@ static void cdvdman_fastseek(u32 lsn, u32 sectors)
 {
     u32 delta;
 
-    if (s_next_lsn != 0xFFFFFFFF) {
+    if (!cdvdman_stat.StreamingData.StIsReading && s_next_lsn != 0xFFFFFFFF) {
         delta = (lsn >= s_next_lsn) ? (lsn - s_next_lsn) : (s_next_lsn - lsn);
         if (delta >= CDVDMAN_CONTIG_DELTA)
             DelayThread(CDVDMAN_FASTSEEK_USEC);
