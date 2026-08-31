@@ -88,7 +88,7 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    // VIF74：通用 dest 复用排空。不要叠 VIF70 定点空转，否则分不清是哪一层生效。
+    // VIF75：通用 sceCdRead 读前空转。不要叠 VIF70 定点空转，否则分不清是哪一层生效。
     // {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},    // 吉翁前线 NTSC-U：定点读前空转，仅作回滚
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
@@ -288,206 +288,27 @@ static void ZeonicFront_patches(u32 delay_cycles)
     }
 }
 
-/* VIF74：发 sceCdRead 之前等 VIF1 离开 dest。VIF73 只看「这一笔 dest」，
-   根链还没 CALL、或新文件比旧堆短时会漏判，花屏回来。复用最近 dest 也要排空；
-   链走不完当作占用。禁止 sceGsSyncPath / FLUSH。非法码立刻放行。 */
-#define VIF1_STAT_ER01    0x3000u
-#define DEST_HOLD_CYCLES  0x00110000u
-#define DMA_CHCR_STR      (1u << 8)
-#define DMA_CHCR_MOD      (3u << 2)
-#define DMA_CHCR_CHAIN    (1u << 2)
-#define DEST_HOLD_RECENT  4
+/* VIF75：VIF73/74 的占用和复用判断在实机上等于没空转。VIF70 的 6/6
+   是 CDA jal 前无条件 0x00110000 圈。扫描能唯一命中吉翁 sceCdRead
+   0x0021E320，所以改在全部 sceCdRead 上做同样的读前空转。
+   禁止 sceGsSyncPath / FLUSH。PATCH_ZEONIC_FRONT 仍关掉。 */
+#define DEST_HOLD_CYCLES 0x00110000u
 
 extern int dest_hold_trampoline(u32 lsn, u32 nsectors, void *buf, int *mode);
 extern u32 dest_hold_saved0;
 extern u32 dest_hold_saved1;
 extern u32 dest_hold_jcont;
 
-static u32 s_recent_dest[DEST_HOLD_RECENT];
-static u32 s_recent_size[DEST_HOLD_RECENT];
-static unsigned int s_recent_n;
-
-static u32 dest_hold_phys(u32 addr)
-{
-    if ((addr & 0xF0000000u) == 0x70000000u)
-        return 0xFFFFFFFFu;
-    return addr & 0x1FFFFFFFu;
-}
-
-static int dest_hold_ram(u32 addr)
-{
-    return dest_hold_phys(addr) < 0x02000000u;
-}
-
-static int dest_hold_in(u32 addr, u32 dest, u32 size)
-{
-    u32 p = dest_hold_phys(addr);
-    u32 s = dest_hold_phys(dest);
-
-    if (p >= 0x02000000u || s >= 0x02000000u || size == 0)
-        return 0;
-    return (p >= s) && ((p - s) < size);
-}
-
-static int dest_ranges_overlap(u32 a, u32 asz, u32 b, u32 bsz)
-{
-    u32 pa = dest_hold_phys(a);
-    u32 pb = dest_hold_phys(b);
-
-    if (pa >= 0x02000000u || pb >= 0x02000000u || asz == 0 || bsz == 0)
-        return 0;
-    return (pa < (pb + bsz)) && (pb < (pa + asz));
-}
-
-static int vif1_dest_busy(u32 dest, u32 size)
-{
-    u32 chcr = *(vu32 *)A_EE_D1_CHCR;
-    u32 stat, madr, tadr, asr0, asr1, qwc, tag_addr, i;
-
-    if (!(chcr & DMA_CHCR_STR))
-        return 0;
-
-    stat = *(vu32 *)A_EE_VIF1_STAT;
-    if (stat & VIF1_STAT_ER01)
-        return 0;
-
-    madr = *(vu32 *)A_EE_D1_MADR;
-    tadr = *(vu32 *)A_EE_D1_TADR;
-    asr0 = *(vu32 *)A_EE_D1_ASR0;
-    asr1 = *(vu32 *)A_EE_D1_ASR1;
-    qwc = *(vu32 *)A_EE_D1_QWC & 0xFFFFu;
-
-    if (dest_ranges_overlap(madr, (qwc ? qwc : 1) << 4, dest, size) ||
-        dest_hold_in(tadr, dest, size) ||
-        dest_hold_in(asr0, dest, size) ||
-        dest_hold_in(asr1, dest, size))
-        return 1;
-
-    /* 证不了不相交就当占用。VIF73 这里直接放行，根链 FLUSHE 阶段会漏。 */
-    if ((chcr & DMA_CHCR_MOD) != DMA_CHCR_CHAIN)
-        return 1;
-
-    tag_addr = tadr;
-    for (i = 0; i < 32; i++) {
-        vu32 *tag;
-        u32 tqwc, id, addr, data;
-
-        if (!dest_hold_ram(tag_addr) || (dest_hold_phys(tag_addr) & 0xF))
-            return 1;
-        if (dest_hold_in(tag_addr, dest, size))
-            return 1;
-
-        tag = (vu32 *)(dest_hold_phys(tag_addr) | 0x20000000u);
-        tqwc = tag[0] & 0xFFFFu;
-        id = (tag[0] >> 28) & 7u;
-        addr = tag[1];
-        data = dest_hold_phys(tag_addr) + 16;
-
-        switch (id) {
-            case 0: /* REFE */
-                return dest_hold_in(addr, dest, size);
-            case 3: /* REF */
-            case 4: /* REFS */
-                if (dest_hold_in(addr, dest, size))
-                    return 1;
-                tag_addr = dest_hold_phys(tag_addr) + 16;
-                break;
-            case 5: /* CALL */
-                if (dest_hold_in(addr, dest, size))
-                    return 1;
-                if (dest_ranges_overlap(data, tqwc << 4, dest, size))
-                    return 1;
-                if (!dest_hold_ram(addr))
-                    return 1;
-                tag_addr = addr;
-                break;
-            case 1: /* CNT */
-                if (dest_ranges_overlap(data, tqwc << 4, dest, size))
-                    return 1;
-                tag_addr = data + (tqwc << 4);
-                break;
-            case 2: /* NEXT */
-                if (dest_ranges_overlap(data, tqwc << 4, dest, size))
-                    return 1;
-                tag_addr = addr;
-                break;
-            case 6: /* RET */
-                tag_addr = asr0;
-                break;
-            case 7: /* END */
-                return 0;
-            default:
-                return 1;
-        }
-    }
-    return 1;
-}
-
-static int dest_hold_reuse(u32 dest, u32 size)
-{
-    unsigned int i;
-
-    for (i = 0; i < DEST_HOLD_RECENT; i++) {
-        if (dest_ranges_overlap(dest, size, s_recent_dest[i], s_recent_size[i]))
-            return 1;
-    }
-    return 0;
-}
-
-static int dest_hold_any_busy(u32 dest, u32 size)
-{
-    unsigned int i;
-
-    if (vif1_dest_busy(dest, size))
-        return 1;
-    for (i = 0; i < DEST_HOLD_RECENT; i++) {
-        if (s_recent_size[i] && vif1_dest_busy(s_recent_dest[i], s_recent_size[i]))
-            return 1;
-    }
-    return 0;
-}
-
-static void dest_hold_remember(u32 dest, u32 size)
-{
-    unsigned int slot = s_recent_n % DEST_HOLD_RECENT;
-
-    s_recent_dest[slot] = dest;
-    s_recent_size[slot] = size;
-    s_recent_n++;
-}
-
 static void vif1_wait_dest(void *buf, u32 nsectors)
 {
-    u32 dest = (u32)buf;
-    u32 size;
-    unsigned int n, reuse, busy;
+    unsigned int n;
 
     if (!buf || nsectors == 0)
         return;
 
-    size = nsectors * 2048u;
-    reuse = dest_hold_reuse(dest, size);
-    busy = dest_hold_any_busy(dest, size);
-    if (!busy && !reuse) {
-        dest_hold_remember(dest, size);
-        return;
-    }
-
     n = DEST_HOLD_CYCLES;
-    if (reuse) {
-        /* 复用堆即使 STR=0 也要跑满：中断可能马上又 CALL 进旧堆。
-           VIF73 看见空闲就走，花屏回来；VIF70 的 6/6 靠的就是这段固定空转。 */
-        while (n--)
-            asm volatile("nop\nnop\nnop\nnop");
-    } else {
-        while (n--) {
-            if ((n & 63u) == 0 && !dest_hold_any_busy(dest, size))
-                break;
-            asm volatile("nop\nnop\nnop\nnop");
-        }
-    }
-
-    dest_hold_remember(dest, size);
+    while (n--)
+        asm volatile("nop\nnop\nnop\nnop");
 }
 
 static int (*s_orig_cdRead)(u32 lsn, u32 nsectors, void *buf, int *mode);
@@ -575,10 +396,11 @@ static void install_vif1_dest_hold(void)
         _sw(JMP(sce + 8), (u32)&dest_hold_jcont);
         _sw(JMP((u32)dest_hold_cdRead), sce);
         _sw(0, sce + 4);
-        return;
+    } else {
+        s_orig_cdRead = (void *)sce;
     }
 
-    s_orig_cdRead = (void *)sce;
+    /* 入口钩之外再改 jal 点。VIF70 就是改这两处 CDA jal 才 6/6。 */
     jal = JAL(sce);
     for (addr = 0x00100000; addr < 0x01F00000; addr += 4) {
         if (_lw(addr) == jal)
@@ -1265,7 +1087,7 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    /* 函数保留。VIF74 单测复用排空时 patch_list 已关掉本游戏条目。 */
+                    /* 函数保留。VIF75 单测通用读前空转时 patch_list 已关掉本游戏条目。 */
                     if (file_eq_gameid)
                         ZeonicFront_patches(p->patch.val);
                     break;
