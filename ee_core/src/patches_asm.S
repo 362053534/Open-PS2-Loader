@@ -55,8 +55,8 @@ RnC3_AlwaysAllocMem:            # Read the comments on the "Ratchet and Clank: U
     sb      $v1, 0x3D8($t0)     # Change "beqz $s7, 0x13" in iop_stash_daemon to "beqz $s7, 0x01"
 .end RnC3_AlwaysAllocMem
 
-/* VIF75：把游戏 sceCdRead 头两条挪到这里，入口改跳 dest_hold_cdRead。
-   jalr / 函数指针也能进钩子，不只改 jal 点。 */
+#if 0
+/* VIF75 trampoline。VIF76 对照关掉，避免 ee_core 布局和 26e0d89f 再差一块。 */
 .globl dest_hold_trampoline
 .globl dest_hold_saved0
 .globl dest_hold_saved1
@@ -71,6 +71,7 @@ dest_hold_jcont:
     j       dest_hold_trampoline
     nop
 .end dest_hold_trampoline
+#endif
 
 .set pop
 

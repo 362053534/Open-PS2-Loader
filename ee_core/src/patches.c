@@ -13,7 +13,6 @@
 #include "modules.h"
 #include "modmgr.h"
 #include "coreconfig.h"
-#include <ee_regs.h>
 
 #define ALL_MODE -1
 #define BDM_MODE -2
@@ -88,8 +87,8 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    // VIF75：通用 sceCdRead 读前空转。不要叠 VIF70 定点空转，否则分不清是哪一层生效。
-    // {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},    // 吉翁前线 NTSC-U：定点读前空转，仅作回滚
+    // VIF76：按 26e0d89f 原样。USB 是 BDM_MODE。禁止和 dest_hold 叠。
+    {"SLUS_202.33", BDM_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},       // 吉翁前线 NTSC-U USB/BDM：CDA 下一笔读启动前让 VIF1 把旧堆抽完
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -273,7 +272,7 @@ static int predelayed_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
 
 static void ZeonicFront_patches(u32 delay_cycles)
 {
-    // VIF70 定点空转。VIF73 改走通用 dest 占用等待，本函数只留回滚。
+    // VIF76 对照：只改这两处 jal，空转后直接进原版 0x0021E320。
     // 0x00106AF0 里两处 jal sceCdRead(0x0021E320)：整扇区 + 余数扇区。
     static const u32 sites[] = {0x00106B84, 0x00106C08};
     static const u32 jal_sceCdRead = JAL(0x0021E320);
@@ -288,10 +287,10 @@ static void ZeonicFront_patches(u32 delay_cycles)
     }
 }
 
-/* VIF75：VIF73/74 的占用和复用判断在实机上等于没空转。VIF70 的 6/6
-   是 CDA jal 前无条件 0x00110000 圈。扫描能唯一命中吉翁 sceCdRead
-   0x0021E320，所以改在全部 sceCdRead 上做同样的读前空转。
-   禁止 sceGsSyncPath / FLUSH。PATCH_ZEONIC_FRONT 仍关掉。 */
+/* VIF75 通用钩。VIF76 对照时整段关掉：trampoline + 全 jal 和
+   6/6 的两处 CDA jal 不等价，而且会先改掉 jal 0x0021E320，
+   定点补丁随后找不到原字。禁止 sceGsSyncPath / FLUSH。 */
+#if 0
 #define DEST_HOLD_CYCLES 0x00110000u
 
 extern int dest_hold_trampoline(u32 lsn, u32 nsectors, void *buf, int *mode);
@@ -407,6 +406,7 @@ static void install_vif1_dest_hold(void)
             _sw(JAL((u32)dest_hold_cdRead), addr);
     }
 }
+#endif
 
 static int (*capcom_lmb)(void *modpack_addr, int mod_index, int mod_argc, char **mod_argv);
 
@@ -1069,8 +1069,8 @@ void apply_patches(const char *path)
     else
         mode = BDM_MODE;
 
-    /* 必须在游戏表之前装。KH2 的读后延迟会再包一层；吉翁表项关掉，只走这一层。 */
-    install_vif1_dest_hold();
+    /* VIF76：关掉通用 dest_hold。VIF75 的入口 trampoline + 全 jal
+       和 6/6 的两处 CDA jal 不等价，叠上去会把定点 jal 改没。 */
 
     // if there are patches matching game name/mode then fill the patch table
     for (p = patch_list; p->game; p++) {
@@ -1087,7 +1087,6 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    /* 函数保留。VIF75 单测通用读前空转时 patch_list 已关掉本游戏条目。 */
                     if (file_eq_gameid)
                         ZeonicFront_patches(p->patch.val);
                     break;
