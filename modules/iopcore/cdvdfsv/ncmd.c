@@ -53,60 +53,6 @@ typedef struct
 
 static sceCdRMode cdvdfsv_Stmode;
 
-/* dest-hold 只放在 sysmemSendEE 之前。读线程和 sceCdSync 都不再 DelayThread，
-   否则 NCMD 堵在 WaitEventFlag 上，读条结束卡住、IGR 仍可用。
-   这里也不能 DelayThread：NCMD RPC 回调一旦让出，读条结束同样不返回。
-   改成空转（不让出、中断仍进），对齐 PCSX2 FastSeek 30ms / FullSeek 100ms。 */
-#define CDVDFSV_FASTSEEK_USEC      30000
-#define CDVDFSV_FULLSEEK_USEC      100000
-#define CDVDFSV_CONTIG_DELTA_DVD   16
-#define CDVDFSV_FASTSEEK_DELTA_DVD 14764
-#define CDVDFSV_CONTIG_DELTA_CD    8
-#define CDVDFSV_FASTSEEK_DELTA_CD  4371
-
-static u32 s_ee_next_lsn = 0xFFFFFFFF;
-static int s_ee_media_dvd = -1;
-
-static void cdvdfsv_busy_hold(unsigned int usec)
-{
-    /* IOP 36.864MHz。4 nop + 递减/分支约 6 拍，×6 ≈ 1us。volatile 防止被优化掉。 */
-    volatile unsigned int n;
-
-    if (!usec)
-        return;
-
-    n = usec * 6;
-    while (n--) {
-        __asm__ volatile("nop");
-        __asm__ volatile("nop");
-        __asm__ volatile("nop");
-        __asm__ volatile("nop");
-    }
-}
-
-static void cdvdfsv_dest_hold(u32 lsn, u32 sectors)
-{
-    unsigned int hold = 0;
-
-    if (s_ee_next_lsn != 0xFFFFFFFF) {
-        u32 delta = (lsn >= s_ee_next_lsn) ? (lsn - s_ee_next_lsn) : (s_ee_next_lsn - lsn);
-        u32 contig, fast_delta;
-
-        if (s_ee_media_dvd < 0)
-            s_ee_media_dvd = (sceCdGetDiskType() == SCECdPS2DVD) ? 1 : 0;
-
-        contig = s_ee_media_dvd ? CDVDFSV_CONTIG_DELTA_DVD : CDVDFSV_CONTIG_DELTA_CD;
-        fast_delta = s_ee_media_dvd ? CDVDFSV_FASTSEEK_DELTA_DVD : CDVDFSV_FASTSEEK_DELTA_CD;
-
-        if (delta >= contig)
-            hold = (delta >= fast_delta) ? CDVDFSV_FULLSEEK_USEC : CDVDFSV_FASTSEEK_USEC;
-    }
-
-    s_ee_next_lsn = lsn + sectors;
-    if (hold)
-        cdvdfsv_busy_hold(hold);
-}
-
 static SifRpcServerData_t cdvdNcmds_rpcSD;
 static u8 cdvdNcmds_rpcbuf[1024];
 
@@ -245,9 +191,6 @@ static inline void cdvd_readee(void *buf)
                 sceCdSync(0);
             sceCdSync(0);
 
-            /* bounce 已满、status=Pause、EE dest 还没变。空转才对齐 VIF70。 */
-            cdvdfsv_dest_hold(r->lsn, nsectors);
-
             size_64b = nsectors * sector_size;
             size_64bb = size_64b;
 
@@ -288,8 +231,6 @@ static inline void cdvdSt_read(void *buf)
     int r, rpos, remaining;
     void *ee_addr;
 
-    /* OPL 流式是单 bank 信号。mode=1 会在填充完成、下一 bank 不再启动时 WaitEventFlag 永等，
-       读条结束卡住、IGR 仍可用。EE 侧 RPC 已阻塞，空缓冲由游戏重试，必须保持 mode=0。 */
     for (rpos = 0, ee_addr = St->buf, remaining = St->sectors; remaining > 0; ee_addr += r * 2048, rpos += r, remaining -= r) {
         if ((r = sceCdStRead(remaining, (void *)((u32)ee_addr | 0x80000000), 0, &err)) < 1)
             break;
@@ -380,7 +321,6 @@ static inline void cdvd_readchain(void *buf)
                 while (sceCdRead(lsn, nsectors, cdvdfsv_buf, NULL) == 0)
                     sceCdSync(0);
                 sceCdSync(0);
-                cdvdfsv_dest_hold(lsn, nsectors);
                 sysmemSendEE(cdvdfsv_buf, (void *)addr, nsectors * 2048);
 
                 lsn += nsectors;

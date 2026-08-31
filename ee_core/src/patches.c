@@ -13,6 +13,7 @@
 #include "modules.h"
 #include "modmgr.h"
 #include "coreconfig.h"
+#include <ee_regs.h>
 
 #define ALL_MODE -1
 #define BDM_MODE -2
@@ -87,8 +88,8 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    // VIF72：单测 IOP FastSeek（Seek 状态 + FullSeek）。叠 VIF70 证明不了通用修复。
-    // {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},    // 吉翁前线 NTSC-U：CDA 读前空转，函数留着回滚
+    // VIF73：通用 dest 占用等待。不要叠 VIF70 定点空转，否则分不清是哪一层生效。
+    // {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},    // 吉翁前线 NTSC-U：定点读前空转，仅作回滚
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -272,7 +273,7 @@ static int predelayed_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
 
 static void ZeonicFront_patches(u32 delay_cycles)
 {
-    // VIF70 定点补丁。VIF72 单测 IOP FastSeek 时 patch_list 关掉，函数留着回滚。
+    // VIF70 定点空转。VIF73 改走通用 dest 占用等待，本函数只留回滚。
     // 0x00106AF0 里两处 jal sceCdRead(0x0021E320)：整扇区 + 余数扇区。
     static const u32 sites[] = {0x00106B84, 0x00106C08};
     static const u32 jal_sceCdRead = JAL(0x0021E320);
@@ -284,6 +285,186 @@ static void ZeonicFront_patches(u32 delay_cycles)
     for (i = 0; i < sizeof(sites) / sizeof(sites[0]); i++) {
         if (_lw(sites[i]) == jal_sceCdRead)
             _sw(JAL((u32)predelayed_cdRead), sites[i]);
+    }
+}
+
+/* VIF73：在 EE 发出 sceCdRead RPC 之前，若 VIF1 还在源 dest，就等到硬件抽完。
+   IOP FastSeek 失败是架构问题：OPL 的 NCMD READ 是阻塞 RPC，光驱 FastSeek 发生在
+   EE 继续跑、dest 还没变的时候。在 NCMD 回调里睡或空转会把 STREAM/SearchFile 一起冻住。
+   禁止 sceGsSyncPath / FLUSH。VIF 已经是非法码时立刻放行，否则会变成 VIF04 冻死。 */
+#define VIF1_STAT_ER01   0x3000u
+#define DEST_HOLD_CYCLES 0x00110000u
+#define DMA_CHCR_STR     (1u << 8)
+#define DMA_CHCR_MOD     (3u << 2)
+#define DMA_CHCR_CHAIN   (1u << 2)
+
+static int (*s_orig_cdRead)(u32 lsn, u32 nsectors, void *buf, int *mode);
+
+static u32 dest_hold_phys(u32 addr)
+{
+    if ((addr & 0xF0000000u) == 0x70000000u)
+        return 0xFFFFFFFFu;
+    return addr & 0x1FFFFFFFu;
+}
+
+static int dest_hold_ram(u32 addr)
+{
+    return dest_hold_phys(addr) < 0x02000000u;
+}
+
+static int dest_hold_in(u32 addr, u32 dest, u32 size)
+{
+    u32 p = dest_hold_phys(addr);
+    u32 s = dest_hold_phys(dest);
+
+    if (p >= 0x02000000u || s >= 0x02000000u)
+        return 0;
+    return (p >= s) && ((p - s) < size);
+}
+
+static int vif1_dest_busy(u32 dest, u32 size)
+{
+    u32 chcr = *(vu32 *)A_EE_D1_CHCR;
+    u32 stat, madr, tadr, asr0, asr1, tag_addr, i;
+
+    if (!(chcr & DMA_CHCR_STR))
+        return 0;
+
+    stat = *(vu32 *)A_EE_VIF1_STAT;
+    if (stat & VIF1_STAT_ER01)
+        return 0;
+
+    madr = *(vu32 *)A_EE_D1_MADR;
+    tadr = *(vu32 *)A_EE_D1_TADR;
+    asr0 = *(vu32 *)A_EE_D1_ASR0;
+    asr1 = *(vu32 *)A_EE_D1_ASR1;
+
+    if (dest_hold_in(madr, dest, size) || dest_hold_in(tadr, dest, size) ||
+        dest_hold_in(asr0, dest, size) || dest_hold_in(asr1, dest, size))
+        return 1;
+
+    if ((chcr & DMA_CHCR_MOD) != DMA_CHCR_CHAIN)
+        return 0;
+
+    tag_addr = tadr;
+    for (i = 0; i < 16; i++) {
+        vu32 *tag;
+        u32 qwc, id, addr;
+
+        if (!dest_hold_ram(tag_addr) || (dest_hold_phys(tag_addr) & 0xF))
+            break;
+        if (dest_hold_in(tag_addr, dest, size))
+            return 1;
+
+        tag = (vu32 *)(dest_hold_phys(tag_addr) | 0x20000000u);
+        qwc = tag[0] & 0xFFFFu;
+        id = (tag[0] >> 28) & 7u;
+        addr = tag[1];
+
+        switch (id) {
+            case 0: /* REFE */
+            case 3: /* REF */
+            case 4: /* REFS */
+            case 5: /* CALL */
+                if (dest_hold_in(addr, dest, size))
+                    return 1;
+                if (id == 5 && dest_hold_ram(addr)) {
+                    tag_addr = addr;
+                    continue;
+                }
+                if (id == 0)
+                    return 0;
+                tag_addr = dest_hold_phys(tag_addr) + 16;
+                break;
+            case 1: /* CNT */
+                if (dest_hold_in(dest_hold_phys(tag_addr) + 16, dest, size))
+                    return 1;
+                tag_addr = dest_hold_phys(tag_addr) + 16 + (qwc << 4);
+                break;
+            case 2: /* NEXT */
+                if (dest_hold_in(dest_hold_phys(tag_addr) + 16, dest, size))
+                    return 1;
+                tag_addr = addr;
+                break;
+            default:
+                return 0;
+        }
+    }
+    return 0;
+}
+
+static void vif1_wait_dest(void *buf, u32 nsectors)
+{
+    u32 dest = (u32)buf;
+    u32 size;
+    unsigned int n;
+
+    if (!buf || nsectors == 0)
+        return;
+
+    size = nsectors * 2048u;
+    if (!vif1_dest_busy(dest, size))
+        return;
+
+    n = DEST_HOLD_CYCLES;
+    while (n--) {
+        if ((n & 63u) == 0 && !vif1_dest_busy(dest, size))
+            return;
+        asm volatile("nop\nnop\nnop\nnop");
+    }
+}
+
+static int dest_hold_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
+{
+    vif1_wait_dest(buf, nsectors);
+    return s_orig_cdRead(lsn, nsectors, buf, mode);
+}
+
+static u32 find_libcdvd_sceCdRead(void)
+{
+    u32 addr, i, j, k, p, insn;
+
+    /* libcdvd：SifCallRpc(&ncmd, fno=1, ssize=0x18)。吉翁在 0x0021E488 命中。 */
+    for (addr = 0x00100000; addr < 0x01F00000; addr += 4) {
+        if (_lw(addr) != 0x24050001)
+            continue;
+        for (i = 4; i < 48; i += 4) {
+            if (_lw(addr + i) != 0x24080018)
+                continue;
+            for (j = i; j < i + 32; j += 4) {
+                if ((_lw(addr + j) >> 26) != 3)
+                    continue;
+                for (k = 0; k < 0x200; k += 4) {
+                    p = addr - k;
+                    if (p < 0x00100000)
+                        break;
+                    insn = _lw(p);
+                    if ((insn >> 26) == 9 && ((insn >> 21) & 31) == 29 &&
+                        ((insn >> 16) & 31) == 29 && (insn & 0x8000))
+                        return p;
+                }
+                goto next_site;
+            }
+            break;
+        }
+    next_site:;
+    }
+    return 0;
+}
+
+static void install_vif1_dest_hold(void)
+{
+    u32 sce, jal, addr;
+
+    sce = find_libcdvd_sceCdRead();
+    if (!sce)
+        return;
+
+    s_orig_cdRead = (void *)sce;
+    jal = JAL(sce);
+    for (addr = 0x00100000; addr < 0x01F00000; addr += 4) {
+        if (_lw(addr) == jal)
+            _sw(JAL((u32)dest_hold_cdRead), addr);
     }
 }
 
@@ -948,6 +1129,9 @@ void apply_patches(const char *path)
     else
         mode = BDM_MODE;
 
+    /* 必须在游戏表之前装。KH2 的读后延迟会再包一层；吉翁表项关掉，只走这一层。 */
+    install_vif1_dest_hold();
+
     // if there are patches matching game name/mode then fill the patch table
     for (p = patch_list; p->game; p++) {
         if ((!_strcmp(config->GameID, p->game)) && ((p->mode == ALL_MODE) || (mode == p->mode))) {
@@ -963,7 +1147,7 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    /* 函数保留。VIF72 单测 IOP FastSeek 时 patch_list 已关掉本游戏条目。 */
+                    /* 函数保留。VIF73 单测 dest 占用等待时 patch_list 已关掉本游戏条目。 */
                     if (file_eq_gameid)
                         ZeonicFront_patches(p->patch.val);
                     break;
