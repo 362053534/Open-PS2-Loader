@@ -87,8 +87,9 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    // VIF76：按 26e0d89f 原样。USB 是 BDM_MODE。禁止和 dest_hold 叠。
-    {"SLUS_202.33", BDM_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},       // 吉翁前线 NTSC-U USB/BDM：CDA 下一笔读启动前让 VIF1 把旧堆抽完
+    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x0021E320}},       // 吉翁前线 NTSC-U：CDA 下一笔读启动前让 VIF1 把旧堆抽完
+    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
+    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -270,143 +271,26 @@ static int predelayed_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
     return cdReadPtr(lsn, nsectors, buf, mode);
 }
 
-static void ZeonicFront_patches(u32 delay_cycles)
+static void ZeonicFront_patches(u32 delay_cycles, u32 sceCdRead)
 {
-    // VIF76 对照：只改这两处 jal，空转后直接进原版 0x0021E320。
-    // 0x00106AF0 里两处 jal sceCdRead(0x0021E320)：整扇区 + 余数扇区。
+    // 美/日/特别版的 CDA 读函数都在 0x00106AF0，两处 jal 点相同；
+    // 只有 libcdvd sceCdRead 入口随版本移动。不要钩函数入口。
     static const u32 sites[] = {0x00106B84, 0x00106C08};
-    static const u32 jal_sceCdRead = JAL(0x0021E320);
+    u32 jal_sceCdRead;
     unsigned int i;
 
+    if (!sceCdRead)
+        return;
+
+    jal_sceCdRead = JAL(sceCdRead);
     g_delay_cycles = delay_cycles;
-    cdReadPtr = (void *)0x0021E320;
+    cdReadPtr = (void *)sceCdRead;
 
     for (i = 0; i < sizeof(sites) / sizeof(sites[0]); i++) {
         if (_lw(sites[i]) == jal_sceCdRead)
             _sw(JAL((u32)predelayed_cdRead), sites[i]);
     }
 }
-
-/* VIF75 通用钩。VIF76 对照时整段关掉：trampoline + 全 jal 和
-   6/6 的两处 CDA jal 不等价，而且会先改掉 jal 0x0021E320，
-   定点补丁随后找不到原字。禁止 sceGsSyncPath / FLUSH。 */
-#if 0
-#define DEST_HOLD_CYCLES 0x00110000u
-
-extern int dest_hold_trampoline(u32 lsn, u32 nsectors, void *buf, int *mode);
-extern u32 dest_hold_saved0;
-extern u32 dest_hold_saved1;
-extern u32 dest_hold_jcont;
-
-static void vif1_wait_dest(void *buf, u32 nsectors)
-{
-    unsigned int n;
-
-    if (!buf || nsectors == 0)
-        return;
-
-    n = DEST_HOLD_CYCLES;
-    while (n--)
-        asm volatile("nop\nnop\nnop\nnop");
-}
-
-static int (*s_orig_cdRead)(u32 lsn, u32 nsectors, void *buf, int *mode);
-
-static int dest_hold_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
-{
-    int r;
-
-    vif1_wait_dest(buf, nsectors);
-    if (s_orig_cdRead) {
-        r = s_orig_cdRead(lsn, nsectors, buf, mode);
-    } else {
-        r = dest_hold_trampoline(lsn, nsectors, buf, mode);
-        /* 禁止 -Os 把 trampoline 做成尾调用，否则 dest_hold 自己的栈收不回来。 */
-        asm volatile("" : "+r"(r) :: "memory");
-    }
-    return r;
-}
-
-static u32 find_libcdvd_sceCdRead(void)
-{
-    u32 addr, i, j, k, p, insn;
-
-    /* libcdvd：SifCallRpc(&ncmd, fno=1, ssize=0x18)。吉翁在 0x0021E488 命中。 */
-    for (addr = 0x00100000; addr < 0x01F00000; addr += 4) {
-        if (_lw(addr) != 0x24050001)
-            continue;
-        for (i = 4; i < 48; i += 4) {
-            if (_lw(addr + i) != 0x24080018)
-                continue;
-            for (j = i; j < i + 32; j += 4) {
-                if ((_lw(addr + j) >> 26) != 3)
-                    continue;
-                for (k = 0; k < 0x200; k += 4) {
-                    p = addr - k;
-                    if (p < 0x00100000)
-                        break;
-                    insn = _lw(p);
-                    if ((insn >> 26) == 9 && ((insn >> 21) & 31) == 29 &&
-                        ((insn >> 16) & 31) == 29 && (insn & 0x8000))
-                        return p;
-                }
-                goto next_site;
-            }
-            break;
-        }
-    next_site:;
-    }
-    return 0;
-}
-
-static int dest_hold_is_xfer(u32 insn)
-{
-    u32 op = insn >> 26;
-    u32 fn = insn & 63u;
-
-    /* 头两条若是跳转/分支，拷到 trampoline 后 PC 相对目标就错了。 */
-    if (op == 0 && (fn == 8 || fn == 9))
-        return 1;
-    if (op >= 1 && op <= 7)
-        return 1;
-    if (op >= 20 && op <= 23)
-        return 1;
-    return 0;
-}
-
-static void install_vif1_dest_hold(void)
-{
-    u32 sce, insn0, insn1, jal, addr;
-
-    sce = find_libcdvd_sceCdRead();
-    if (!sce)
-        return;
-
-    insn0 = _lw(sce);
-    /* IGR 再进同一份 ELF 时不要把已写的 j dest_hold 当成原指令。 */
-    if (insn0 == JMP((u32)dest_hold_cdRead))
-        return;
-
-    insn1 = _lw(sce + 4);
-    if (!dest_hold_is_xfer(insn0) && !dest_hold_is_xfer(insn1)) {
-        /* 吉翁 0x0021E320：addiu sp / lui v1。jalr、函数指针也会进钩子。 */
-        _sw(insn0, (u32)&dest_hold_saved0);
-        _sw(insn1, (u32)&dest_hold_saved1);
-        _sw(JMP(sce + 8), (u32)&dest_hold_jcont);
-        _sw(JMP((u32)dest_hold_cdRead), sce);
-        _sw(0, sce + 4);
-    } else {
-        s_orig_cdRead = (void *)sce;
-    }
-
-    /* 入口钩之外再改 jal 点。VIF70 就是改这两处 CDA jal 才 6/6。 */
-    jal = JAL(sce);
-    for (addr = 0x00100000; addr < 0x01F00000; addr += 4) {
-        if (_lw(addr) == jal)
-            _sw(JAL((u32)dest_hold_cdRead), addr);
-    }
-}
-#endif
 
 static int (*capcom_lmb)(void *modpack_addr, int mod_index, int mod_argc, char **mod_argv);
 
@@ -1069,9 +953,6 @@ void apply_patches(const char *path)
     else
         mode = BDM_MODE;
 
-    /* VIF76：关掉通用 dest_hold。VIF75 的入口 trampoline + 全 jal
-       和 6/6 的两处 CDA jal 不等价，叠上去会把定点 jal 改没。 */
-
     // if there are patches matching game name/mode then fill the patch table
     for (p = patch_list; p->game; p++) {
         if ((!_strcmp(config->GameID, p->game)) && ((p->mode == ALL_MODE) || (mode == p->mode))) {
@@ -1088,7 +969,7 @@ void apply_patches(const char *path)
                     break;
                 case PATCH_ZEONIC_FRONT:
                     if (file_eq_gameid)
-                        ZeonicFront_patches(p->patch.val);
+                        ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:
                     if (file_eq_gameid)
