@@ -72,11 +72,12 @@ unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
 
 /* PCSX2/官方光驱：seek 期间 dest 不动，sceCdStatus 是 Seek 不是 Read。
-   吉翁载入结束：CDA.PAK 0789284 之后立刻读 SX_SOUND.BIN 0958940（delta≈17 万扇区 → FullSeek 100ms），
-   同时第一帧 VIF1 开始抽刚载入的 CDA。OPL 立刻改 EE dest 就会把命令槽盖成顶点。
-   上一次 DelayThread 看起来像永久黑屏，其实是同一花屏提前爆发：status=Read 且 ReadPos=0，
-   游戏把 dest 当正在填充去抽。VIF70 有效是因为空转时还没发命令。不要再跳过流式填充：
-   载入结束那一跳正是 StStart/CDRead。DelayThread 单位是微秒，不能抄 EE nop 圈数。 */
+   吉翁载入结束：CDA.PAK 0789284 之后立刻 CDRead SX_SOUND.BIN 0958940
+   （delta≈17 万扇区 → FullSeek 100ms），同时第一帧 VIF1 抽刚载入的 CDA。
+   status=Read 且 ReadPos=0 时游戏会把 dest 当正在填充去抽，花屏提前到读条结束。
+   流式填充不能 DelayThread：cdvdfsv 的 StRead 是 mode=0，空缓冲直接返回 0。
+   把 StRead 改 mode=1 会在读条结束后 WaitEventFlag 永等（IGR 仍可用）。
+   DelayThread 单位是微秒，不能抄 EE nop 圈数。 */
 #define CDVDMAN_FASTSEEK_USEC      30000
 #define CDVDMAN_FULLSEEK_USEC      100000
 #define CDVDMAN_CONTIG_DELTA_DVD   16
@@ -96,7 +97,9 @@ static void cdvdman_fastseek(u32 lsn, u32 sectors)
 {
     u32 delta, contig, fast_delta;
 
-    if (s_next_lsn != 0xFFFFFFFF) {
+    /* 流式预填只写 IOP bank，不改 EE dest。s_next_lsn 仍要更新，
+       这样随后那笔 sceCdRead（吉翁是 SX_SOUND）才能看到大 delta 并走 Seek。 */
+    if (!cdvdman_stat.StreamingData.StIsReading && s_next_lsn != 0xFFFFFFFF) {
         delta = (lsn >= s_next_lsn) ? (lsn - s_next_lsn) : (s_next_lsn - lsn);
         if (cdvdman_media_is_dvd()) {
             contig = CDVDMAN_CONTIG_DELTA_DVD;
@@ -793,6 +796,10 @@ static void cdvdman_cdread_Thread(void *args)
        The original is run from the interrupt handler, but we want it to run
        from a threaded environment because our interrupt is emulated. */
         if (Stm0Callback != NULL) {
+            /* 必须先 signal 再回调：signal 把 sync_flag 清掉并置位 flag，
+               回调里的 AsyncRead 才会重新占锁并把 bit0 清掉。
+               若先回调再 SetEventFlag(9)，下一 bank 已在读且 bit0 仍置位，
+               sceCdSync/sceCdDiskReady 会空转，读条结束后卡住。 */
             cdvdman_signal_read_end();
 
             /* Check that the streaming callback was not cleared, as this pointer may get changed between function calls.

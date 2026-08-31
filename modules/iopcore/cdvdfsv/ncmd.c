@@ -231,10 +231,10 @@ static inline void cdvdSt_read(void *buf)
     int r, rpos, remaining;
     void *ee_addr;
 
-    /* RPC 本身已阻塞 EE。内层 mode=0 在 FastSeek 期间缓冲空就返回 0，游戏会当成流失败。
-       mode=1 等到读线程 Seek+填充结束再 DMA 到 EE，才和官方 cdvdman 的阻塞 StRead 同构。 */
+    /* OPL 流式是单 bank 信号。mode=1 会在填充完成、下一 bank 不再启动时 WaitEventFlag 永等，
+       读条结束卡住、IGR 仍可用。EE 侧 RPC 已阻塞，空缓冲由游戏重试，必须保持 mode=0。 */
     for (rpos = 0, ee_addr = St->buf, remaining = St->sectors; remaining > 0; ee_addr += r * 2048, rpos += r, remaining -= r) {
-        if ((r = sceCdStRead(remaining, (void *)((u32)ee_addr | 0x80000000), 1, &err)) < 1)
+        if ((r = sceCdStRead(remaining, (void *)((u32)ee_addr | 0x80000000), 0, &err)) < 1)
             break;
     }
 

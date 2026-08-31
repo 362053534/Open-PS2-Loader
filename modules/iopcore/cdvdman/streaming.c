@@ -386,23 +386,22 @@ int sceCdStRead(u32 sectors, u32 *buffer, u32 mode, u32 *error)
 
     cdvdman_stat.err = SCECdErNO;
     if (cdvdman_stat.StreamingData.StStat) {
+        /* 先置位再 Wait：第一次循环立刻去抽已有 bank。
+           cdvdfsv 必须用 mode=0；mode=1 在单 bank 流上会永等。 */
         SetEventFlag(cdvdman_stat.intr_ef, 8);
         for (SectorsToRead = sectors, result = 0, SectorsRead = 0, ptr = (void *)((u32)buffer & ~0x80000000); result < sectors; SectorsToRead -= SectorsRead, ptr += SectorsRead * 2048) {
             WaitEventFlag(cdvdman_stat.intr_ef, 8, WEF_AND, NULL);
             ClearEventFlag(cdvdman_stat.intr_ef, ~8);
 
-            //		DPRINTF("Sectors: %u:%p, mode: %lu", SectorsToRead, ptr, mode);
             if ((u32)buffer & 0x80000000)
                 SectorsRead = ReadSectorsEE(SectorsToRead, ptr);
             else
                 SectorsRead = ReadSectors(SectorsToRead, ptr);
-            //		DPRINTF(", Read: %u\n", SectorsRead);
 
             if (SectorsRead == 0)
                 DPRINTF("StRead: buffer underrun. %u/%lu read.\n", result, sectors);
 
             result += SectorsRead;
-            // if(mode == STMNBLK) break;
             if (mode == 0)
                 break;
         }
