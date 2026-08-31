@@ -2646,8 +2646,12 @@ void deinit(int exception, int modeSelected)
 #endif
     unloadPads();
 
-    // 关闭APA模块前先释放pfs1，避免底层存储已关闭后同步卸载永久等待。
-    if (!(exception & UNMOUNT_EXCEPTION))
+    /*
+     * 仅在 APA HDD POPS 交接时保留 pfs1:。UNMOUNT_EXCEPTION 也会用于
+     * USB、MX4SIO、SMB、BDMHDD 等非 APA 启动链路；如果继续保留 APA
+     * 句柄，关闭 DEV9 时可能触发 ATA 超时等待。
+     */
+    if (!((exception & UNMOUNT_EXCEPTION) && (modeSelected == HDD_MODE)))
         oplReleaseHDDPOPSScratchPartition();
     deinitAllSupport(exception, modeSelected);
 
