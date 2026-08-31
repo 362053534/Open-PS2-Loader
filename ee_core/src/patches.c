@@ -87,8 +87,8 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    // VIF71：先单测 IOP FastSeek，不能叠 EE 空转。IOP 不够再打开这行。
-    // {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},    // 吉翁前线 NTSC-U：BDM/SMB/APA 都会在 CDA 下一笔读启动前让 VIF1 把旧堆抽完
+    // VIF72：单测 IOP FastSeek（Seek 状态 + FullSeek）。叠 VIF70 证明不了通用修复。
+    // {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x00000000}},    // 吉翁前线 NTSC-U：CDA 读前空转，函数留着回滚
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -272,7 +272,7 @@ static int predelayed_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
 
 static void ZeonicFront_patches(u32 delay_cycles)
 {
-    // VIF70 定点补丁。VIF71 验证 IOP FastSeek 时 patch_list 已关掉，函数留着回滚。
+    // VIF70 定点补丁。VIF72 单测 IOP FastSeek 时 patch_list 关掉，函数留着回滚。
     // 0x00106AF0 里两处 jal sceCdRead(0x0021E320)：整扇区 + 余数扇区。
     static const u32 sites[] = {0x00106B84, 0x00106C08};
     static const u32 jal_sceCdRead = JAL(0x0021E320);
@@ -963,7 +963,7 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    // 函数保留。VIF71 验证期间 patch_list 已关掉本游戏条目，避免和 IOP FastSeek 叠在一起。
+                    /* 函数保留。VIF72 单测 IOP FastSeek 时 patch_list 已关掉本游戏条目。 */
                     if (file_eq_gameid)
                         ZeonicFront_patches(p->patch.val);
                     break;

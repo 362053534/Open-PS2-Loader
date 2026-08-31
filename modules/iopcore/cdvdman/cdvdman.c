@@ -71,27 +71,45 @@ unsigned char sync_flag;
 unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
 
-/* PCSX2 FastSeek：命令已经受理、第一笔扇区进缓冲之前 30ms。
-   不能放在 cdvdfsv NCMD、sceCdRead 之前：那时 sync_flag 仍为 0，吉翁 sceCdStRead
-   预填会抢走设备，cdvd_readee 的 while (sceCdRead==0) 永远转。
-   读线程里 status=Read 且 sync_flag=1，流式填充会失败并改闹钟；EE dest 也还没 sysmemSendEE。
-   流式填充必须跳过这段等待：关卡读条结束后 StStart 跳到 BGM LSN，cdvdfsv 的
-   sceCdStRead(..., mode=0) 非阻塞，缓冲空就返回 0，游戏会当成失败然后黑屏。
-   VIF70 只拖 CDA 的 sceCdRead，从不拖流式，所以 6/6 没有这个黑屏。
-   sceCdSeek 在 OPL 里是瞬间完成的，不在这里记磁头，否则随后那笔读会被当成连续。 */
-#define CDVDMAN_FASTSEEK_USEC 30000
-#define CDVDMAN_CONTIG_DELTA  16
+/* PCSX2/官方光驱：seek 期间 dest 不动，sceCdStatus 是 Seek 不是 Read。
+   吉翁载入结束：CDA.PAK 0789284 之后立刻读 SX_SOUND.BIN 0958940（delta≈17 万扇区 → FullSeek 100ms），
+   同时第一帧 VIF1 开始抽刚载入的 CDA。OPL 立刻改 EE dest 就会把命令槽盖成顶点。
+   上一次 DelayThread 看起来像永久黑屏，其实是同一花屏提前爆发：status=Read 且 ReadPos=0，
+   游戏把 dest 当正在填充去抽。VIF70 有效是因为空转时还没发命令。不要再跳过流式填充：
+   载入结束那一跳正是 StStart/CDRead。DelayThread 单位是微秒，不能抄 EE nop 圈数。 */
+#define CDVDMAN_FASTSEEK_USEC      30000
+#define CDVDMAN_FULLSEEK_USEC      100000
+#define CDVDMAN_CONTIG_DELTA_DVD   16
+#define CDVDMAN_FASTSEEK_DELTA_DVD 14764
+#define CDVDMAN_CONTIG_DELTA_CD    8
+#define CDVDMAN_FASTSEEK_DELTA_CD  4371
 
 static u32 s_next_lsn = 0xFFFFFFFF;
 
+static int cdvdman_media_is_dvd(void)
+{
+    /* OPL 的 media 来自 ISO 类型。吉翁是 SCECdPS2DVD。不要碰 SCECdDVDV，ps2sdk 里它出现两次。 */
+    return cdvdman_stat.disc_type_reg == SCECdPS2DVD;
+}
+
 static void cdvdman_fastseek(u32 lsn, u32 sectors)
 {
-    u32 delta;
+    u32 delta, contig, fast_delta;
 
-    if (!cdvdman_stat.StreamingData.StIsReading && s_next_lsn != 0xFFFFFFFF) {
+    if (s_next_lsn != 0xFFFFFFFF) {
         delta = (lsn >= s_next_lsn) ? (lsn - s_next_lsn) : (s_next_lsn - lsn);
-        if (delta >= CDVDMAN_CONTIG_DELTA)
-            DelayThread(CDVDMAN_FASTSEEK_USEC);
+        if (cdvdman_media_is_dvd()) {
+            contig = CDVDMAN_CONTIG_DELTA_DVD;
+            fast_delta = CDVDMAN_FASTSEEK_DELTA_DVD;
+        } else {
+            contig = CDVDMAN_CONTIG_DELTA_CD;
+            fast_delta = CDVDMAN_FASTSEEK_DELTA_CD;
+        }
+        if (delta >= contig) {
+            /* 先报 Seek，再睡。dest 这时还是旧 CDA，VIF1 可以继续抽。 */
+            cdvdman_stat.status = SCECdStatSeek;
+            DelayThread(delta >= fast_delta ? CDVDMAN_FULLSEEK_USEC : CDVDMAN_FASTSEEK_USEC);
+        }
     }
 
     s_next_lsn = lsn + sectors;
@@ -392,8 +410,8 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 
 static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
-    cdvdman_stat.status = SCECdStatRead;
     cdvdman_fastseek(lsn, sectors);
+    cdvdman_stat.status = SCECdStatRead;
 
     // OPL only has 2048 bytes no matter what. For other sizes we have to copy to the offset and prepoluate the sector header data (the extra bytes.)
     u32 offset = 0;
