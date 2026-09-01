@@ -593,7 +593,6 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     u32 layer1_start, layer1_offset;
     unsigned short int layer1_part;
     apa_sub_t parts[APA_MAXSUB + 1];
-    pfs_blockinfo_t blocks[128];
     int hddPartCount = 0;
     bd_fragment_t *frag_table = NULL;
     unsigned int frag_capacity = 0;
@@ -739,17 +738,20 @@ vmc_prepared:;
         int iFragCount;
         int iFragCapacity;
         if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
-            iFragCapacity = (int)(sizeof(blocks) / sizeof(blocks[0]));
-            iFragCount = hddGetFileBlockInfo(partname, parts, blocks, iFragCapacity);
+            pfs_blockinfo_t *blocks = NULL;
+            u32 sectors_per_zone = 0;
+
+            iFragCount = hddGetFileBlockList(partname, parts, hddPartCount, &blocks, &sectors_per_zone);
+            iFragCapacity = iFragCount > 0 ? iFragCount : 0;
             if (iFragCount > 0) {
                 int j;
-
-                iFragCount--;
                 unsigned int required_capacity = (unsigned int)iTotalFragCount + (unsigned int)iFragCount;
+
                 if (required_capacity > frag_capacity) {
                     unsigned int new_capacity = required_capacity;
                     bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
                     if (new_table == NULL) {
+                        free(blocks);
                         close(fd);
                         sbUnprepare(&settings->common);
                         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
@@ -763,13 +765,10 @@ vmc_prepared:;
                     frag_capacity = new_capacity;
                 }
                 for (j = 0; j < iFragCount; j++) {
-                    if (blocks[j + 1].subpart >= hddPartCount) {
-                        iFragCount = -1;
-                        break;
-                    }
-                    frag_table[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
-                    frag_table[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
+                    frag_table[iTotalFragCount + j].sector = parts[blocks[j].subpart].start + (u64)blocks[j].number * sectors_per_zone;
+                    frag_table[iTotalFragCount + j].count = (u32)blocks[j].count * sectors_per_zone;
                 }
+                free(blocks);
                 settings->fragsAre512ByteSectors = 1;
             }
         } else {
