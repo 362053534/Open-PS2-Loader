@@ -23,12 +23,17 @@ static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
 static const char udnl_prefix[] = "rom0:UDNL ";
 
-#define CDVD_INIT_RPC_ID 0x80000592
+#define CDVD_INIT_RPC_ID      0x80000592
+#define BDM_CDVD_INIT_RETRIES 3
 static SifRpcClientData_t cdvd_init_rpc_client __attribute__((aligned(64)));
 static int cdvd_init_rpc_mode __attribute__((aligned(64)));
+static int cdvd_init_rpc_result[4] __attribute__((aligned(64)));
 
 static int InitBDMCDVDMan(void)
 {
+    int attempt;
+    int rpc_result = -1;
+
     memset(&cdvd_init_rpc_client, 0, sizeof(cdvd_init_rpc_client));
 
     /*
@@ -42,9 +47,20 @@ static int InitBDMCDVDMan(void)
     }
 
     cdvd_init_rpc_mode = SCECdINIT;
-    return SifCallRpc(&cdvd_init_rpc_client, 0, 0,
-                      &cdvd_init_rpc_mode, sizeof(cdvd_init_rpc_mode),
-                      NULL, 0, NULL, NULL);
+    for (attempt = 0; attempt < BDM_CDVD_INIT_RETRIES; attempt++) {
+        memset(cdvd_init_rpc_result, 0, sizeof(cdvd_init_rpc_result));
+        rpc_result = SifCallRpc(&cdvd_init_rpc_client, 0, 0,
+                                &cdvd_init_rpc_mode, sizeof(cdvd_init_rpc_mode),
+                                cdvd_init_rpc_result, sizeof(cdvd_init_rpc_result), NULL, NULL);
+        if (rpc_result >= 0 && cdvd_init_rpc_result[0] != 0)
+            return 0;
+
+        /* 短暂的SIF拉取失败不应直接把PS2LOGO交给未就绪的CDVDMAN。 */
+        DPRINTF("BDM CDVD initialization attempt %d failed (%d, %d)\n",
+                attempt + 1, rpc_result, cdvd_init_rpc_result[0]);
+    }
+
+    return rpc_result < 0 ? rpc_result : -1;
 }
 
 /*

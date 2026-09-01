@@ -256,7 +256,7 @@ int DeviceReady(void)
     return smbConnectionState == 1 ? SCECdComplete : SCECdNotReady;
 }
 
-void DeviceFSInit(void)
+int DeviceFSInit(void)
 {
     smbReconnectStopping = 0;
     smbReconnectStopped = 0;
@@ -271,6 +271,8 @@ void DeviceFSInit(void)
         smbReconnectResult = SMB_RECONNECT_PENDING;
         smbConnectionState = 0;
     }
+
+    return 0;
 }
 
 void DeviceLock(void)

@@ -106,8 +106,8 @@ extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern int cdvdman_sendSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 extern void cdvdman_cb_event(int reason);
 
-extern void cdvdman_init(void);
-extern void cdvdman_fs_init(void);
+extern int cdvdman_init(void);
+extern int cdvdman_fs_init(void);
 extern void cdvdman_searchfile_init(void);
 extern void cdvdman_initdev(void);
 

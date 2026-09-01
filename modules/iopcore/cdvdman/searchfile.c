@@ -160,7 +160,8 @@ static int cdvdman_findfile(sceCdlFILE *pcdfile, const char *name, int layer)
     struct dirTocEntry *tocEntryPointer;
     layer_info_t *pLayerInfo;
 
-    cdvdman_init();
+    if (!cdvdman_init())
+        return 0;
 
     if (cdvdman_settings.common.flags & IOPCORE_COMPAT_EMU_DVDDL)
         layer = 0;

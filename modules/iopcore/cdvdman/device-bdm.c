@@ -29,6 +29,13 @@ static bd_defrag_cursor_t g_bd_defrag_cursor;
 static bd_defrag_index_t g_bd_defrag_index;
 static bd_fragment_t *g_frag_table = NULL;
 static bd_defrag_checkpoint_t *g_bd_defrag_checkpoints = NULL;
+enum bdm_frag_table_state {
+    BDM_FRAG_TABLE_EMPTY = 0,
+    BDM_FRAG_TABLE_LOADING,
+    BDM_FRAG_TABLE_READY,
+    BDM_FRAG_TABLE_FAILED
+};
+static volatile u8 g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
 /* 大文件以64个碎片为步长，限制随机定位时的线性扫描长度。 */
 #define BDM_DEFRAG_CHECKPOINT_STRIDE 64
 /* 该边界覆盖APA HDL和单个PFS inode能够提供的完整区段表。 */
@@ -103,6 +110,8 @@ static int bdm_load_fragment_table(void)
     u32 address = cdvdman_settings.frag_table_ee_addr;
     u32 offset = 0;
     u32 required_bytes;
+    bd_fragment_t *frag_table;
+    bd_defrag_checkpoint_t *checkpoints = NULL;
 
     if (bytes == 0 || address == 0 || cdvdman_settings.fragfile[0].frag_count == 0 ||
         cdvdman_settings.fragfile[0].frag_count > 0xFFFFFFFFU / sizeof(bd_fragment_t))
@@ -111,8 +120,8 @@ static int bdm_load_fragment_table(void)
     if (bytes < required_bytes || (bytes & 0xF) != 0)
         return -1;
 
-    g_frag_table = AllocSysMemory(ALLOC_FIRST, bytes, NULL);
-    if (g_frag_table == NULL)
+    frag_table = AllocSysMemory(ALLOC_FIRST, bytes, NULL);
+    if (frag_table == NULL)
         return -1;
 
     while (offset < bytes) {
@@ -124,9 +133,8 @@ static int bdm_load_fragment_table(void)
 
         /* IOP侧的sceSifSetDma只适用于IOP→EE，反向读取必须通过SIFCMD请求。 */
         if (sceSifGetOtherData(&receive, (void *)(address + offset),
-                               (u8 *)g_frag_table + offset, chunk, 0) < 0) {
-            FreeSysMemory(g_frag_table);
-            g_frag_table = NULL;
+                               (u8 *)frag_table + offset, chunk, 0) < 0) {
+            FreeSysMemory(frag_table);
             return -1;
         }
         offset += chunk;
@@ -137,14 +145,15 @@ static int bdm_load_fragment_table(void)
         u32 stride = bdm_get_checkpoint_stride(fragcount);
         u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
 
-        g_bd_defrag_checkpoints = AllocSysMemory(ALLOC_FIRST,
-                                                  checkpoint_count * sizeof(bd_defrag_checkpoint_t), NULL);
-        if (g_bd_defrag_checkpoints == NULL) {
-            FreeSysMemory(g_frag_table);
-            g_frag_table = NULL;
-            return -1;
-        }
+        checkpoints = AllocSysMemory(ALLOC_FIRST,
+                                     checkpoint_count * sizeof(bd_defrag_checkpoint_t), NULL);
+        if (checkpoints == NULL)
+            DPRINTF("fragment index allocation failed; using linear lookup\n");
     }
+
+    /* 只有完整复制成功后才发布主表，读取线程不会看到半成品。 */
+    g_frag_table = frag_table;
+    g_bd_defrag_checkpoints = checkpoints;
 
     return 0;
 }
@@ -159,8 +168,11 @@ static int bdm_prepare_fragment_table(void)
     if (g_bd == NULL)
         return -1;
 
-    if (g_frag_table == NULL && bdm_load_fragment_table() < 0)
+    g_frag_table_state = BDM_FRAG_TABLE_LOADING;
+    if (g_frag_table == NULL && bdm_load_fragment_table() < 0) {
+        g_frag_table_state = BDM_FRAG_TABLE_FAILED;
         return -1;
+    }
 
     if (cdvdman_settings.fragsAre512ByteSectors && g_bd->sectorSize != 512) {
         unsigned int sectors_per_pfs_sector = g_bd->sectorSize >> 9;
@@ -176,7 +188,8 @@ static int bdm_prepare_fragment_table(void)
     }
 
     bd_defrag_index_reset(&g_bd_defrag_index);
-    if (bd_defrag_index_build(&g_bd_defrag_index,
+    if (g_bd_defrag_checkpoints != NULL &&
+        bd_defrag_index_build(&g_bd_defrag_index,
                               &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
                               fragcount,
                               stride,
@@ -185,6 +198,8 @@ static int bdm_prepare_fragment_table(void)
         DPRINTF("fragment index build failed; using linear lookup\n");
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
 
+    /* 表、扇区单位和索引全部就绪后再允许光盘读取。 */
+    g_frag_table_state = BDM_FRAG_TABLE_READY;
     return 0;
 }
 
@@ -202,6 +217,7 @@ void DeviceInit(void)
     bdm_io_sema = CreateSema(&smp);
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
     bd_defrag_index_reset(&g_bd_defrag_index);
+    g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 
     RegisterLibraryEntries(&_exp_bdm);
@@ -219,6 +235,7 @@ void DeviceDeinit(void)
     DPRINTF("%s\n", __func__);
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
     bd_defrag_index_reset(&g_bd_defrag_index);
+    g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
     if (g_frag_table != NULL) {
         FreeSysMemory(g_frag_table);
         g_frag_table = NULL;
@@ -240,7 +257,7 @@ int DeviceReady(void)
 {
     // DPRINTF("%s\n", __func__);
 
-    return (g_bd == NULL) ? SCECdNotReady : SCECdComplete;
+    return (g_bd != NULL && g_frag_table_state == BDM_FRAG_TABLE_READY) ? SCECdComplete : SCECdNotReady;
 }
 
 void DeviceStop(void)
@@ -251,8 +268,10 @@ void DeviceStop(void)
         g_bd->stop(g_bd);
 }
 
-void DeviceFSInit(void)
+int DeviceFSInit(void)
 {
+    int result;
+
 #ifdef USE_BDM_ATA
     lba_48bit = cdvdman_settings.hddIsLBA48;
     // TODO: there's more cdvdman init stuff after this in device-hdd.c...
@@ -266,10 +285,12 @@ void DeviceFSInit(void)
      * EE Core会在PS2LOGO运行前主动初始化CDVDMAN，避免首个光盘请求
      * 才开始跨处理器传输；游戏后续主动初始化时仍复用同一路径。
      */
-    if (bdm_prepare_fragment_table() < 0)
-        DPRINTF("fragment table transfer failed\n");
-
+    result = bdm_prepare_fragment_table();
     SignalSema(bdm_io_sema);
+
+    if (result < 0)
+        DPRINTF("fragment table transfer failed\n");
+    return result;
 }
 
 void DeviceLock(void)
@@ -294,13 +315,20 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
 
     if (g_bd == NULL)
         return SCECdErTRMOPN;
-    if (g_frag_table == NULL)
+
+    WaitSema(bdm_io_sema);
+    if (g_bd == NULL) {
+        SignalSema(bdm_io_sema);
+        return SCECdErTRMOPN;
+    }
+    if (g_frag_table_state != BDM_FRAG_TABLE_READY) {
+        SignalSema(bdm_io_sema);
         return SCECdErREAD;
+    }
 
     sector_size = g_bd->sectorSize;
     destination = buffer;
 
-    WaitSema(bdm_io_sema);
     if (g_bd_generic_sector_buffer_2 != NULL && g_bd_generic_sector_buffer_size_2 != sector_size) {
         FreeSysMemory(g_bd_generic_sector_buffer_2);
         g_bd_generic_sector_buffer_2 = NULL;
@@ -488,14 +516,23 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
     if (g_bd == NULL)
         return SCECdErTRMOPN;
-    if (g_frag_table == NULL)
-        return SCECdErREAD;
 
-    if (g_bd->sectorSize != 512)
+    WaitSema(bdm_io_sema);
+    if (g_bd == NULL) {
+        SignalSema(bdm_io_sema);
+        return SCECdErTRMOPN;
+    }
+    if (g_frag_table_state != BDM_FRAG_TABLE_READY) {
+        SignalSema(bdm_io_sema);
+        return SCECdErREAD;
+    }
+
+    if (g_bd->sectorSize != 512) {
+        SignalSema(bdm_io_sema);
         return DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
+    }
 
     isMX4SIO = g_bd->name[0] == 's' && g_bd->name[1] == 'd' && g_bd->name[2] == 'c' && g_bd->name[3] == '\0';
-    WaitSema(bdm_io_sema);
     u64 sector = ((u64)lsn) * 4;
     unsigned int sectorCount = sectors * 4;
     bd_fragment_t *frags = &g_frag_table[cdvdman_settings.fragfile[0].frag_start];

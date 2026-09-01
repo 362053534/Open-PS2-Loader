@@ -120,36 +120,39 @@ static void cdvdman_poff_thread(void *arg)
 }
 #endif
 
-void cdvdman_init(void)
+int cdvdman_init(void)
 {
 #ifdef __USE_DEV9
     iop_thread_t ThreadData;
 #endif
 
-    if (!cdvdman_cdinited) {
-        cdvdman_stat.err = SCECdErNO;
+    if (cdvdman_cdinited)
+        return 1;
 
-        cdvdman_fs_init();
+    cdvdman_stat.err = SCECdErNO;
+
+    /* 失败时不锁定初始化状态，后续sceCdInit仍可重新传输碎片表。 */
+    if (!cdvdman_fs_init())
+        return 0;
 
 #ifdef __USE_DEV9
-        if (cdvdman_settings.common.flags & IOPCORE_ENABLE_POFF) {
-            ThreadData.attr = TH_C;
-            ThreadData.option = 0xABCD0001;
-            ThreadData.priority = 1;
-            ThreadData.stacksize = 0x1000;
-            ThreadData.thread = &cdvdman_poff_thread;
-            StartThread(POFFThreadID = CreateThread(&ThreadData), NULL);
-        }
+    if (cdvdman_settings.common.flags & IOPCORE_ENABLE_POFF) {
+        ThreadData.attr = TH_C;
+        ThreadData.option = 0xABCD0001;
+        ThreadData.priority = 1;
+        ThreadData.stacksize = 0x1000;
+        ThreadData.thread = &cdvdman_poff_thread;
+        StartThread(POFFThreadID = CreateThread(&ThreadData), NULL);
+    }
 #endif
 
-        cdvdman_cdinited = 1;
-    }
+    cdvdman_cdinited = 1;
+    return 1;
 }
 
 int sceCdInit(int init_mode)
 {
-    cdvdman_init();
-    return 1;
+    return cdvdman_init();
 }
 
 //-------------------------------------------------------------------------
