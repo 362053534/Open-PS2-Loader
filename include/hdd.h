@@ -92,4 +92,7 @@ int hddGetPartitionInfo(const char *name, apa_sub_t *parts);
 // Array should be max entries.
 int hddGetFileBlockInfo(const char *name, const apa_sub_t *subs, pfs_blockinfo_t *blocks, int max);
 
+// 返回仅包含文件数据的完整PFS块链；成功后由调用方释放*blocks。
+int hddGetFileBlockList(const char *name, const apa_sub_t *subs, int sub_count, pfs_blockinfo_t **blocks, u32 *sectors_per_zone);
+
 #endif

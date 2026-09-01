@@ -7,6 +7,8 @@
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <errno.h>
+#include <hdd-ioctl.h>
+#include <stddef.h>
 
 typedef struct // size = 1024
 {
@@ -441,5 +443,214 @@ int hddGetFileBlockInfo(const char *name, const apa_sub_t *subs, pfs_blockinfo_t
             result = -EIO;
     }
 
+    return result;
+}
+
+#define HDD_PFS_SEGD_MAGIC     0x53454744
+#define HDD_PFS_SEGI_MAGIC     0x53454749
+#define PFS_SEGI_MAX_BLOCKS    ((sizeof(pfs_inode_t) - offsetof(pfs_inode_t, data)) / sizeof(pfs_blockinfo_t))
+#define PFS_INODE_SECTOR_COUNT (sizeof(pfs_inode_t) / 512)
+
+static const pfs_blockinfo_t *hddGetPfsSegmentBlock(const pfs_inode_t *inode, u32 index)
+{
+    // SEGI会把data之后的空间继续作为块描述符使用，不能按声明长度直接索引。
+    const u8 *data = (const u8 *)inode + offsetof(pfs_inode_t, data);
+
+    return &((const pfs_blockinfo_t *)data)[index];
+}
+
+static int hddGetPfsZoneSectors(const char *name, u32 *sectors_per_zone)
+{
+    char device[16];
+    const char *separator;
+    size_t length;
+    int zone_size;
+
+    separator = strchr(name, ':');
+    if (separator == NULL)
+        return -EINVAL;
+
+    length = separator - name + 1;
+    if (length >= sizeof(device))
+        return -EINVAL;
+
+    memcpy(device, name, length);
+    device[length] = '\0';
+
+    zone_size = fileXioDevctl(device, PFS_DEVCTL_GET_ZONE_SIZE, NULL, 0, NULL, 0);
+    if (zone_size < 512 || (zone_size & 511) != 0)
+        return -EIO;
+
+    *sectors_per_zone = (u32)zone_size / 512;
+    return 0;
+}
+
+static int hddReadPfsInode(const apa_sub_t *subs, int sub_count, u16 subpart, u64 relative_sector, pfs_inode_t *inode)
+{
+    u64 lba;
+
+    if (subpart >= sub_count || relative_sector > subs[subpart].length ||
+        PFS_INODE_SECTOR_COUNT > subs[subpart].length - relative_sector)
+        return -EIO;
+
+    lba = subs[subpart].start + relative_sector;
+    if (lba > 0xFFFFFFFFULL)
+        return -EIO;
+
+    return hddReadSectors((u32)lba, PFS_INODE_SECTOR_COUNT, inode) == 0 ? 0 : -EIO;
+}
+
+static int hddValidatePfsBlock(const apa_sub_t *subs, int sub_count, const pfs_blockinfo_t *block, u32 sectors_per_zone)
+{
+    u64 relative_sector;
+    u64 sector_count;
+
+    if (block->subpart >= sub_count || block->count == 0)
+        return -EIO;
+
+    relative_sector = (u64)block->number * sectors_per_zone;
+    sector_count = (u64)block->count * sectors_per_zone;
+    if (relative_sector > subs[block->subpart].length ||
+        sector_count > subs[block->subpart].length - relative_sector ||
+        sector_count > 0xFFFFFFFFULL)
+        return -EIO;
+
+    return 0;
+}
+
+int hddGetFileBlockList(const char *name, const apa_sub_t *subs, int sub_count, pfs_blockinfo_t **blocks, u32 *sectors_per_zone)
+{
+    iox_stat_t stat;
+    pfs_inode_t *inode;
+    pfs_blockinfo_t *block_list = NULL;
+    pfs_blockinfo_t *segment_list = NULL;
+    pfs_blockinfo_t base_inode;
+    u32 zone_sectors;
+    u32 number_data;
+    u32 number_segments;
+    u32 block_count;
+    u32 output_index;
+    u32 segment_count;
+    u32 i;
+    int result;
+
+    if (name == NULL || subs == NULL || sub_count <= 0 || blocks == NULL || sectors_per_zone == NULL)
+        return -EINVAL;
+
+    *blocks = NULL;
+    *sectors_per_zone = 0;
+
+    result = fileXioGetStat(name, &stat);
+    if (result < 0)
+        return result;
+    if (stat.private_4 >= (u32)sub_count)
+        return -EIO;
+
+    result = hddGetPfsZoneSectors(name, &zone_sectors);
+    if (result < 0)
+        return result;
+
+    inode = (pfs_inode_t *)IOBuffer;
+    result = hddReadPfsInode(subs, sub_count, stat.private_4, stat.private_5, inode);
+    if (result < 0)
+        return result;
+    if (inode->magic != HDD_PFS_SEGD_MAGIC)
+        return -EIO;
+
+    number_data = inode->number_data;
+    number_segments = inode->number_segdesg;
+    if (number_segments == 0 || number_segments > number_data)
+        return -EIO;
+
+    block_count = number_data - number_segments;
+    if (block_count > 0x1FFFFFFF || number_segments > 0x1FFFFFFF)
+        return -ENOMEM;
+
+    if (block_count > 0) {
+        block_list = malloc(block_count * sizeof(pfs_blockinfo_t));
+        if (block_list == NULL)
+            return -ENOMEM;
+    }
+
+    segment_list = malloc(number_segments * sizeof(pfs_blockinfo_t));
+    if (segment_list == NULL) {
+        free(block_list);
+        return -ENOMEM;
+    }
+
+    base_inode = inode->inode_block;
+    segment_list[0] = base_inode;
+    segment_count = 1;
+    output_index = 0;
+
+    for (i = 0; i < number_data; i++) {
+        u32 local_index;
+        const pfs_blockinfo_t *block;
+
+        if (i < PFS_INODE_MAX_BLOCKS)
+            local_index = i;
+        else
+            local_index = (i - PFS_INODE_MAX_BLOCKS) % PFS_SEGI_MAX_BLOCKS;
+
+        if (i >= PFS_INODE_MAX_BLOCKS && local_index == 0) {
+            pfs_blockinfo_t next_segment = inode->next_segment;
+            u64 relative_sector;
+            u32 j;
+
+            if (segment_count >= number_segments ||
+                hddValidatePfsBlock(subs, sub_count, &next_segment, zone_sectors) < 0) {
+                result = -EIO;
+                goto fail;
+            }
+
+            for (j = 0; j < segment_count; j++) {
+                if (segment_list[j].subpart == next_segment.subpart &&
+                    segment_list[j].number == next_segment.number) {
+                    result = -EIO;
+                    goto fail;
+                }
+            }
+
+            relative_sector = (u64)next_segment.number * zone_sectors;
+            result = hddReadPfsInode(subs, sub_count, next_segment.subpart, relative_sector, inode);
+            if (result < 0)
+                goto fail;
+            if (inode->magic != HDD_PFS_SEGI_MAGIC ||
+                inode->inode_block.subpart != base_inode.subpart ||
+                inode->inode_block.number != base_inode.number) {
+                result = -EIO;
+                goto fail;
+            }
+
+            segment_list[segment_count++] = next_segment;
+        }
+
+        // 每份段描述inode的第0项都描述inode自身，不属于文件内容。
+        if (local_index == 0)
+            continue;
+
+        block = hddGetPfsSegmentBlock(inode, local_index);
+        if (output_index >= block_count ||
+            hddValidatePfsBlock(subs, sub_count, block, zone_sectors) < 0) {
+            result = -EIO;
+            goto fail;
+        }
+
+        block_list[output_index++] = *block;
+    }
+
+    if (output_index != block_count || segment_count != number_segments) {
+        result = -EIO;
+        goto fail;
+    }
+
+    free(segment_list);
+    *blocks = block_list;
+    *sectors_per_zone = zone_sectors;
+    return (int)block_count;
+
+fail:
+    free(segment_list);
+    free(block_list);
     return result;
 }
