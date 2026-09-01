@@ -134,19 +134,15 @@ static int bdm_load_fragment_table(void)
 
     {
         u32 fragcount = cdvdman_settings.fragfile[0].frag_count;
+        u32 stride = bdm_get_checkpoint_stride(fragcount);
+        u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
 
-        /* 单碎片读取由SDK直接映射物理LBA，无需为不会使用的索引保留内存。 */
-        if (fragcount > 1) {
-            u32 stride = bdm_get_checkpoint_stride(fragcount);
-            u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
-
-            g_bd_defrag_checkpoints = AllocSysMemory(ALLOC_FIRST,
-                                                      checkpoint_count * sizeof(bd_defrag_checkpoint_t), NULL);
-            if (g_bd_defrag_checkpoints == NULL) {
-                FreeSysMemory(g_frag_table);
-                g_frag_table = NULL;
-                return -1;
-            }
+        g_bd_defrag_checkpoints = AllocSysMemory(ALLOC_FIRST,
+                                                  checkpoint_count * sizeof(bd_defrag_checkpoint_t), NULL);
+        if (g_bd_defrag_checkpoints == NULL) {
+            FreeSysMemory(g_frag_table);
+            g_frag_table = NULL;
+            return -1;
         }
     }
 
@@ -157,6 +153,8 @@ static int bdm_prepare_fragment_table(void)
 {
     unsigned int i;
     u32 fragcount = cdvdman_settings.fragfile[0].frag_count;
+    u32 stride = bdm_get_checkpoint_stride(fragcount);
+    u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
 
     if (g_bd == NULL)
         return -1;
@@ -178,18 +176,13 @@ static int bdm_prepare_fragment_table(void)
     }
 
     bd_defrag_index_reset(&g_bd_defrag_index);
-    if (fragcount > 1) {
-        u32 stride = bdm_get_checkpoint_stride(fragcount);
-        u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
-
-        if (bd_defrag_index_build(&g_bd_defrag_index,
-                                  &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                  fragcount,
-                                  stride,
-                                  g_bd_defrag_checkpoints,
-                                  checkpoint_count) < 0)
-            DPRINTF("fragment index build failed; using linear lookup\n");
-    }
+    if (bd_defrag_index_build(&g_bd_defrag_index,
+                              &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
+                              fragcount,
+                              stride,
+                              g_bd_defrag_checkpoints,
+                              checkpoint_count) < 0)
+        DPRINTF("fragment index build failed; using linear lookup\n");
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
 
     return 0;
