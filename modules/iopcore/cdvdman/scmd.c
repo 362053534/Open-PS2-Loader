@@ -124,6 +124,8 @@ int sceCdBreak(void)
 {
     DPRINTF("sceCdBreak\n");
 
+    cdvdman_cancel_pending_read();
+
     if (sync_flag)
         return 0;
 

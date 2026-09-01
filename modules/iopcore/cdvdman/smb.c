@@ -29,6 +29,7 @@
    This is because the IOP cannot clear the received frames fast enough, causing the number of bytes in flight to grow exponentially.
    The TCP congestion avoidence algorithm may induce some latency, causing extremely poor performance.
    The value to use should be smaller than the TCP window size. Right now, it is 10240 (according to lwipopts.h). */
+/* 65535/64KB 会让部分 SMB 服务器在 SessionSetup 或首包大读上失败，所有游戏一进就黑屏。先回到 8KB。 */
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
