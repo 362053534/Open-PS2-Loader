@@ -66,6 +66,7 @@ I_SetAlarm
 I_iSetAlarm
 I_CancelAlarm
 I_USec2SysClock
+I_GetSystemTime
 I_SleepThread
 I_iWakeupThread
 thbase_IMPORTS_end

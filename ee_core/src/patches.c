@@ -968,7 +968,8 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    if (file_eq_gameid)
+                    // 1扇区保底已在 cdvdman 全局生效（不靠模式1）。空转钩会叠延迟，默认不打。
+                    if (0 && file_eq_gameid)
                         ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:
