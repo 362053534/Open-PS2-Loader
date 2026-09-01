@@ -21,7 +21,6 @@
 extern int _iop_reboot_count;
 static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
-static const char udnl_prefix[] = "rom0:UDNL ";
 
 #define CDVD_INIT_RPC_ID      0x80000592
 #define BDM_CDVD_INIT_RETRIES 3
@@ -64,27 +63,43 @@ static int InitBDMCDVDMan(void)
 }
 
 /*
- * 游戏可能通过 ROM UDNL 以 ROM IOPRP 重置 IOP，例如：
- * "rom0:UDNL rom0:EELOADCNF"。不要将该 ROM 参数转交给 OPL 的第二轮
- * UDNL。第一轮重置已经准备好 OPL 的 IOPRP 镜像；复用通常的无参数路径可
- * 保持 0.9.3 之前的重置语义，并避免 SIFCMD 未初始化。
+ * 0.9.3 之前只有通过 ROM UDNL 加载游戏 CDROM IOPRP 的请求会保留给第二轮
+ * UDNL。其余参数（包括 "rom0:UDNL rom0:EELOADCNF"）均复用 OPL 已准备
+ * 的 IOPRP 镜像，并走无参数路径。保持这一分流规则可避免 SIFCMD 未初始化。
+ *
+ * 此处同时统一两种 arglen 约定：可指向内容末尾，或把末尾 NUL 也计入长度。
  */
-static int IsROMIOPRPReset(const char *arg, int arglen)
+static int GetCDROMIOPRPArgs(const char *arg, int arglen, const char **args, unsigned int *argslen)
 {
+    static const char udnl_prefix[] = "rom0:UDNL ";
     const int prefix_len = sizeof(udnl_prefix) - 1;
-    const int rom_len = sizeof("rom") - 1;
-    int i;
 
-    if (arglen < prefix_len + rom_len)
+    if (arg == NULL || arglen < prefix_len + 5)
         return 0;
 
-    for (i = 0; i <= arglen - prefix_len - rom_len; i++) {
-        if (!_strncmp(&arg[i], udnl_prefix, prefix_len) &&
-            !_strncmp(&arg[i + prefix_len], "rom", rom_len))
-            return 1;
-    }
+    if (arglen > RESET_ARG_MAX)
+        arglen = RESET_ARG_MAX;
 
-    return 0;
+    if (_strncmp(arg, udnl_prefix, prefix_len))
+        return 0;
+
+    arg += prefix_len;
+    arglen -= prefix_len;
+
+    if (arglen > 0 && arg[arglen - 1] == '\0')
+        arglen--;
+
+    /* 仅把游戏 CDROM IOPRP 请求交给带参数的第二轮 UDNL。 */
+    if (arglen < 5 || _strncmp(arg, "cdrom", 5))
+        return 0;
+
+    /* command 还需要一个分隔 NUL、"host0:" 和它的末尾 NUL。 */
+    if (arglen > RESET_ARG_MAX - sizeof("host0:"))
+        return 0;
+
+    *args = arg;
+    *argslen = arglen;
+    return 1;
 }
 
 static void ResetIopSpecial(const char *args, unsigned int arglen)
@@ -238,7 +253,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 int New_Reset_Iop(const char *arg, int arglen)
 {
     USE_LOCAL_EECORE_CONFIG;
-    const int prefix_len = sizeof(udnl_prefix) - 1;
+    const char *ioprp_args;
+    unsigned int ioprp_arglen;
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
         DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
@@ -264,19 +280,10 @@ int New_Reset_Iop(const char *arg, int arglen)
     if (EnableDebug)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
-    if (arg && arglen > 0) {
-        if (arglen > RESET_ARG_MAX)
-            arglen = RESET_ARG_MAX;
-
-        if (arg[arglen - 1] == '\0')
-            arglen--;
-
-        if (arglen > prefix_len && !_strncmp(arg, udnl_prefix, prefix_len) &&
-            !IsROMIOPRPReset(arg, arglen)) {
-            ResetIopSpecial(&arg[prefix_len], arglen - prefix_len);
-            if (EnableDebug)
-                DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
-        }
+    if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
+        ResetIopSpecial(ioprp_args, ioprp_arglen);
+        if (EnableDebug)
+            DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }
 
     if (iop_reboot_count >= 2) {
