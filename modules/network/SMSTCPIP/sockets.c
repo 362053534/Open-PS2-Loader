@@ -341,6 +341,43 @@ int lwip_listen(int s, int backlog)
     return 0;
 }
 
+/* NBSS keepalive 只有 4 字节；ReadAndX 头（含 NBSS）至少 63 字节。 */
+#define LWIP_NBSS_HDR_LEN     4
+#define LWIP_NBSS_KEEPALIVE   0x85
+#define LWIP_SMB_READX_HDRLEN 63
+
+/* 把后续 TCP 段接到当前 netbuf，直到剩余可读长度 >= need。
+ * 短段绝不能丢，否则 SMB 字节流会错位；失败时把已收到的数据留在 lastdata。
+ * 返回 1 成功，0 超时/对端关闭，-1 非阻塞且暂无数据。 */
+static int lwip_smb_accum(struct lwip_socket *sock, struct netbuf *buf, u16_t *avail_len, u16_t need, unsigned int flags)
+{
+    struct netbuf *n;
+
+    sock->lastdata = buf;
+
+    while (*avail_len < need) {
+        if (((flags & MSG_DONTWAIT) || (sock->flags & O_NONBLOCK)) && (sock->rcvevent <= 0)) {
+            sock_set_errno(sock, EWOULDBLOCK);
+            return -1;
+        }
+
+        n = netconn_recv(sock->conn);
+        if (!n || !n->p) {
+            if (n)
+                netbuf_delete(n);
+            sock_set_errno(sock, 0);
+            return 0;
+        }
+
+        pbuf_cat(buf->p, n->p);
+        n->p = n->ptr = NULL;
+        netbuf_delete(n);
+        *avail_len = netbuf_len(buf) - sock->lastoffset;
+    }
+
+    return 1;
+}
+
 // Note: This function was modified so that the SMB header can be retrieved directly and the payload stored separately from it.
 int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsigned int flags,
                   struct sockaddr *from, socklen_t *fromlen)
@@ -350,6 +387,8 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     u16_t avail_len, copylen = 0;
     struct ip_addr *addr;
     u16_t port;
+    int copy_payload = 1;
+    int accum;
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
@@ -389,19 +428,39 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     /* copy the contents of the received buffer into
      the supplied memory pointer mem */
     if (index) {
-        if (avail_len >= 63) { // header of (SMB command) READ ANDX RESPONSE is 63 + padding bytes, which are "0x00" thus useless
-            netbuf_copy_partial(buf, header, 63, sock->lastoffset);
-            index = ((u8_t *)header)[index] + 4; // The word at offset 0 is sessionHeader, which Microsoft doesn't consider as being part of the SMB header.
-            copylen = index;
-            avail_len -= index;
+        /* 先凑齐 4 字节 NBSS，区分 keepalive 和 Session Message。 */
+        accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_NBSS_HDR_LEN, flags);
+        if (accum <= 0)
+            return accum;
+
+        netbuf_copy_partial(buf, header, LWIP_NBSS_HDR_LEN, sock->lastoffset);
+
+        if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
+            /* keepalive 可能和后续 SMB 粘在同一段里，只吃 4 字节，剩下留给下次。 */
+            copylen = LWIP_NBSS_HDR_LEN;
+            avail_len -= LWIP_NBSS_HDR_LEN;
+            copy_payload = 0;
         } else {
-            netbuf_copy_partial(buf, header, avail_len, sock->lastoffset);
-            copylen = avail_len;
-            avail_len = 0;
+            /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
+            accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
+            if (accum <= 0)
+                return accum;
+
+            netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
+            index = ((u8_t *)header)[index] + 4;
+
+            if ((u16_t)index > avail_len) {
+                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
+                if (accum <= 0)
+                    return accum;
+            }
+
+            copylen = (u16_t)index;
+            avail_len -= (u16_t)index;
         }
     }
 
-    if (avail_len) {
+    if (copy_payload && avail_len) {
         if (plen > avail_len)
             plen = avail_len;
 
