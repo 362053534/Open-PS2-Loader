@@ -87,9 +87,9 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x0021E320}},       // 吉翁前线 NTSC-U：CDA 下一笔读启动前让 VIF1 把旧堆抽完
-    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
-    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00110000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
+    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00220000, 0x0021E320}},       // 吉翁前线 NTSC-U：空转加倍到 0x220000，给 VIF1 多一截抽旧堆
+    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00220000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
+    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00220000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
