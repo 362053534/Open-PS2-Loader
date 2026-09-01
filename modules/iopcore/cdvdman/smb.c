@@ -29,9 +29,11 @@
    This is because the IOP cannot clear the received frames fast enough, causing the number of bytes in flight to grow exponentially.
    The TCP congestion avoidence algorithm may induce some latency, causing extremely poor performance.
    The value to use should be smaller than the TCP window size. Right now, it is 10240 (according to lwipopts.h). */
-#define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
+/* MaxBufferSize 是 u16，所以这里用 65535。ReadAndX 另有 CAP_LARGE_READX，单次收到 64KB，
+   让 32 扇区音乐一次往返拿完，少占 cdvdman 读线程。TCP 窗口仍是 10KB，靠流控分段，不加大 pbuf。 */
+#define CLIENT_MAX_BUFFER_SIZE 65535     //Allow up to 65535 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
-#define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
+#define CLIENT_MAX_RECV_SIZE   65536     //Allow up to 65536 bytes to be received.
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
 

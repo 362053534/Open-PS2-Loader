@@ -71,6 +71,15 @@ unsigned char sync_flag;
 unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
 
+/* 1 深排队：音乐占着读线程时，语音 sceCdRead 先收下，避免直接返回 0。 */
+static u8 cdread_pending;
+static u8 cdread_io_busy;
+static u8 cdread_outstand;
+static u32 cdread_pending_lba;
+static u32 cdread_pending_sectors;
+static u16 cdread_pending_size;
+static void *cdread_pending_buf;
+
 #ifdef __USE_DEV9
 static int POFFThreadID;
 #endif
@@ -605,12 +614,32 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
     CpuSuspendIntr(&OldState);
 
+    if (sync_flag) {
+        /* 只在读线程真正堵在设备 I/O 时排队；收尾/回调窗口仍拒绝，避免幽灵读。 */
+        if (!cdread_io_busy || cdread_pending) {
+            CpuResumeIntr(OldState);
+            DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
+            return 0;
+        }
+
+        cdread_pending_lba = lsn;
+        cdread_pending_sectors = sectors;
+        cdread_pending_size = sector_size;
+        cdread_pending_buf = buf;
+        cdread_pending = 1;
+        cdread_outstand++;
+        CpuResumeIntr(OldState);
+        return 1;
+    }
+
     if (!cdvdman_common_lock(IsIntrContext)) {
         CpuResumeIntr(OldState);
         DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
         return 0;
     }
 
+    cdread_io_busy = 1;
+    cdread_outstand = 1;
     cdvdman_stat.cdread_lba = lsn;
     cdvdman_stat.cdread_sectors = sectors;
     cdvdman_stat.sector_size = sector_size;
@@ -624,6 +653,19 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
         SignalSema(cdrom_rthread_sema);
 
     return 1;
+}
+
+void cdvdman_cancel_pending_read(void)
+{
+    int OldState;
+
+    CpuSuspendIntr(&OldState);
+    if (cdread_pending) {
+        cdread_pending = 0;
+        if (cdread_outstand > 0)
+            cdread_outstand--;
+    }
+    CpuResumeIntr(OldState);
 }
 
 int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
@@ -867,35 +909,70 @@ static unsigned int event_alarm_cb(void *args)
    within the interrupt handler, before the user callback is run. */
 static void cdvdman_signal_read_end(void)
 {
+    int OldState;
+
+    CpuSuspendIntr(&OldState);
+    /* 还有排队/下一条未完成时，sceCdSync 必须继续等。 */
+    if (cdread_outstand > 1) {
+        cdread_outstand--;
+        CpuResumeIntr(OldState);
+        return;
+    }
+    cdread_outstand = 0;
     sync_flag = 0;
+    CpuResumeIntr(OldState);
     SetEventFlag(cdvdman_stat.intr_ef, 9);
 }
 
 static void cdvdman_signal_read_end_intr(void)
 {
+    if (cdread_outstand > 1) {
+        cdread_outstand--;
+        return;
+    }
+    cdread_outstand = 0;
     sync_flag = 0;
     iSetEventFlag(cdvdman_stat.intr_ef, 9);
 }
 
 static void cdvdman_cdread_Thread(void *args)
 {
+    int OldState;
+    int kick;
+
     while (1) {
         WaitSema(cdrom_rthread_sema);
 
-        cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+        do {
+            cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
-        /* This streaming callback is not compatible with the original SONY stream channel 0 (IOP) callback's design.
-       The original is run from the interrupt handler, but we want it to run
-       from a threaded environment because our interrupt is emulated. */
-        if (Stm0Callback != NULL) {
-            cdvdman_signal_read_end();
+            CpuSuspendIntr(&OldState);
+            cdread_io_busy = 0;
+            kick = 0;
+            if (cdread_pending) {
+                cdvdman_stat.cdread_lba = cdread_pending_lba;
+                cdvdman_stat.cdread_sectors = cdread_pending_sectors;
+                cdvdman_stat.sector_size = cdread_pending_size;
+                cdvdman_stat.cdread_buf = cdread_pending_buf;
+                cdread_pending = 0;
+                cdread_io_busy = 1;
+                kick = 1;
+            }
+            CpuResumeIntr(OldState);
 
-            /* Check that the streaming callback was not cleared, as this pointer may get changed between function calls.
-               As per the original semantics, once it is cleared, then it should not be called. */
-            if (Stm0Callback != NULL)
-                Stm0Callback();
-        } else
-            cdvdman_cb_event(SCECdFuncRead); // Only runs if streaming is not in action.
+            /* This streaming callback is not compatible with the original SONY stream channel 0 (IOP) callback's design.
+           The original is run from the interrupt handler, but we want it to run
+           from a threaded environment because our interrupt is emulated. */
+            if (Stm0Callback != NULL) {
+                cdvdman_signal_read_end();
+
+                /* Check that the streaming callback was not cleared, as this pointer may get changed between function calls.
+                   As per the original semantics, once it is cleared, then it should not be called. */
+                if (Stm0Callback != NULL)
+                    Stm0Callback();
+            } else
+                cdvdman_cb_event(SCECdFuncRead); // Only runs if streaming is not in action.
+        } while (kick);
     }
 }
 
