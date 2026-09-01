@@ -784,7 +784,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
 
-    // adjust ZSO cache
+    // 游戏内 ISO/ZSO 共用这块扇区缓存；SMB 需要至少 32 扇区才能接住 1+16 语音流。
     settings->common.zso_cache = smbCacheSize;
     sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, 0, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask, NULL, 0);
 }

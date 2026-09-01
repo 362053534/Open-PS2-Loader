@@ -2701,7 +2701,7 @@ static void setDefaults(void)
 
     bdmCacheSize = 8;
     hddCacheSize = 8;
-    smbCacheSize = 8;
+    smbCacheSize = 32;
     gAutoDetectPS1Apps = 1;
 
     ps2_ip_use_dhcp = 1;
