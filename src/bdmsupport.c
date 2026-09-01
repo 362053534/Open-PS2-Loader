@@ -745,10 +745,9 @@ vmc_prepared:;
                 int j;
 
                 iFragCount--;
-                if ((unsigned int)(iTotalFragCount + iFragCount) > frag_capacity) {
-                    unsigned int new_capacity = frag_capacity ? frag_capacity : 64;
-                    while (new_capacity < (unsigned int)(iTotalFragCount + iFragCount))
-                        new_capacity *= 2;
+                unsigned int required_capacity = (unsigned int)iTotalFragCount + (unsigned int)iFragCount;
+                if (required_capacity > frag_capacity) {
+                    unsigned int new_capacity = required_capacity;
                     bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
                     if (new_table == NULL) {
                         close(fd);
@@ -777,10 +776,9 @@ vmc_prepared:;
             iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, NULL, 0);
             iFragCapacity = iFragCount;
             if (iFragCount > 0) {
-                if ((unsigned int)(iTotalFragCount + iFragCount) > frag_capacity) {
-                    unsigned int new_capacity = frag_capacity ? frag_capacity : 64;
-                    while (new_capacity < (unsigned int)(iTotalFragCount + iFragCount))
-                        new_capacity *= 2;
+                unsigned int required_capacity = (unsigned int)iTotalFragCount + (unsigned int)iFragCount;
+                if (required_capacity > frag_capacity) {
+                    unsigned int new_capacity = required_capacity;
                     bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
                     if (new_table == NULL) {
                         close(fd);
