@@ -103,6 +103,10 @@ typedef void (*StmCallback_t)(void);
 extern void SetStm0Callback(StmCallback_t callback);
 extern int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
+#ifdef SMB_DRIVER
+extern int cdvdman_AsyncReadNoPending(u32 lsn, u32 sectors, u16 sector_size, void *buf);
+extern void cdvdman_cancel_pending_read(void);
+#endif
 extern int cdvdman_sendSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 extern void cdvdman_cb_event(int reason);
 

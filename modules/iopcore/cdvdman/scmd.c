@@ -124,6 +124,10 @@ int sceCdBreak(void)
 {
     DPRINTF("sceCdBreak\n");
 
+#ifdef SMB_DRIVER
+    cdvdman_cancel_pending_read();
+#endif
+
     if (sync_flag)
         return 0;
 

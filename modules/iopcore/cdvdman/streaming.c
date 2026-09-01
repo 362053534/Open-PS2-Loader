@@ -70,7 +70,12 @@ static int StFillStreamBuffer(void)
 
     if (result == 0) {
         // iDPRINTF("Stream fill buffer: Stream lsn 0x%08x - %u sectors:%p\n", cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, ptr);
+#ifdef SMB_DRIVER
+        /* sceCdSt 填缓冲不能排队，否则游戏自己的 sceCdSync 会等到流缓冲填满才返回。 */
+        if (cdvdman_AsyncReadNoPending(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
+#else
         if (cdvdman_AsyncRead(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
+#endif
             // Failed to start reading.
             cdvdman_stat.StreamingData.StIsReading = 0;
             result = -1;
