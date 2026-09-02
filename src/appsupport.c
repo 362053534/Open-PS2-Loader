@@ -1546,7 +1546,7 @@ static int appScanELFCallback(const char *path, const char *elfName, void *arg)
     char title[APP_TITLE_MAX + 1];
     int titleLength;
 
-    if (strlen(elfName) > APP_BOOT_MAX) {
+    if (strlen(elfName) > APP_TITLE_MAX + 4) {
         LOG("APPSUPPORT APP ELF filename is too long: %s\n", elfName);
         return 1;
     }

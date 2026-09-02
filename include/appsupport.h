@@ -5,9 +5,9 @@
 
 #define APP_MODE_UPDATE_DELAY 240
 
-#define APP_TITLE_MAX 128
+#define APP_TITLE_MAX 160
 #define APP_PATH_MAX  128
-// 须能装下 XX./SB. + 最长 ISO 名（160）去掉 .VCD 再加 .ELF
+// 须能装下 XX./SB. + 最长POPS标题（160）再加编号和扩展名
 #define APP_BOOT_MAX  192
 #define APP_ARGV1_MAX 128
 // hdd0: + APA最长32字节分区名
