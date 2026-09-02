@@ -279,6 +279,7 @@ static int ProbeZSO(u8 *buffer)
 }
 
 /* 模式1：光盘预算。先闹钟再读设备，总时间 max(设备, 光盘)，EE dest 仍在返回后才 SendEE。
+ * 余数 1 扇区保底在 cdvdfsv（按游戏一笔 EE 读判断），不放这里：ncmd 会把 9 扇区拆成 8+1。
  * 下面这些宏是调试旋钮：改毫秒/扇区即可。 */
 #define ACCU_PSXCLK 36864000u
 #define ACCU_MS_TO_TICKS(ms) ((ACCU_PSXCLK * (ms)) / 1000u)
