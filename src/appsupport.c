@@ -1142,7 +1142,7 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
             strncpy(app->app.boot, cur->val, APP_BOOT_MAX + 1);
             app->app.boot[APP_BOOT_MAX] = '\0';
             strncpy(app->app.path, cur->val, APP_PATH_MAX + 1);
-            app->app.path[APP_BOOT_MAX] = '\0';
+            app->app.path[APP_PATH_MAX] = '\0';
         }
         strncpy(app->app.startup, app->app.boot, APP_BOOT_MAX + 1);
         app->app.startup[APP_BOOT_MAX] = '\0';
