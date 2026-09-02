@@ -278,11 +278,145 @@ static int ProbeZSO(u8 *buffer)
     return 1;
 }
 
+/* 模式1：光盘预算。先闹钟再读设备，总时间 max(设备, 光盘)，EE dest 仍在返回后才 SendEE。
+ * 下面这些宏是调试旋钮：改毫秒/扇区即可。 */
+#define ACCU_PSXCLK 36864000u
+#define ACCU_MS_TO_TICKS(ms) ((ACCU_PSXCLK * (ms)) / 1000u)
+
+/* Seek：对齐 PCSX2 分档，时间目前为 0（与官方模式1一样不寻道）。 */
+#define ACCU_FAST_SEEK_MS     0u
+#define ACCU_FULL_SEEK_MS     0u
+#define ACCU_FAST_SEEK_TICKS  ACCU_MS_TO_TICKS(ACCU_FAST_SEEK_MS)
+#define ACCU_FULL_SEEK_TICKS  ACCU_MS_TO_TICKS(ACCU_FULL_SEEK_MS)
+#define ACCU_CONTIG_DELTA_CD  8u
+#define ACCU_CONTIG_DELTA_DVD 16u
+#define ACCU_FAST_DELTA_CD    4371u
+#define ACCU_FAST_DELTA_DVD   14764u
+
+/* 机芯预读最多 16 扇区（对齐 PCSX2 缓冲）。KEEP=1：命中后至少留 1 扇区 CAV，避免扣成 0。 */
+#define ACCU_READAHEAD_SECTORS      16u
+#define ACCU_READAHEAD_KEEP_SECTORS 1u
+#define ACCU_READAHEAD_SMALL_MAX    0u /* 0=小读也走预读；试 8：≤8 扇区整笔不扣预读 */
+
+/* 模式1 下每次 DeviceRead 的扇区上限，原版就是 8。 */
+#define ACCU_DEVICE_CHUNK_SECTORS 8u
+
+static u32 accu_next_lsn;
+static int accu_have_pos;
+static u32 accu_virt_end_lo;
+
+static u32 accu_add_sat(u32 a, u32 b)
+{
+    if (a > 0xFFFFFFFFu - b)
+        return 0xFFFFFFFFu;
+    return a + b;
+}
+
+static u32 accu_mul_sat(u32 a, u32 b)
+{
+    if (b != 0 && a > 0xFFFFFFFFu / b)
+        return 0xFFFFFFFFu;
+    return a * b;
+}
+
+static u32 accu_cav_ticks_per_sector(u32 lsn)
+{
+    u32 usec;
+
+    if (cdvdman_settings.common.media == 0x12) {
+        /* CD CAV 内 10x / 外 24x，常数预先除好，避免 IOP 上算 64 位。 */
+        usec = 317142857u / (237857u + lsn);
+        if (usec < 667)
+            usec = 667;
+    } else if (cdvdman_settings.common.layer1_start != 0) {
+        u32 effective = lsn;
+
+        /* DVD-DL PTP：第二层折回内圈。 */
+        if (effective >= cdvdman_settings.common.layer1_start)
+            effective -= cdvdman_settings.common.layer1_start;
+        usec = 1323784126u / (1489257u + effective);
+    } else {
+        /* DVD 单层 CAV 内 1.67x / 外 4x。 */
+        usec = 1459362539u / (1641782u + lsn);
+    }
+
+    /* 36.864MHz：usec * 36864 / 1000，拆开以免中间溢出。 */
+    return (usec * 36u) + (usec * 864u) / 1000u;
+}
+
+static u32 accu_seek_ticks(u32 lsn)
+{
+    u32 delta;
+    int is_cd = (cdvdman_settings.common.media == 0x12);
+
+    if (!accu_have_pos)
+        return 0;
+
+    delta = (lsn >= accu_next_lsn) ? (lsn - accu_next_lsn) : (accu_next_lsn - lsn);
+    if (delta < (is_cd ? ACCU_CONTIG_DELTA_CD : ACCU_CONTIG_DELTA_DVD))
+        return 0;
+    if (delta < (is_cd ? ACCU_FAST_DELTA_CD : ACCU_FAST_DELTA_DVD))
+        return ACCU_FAST_SEEK_TICKS;
+    return ACCU_FULL_SEEK_TICKS;
+}
+
+static u32 accu_transfer_ticks(u32 lsn, unsigned int sectors)
+{
+    u32 ticks_ps;
+    u32 ticks;
+
+    if (sectors == 0)
+        return 0;
+
+    ticks_ps = accu_cav_ticks_per_sector(lsn);
+    ticks = accu_mul_sat(ticks_ps, sectors);
+
+    /* SMALL_MAX=0 时不跳过；>0 则 ≤该扇区数不扣预读。 */
+    if (ACCU_READAHEAD_SMALL_MAX && sectors <= ACCU_READAHEAD_SMALL_MAX)
+        return ticks;
+
+    /* 连续读：空闲期内最多按预读扇区扣传输；KEEP 为扣完后至少留下的扇区数。 */
+    if (accu_have_pos && lsn == accu_next_lsn) {
+        iop_sys_clock_t now;
+        u32 elapsed;
+        u32 ahead;
+        u32 keep_sectors = ACCU_READAHEAD_KEEP_SECTORS;
+        u32 keep;
+
+        GetSystemTime(&now);
+        elapsed = now.lo - accu_virt_end_lo;
+        ahead = accu_mul_sat(ticks_ps, ACCU_READAHEAD_SECTORS);
+        if (elapsed > ahead)
+            elapsed = ahead;
+        if (ticks > elapsed)
+            ticks -= elapsed;
+        else
+            ticks = 0;
+
+        if (keep_sectors > sectors)
+            keep_sectors = sectors;
+        keep = accu_mul_sat(ticks_ps, keep_sectors);
+        if (ticks < keep)
+            ticks = keep;
+    }
+
+    return ticks;
+}
+
+static u32 accu_budget_ticks(u32 lsn, unsigned int sectors)
+{
+    return accu_add_sat(accu_seek_ticks(lsn), accu_transfer_ticks(lsn, sectors));
+}
+
 static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 {
     unsigned int remaining;
     void *ptr;
     int endOfMedia = 0;
+    int accu_armed = 0;
+    u32 accu_budget = 0;
+    u32 accu_start_lo = 0;
+    u32 start_lsn = lsn;
 
     DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p\n", lsn, sectors, buf);
 
@@ -304,29 +438,36 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     }
 
     cdvdman_stat.err = SCECdErNO;
+
+    if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
+        iop_sys_clock_t now;
+
+        accu_budget = accu_budget_ticks(lsn, sectors);
+        GetSystemTime(&now);
+        accu_start_lo = now.lo;
+    }
+    if (accu_budget) {
+        iop_sys_clock_t TargetTime;
+
+        TargetTime.hi = 0;
+        TargetTime.lo = accu_budget;
+        ClearEventFlag(cdvdman_stat.intr_ef, ~0x1000);
+        SetAlarm(&TargetTime, &cdvdemu_read_end_cb, NULL);
+        accu_armed = 1;
+    }
+
     for (ptr = buf, remaining = sectors; remaining > 0;) {
         unsigned int SectorsToRead = remaining;
 
-        if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
-            // Limit transfers to a maximum length of 8, with a restricted transfer rate.
-            iop_sys_clock_t TargetTime;
-
-            if (SectorsToRead > 8)
-                SectorsToRead = 8;
-
-            TargetTime.hi = 0;
-            TargetTime.lo = (cdvdman_settings.common.media == 0x12 ? 81920 : 33512) * SectorsToRead;
-            // SP193: approximately 2KB/3600KB/s = 555us required per 2048-byte data sector at 3600KB/s, so 555 * 36.864 = 20460 ticks per sector with a 36.864MHz clock.
-            /* AKuHAK: 3600KB/s is too fast, it is CD 24x - theoretical maximum on CD
-               However, when setting SCECdSpinMax we will get 900KB/s (81920) for CD, and 2200KB/s (33512) for DVD */
-            ClearEventFlag(cdvdman_stat.intr_ef, ~0x1000);
-            SetAlarm(&TargetTime, &cdvdemu_read_end_cb, NULL);
-        }
+        if ((cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) && SectorsToRead > ACCU_DEVICE_CHUNK_SECTORS)
+            SectorsToRead = ACCU_DEVICE_CHUNK_SECTORS;
 
         cdvdman_stat.err = DeviceReadSectorsPtr(lsn, ptr, SectorsToRead);
         if (cdvdman_stat.err != SCECdErNO) {
-            if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS)
+            if (accu_armed) {
                 CancelAlarm(&cdvdemu_read_end_cb, NULL);
+                accu_armed = 0;
+            }
             break;
         }
 
@@ -353,10 +494,21 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
         remaining -= SectorsToRead;
         lsn += SectorsToRead;
         ReadPos += SectorsToRead * 2048;
+    }
 
-        if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
-            // Sleep until the required amount of time has been spent.
-            WaitEventFlag(cdvdman_stat.intr_ef, 0x1000, WEF_AND, NULL);
+    if (accu_armed)
+        WaitEventFlag(cdvdman_stat.intr_ef, 0x1000, WEF_AND, NULL);
+
+    if ((cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) && lsn != start_lsn) {
+        accu_have_pos = 1;
+        accu_next_lsn = lsn;
+        if (accu_budget) {
+            accu_virt_end_lo = accu_start_lo + accu_budget;
+        } else {
+            iop_sys_clock_t now;
+
+            GetSystemTime(&now);
+            accu_virt_end_lo = now.lo;
         }
     }
 
