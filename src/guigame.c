@@ -27,6 +27,8 @@
 static int configSourceID;
 static int dmaMode;
 static int compatMode;
+static int loadedMode1;
+static int compatDefaultsMode1;
 
 static int EnableGSM;
 static int GSMVMode;
@@ -1070,6 +1072,13 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
         compatMode |= (mdpart ? 1 : 0) << i;
     }
 
+    /* 只有勾变过才写，避免进设置点保存就把默认变成手动。测试修改也走这里，只改内存。 */
+    if (sbCompatDefaultsMode1(support)) {
+        int mode1 = (compatMode & COMPAT_MODE_1) != 0;
+        if (mode1 != loadedMode1)
+            result = configSetInt(configSet, CONFIG_ITEM_MANUAL_MODE1, 1);
+    }
+
     if (compatMode != 0)
         result = configSetInt(configSet, CONFIG_ITEM_COMPAT, compatMode);
     else
@@ -1220,6 +1229,7 @@ void guiGameRemoveSettings(config_set_t *configSet)
         configRemoveKey(configSet, CONFIG_ITEM_CONFIGSOURCE);
         configRemoveKey(configSet, CONFIG_ITEM_DMA);
         configRemoveKey(configSet, CONFIG_ITEM_COMPAT);
+        configRemoveKey(configSet, CONFIG_ITEM_MANUAL_MODE1);
         configRemoveKey(configSet, CONFIG_ITEM_DNAS);
         configRemoveKey(configSet, CONFIG_ITEM_ALTSTARTUP);
 
@@ -1567,8 +1577,9 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     } else
         diaSetInt(diaCompatConfig, COMPAT_DMA, 0);
 
-    compatMode = 0;
-    configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
+    compatDefaultsMode1 = sbCompatDefaultsMode1(support);
+    compatMode = sbGetCompatMask(configSet, compatDefaultsMode1);
+    loadedMode1 = (compatMode & COMPAT_MODE_1) != 0;
     for (int i = 0; i < COMPAT_MODE_COUNT; ++i)
         diaSetInt(diaCompatConfig, COMPAT_MODE_BASE + i, (compatMode & (1 << i)) > 0 ? 1 : 0);
 

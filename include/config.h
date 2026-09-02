@@ -34,6 +34,8 @@ enum CONFIG_INDEX {
 #define CONFIG_ITEM_ALTSTARTUP   "$AltStartup"
 #define CONFIG_ITEM_VMC          "$VMC"
 #define CONFIG_ITEM_COMPAT       "$Compatibility"
+/* 快设备上用户动过模式1后不再套默认开。有此字段则模式1完全跟 $Compatibility。 */
+#define CONFIG_ITEM_MANUAL_MODE1 "$ManualMode1"
 #define CONFIG_ITEM_DMA          "$DMA"
 #define CONFIG_ITEM_DNAS         "$DNAS"
 #define CONFIG_ITEM_CONFIGSOURCE "$ConfigSource"

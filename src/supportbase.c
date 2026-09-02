@@ -4,7 +4,9 @@
 #include "include/iosupport.h"
 #include "include/system.h"
 #include "include/supportbase.h"
+#include "include/bdmsupport.h"
 #include "include/ioman.h"
+#include <string.h>
 #include "modules/iopcore/common/cdvd_config.h"
 #include "include/cheatman.h"
 #include "include/pggsm.h"
@@ -1645,13 +1647,56 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
 
 static const struct cdvdman_settings_common cdvdman_settings_common_sample = CDVDMAN_SETTINGS_DEFAULT_COMMON;
 
-int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex)
+int sbBdmCompatDefaultsMode1(int bdmDeviceType, const char *bdmDriver)
+{
+    /* 只认 iLink / 内置 HDD，USB 和 MX4SIO 仍默认关模式1。 */
+    if (bdmDeviceType == BDM_TYPE_ATA || bdmDeviceType == BDM_TYPE_ILINK)
+        return 1;
+    if (bdmDriver != NULL) {
+        if (!strcmp(bdmDriver, "ata"))
+            return 1;
+        if (!strcmp(bdmDriver, "sd") && bdmDriver[2] == '\0')
+            return 1;
+    }
+    return 0;
+}
+
+int sbCompatDefaultsMode1(item_list_t *support)
+{
+    bdm_device_data_t *pDeviceData;
+
+    if (support == NULL)
+        return 0;
+    /* APA HDL / APA ISO 都在 HDD 页。 */
+    if (support->mode == HDD_MODE)
+        return 1;
+    if (support->mode >= BDM_MODE && support->mode <= BDM_MODE4) {
+        pDeviceData = (bdm_device_data_t *)support->priv;
+        if (pDeviceData == NULL)
+            return 0;
+        return sbBdmCompatDefaultsMode1(pDeviceData->bdmDeviceType, pDeviceData->bdmDriver);
+    }
+    return 0;
+}
+
+int sbGetCompatMask(config_set_t *configSet, int defaultMode1)
+{
+    int compatmask = 0;
+    int manualMode1 = 0;
+
+    configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatmask);
+    /* 没有 $ManualMode1 才套默认开；有字段说明用户接管过模式1。 */
+    if (defaultMode1 && !configGetInt(configSet, CONFIG_ITEM_MANUAL_MODE1, &manualMode1))
+        compatmask |= COMPAT_MODE_1;
+    return compatmask;
+}
+
+int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex, int defaultMode1)
 {
     int i;
     struct cdvdman_settings_common *settings;
 
-    int compatmask = 0;
-    configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatmask);
+    int compatmask = sbGetCompatMask(configSet, defaultMode1);
 
     char gameid[5];
     configGetDiscIDBinary(configSet, gameid);

@@ -723,8 +723,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     configGetDiscIDBinary(configSet, gid);
 
     // 默认为UDMA 4，与官方一致
-    int dmaType = 0x40, dmaMode = 7, compatMode = 0;
-    configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatMode);
+    int dmaType = 0x40, dmaMode = 7;
+    /* HDL 是快设备，没有 $ManualMode1 时默认开模式1。 */
+    int compatMode = sbGetCompatMask(configSet, 1);
     configGetInt(configSet, CONFIG_ITEM_DMASOURCE, &gDmaSource);
     if (gDmaSource == 0)
         configGetInt(configGetByType(CONFIG_GAME), CONFIG_ITEM_DMA, &dmaMode);
@@ -764,7 +765,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     size_irx = size_bdm_ata_cdvdman_irx;
     irx = &bdm_ata_cdvdman_irx;
 
-    sbPrepare(NULL, configSet, size_irx, irx, &settings_index);
+    sbPrepare(NULL, configSet, size_irx, irx, &settings_index, 1);
 
     if ((result = sbLoadCheats(gHDDPrefix, game->startup)) < 0) {
         if (gAutoLaunchGame == NULL) {
