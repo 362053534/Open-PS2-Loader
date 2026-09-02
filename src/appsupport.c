@@ -1255,6 +1255,7 @@ static int appPOPSCacheAppendEntry(pops_id_cache_t *cache, const char *vcdName, 
         return -1;
 
     entry = &cache->entries[cache->count++];
+    memset(entry, 0, sizeof(*entry));
     strcpy(entry->vcdName, vcdName);
     strcpy(entry->parsedId, parsedId);
     return 0;
@@ -1328,7 +1329,7 @@ static void appPOPSCacheLoad(void)
 
         if (memchr(entry->vcdName, '\0', sizeof(entry->vcdName)) == NULL ||
             memchr(entry->parsedId, '\0', sizeof(entry->parsedId)) == NULL || entry->vcdName[0] == '\0' ||
-            sbIsValidStartupExecName(entry->parsedId) != 0)
+            (entry->parsedId[0] != '\0' && sbIsValidStartupExecName(entry->parsedId) != 0))
             continue;
 
         if (validCount != i)
@@ -1473,8 +1474,12 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
 
         cachedId = popsCacheActive ? appPOPSCacheFindLoaded(vcdName) : NULL;
         if (cachedId != NULL) {
-            strcpy(startup, cachedId->parsedId);
-            if (appPOPSCacheAppendEntry(&popsCacheCurrent, vcdName, startup) < 0)
+            if (cachedId->parsedId[0] != '\0')
+                strcpy(startup, cachedId->parsedId);
+            else
+                // 空ID表示之前三级解析失败，直接沿用旧启动链路。
+                strcpy(startup, boot);
+            if (appPOPSCacheAppendEntry(&popsCacheCurrent, vcdName, cachedId->parsedId) < 0)
                 return -1;
         } else {
             if (snprintf(vcdPath, sizeof(vcdPath), "%s/%s", path, vcdName) >= (int)sizeof(vcdPath))
@@ -1484,7 +1489,9 @@ static int appAddPOPSItem(const char *path, const char *vcdName, void *arg, cons
                 if (popsCacheActive && appPOPSCacheAppendEntry(&popsCacheCurrent, vcdName, startup) < 0)
                     return -1;
             } else {
-                // 无法解析时保留旧链路，确保游戏仍可启动。
+                // 无法解析时保留旧链路，并记录负缓存，避免下次重复三级扫描。
+                if (popsCacheActive && appPOPSCacheAppendEntry(&popsCacheCurrent, vcdName, "") < 0)
+                    return -1;
                 strncpy(startup, boot, sizeof(startup));
                 startup[sizeof(startup) - 1] = '\0';
             }
