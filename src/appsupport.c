@@ -1359,7 +1359,7 @@ static void appPOPSCacheCommit(void)
 {
     char filename[POPS_CACHE_PATH_MAX];
     FILE *file;
-    int i, writeCount;
+    int i, writeCount, syncResult;
     int unchanged;
 
     if (!popsCacheActive)
@@ -1395,9 +1395,22 @@ static void appPOPSCacheCommit(void)
         LOG("APPSUPPORT unable to write POPS ID cache: %s\n", filename);
         return;
     }
-    if ((int)fwrite(popsCacheCurrent.entries, sizeof(pops_id_cache_entry_t), popsCacheCurrent.count, file) != popsCacheCurrent.count)
+    if ((int)fwrite(popsCacheCurrent.entries, sizeof(pops_id_cache_entry_t), popsCacheCurrent.count, file) != popsCacheCurrent.count) {
         LOG("APPSUPPORT POPS ID cache write failed: %s\n", filename);
+        fclose(file);
+        return;
+    }
     fclose(file);
+
+    /* PFS会延迟刷新目录项，显式同步可避免缓存必须等到分区卸载后才可见。 */
+    if (strncmp(popsCachePrefix, "pfs", 3) == 0) {
+        syncResult = fileXioSync(popsCachePrefix, 0);
+        if (syncResult < 0)
+            LOG("APPSUPPORT POPS ID cache sync failed: path=%s result=%d\n", filename, syncResult);
+        else
+            LOG("APPSUPPORT POPS ID cache sync: path=%s entries=%d result=%d\n",
+                filename, popsCacheCurrent.count, syncResult);
+    }
 }
 
 static void appPOPSCacheEnd(void)
