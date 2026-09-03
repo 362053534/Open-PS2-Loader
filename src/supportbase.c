@@ -1278,6 +1278,25 @@ static int ReadPOPSVCDData(int fd, u8 *buffer, int length)
     return 0;
 }
 
+static int CopyPOPSVolumeName(const u8 *volumeId, char *name, int maxlength)
+{
+    int length = 0;
+
+    if (maxlength <= 0)
+        return -1;
+
+    while (length < 32 && volumeId[length] != '\0')
+        length++;
+    while (length > 0 && volumeId[length - 1] == ' ')
+        length--;
+    if (length <= 0 || length >= maxlength)
+        return -1;
+
+    memcpy(name, volumeId, length);
+    name[length] = '\0';
+    return 0;
+}
+
 static int CopyPOPSVolumeId(const u8 *volumeId, char *filename, int maxlength)
 {
     char startup[GAME_STARTUP_MAX];
@@ -1347,6 +1366,23 @@ static int IsPOPSExeName(const char *name)
 static int IsPOPSPSXExeName(const char *name)
 {
     return !strcasecmp(name, "PSX.EXE;1");
+}
+
+static int IsPOPSExeNameContaining(const char *name, const char *volumeName)
+{
+    size_t nameLength = strlen(name);
+    size_t volumeLength = strlen(volumeName);
+    size_t position;
+
+    if (volumeLength == 0 || volumeLength > nameLength)
+        return 0;
+
+    for (position = 0; position + volumeLength <= nameLength; position++) {
+        if (strncasecmp(&name[position], volumeName, volumeLength) == 0)
+            return 1;
+    }
+
+    return 0;
 }
 
 static int AppendPOPSExeCandidate(struct pops_exe_candidate **candidates, int *count, int *capacity,
@@ -1527,16 +1563,16 @@ static int CopyPOPSMemoryCardId(const u8 *data, u32 length, char *filename, int 
 }
 
 static int ScanPOPSExeForId(int fd, const struct pops_exe_candidate *candidate, u32 *scanUsed,
-                            u8 *batchBuffer, char *filename, int maxlength)
+                            u32 scanLimit, u8 *batchBuffer, char *filename, int maxlength)
 {
     u8 tail[POPS_ID_PATTERN_LENGTH - 1];
     u8 scanBuffer[(POPS_ID_PATTERN_LENGTH - 1) + 2048];
     u32 fileOffset = 0;
     int tailLength = 0;
 
-    while (fileOffset < candidate->size && *scanUsed < POPS_ID_SCAN_LIMIT) {
+    while (fileOffset < candidate->size && (scanLimit == 0 || *scanUsed < scanLimit)) {
         u32 remainingFile = candidate->size - fileOffset;
-        u32 remainingBudget = POPS_ID_SCAN_LIMIT - *scanUsed;
+        u32 remainingBudget = scanLimit == 0 ? remainingFile : scanLimit - *scanUsed;
         u32 logicalBytes = remainingFile < remainingBudget ? remainingFile : remainingBudget;
         u32 sectorCount;
         u32 physicalBytes;
@@ -1579,14 +1615,17 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
 {
     int fd, result = -1;
     u8 volumeId[32];
+    char volumeName[33];
     u32 rootLBA, rootSize, sector;
     struct pops_exe_candidate *candidates = NULL;
+    struct pops_exe_candidate *volumeCandidate = NULL;
     struct pops_directory_candidate *directories = NULL;
     int candidateCount = 0, candidateCapacity = 0;
     int directoryCount = 0, directoryCapacity = 0;
-    u32 scanUsed = 0, order = 0;
+    u32 scanUsed = 0, order = 0, volumeCandidateOrder = 0xFFFFFFFF;
     u8 *batchBuffer = NULL;
 
+    volumeName[0] = '\0';
     if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
         return -1;
 
@@ -1654,8 +1693,19 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
             }
         }
 
-        if (result != 0)
+        if (result != 0) {
             result = CopyPOPSVolumeId(volumeId, filename, maxlength);
+            if (result != 0 && CopyPOPSVolumeName(volumeId, volumeName, sizeof(volumeName)) == 0) {
+                for (sector = 0; sector < (u32)candidateCount; sector++) {
+                    if (candidates[sector].depth == 0 &&
+                        IsPOPSExeNameContaining(candidates[sector].name, volumeName)) {
+                        volumeCandidate = &candidates[sector];
+                        volumeCandidateOrder = candidates[sector].order;
+                        break;
+                    }
+                }
+            }
+        }
 
         if (result != 0 && candidateCount == 0) {
             for (sector = 0; sector < (u32)directoryCount && result != 0; sector++) {
@@ -1666,11 +1716,20 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
         }
 
         if (result != 0 && candidateCount > 0) {
-            qsort(candidates, candidateCount, sizeof(struct pops_exe_candidate), ComparePOPSExeCandidates);
             batchBuffer = malloc(POPS_ID_SCAN_BATCH_BYTES);
             if (batchBuffer != NULL) {
-                for (sector = 0; sector < (u32)candidateCount && scanUsed < POPS_ID_SCAN_LIMIT; sector++) {
-                    if (ScanPOPSExeForId(fd, &candidates[sector], &scanUsed, batchBuffer, filename, maxlength) == 0) {
+                /* 卷名匹配的根目录EXE优先完整扫描，通用候选才受1MB预算限制。 */
+                if (volumeCandidate != NULL &&
+                    ScanPOPSExeForId(fd, volumeCandidate, &scanUsed, 0, batchBuffer, filename, maxlength) == 0)
+                    result = 0;
+
+                qsort(candidates, candidateCount, sizeof(struct pops_exe_candidate), ComparePOPSExeCandidates);
+                if (volumeCandidate != NULL)
+                    scanUsed = 0;
+                for (sector = 0; result != 0 && sector < (u32)candidateCount && scanUsed < POPS_ID_SCAN_LIMIT; sector++) {
+                    if (candidates[sector].order == volumeCandidateOrder)
+                        continue;
+                    if (ScanPOPSExeForId(fd, &candidates[sector], &scanUsed, POPS_ID_SCAN_LIMIT, batchBuffer, filename, maxlength) == 0) {
                         result = 0;
                         break;
                     }
