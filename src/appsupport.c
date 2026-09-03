@@ -1654,12 +1654,15 @@ static int appScanAutoPOPSSource(int sourceMode, struct app_info_linked **appsLi
 {
     app_scan_context_t context;
     const char *cachePrefix;
-    int result;
+    char cacheFilename[POPS_CACHE_PATH_MAX];
+    int result, retried;
 
     context.appsLinkedList = appsLinkedList;
     context.sourceMode = sourceMode;
-
     cachePrefix = oplGetPOPSCachePrefix(sourceMode);
+    retried = 0;
+
+retry_scan:
     appPOPSCacheBegin(cachePrefix);
 
     if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
@@ -1671,8 +1674,17 @@ static int appScanAutoPOPSSource(int sourceMode, struct app_info_linked **appsLi
     else
         result = 0;
 
-    if (result >= 0)
+    if (result >= 0) {
         appPOPSCacheCommit();
+    } else if (!retried && cachePrefix != NULL && cachePrefix[0] != '\0') {
+        // 缓存可能是旧格式或损坏内容，首次扫描失败时清除当前来源并仅重试一次。
+        retried = 1;
+        appPOPSCacheEnd();
+        appFreeLinkedList(appsLinkedList);
+        if (appPOPSCacheBuildFilename(cacheFilename, cachePrefix) == 0)
+            remove(cacheFilename);
+        goto retry_scan;
+    }
     appPOPSCacheEnd();
 
     return result;
@@ -1692,8 +1704,10 @@ static int appUpdateAutoItemList(void)
     struct app_info_linked *newPOPSLists[MODE_COUNT];
     int newAppsCounts[MODE_COUNT];
     int newPOPSCounts[MODE_COUNT];
+    int sourceFailed[MODE_COUNT];
     app_info_t *newAppsList;
     u32 sourceMask;
+    u32 failedSourceMask;
     int fullUpdate, newItemCount, outputCount;
     int sourceMode, i;
 
@@ -1701,9 +1715,11 @@ static int appUpdateAutoItemList(void)
     memset(newPOPSLists, 0, sizeof(newPOPSLists));
     memset(newAppsCounts, 0, sizeof(newAppsCounts));
     memset(newPOPSCounts, 0, sizeof(newPOPSCounts));
+    memset(sourceFailed, 0, sizeof(sourceFailed));
 
     fullUpdate = appUpdateAllSources || !appAutoListInitialized;
     sourceMask = fullUpdate ? APP_AUTO_SOURCE_MASK : appUpdateSourceMask & APP_AUTO_SOURCE_MASK;
+    failedSourceMask = 0;
     appUpdateAllSources = 0;
     appUpdateSourceMask = 0;
     if (!sourceMask)
@@ -1714,26 +1730,36 @@ static int appUpdateAutoItemList(void)
             continue;
 
         newAppsCounts[sourceMode] = appScanAutoAppsSource(sourceMode, &newAppsLists[sourceMode]);
-        if (newAppsCounts[sourceMode] < 0)
-            break;
+        if (newAppsCounts[sourceMode] < 0) {
+            sourceFailed[sourceMode] = 1;
+            failedSourceMask |= APP_SOURCE_BIT(sourceMode);
+            appFreeLinkedList(&newAppsLists[sourceMode]);
+            appFreeLinkedList(&newPOPSLists[sourceMode]);
+            continue;
+        }
 
         newPOPSCounts[sourceMode] = appScanAutoPOPSSource(sourceMode, &newPOPSLists[sourceMode]);
-        if (newPOPSCounts[sourceMode] < 0)
-            break;
-    }
-
-    if (sourceMode <= APP_SOURCE_MC) {
-        for (i = BDM_MODE; i <= APP_SOURCE_MC; i++) {
-            appFreeLinkedList(&newAppsLists[i]);
-            appFreeLinkedList(&newPOPSLists[i]);
+        if (newPOPSCounts[sourceMode] < 0) {
+            sourceFailed[sourceMode] = 1;
+            failedSourceMask |= APP_SOURCE_BIT(sourceMode);
+            appFreeLinkedList(&newAppsLists[sourceMode]);
+            appFreeLinkedList(&newPOPSLists[sourceMode]);
         }
-        appRestoreAutoRefresh(sourceMask, fullUpdate);
-        return appItemCount;
     }
 
     newItemCount = 0;
-    for (sourceMode = BDM_MODE; sourceMode <= APP_SOURCE_MC; sourceMode++)
-        newItemCount += newAppsCounts[sourceMode] + newPOPSCounts[sourceMode];
+    for (sourceMode = BDM_MODE; sourceMode <= APP_SOURCE_MC; sourceMode++) {
+        if (sourceMask & APP_SOURCE_BIT(sourceMode)) {
+            if (sourceFailed[sourceMode]) {
+                for (i = 0; i < appItemCount; i++) {
+                    if (appsList[i].sourceMode == sourceMode)
+                        newItemCount++;
+                }
+            } else {
+                newItemCount += newAppsCounts[sourceMode] + newPOPSCounts[sourceMode];
+            }
+        }
+    }
     if (!fullUpdate) {
         for (i = 0; i < appItemCount; i++) {
             sourceMode = appsList[i].sourceMode;
@@ -1757,19 +1783,19 @@ static int appUpdateAutoItemList(void)
     }
 
     outputCount = 0;
-    if (sourceMask & APP_SOURCE_BIT(APP_SOURCE_MC))
+    if ((sourceMask & APP_SOURCE_BIT(APP_SOURCE_MC)) && !sourceFailed[APP_SOURCE_MC])
         appMoveLinkedList(newAppsList, &outputCount, &newAppsLists[APP_SOURCE_MC]);
     else
         appCopyCachedSource(newAppsList, &outputCount, APP_SOURCE_MC, 0);
 
     for (sourceMode = BDM_MODE; sourceMode <= HDD_MODE; sourceMode++) {
-        if (sourceMask & APP_SOURCE_BIT(sourceMode))
+        if ((sourceMask & APP_SOURCE_BIT(sourceMode)) && !sourceFailed[sourceMode])
             appMoveLinkedList(newAppsList, &outputCount, &newAppsLists[sourceMode]);
         else
             appCopyCachedSource(newAppsList, &outputCount, sourceMode, 0);
     }
     for (sourceMode = BDM_MODE; sourceMode <= HDD_MODE; sourceMode++) {
-        if (sourceMask & APP_SOURCE_BIT(sourceMode))
+        if ((sourceMask & APP_SOURCE_BIT(sourceMode)) && !sourceFailed[sourceMode])
             appMoveLinkedList(newAppsList, &outputCount, &newPOPSLists[sourceMode]);
         else
             appCopyCachedSource(newAppsList, &outputCount, sourceMode, 1);
@@ -1791,6 +1817,10 @@ static int appUpdateAutoItemList(void)
     appsList = newAppsList;
     appItemCount = outputCount;
     appAutoListInitialized = 1;
+
+    // 失败来源保留旧条目，同时单独安排重试，不能阻塞其他来源完成重建。
+    if (failedSourceMask)
+        appRestoreAutoRefresh(failedSourceMask, fullUpdate);
 
     // 更新期间若又收到来源变化，必须追加一轮，不能被当前在途请求吞掉。
     if (appPendingSourceMask)
