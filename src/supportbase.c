@@ -1738,10 +1738,12 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
         }
 
         if (result != 0 && candidateCount == 0) {
-            for (sector = 0; sector < (u32)directoryCount && result != 0; sector++) {
-                result = CollectPOPSExeCandidates(fd, directories[sector].lba, directories[sector].size, 1,
-                                                  &candidates, &candidateCount, &candidateCapacity,
-                                                  &scanUsed, &order);
+            for (sector = 0; sector < (u32)directoryCount; sector++) {
+                int collectResult = CollectPOPSExeCandidates(fd, directories[sector].lba, directories[sector].size, 1,
+                                                             &candidates, &candidateCount, &candidateCapacity,
+                                                             &scanUsed, &order);
+                if (collectResult < 0)
+                    result = -1;
             }
             LOG("[POPS-ID] recursive candidates: %s result=%d candidates=%d directories=%d used=%u\n",
                 path, result, candidateCount, directoryCount, scanUsed);
