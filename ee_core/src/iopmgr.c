@@ -241,7 +241,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     if (config->GameMode == BDM_USB_MODE ||
         config->GameMode == BDM_ILK_MODE ||
         config->GameMode == BDM_M4S_MODE ||
-        config->GameMode == BDM_HDD_MODE) {
+        config->GameMode == BDM_HDD_MODE ||
+        config->GameMode == HDD_MODE) {
         if (InitBDMCDVDMan() < 0)
             DPRINTF("BDM CDVD initialization RPC failed\n");
     }

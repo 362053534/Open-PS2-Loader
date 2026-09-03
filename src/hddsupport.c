@@ -685,6 +685,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     hdl_apa_header *hdl_header;
     struct cdvdman_fragfile *iso_frag;
     bd_fragment_t *frag_table = NULL;
+    unsigned int frag_count;
     int settings_index = 0;
 
     if (id >= hddGames.count) {
@@ -761,6 +762,8 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
         return;
     }
+    /* IOBuffer随后还会用于读取启动扇区，必须先保存分区数，避免被覆盖。 */
+    frag_count = (unsigned int)hdl_header->num_partitions;
 
     size_irx = size_bdm_ata_cdvdman_irx;
     irx = &bdm_ata_cdvdman_irx;
@@ -782,17 +785,17 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     settings = (struct cdvdman_settings_bdm *)((u8 *)irx + settings_index);
 
-    frag_table = malloc(hdl_header->num_partitions * sizeof(bd_fragment_t));
+    frag_table = malloc(frag_count * sizeof(bd_fragment_t));
     if (frag_table == NULL) {
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
         return;
     }
     iso_frag = &settings->fragfile[0];
     iso_frag->frag_start = 0;
-    iso_frag->frag_count = hdl_header->num_partitions;
+    iso_frag->frag_count = frag_count;
     settings->frag_table_ee_addr = 0;
     settings->frag_table_bytes = 0;
-    for (i = 0; i < hdl_header->num_partitions; i++) {
+    for (i = 0; i < frag_count; i++) {
         frag_table[i].sector = hdl_header->part_specs[i].data_start;
         frag_table[i].count = hdl_header->part_specs[i].part_size >> 9;
     }
@@ -839,7 +842,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // adjust ZSO cache
     settings->common.zso_cache = hddCacheSize;
-    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, settings_index, size_mcemu_irx, pfs_bdm_mcemu_irx, EnablePS2Logo, compatMode, frag_table, hdl_header->num_partitions);
+    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, settings_index, size_mcemu_irx, pfs_bdm_mcemu_irx, EnablePS2Logo, compatMode, frag_table, frag_count);
 }
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
