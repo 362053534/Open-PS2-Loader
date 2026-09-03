@@ -1255,19 +1255,12 @@ static int CopyStartupName(const u8 *name, u32 nameLength, int udf, char *filena
     return 0;
 }
 
-static int ReadPOPSVCDSector(int fd, u32 sector)
-{
-    u64 offset = 0x100000ULL + (u64)sector * 2352ULL + 24ULL;
-
-    return lseek64(fd, offset, SEEK_SET) == offset && read(fd, IOBuffer, sizeof(IOBuffer)) == sizeof(IOBuffer) ? 0 : -1;
-}
-
 static int ReadPOPSVCDData(int fd, u8 *buffer, int length)
 {
     int total = 0;
     int result;
 
-    /* USB/SMB 可能短读，必须循环直到本批数据完整读入。 */
+    /* 各设备都可能短读，必须循环直到本批数据完整读入。 */
     while (total < length) {
         result = read(fd, &buffer[total], length - total);
         if (result <= 0)
@@ -1276,6 +1269,16 @@ static int ReadPOPSVCDData(int fd, u8 *buffer, int length)
     }
 
     return 0;
+}
+
+static int ReadPOPSVCDSector(int fd, u32 sector)
+{
+    u64 offset = 0x100000ULL + (u64)sector * 2352ULL + 24ULL;
+
+    if (lseek64(fd, offset, SEEK_SET) != offset)
+        return -1;
+
+    return ReadPOPSVCDData(fd, IOBuffer, sizeof(IOBuffer));
 }
 
 static int CopyPOPSVolumeName(const u8 *volumeId, char *name, int maxlength)
