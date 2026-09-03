@@ -294,8 +294,8 @@ static int ProbeZSO(u8 *buffer)
 #define ACCU_FAST_DELTA_CD    4371u
 #define ACCU_FAST_DELTA_DVD   14764u
 
-/* 机芯预读最多 16 扇区（对齐 PCSX2 缓冲）。KEEP=1：命中后至少留 1 扇区 CAV，避免扣成 0。 */
-#define ACCU_READAHEAD_SECTORS      16u
+/* 机芯预读。单变量测试：先关预读（0），KEEP 扣不到；抖没了就是窗口，还在再试整笔闹钟。 */
+#define ACCU_READAHEAD_SECTORS      0u
 #define ACCU_READAHEAD_KEEP_SECTORS 1u
 #define ACCU_READAHEAD_SMALL_MAX    0u /* 0=小读也走预读；试 8：≤8 扇区整笔不扣预读 */
 
