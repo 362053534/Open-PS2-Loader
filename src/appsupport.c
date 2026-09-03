@@ -2454,7 +2454,8 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
                 appGetBoot(device, sizeof(device), cur->val);
                 break;
             }
-        } else if (value == appsList[id].startup) {
+        } else if (value == appsList[id].startup ||
+                   (appsList[id].popstarter && value == appsList[id].boot)) {
             if (appsList[id].popstarter &&
                 (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
                  appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL)) {
