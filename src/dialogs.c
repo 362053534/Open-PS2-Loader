@@ -251,6 +251,11 @@ struct UIItem diaConfig[] = {
     {UI_ENUM, CFG_APPMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"APPS & PS1自动识别", -1}}},
+    {UI_SPACER},
+    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BREAK},
+
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_DEFDEVICE}}},
     {UI_SPACER},
     {UI_ENUM, CFG_DEFDEVICE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
@@ -268,11 +273,6 @@ struct UIItem diaConfig[] = {
     {UI_SPACER},
     {UI_INT, CFG_SMBCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 4, 0, 32, NULL}}},
     {UI_BREAK},
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动识别APPS & PS1", -1}}},
-    {UI_SPACER},
-    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
-    {UI_BREAK},
-
     // buttons
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
     {UI_BREAK},
