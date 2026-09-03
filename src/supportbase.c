@@ -1262,6 +1262,22 @@ static int ReadPOPSVCDSector(int fd, u32 sector)
     return lseek64(fd, offset, SEEK_SET) == offset && read(fd, IOBuffer, sizeof(IOBuffer)) == sizeof(IOBuffer) ? 0 : -1;
 }
 
+static int ReadPOPSVCDData(int fd, u8 *buffer, int length)
+{
+    int total = 0;
+    int result;
+
+    /* USB/SMB 可能短读，必须循环直到本批数据完整读入。 */
+    while (total < length) {
+        result = read(fd, &buffer[total], length - total);
+        if (result <= 0)
+            return -1;
+        total += result;
+    }
+
+    return 0;
+}
+
 static int CopyPOPSVolumeId(const u8 *volumeId, char *filename, int maxlength)
 {
     char startup[GAME_STARTUP_MAX];
@@ -1533,7 +1549,7 @@ static int ScanPOPSExeForId(int fd, const struct pops_exe_candidate *candidate, 
 
         if (lseek64(fd, 0x100000ULL + (u64)candidate->lba * 2352ULL +
                     (u64)(fileOffset / 2048) * 2352ULL, SEEK_SET) < 0 ||
-            read(fd, batchBuffer, physicalBytes) != (int)physicalBytes)
+            ReadPOPSVCDData(fd, batchBuffer, physicalBytes) != 0)
             return -1;
 
         for (sector = 0; sector < sectorCount; sector++) {
