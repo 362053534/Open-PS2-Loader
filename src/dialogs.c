@@ -261,6 +261,8 @@ struct UIItem diaConfig[] = {
     {UI_ENUM, CFG_DEFDEVICE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
+    /* 暂时隐藏三个扇区缓存设置入口，保留底层缓存功能。 */
+    /*
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"扇区缓存(BDM)", -1}}},
     {UI_SPACER},
     {UI_INT, CFG_BDMCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 8, 0, 32, NULL}}},
@@ -273,6 +275,7 @@ struct UIItem diaConfig[] = {
     {UI_SPACER},
     {UI_INT, CFG_SMBCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 4, 0, 32, NULL}}},
     {UI_BREAK},
+    */
     // buttons
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
     {UI_BREAK},
