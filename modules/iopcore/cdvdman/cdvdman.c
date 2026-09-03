@@ -279,6 +279,7 @@ static int ProbeZSO(u8 *buffer)
 }
 
 /* 模式1：光盘预算。先闹钟再读设备，总时间 max(设备, 光盘)，EE dest 仍在返回后才 SendEE。
+ * 不做机芯预读：扣空闲会让流式视频每隔几秒抖一下。
  * 余数 1 扇区保底在 cdvdfsv（按游戏一笔 EE 读判断），不放这里：ncmd 会把 9 扇区拆成 8+1。
  * 下面这些宏是调试旋钮：改毫秒/扇区即可。 */
 #define ACCU_PSXCLK 36864000u
@@ -294,17 +295,11 @@ static int ProbeZSO(u8 *buffer)
 #define ACCU_FAST_DELTA_CD    4371u
 #define ACCU_FAST_DELTA_DVD   14764u
 
-/* 机芯预读。单变量测试：先关预读（0），KEEP 扣不到；抖没了就是窗口，还在再试整笔闹钟。 */
-#define ACCU_READAHEAD_SECTORS      0u
-#define ACCU_READAHEAD_KEEP_SECTORS 1u
-#define ACCU_READAHEAD_SMALL_MAX    0u /* 0=小读也走预读；试 8：≤8 扇区整笔不扣预读 */
-
 /* 模式1 下每次 DeviceRead 的扇区上限，原版就是 8。 */
 #define ACCU_DEVICE_CHUNK_SECTORS 8u
 
 static u32 accu_next_lsn;
 static int accu_have_pos;
-static u32 accu_virt_end_lo;
 
 static u32 accu_add_sat(u32 a, u32 b)
 {
@@ -363,45 +358,9 @@ static u32 accu_seek_ticks(u32 lsn)
 
 static u32 accu_transfer_ticks(u32 lsn, unsigned int sectors)
 {
-    u32 ticks_ps;
-    u32 ticks;
-
     if (sectors == 0)
         return 0;
-
-    ticks_ps = accu_cav_ticks_per_sector(lsn);
-    ticks = accu_mul_sat(ticks_ps, sectors);
-
-    /* SMALL_MAX=0 时不跳过；>0 则 ≤该扇区数不扣预读。 */
-    if (ACCU_READAHEAD_SMALL_MAX && sectors <= ACCU_READAHEAD_SMALL_MAX)
-        return ticks;
-
-    /* 连续读：空闲期内最多按预读扇区扣传输；KEEP 为扣完后至少留下的扇区数。 */
-    if (accu_have_pos && lsn == accu_next_lsn) {
-        iop_sys_clock_t now;
-        u32 elapsed;
-        u32 ahead;
-        u32 keep_sectors = ACCU_READAHEAD_KEEP_SECTORS;
-        u32 keep;
-
-        GetSystemTime(&now);
-        elapsed = now.lo - accu_virt_end_lo;
-        ahead = accu_mul_sat(ticks_ps, ACCU_READAHEAD_SECTORS);
-        if (elapsed > ahead)
-            elapsed = ahead;
-        if (ticks > elapsed)
-            ticks -= elapsed;
-        else
-            ticks = 0;
-
-        if (keep_sectors > sectors)
-            keep_sectors = sectors;
-        keep = accu_mul_sat(ticks_ps, keep_sectors);
-        if (ticks < keep)
-            ticks = keep;
-    }
-
-    return ticks;
+    return accu_mul_sat(accu_cav_ticks_per_sector(lsn), sectors);
 }
 
 static u32 accu_budget_ticks(u32 lsn, unsigned int sectors)
@@ -416,7 +375,6 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     int endOfMedia = 0;
     int accu_armed = 0;
     u32 accu_budget = 0;
-    u32 accu_start_lo = 0;
     u32 start_lsn = lsn;
 
     DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p\n", lsn, sectors, buf);
@@ -440,13 +398,8 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 
     cdvdman_stat.err = SCECdErNO;
 
-    if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
-        iop_sys_clock_t now;
-
+    if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS)
         accu_budget = accu_budget_ticks(lsn, sectors);
-        GetSystemTime(&now);
-        accu_start_lo = now.lo;
-    }
     if (accu_budget) {
         iop_sys_clock_t TargetTime;
 
@@ -500,17 +453,10 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     if (accu_armed)
         WaitEventFlag(cdvdman_stat.intr_ef, 0x1000, WEF_AND, NULL);
 
+    /* 只给 seek 分档记头位置，不再记虚拟盘片时刻。 */
     if ((cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) && lsn != start_lsn) {
         accu_have_pos = 1;
         accu_next_lsn = lsn;
-        if (accu_budget) {
-            accu_virt_end_lo = accu_start_lo + accu_budget;
-        } else {
-            iop_sys_clock_t now;
-
-            GetSystemTime(&now);
-            accu_virt_end_lo = now.lo;
-        }
     }
 
     // If we had a read that went past the end of media, after reading what we can, set the end of media error.
