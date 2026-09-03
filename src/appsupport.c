@@ -1675,14 +1675,18 @@ retry_scan:
 
     if (result >= 0) {
         appPOPSCacheCommit();
-    } else if (!retried && cachePrefix != NULL && cachePrefix[0] != '\0') {
-        // 缓存可能是旧格式或损坏内容，首次扫描失败时清除当前来源并仅重试一次。
-        retried = 1;
-        appPOPSCacheEnd();
-        appFreeLinkedList(appsLinkedList);
-        if (appPOPSCacheBuildFilename(cacheFilename, cachePrefix) == 0)
-            remove(cacheFilename);
-        goto retry_scan;
+    } else {
+        LOG("APPSUPPORT POPS scan failed: source=%d result=%d retry=%d cacheEntries=%d\n",
+            sourceMode, result, retried, popsCacheCurrent.count);
+        if (!retried && cachePrefix != NULL && cachePrefix[0] != '\0') {
+            // 缓存可能是旧格式或损坏内容，首次扫描失败时清除当前来源并仅重试一次。
+            retried = 1;
+            appPOPSCacheEnd();
+            appFreeLinkedList(appsLinkedList);
+            if (appPOPSCacheBuildFilename(cacheFilename, cachePrefix) == 0)
+                remove(cacheFilename);
+            goto retry_scan;
+        }
     }
     appPOPSCacheEnd();
 
