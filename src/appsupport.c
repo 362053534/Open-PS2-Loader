@@ -1328,8 +1328,7 @@ static void appPOPSCacheLoad(void)
         pops_id_cache_entry_t *entry = &popsCacheLoaded.entries[i];
 
         if (memchr(entry->vcdName, '\0', sizeof(entry->vcdName)) == NULL ||
-            memchr(entry->parsedId, '\0', sizeof(entry->parsedId)) == NULL || entry->vcdName[0] == '\0' ||
-            (entry->parsedId[0] != '\0' && sbIsValidStartupExecName(entry->parsedId) != 0))
+            memchr(entry->parsedId, '\0', sizeof(entry->parsedId)) == NULL || entry->vcdName[0] == '\0')
             continue;
 
         if (validCount != i)
@@ -1911,9 +1910,13 @@ static char *appGetItemStartup(item_list_t *itemList, int id)
     if (appsList[id].legacy) {
         struct config_value_t *cur = appGetConfigValue(id);
         return appGetELFName(cur->val);
-    } else {
-        return appsList[id].startup;
     }
+
+    if (appsList[id].popstarter &&
+        (appsList[id].startup[0] == '\0' || sbIsValidStartupExecName(appsList[id].startup) != 0))
+        return appsList[id].boot;
+
+    return appsList[id].startup;
 }
 
 static void appDeleteItem(item_list_t *itemList, int id)
@@ -2290,7 +2293,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             }
         }
         if (gRememberLastPlayed) {
-            configSetStr(configGetByType(CONFIG_LAST), "last_played", appsList[id].startup);
+            configSetStr(configGetByType(CONFIG_LAST), "last_played", appGetItemStartup(itemList, id));
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
@@ -2359,7 +2362,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             argc = 1;
         }
         if (gRememberLastPlayed) {
-            configSetStr(configGetByType(CONFIG_LAST), "last_played", appsList[id].startup);
+            configSetStr(configGetByType(CONFIG_LAST), "last_played", appGetItemStartup(itemList, id));
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
