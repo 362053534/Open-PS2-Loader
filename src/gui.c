@@ -1063,6 +1063,49 @@ int guiDeferUpdate(struct gui_update_t *op)
     return ret;
 }
 
+// 按当前选中项所在页对齐 pagestart，避免“记住上次游戏”把它提到当前页第一项。
+static void submenuSetPageForCurrent(menu_item_t *menu)
+{
+    theme_element_t *itemsListElem = NULL;
+    item_list_t *list;
+    submenu_list_t *cur;
+    int displayedItems = 1;
+    int index = 0;
+
+    if (!menu || !menu->submenu || !menu->current)
+        return;
+
+    list = menu->userdata;
+    if (gTheme) {
+        if (list && list->mode == APP_MODE)
+            itemsListElem = gTheme->appsItemsList;
+        else
+            itemsListElem = gTheme->gamesItemsList;
+
+        if (!itemsListElem)
+            itemsListElem = gTheme->itemsList;
+    }
+
+    if (itemsListElem && itemsListElem->extended) {
+        displayedItems = ((items_list_t *)itemsListElem->extended)->displayedItems;
+        if (displayedItems < 1)
+            displayedItems = 1;
+    }
+
+    // 先数出选中项在当前页内的偏移，再沿 prev 回退到页首
+    for (cur = menu->submenu; cur && cur != menu->current; cur = cur->next)
+        index++;
+
+    index %= displayedItems;
+    cur = menu->current;
+    while (index > 0 && cur->prev) {
+        cur = cur->prev;
+        index--;
+    }
+
+    menu->pagestart = cur;
+}
+
 static void guiHandleOp(struct gui_update_t *item)
 {
     submenu_list_t *result = NULL;
@@ -1087,8 +1130,8 @@ static void guiHandleOp(struct gui_update_t *item)
             }
             if (item->submenu.selected) { // remember last played game feature
                 item->menu.menu->current = result;
-                item->menu.menu->pagestart = result;
                 item->menu.menu->remindLast = 1;
+                submenuSetPageForCurrent(item->menu.menu);
 
                 // Last Played Auto Start
                 if ((gAutoStartLastPlayed) && !(KeyPressedOnce))
@@ -1116,7 +1159,8 @@ static void guiHandleOp(struct gui_update_t *item)
             if (!item->menu.menu->remindLast)
                 item->menu.menu->current = item->menu.menu->submenu;
 
-            item->menu.menu->pagestart = item->menu.menu->current;
+            // 排序后按新顺序重算页起点，保持选中项在其真实页内位置
+            submenuSetPageForCurrent(item->menu.menu);
             break;
 
         case GUI_OP_ADD_HINT:
