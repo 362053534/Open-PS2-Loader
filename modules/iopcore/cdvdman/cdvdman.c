@@ -987,7 +987,8 @@ int _start(int argc, char **argv)
     // init disk type stuff
     cdvdman_initDiskType();
 
-    FanSpeedChange_2(0x00);
+    // 风扇控制命令暂时停用，待实机确认不同型号上的实际效果后再启用。
+    // FanSpeedChange_2(0x00);
     return MODULE_RESIDENT_END;
 }
 
