@@ -665,22 +665,26 @@ int oplPath2Mode(const char *path)
     return -1;
 }
 
-int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
-    //int i, remaining, elfbootmode;
-    //char priority;
     item_list_t *listSupport;
 
-    if (device != NULL) {
-        int elfbootmode = oplPath2Mode(device);
-        if (elfbootmode >= 0) {
-            listSupport = list_support[elfbootmode].support;
-            if ((listSupport != NULL) && (listSupport->enabled)) {
-                if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
-                    return 0;
-            }
-        }
+    if (mode < BDM_MODE || mode > HDD_MODE)
+        return -1;
+
+    listSupport = list_support[mode].support;
+    if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
+        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+            return 0;
     }
+
+    return -1;
+}
+
+int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+{
+    if (device != NULL)
+        return oplGetAppImageByMode(oplPath2Mode(device), folder, isRelative, value, suffix, resultTex, psm);
     // device为NULL时的全设备扫描分支已不再使用（MC现改为本卡ART/）
     //else {
     //    //// We search on ever devices from fatest to slowest.

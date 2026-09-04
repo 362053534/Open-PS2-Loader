@@ -81,6 +81,7 @@
 #define OPL_HDD_POPS_SOURCE_OPL    2
 
 int oplPath2Mode(const char *path);
+int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg);
 int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);

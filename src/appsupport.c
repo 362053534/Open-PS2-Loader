@@ -425,6 +425,10 @@ static int appResolveMode(const app_info_t *app)
          app->popsHddSource == OPL_HDD_POPS_SOURCE_OPL))
         return HDD_MODE;
 
+    // 扫描时已经记下设备，读图和启动都不要再从路径反推
+    if (app->sourceMode >= BDM_MODE && app->sourceMode <= APP_SOURCE_MC)
+        return app->sourceMode;
+
     return oplPath2Mode(app->path);
 }
 
@@ -2451,43 +2455,58 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
 
 static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
-    char device[8] = "", *startup;
+    char device[8] = "";
+    char dummy[8] = "";
+    char *artValue = value;
+    char *srcPath = NULL;
     int id;
+    int mode;
+    const app_info_t *app = NULL;
 
     for (id = 0; id < appItemCount; id++) {
         if (appsList[id].legacy) {
             struct config_value_t *cur = appGetConfigValue(id);
             if (value == appGetELFName(cur->val)) {
-                appGetBoot(device, sizeof(device), cur->val);
+                app = &appsList[id];
+                srcPath = cur->val;
                 break;
             }
         } else if (value == appsList[id].startup ||
                    (appsList[id].popstarter && value == appsList[id].boot)) {
-            if (appsList[id].popstarter &&
-                (appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_LEGACY ||
-                 appsList[id].popsHddSource == OPL_HDD_POPS_SOURCE_OPL)) {
-                /* HDD POPS的ART固定来自工作分区，不能按pfs1临时槽位判断设备。 */
-                appGetBoot(device, sizeof(device), gHDDPrefix);
-            } else {
-                appGetBoot(device, sizeof(device), appsList[id].path);
-            }
+            app = &appsList[id];
+            srcPath = appsList[id].path;
             break;
         }
     }
 
-    startup = appGetBoot(device, sizeof(device), value);
+    if (!strcmp(folder, "ART") && value)
+        artValue = appGetBoot(dummy, sizeof(dummy), value);
 
-    if (!strcmp(folder, "ART")) {
-        // 记忆卡ELF：只从卡根 ART/ 读取，不扫其它设备
-        if (!strncmp(device, "mc", 2)) {
-            char path[128];
+    if (!app)
+        return -1;
 
-            snprintf(path, sizeof(path), "%sART/%s_%s", device, startup, suffix);
-            return texDiscoverLoad(resultTex, path, -1);
-        }
-        return oplGetAppImage(device, folder, isRelative, startup, suffix, resultTex, psm);
-    } else
-        return oplGetAppImage(device, folder, isRelative, value, suffix, resultTex, psm);
+    mode = appResolveMode(app);
+    if (mode >= BDM_MODE && mode <= HDD_MODE)
+        return oplGetAppImageByMode(mode, folder, isRelative, artValue, suffix, resultTex, psm);
+
+    // 记忆卡或旧配置：还需要从路径认出 mc0/mc1
+    if (srcPath)
+        appGetBoot(device, sizeof(device), srcPath);
+
+    if (!strncmp(device, "mc", 2)) {
+        char path[128];
+
+        if (strcmp(folder, "ART"))
+            return -1;
+
+        snprintf(path, sizeof(path), "%sART/%s_%s", device, artValue, suffix);
+        return texDiscoverLoad(resultTex, path, -1);
+    }
+
+    if (device[0])
+        return oplGetAppImage(device, folder, isRelative, artValue, suffix, resultTex, psm);
+
+    return -1;
 }
 
 static int appGetTextId(item_list_t *itemList)
