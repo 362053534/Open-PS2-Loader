@@ -18,6 +18,7 @@
 
 #include <ee_regs.h>
 #include <iopcontrol.h>
+#include <sifrpc.h>
 #include "asm.h"
 #include "ee_core.h"
 #include "iopmgr.h"
@@ -35,6 +36,9 @@
 #include "cheat_api.h"
 #include "cd_igr_rpc.h"
 #include "coreconfig.h"
+#define NEWLIB_PORT_AWARE
+#include <fileXio.h>
+#include <io_common.h>
 
 /* scePadPortOpen & scePad2CreateSocket prototypes */
 static int (*scePadPortOpen)(int port, int slot, void *addr);
@@ -58,6 +62,30 @@ static u8 IGR_Stack[IGR_STACK_SIZE] __attribute__((aligned(16)));
 extern void *_gp;
 extern void *_end;
 
+static SifRpcClientData_t fileXioClient __attribute__((section(".ramD0")));
+static u32 fileXioBuffer[(sizeof(struct fxio_mount_packet) + 3) / 4] __attribute__((section(".ramD0"), aligned(64)));
+
+// IGR 只需要挂载 PFS，使用最小 RPC 避免引入完整 fileXio 缓冲区。
+static int mountPfs(const char *partition)
+{
+    struct fxio_mount_packet *packet = (struct fxio_mount_packet *)fileXioBuffer;
+    int ret, result;
+
+    memset(&fileXioClient, 0, sizeof(fileXioClient));
+    while ((ret = SifBindRpc(&fileXioClient, FILEXIO_IRX, 0)) >= 0 && !fileXioClient.server)
+        nopdelay();
+    if (ret < 0)
+        return ret;
+
+    memset(packet, 0, sizeof(*packet));
+    strncpy(packet->blockdevice, partition, sizeof(packet->blockdevice) - 1);
+    memcpy(packet->mountpoint, "pfs0:", sizeof("pfs0:"));
+    packet->flags = FIO_MT_RDONLY;
+
+    ret = SifCallRpc(&fileXioClient, FILEXIO_MOUNT, 0, packet, sizeof(*packet), &result, sizeof(result), NULL, NULL);
+    return ret < 0 ? ret : result;
+}
+
 // Load home ELF
 static void t_loadElf(void)
 {
@@ -65,6 +93,9 @@ static void t_loadElf(void)
     int ret;
     char *argv[2];
     t_ExecData elf;
+    const char *loadPath = config->ExitPath;
+    char pfsPath[CORE_EXIT_PATH_MAX_LEN];
+    char partition[CORE_EXIT_PATH_MAX_LEN];
 
     if (EnableDebug)
         DBGCOL(0x80FF00, LOADELF, "t_loadElf() begins");
@@ -84,6 +115,7 @@ static void t_loadElf(void)
     // Load basic modules
     LoadModule("rom0:SIO2MAN", 0, NULL);
     LoadModule("rom0:MCMAN", 0, NULL);
+    delay(1);
 
     if (config->ExitPath[1] == 'a') { // ie mass:
         ret = LoadModule("mc0:SYS-CONF/USBD.IRX", 0, NULL);
@@ -94,10 +126,80 @@ static void t_loadElf(void)
             LoadModule("mc1:SYS-CONF/USBHDFSD.IRX", 0, NULL);
         }
         delay(5); // Wait for device to be detected.
+    } else if ((_toupper(config->ExitPath[0]) == 'H' && _toupper(config->ExitPath[1]) == 'D' &&
+                _toupper(config->ExitPath[2]) == 'D' && config->ExitPath[3] == '0' && config->ExitPath[4] == ':') ||
+               (_toupper(config->ExitPath[0]) == 'P' && _toupper(config->ExitPath[1]) == 'F' &&
+                _toupper(config->ExitPath[2]) == 'S' && config->ExitPath[3] == '0' && config->ExitPath[4] == ':')) {
+        // HDD/PFS 路径需要先恢复 APA、PFS 文件系统模块。
+        LoadModule("rom0:ATAD", 0, NULL);
+        LoadModule("rom0:PS2HDD", 0, NULL);
+        LoadModule("rom0:PFS", 0, NULL);
+
+        if (_toupper(config->ExitPath[0]) == 'H' && _toupper(config->ExitPath[1]) == 'D' &&
+            _toupper(config->ExitPath[2]) == 'D' && config->ExitPath[3] == '0' && config->ExitPath[4] == ':') {
+            const char *path = config->ExitPath + 5;
+            const char *separator;
+            const char *filePath;
+            int pfsLength;
+
+            while (*path == '/' || *path == '\\')
+                path++;
+            separator = path;
+            while (*separator && *separator != '/' && *separator != '\\' && *separator != ':')
+                separator++;
+            if (*separator) {
+                int partitionLength = separator - path;
+
+                memcpy(partition, "hdd0:", 5);
+                memcpy(partition + 5, path, partitionLength);
+                partition[5 + partitionLength] = '\0';
+                memcpy(pfsPath, "pfs0:/", 6);
+                pfsLength = 6;
+                filePath = separator;
+                if (*filePath == ':')
+                    filePath++;
+                while (*filePath == '/' || *filePath == '\\')
+                    filePath++;
+                while (*filePath && pfsLength < (int)sizeof(pfsPath) - 1) {
+                    char c = *filePath++;
+                    if (c == '\\')
+                        c = '/';
+                    if (c == '/' && pfsLength > 6 && pfsPath[pfsLength - 1] == '/')
+                        continue;
+                    pfsPath[pfsLength++] = c;
+                }
+                pfsPath[pfsLength] = '\0';
+
+                // 先恢复挂载，再把用户填写的 hdd0: 路径转换成分区感知的加载参数。
+                if (mountPfs(partition) == 0)
+                    loadPath = pfsPath;
+            }
+        } else {
+            const char *path = config->ExitPath + 5;
+            int pfsLength;
+
+            while (*path == '/' || *path == '\\')
+                path++;
+            memcpy(pfsPath, "pfs0:/", 6);
+            pfsLength = 6;
+            while (*path && pfsLength < (int)sizeof(pfsPath) - 1) {
+                char c = *path++;
+                if (c == '\\')
+                    c = '/';
+                if (c == '/' && pfsLength > 6 && pfsPath[pfsLength - 1] == '/')
+                    continue;
+                pfsPath[pfsLength++] = c;
+            }
+            pfsPath[pfsLength] = '\0';
+
+            // pfs0: 路径固定对应 +OPL 分区，避免依赖重启前的挂载状态。
+            if (mountPfs("hdd0:+OPL") == 0)
+                loadPath = pfsPath;
+        }
     }
 
     // Load exit ELF
-    argv[0] = config->ExitPath;
+    argv[0] = (char *)loadPath;
     argv[1] = NULL;
 
     // Wipe everything, even the module storage.
@@ -106,8 +208,11 @@ static void t_loadElf(void)
     FlushCache(0);
 
     ret = LoadElf(argv[0], &elf);
-    if (ret) {
-        // 设备在IOP重启后可能尚未立即就绪，统一补一次有限重试。
+    while (ret) {
+        // 失败后重新绑定 LOADFILE，避免沿用失效的 RPC 客户端状态。
+        LoadFileExit();
+        SifExitRpc();
+        SifInitRpc(0);
         delay(1);
         ret = LoadElf(argv[0], &elf);
     }
@@ -275,7 +380,9 @@ int IGRResetComboTrigger = 0; // IGR连续按两次重启的变量
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
 static int IGR_Intc_Handler(int cause)
 {
+#ifdef IGS
     USE_LOCAL_EECORE_CONFIG;
+#endif
     int i;
     u8 pad_pos_state, pad_pos_frame, pad_pos_combo1, pad_pos_combo2;
 
