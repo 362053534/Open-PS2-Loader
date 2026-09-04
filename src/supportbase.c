@@ -1590,16 +1590,9 @@ static int ScanPOPSExeForId(int fd, const struct pops_exe_candidate *candidate, 
         physicalBytes = sectorCount * 2352;
 
         if (lseek64(fd, 0x100000ULL + (u64)candidate->lba * 2352ULL +
-                    (u64)(fileOffset / 2048) * 2352ULL, SEEK_SET) < 0) {
-            LOG("[POPS-ID] EXE seek failed: candidate=%s lba=%u offset=%u\n",
-                candidate->name, candidate->lba, fileOffset);
+                    (u64)(fileOffset / 2048) * 2352ULL, SEEK_SET) < 0 ||
+            ReadPOPSVCDData(fd, batchBuffer, physicalBytes) != 0)
             return -1;
-        }
-        if (ReadPOPSVCDData(fd, batchBuffer, physicalBytes) != 0) {
-            LOG("[POPS-ID] EXE read failed: candidate=%s lba=%u offset=%u bytes=%u\n",
-                candidate->name, candidate->lba, fileOffset, physicalBytes);
-            return -1;
-        }
 
         for (sector = 0; sector < sectorCount; sector++) {
             u32 bytes = logicalBytes - sector * 2048;
@@ -1626,7 +1619,7 @@ static int ScanPOPSExeForId(int fd, const struct pops_exe_candidate *candidate, 
 
 int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
 {
-    int fd, result = -1, pvdResult;
+    int fd, result = -1;
     u8 volumeId[32];
     char volumeName[33];
     u32 rootLBA, rootSize, sector;
@@ -1639,25 +1632,14 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
     u8 *batchBuffer = NULL;
 
     volumeName[0] = '\0';
-    LOG("[POPS-ID] begin: %s\n", path);
-    if (maxlength < GAME_STARTUP_MAX - 1) {
-        LOG("[POPS-ID] invalid output buffer: %s maxlength=%d\n", path, maxlength);
+    if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
         return -1;
-    }
-    fd = open(path, O_RDONLY, 0666);
-    if (fd < 0) {
-        LOG("[POPS-ID] open failed: %s\n", path);
-        return -1;
-    }
 
     /* POPS VCD的ISO数据位于固定头部之后，物理扇区包含24字节附加头。 */
-    pvdResult = ReadPOPSVCDSector(fd, 16);
-    if (pvdResult == 0 && IOBuffer[0] == 1 && !memcmp(&IOBuffer[1], "CD001", 5) && IOBuffer[156] >= 34) {
+    if (ReadPOPSVCDSector(fd, 16) == 0 && IOBuffer[0] == 1 && !memcmp(&IOBuffer[1], "CD001", 5) && IOBuffer[156] >= 34) {
         memcpy(volumeId, &IOBuffer[40], sizeof(volumeId));
         rootLBA = ReadLE32(&IOBuffer[158]);
         rootSize = ReadLE32(&IOBuffer[166]);
-        LOG("[POPS-ID] PVD ok: %s rootLBA=%u rootSize=%u volume=%.32s\n",
-            path, rootLBA, rootSize, volumeId);
 
         for (sector = 0; sector < (rootSize + 2047) / 2048 && result != 0; sector++) {
             u32 position = 0;
@@ -1717,27 +1699,18 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
             }
         }
 
-        LOG("[POPS-ID] root scan: %s result=%d rootCandidates=%d directories=%d\n",
-            path, result, candidateCount, directoryCount);
         if (result != 0) {
             result = CopyPOPSVolumeId(volumeId, filename, maxlength);
-            LOG("[POPS-ID] volume ID fallback: %s result=%d value=%s\n",
-                path, result, result == 0 ? filename : "");
             if (result != 0 && CopyPOPSVolumeName(volumeId, volumeName, sizeof(volumeName)) == 0) {
                 for (sector = 0; sector < (u32)candidateCount; sector++) {
                     if (candidates[sector].depth == 0 &&
                         IsPOPSExeNameContaining(candidates[sector].name, volumeName)) {
                         volumeCandidate = &candidates[sector];
                         volumeCandidateOrder = candidates[sector].order;
-                        LOG("[POPS-ID] volume match: %s candidate=%s lba=%u size=%u\n",
-                            path, volumeCandidate->name, volumeCandidate->lba, volumeCandidate->size);
                         break;
                     }
                 }
             }
-            if (result != 0)
-                LOG("[POPS-ID] volume name: %s name=%s matched=%d\n",
-                    path, volumeName, volumeCandidate != NULL);
         }
 
         if (result != 0 && candidateCount == 0) {
@@ -1752,21 +1725,15 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
                 if (collectResult < 0)
                     result = -1;
             }
-            LOG("[POPS-ID] recursive candidates: %s result=%d candidates=%d directories=%d used=%u\n",
-                path, result, candidateCount, directoryCount, scanUsed);
         }
 
         if (result != 0 && candidateCount > 0) {
             batchBuffer = malloc(POPS_ID_SCAN_BATCH_BYTES);
             if (batchBuffer != NULL) {
                 /* 卷名匹配的根目录EXE优先完整扫描，通用候选才受1MB预算限制。 */
-                if (volumeCandidate != NULL) {
-                    int candidateResult = ScanPOPSExeForId(fd, volumeCandidate, &scanUsed, 0, batchBuffer, filename, maxlength);
-                    LOG("[POPS-ID] volume candidate scan: %s candidate=%s result=%d used=%u\n",
-                        path, volumeCandidate->name, candidateResult, scanUsed);
-                    if (candidateResult == 0)
-                        result = 0;
-                }
+                if (volumeCandidate != NULL &&
+                    ScanPOPSExeForId(fd, volumeCandidate, &scanUsed, 0, batchBuffer, filename, maxlength) == 0)
+                    result = 0;
 
                 qsort(candidates, candidateCount, sizeof(struct pops_exe_candidate), ComparePOPSExeCandidates);
                 if (volumeCandidate != NULL)
@@ -1774,27 +1741,15 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
                 for (sector = 0; result != 0 && sector < (u32)candidateCount && scanUsed < POPS_ID_SCAN_LIMIT; sector++) {
                     if (candidates[sector].order == volumeCandidateOrder)
                         continue;
-                    int candidateResult = ScanPOPSExeForId(fd, &candidates[sector], &scanUsed, POPS_ID_SCAN_LIMIT,
-                                                          batchBuffer, filename, maxlength);
-                    if (candidates[sector].priority <= 1)
-                        LOG("[POPS-ID] priority candidate scan: %s candidate=%s depth=%d size=%u result=%d used=%u\n",
-                            path, candidates[sector].name, candidates[sector].depth, candidates[sector].size,
-                            candidateResult, scanUsed);
-                    if (candidateResult == 0) {
+                    if (ScanPOPSExeForId(fd, &candidates[sector], &scanUsed, POPS_ID_SCAN_LIMIT,
+                                         batchBuffer, filename, maxlength) == 0) {
                         result = 0;
                         break;
                     }
                 }
-                LOG("[POPS-ID] generic scan done: %s result=%d candidates=%d used=%u value=%s\n",
-                    path, result, candidateCount, scanUsed, result == 0 ? filename : "");
             }
-            else
-                LOG("[POPS-ID] scan buffer allocation failed: %s\n", path);
         }
     }
-    else
-        LOG("[POPS-ID] PVD invalid: %s read=%d type=%u ident=%.5s rootRecordLength=%u\n",
-            path, pvdResult, IOBuffer[0], &IOBuffer[1], IOBuffer[156]);
 
     if (batchBuffer != NULL)
         free(batchBuffer);
@@ -1803,7 +1758,6 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
     if (candidates != NULL)
         free(candidates);
     close(fd);
-    LOG("[POPS-ID] end: %s result=%d value=%s\n", path, result, result == 0 ? filename : "");
     return result;
 }
 

@@ -1359,7 +1359,7 @@ static void appPOPSCacheCommit(void)
 {
     char filename[POPS_CACHE_PATH_MAX];
     FILE *file;
-    int i, writeCount, syncResult;
+    int i, writeCount;
     int unchanged;
 
     if (!popsCacheActive)
@@ -1403,14 +1403,8 @@ static void appPOPSCacheCommit(void)
     fclose(file);
 
     /* PFS会延迟刷新目录项，显式同步可避免缓存必须等到分区卸载后才可见。 */
-    if (strncmp(popsCachePrefix, "pfs", 3) == 0) {
-        syncResult = fileXioSync(popsCachePrefix, 0);
-        if (syncResult < 0)
-            LOG("APPSUPPORT POPS ID cache sync failed: path=%s result=%d\n", filename, syncResult);
-        else
-            LOG("APPSUPPORT POPS ID cache sync: path=%s entries=%d result=%d\n",
-                filename, popsCacheCurrent.count, syncResult);
-    }
+    if (strncmp(popsCachePrefix, "pfs", 3) == 0)
+        fileXioSync(popsCachePrefix, 0);
 }
 
 static void appPOPSCacheEnd(void)
@@ -1688,18 +1682,14 @@ retry_scan:
 
     if (result >= 0) {
         appPOPSCacheCommit();
-    } else {
-        LOG("APPSUPPORT POPS scan failed: source=%d result=%d retry=%d cacheEntries=%d\n",
-            sourceMode, result, retried, popsCacheCurrent.count);
-        if (!retried && cachePrefix != NULL && cachePrefix[0] != '\0') {
-            // 缓存可能是旧格式或损坏内容，首次扫描失败时清除当前来源并仅重试一次。
-            retried = 1;
-            appPOPSCacheEnd();
-            appFreeLinkedList(appsLinkedList);
-            if (appPOPSCacheBuildFilename(cacheFilename, cachePrefix) == 0)
-                remove(cacheFilename);
-            goto retry_scan;
-        }
+    } else if (!retried && cachePrefix != NULL && cachePrefix[0] != '\0') {
+        // 缓存可能是旧格式或损坏内容，首次扫描失败时清除当前来源并仅重试一次。
+        retried = 1;
+        appPOPSCacheEnd();
+        appFreeLinkedList(appsLinkedList);
+        if (appPOPSCacheBuildFilename(cacheFilename, cachePrefix) == 0)
+            remove(cacheFilename);
+        goto retry_scan;
     }
     appPOPSCacheEnd();
 
