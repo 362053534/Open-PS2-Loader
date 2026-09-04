@@ -2457,9 +2457,18 @@ void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const cha
         }
     }
 
-    if (bucket)
+    if (bucket) {
+        /* 锁到 PS1/PS2 时 BG/SCR 用带序号的文件名；退回 GAMES 仍用旧后缀。 */
+        if ((!strcmp(bucket, "PS1") || !strcmp(bucket, "PS2")) && suffix) {
+            if (!strcmp(suffix, "BG"))
+                suffix = "BG_00";
+            else if (!strcmp(suffix, "SCR"))
+                suffix = "SCR_00";
+            else if (!strcmp(suffix, "SCR2"))
+                suffix = "SCR_01";
+        }
         snprintf(path, pathSize, "%sART2%s%s%s%s%s%s_%s", prefix, sep, bucket, sep, value, sep, value, suffix);
-    else
+    } else
         snprintf(path, pathSize, "%s%s%s%s_%s", prefix, artFolder, sep, value, suffix);
 }
 
