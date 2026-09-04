@@ -1357,6 +1357,7 @@ struct pops_directory_candidate
 {
     u32 lba;
     u32 size;
+    int depth;
 };
 
 static int IsPOPSExeName(const char *name)
@@ -1417,7 +1418,7 @@ static int AppendPOPSExeCandidate(struct pops_exe_candidate **candidates, int *c
 }
 
 static int AppendPOPSDirectoryCandidate(struct pops_directory_candidate **directories, int *count, int *capacity,
-                                         u32 lba, u32 size)
+                                         u32 lba, u32 size, int depth)
 {
     struct pops_directory_candidate *newDirectories;
     int newCapacity;
@@ -1433,6 +1434,7 @@ static int AppendPOPSDirectoryCandidate(struct pops_directory_candidate **direct
 
     (*directories)[*count].lba = lba;
     (*directories)[*count].size = size;
+    (*directories)[*count].depth = depth;
     (*count)++;
     return 0;
 }
@@ -1455,7 +1457,8 @@ static int ComparePOPSExeCandidates(const void *left, const void *right)
 
 static int CollectPOPSExeCandidates(int fd, u32 directoryLBA, u32 directorySize, int depth,
                                     struct pops_exe_candidate **candidates, int *candidateCount, int *candidateCapacity,
-                                    u32 *scanUsed, u32 *order)
+                                    struct pops_directory_candidate **directories, int *directoryCount,
+                                    int *directoryCapacity, u32 *scanUsed, u32 *order)
 {
     u32 sector;
 
@@ -1500,11 +1503,11 @@ static int CollectPOPSExeCandidates(int fd, u32 directoryLBA, u32 directorySize,
 
             if (IOBuffer[position + 25] & 2) {
                 if (nameLength != 1 || (name[0] != 0 && name[0] != 1)) {
-                    int result = CollectPOPSExeCandidates(fd, entryLBA, entrySize, depth + 1,
-                                                          candidates, candidateCount, candidateCapacity,
-                                                          scanUsed, order);
-                    if (result != 0)
-                        return result;
+                    /* 使用目录队列而不是递归，避免子目录读取覆盖父目录仍在解析的IOBuffer。 */
+                    if (depth < POPS_ID_SCAN_MAX_DEPTH &&
+                        AppendPOPSDirectoryCandidate(directories, directoryCount, directoryCapacity,
+                                                     entryLBA, entrySize, depth + 1) < 0)
+                        return -1;
                 }
             } else if (IsPOPSExeName(entryName) && !IsPOPSPSXExeName(entryName)) {
                 if (AppendPOPSExeCandidate(candidates, candidateCount, candidateCapacity,
@@ -1692,7 +1695,7 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
                 if (IOBuffer[position + 25] & 2) {
                     if (nameLength != 1 || (name[0] != 0 && name[0] != 1)) {
                         if (AppendPOPSDirectoryCandidate(&directories, &directoryCount, &directoryCapacity,
-                                                         entryLBA, entrySize) < 0) {
+                                                         entryLBA, entrySize, 1) < 0) {
                             result = -1;
                             break;
                         }
@@ -1739,9 +1742,13 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
 
         if (result != 0 && candidateCount == 0) {
             for (sector = 0; sector < (u32)directoryCount; sector++) {
-                int collectResult = CollectPOPSExeCandidates(fd, directories[sector].lba, directories[sector].size, 1,
+                int collectResult = CollectPOPSExeCandidates(fd, directories[sector].lba, directories[sector].size,
+                                                             directories[sector].depth,
                                                              &candidates, &candidateCount, &candidateCapacity,
+                                                             &directories, &directoryCount, &directoryCapacity,
                                                              &scanUsed, &order);
+                if (collectResult > 0)
+                    break;
                 if (collectResult < 0)
                     result = -1;
             }
