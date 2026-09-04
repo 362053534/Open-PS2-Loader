@@ -32,11 +32,11 @@ int bdmDeviceModeStarted;
 static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
 
-// 判断BDM设备是否使用ART2文件夹
-static int artUseBuckets_USB = 0;
-static int artUseBuckets_ILINK = 0;
-static int artUseBuckets_SDC = 0;
-static int artUseBuckets_ATA = 0;
+// 各BDM类型在设备初始化时探测一次 ART2 分桶
+static art_buckets_t artBuckets_USB;
+static art_buckets_t artBuckets_ILINK;
+static art_buckets_t artBuckets_SDC;
+static art_buckets_t artBuckets_ATA;
 
 void bdmInitDevicesData();
 
@@ -954,34 +954,22 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
 static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
+    const art_buckets_t *buckets = NULL;
+    char path[256];
 
     if (!value || pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)
         return ERR_BAD_FILE;
 
-    char path[256];
-    if (isRelative) {
-        // 根据BDM类型开启相应的分桶开关
-        int artUseBuckets = 0;
-        if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-            artUseBuckets = artUseBuckets_USB;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-            artUseBuckets = artUseBuckets_ILINK;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-            artUseBuckets = artUseBuckets_SDC;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-            artUseBuckets = artUseBuckets_ATA;
+    if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+        buckets = &artBuckets_USB;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+        buckets = &artBuckets_ILINK;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+        buckets = &artBuckets_SDC;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+        buckets = &artBuckets_ATA;
 
-        if (artUseBuckets) {
-            int len = strlen(value);
-            if (len >= 4 && (value[len - 1] == 'F' || value[len - 1] == 'f'))
-                snprintf(path, sizeof(path), "%sART2/APPS/%s/%s_%s", pDeviceData->bdmPrefix, value, value, suffix);
-            else
-                snprintf(path, sizeof(path), "%sART2/GAMES/%s/%s_%s", pDeviceData->bdmPrefix, value, value, suffix);
-        } else
-            snprintf(path, sizeof(path), "%s%s/%s_%s", pDeviceData->bdmPrefix, folder, value, suffix);
-    } else
-        snprintf(path, sizeof(path), "%s%s_%s", folder, value, suffix);
-
+    sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", buckets, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 
@@ -1260,24 +1248,19 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             else
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
 
-            // 根据BDM类型开启相应的分桶开关
-            char art2Path[128];
-            snprintf(art2Path, sizeof(art2Path), "%sART2", pDeviceData->bdmPrefix);
+            // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
-                DIR *art2Dir = opendir(art2Path);
-                int artUseBuckets = art2Dir ? 1 : 0;
+                art_buckets_t buckets;
 
-                if (art2Dir)
-                    closedir(art2Dir);
-
+                sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                    artUseBuckets_USB = artUseBuckets;
+                    artBuckets_USB = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                    artUseBuckets_ILINK = artUseBuckets;
+                    artBuckets_ILINK = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                    artUseBuckets_SDC = artUseBuckets;
+                    artBuckets_SDC = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                    artUseBuckets_ATA = artUseBuckets;
+                    artBuckets_ATA = buckets;
             }
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.

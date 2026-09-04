@@ -59,6 +59,26 @@ void sbRename(base_game_info_t **list, const char *prefix, const char *sep, int 
 config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const char *sep);
 void sbCreateFolders(const char *path, int createDiscImgFolders);
 
+/* 内部标记，不能当真实目录名。回退 ART 时要还原成 ART_FOLDER_NAME。 */
+#define ART_FOLDER_NAME "ART"
+#define ART_FOLDER_PS1  "ART_PS1"
+#define ART_FOLDER_ELF  "ART_ELF"
+
+/* 设备初始化时探测一次，读图只看这些标志，不再 opendir。 */
+typedef struct
+{
+    unsigned char useBuckets;
+    unsigned char hasPS2;
+    unsigned char hasPS1;
+    unsigned char hasAPPS;
+    unsigned char hasGAMES;
+} art_buckets_t;
+
+void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets);
+void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
+                         const art_buckets_t *buckets, const char *folder, int isRelative,
+                         const char *value, const char *suffix);
+
 // ISO9660 filesystem management functions.
 u32 sbGetISO9660MaxLBA(const char *path);
 int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset);

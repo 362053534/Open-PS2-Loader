@@ -14,6 +14,8 @@
 #include "include/ps2cnf.h"
 #include "include/gui.h"
 
+#include <dirent.h>
+
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
 #include <io_common.h>   // FIO_MT_RDONLY
@@ -2378,6 +2380,87 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
 
     if (createDiscImgFolders)
         sbCreateFoldersFromList(path, discImgFolders);
+}
+
+static int sbArtDirExists(const char *path)
+{
+    DIR *dir = opendir(path);
+
+    if (!dir)
+        return 0;
+
+    closedir(dir);
+    return 1;
+}
+
+void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)
+{
+    char path[128];
+
+    if (!buckets)
+        return;
+
+    memset(buckets, 0, sizeof(*buckets));
+    if (!prefix || !sep)
+        return;
+
+    snprintf(path, sizeof(path), "%sART2", prefix);
+    if (!sbArtDirExists(path))
+        return;
+
+    buckets->useBuckets = 1;
+
+    snprintf(path, sizeof(path), "%sART2%sPS2", prefix, sep);
+    buckets->hasPS2 = sbArtDirExists(path);
+
+    snprintf(path, sizeof(path), "%sART2%sPS1", prefix, sep);
+    buckets->hasPS1 = sbArtDirExists(path);
+
+    snprintf(path, sizeof(path), "%sART2%sAPPS", prefix, sep);
+    buckets->hasAPPS = sbArtDirExists(path);
+
+    snprintf(path, sizeof(path), "%sART2%sGAMES", prefix, sep);
+    buckets->hasGAMES = sbArtDirExists(path);
+}
+
+void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
+                         const art_buckets_t *buckets, const char *folder, int isRelative,
+                         const char *value, const char *suffix)
+{
+    const char *bucket = NULL;
+    const char *artFolder = folder;
+
+    if (!isRelative) {
+        snprintf(path, pathSize, "%s%s_%s", folder, value, suffix);
+        return;
+    }
+
+    /* ART_PS1 / ART_ELF 只用来选桶，落回旧 ART 时必须还原成真实目录名。 */
+    if (folder && (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_ELF)))
+        artFolder = ART_FOLDER_NAME;
+
+    if (buckets && buckets->useBuckets && folder) {
+        if (!strcmp(folder, ART_FOLDER_ELF)) {
+            if (buckets->hasAPPS)
+                bucket = "APPS";
+        } else if (!strcmp(folder, ART_FOLDER_PS1)) {
+            if (buckets->hasPS1)
+                bucket = "PS1";
+            else if (buckets->hasGAMES)
+                bucket = "GAMES";
+        } else if (!strcmp(folder, ART_FOLDER_NAME)) {
+            /* 游戏列表进不了 ELF，这里不看文件名后缀，避免误进 ART2/APPS。 */
+            if (buckets->hasPS2)
+                bucket = "PS2";
+            else if (buckets->hasGAMES)
+                bucket = "GAMES";
+        }
+    }
+
+    if (bucket)
+        snprintf(path, pathSize, "%sART2%s%s%s%s%s%s_%s", prefix, sep, bucket, sep, value, sep, value, suffix);
+    else
+        snprintf(path, pathSize, "%s%s%s%s_%s", prefix, artFolder, sep, value, suffix);
 }
 
 int sbLoadCheats(const char *path, const char *file)

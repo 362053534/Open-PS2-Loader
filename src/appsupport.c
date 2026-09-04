@@ -2479,11 +2479,19 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
         }
     }
 
-    if (!strcmp(folder, "ART") && value)
+    if (!strcmp(folder, ART_FOLDER_NAME) && value)
         artValue = appGetBoot(dummy, sizeof(dummy), value);
 
     if (!app)
         return -1;
+
+    /* 有编号的 POPS 走 PS1；未解析到 ID 的 POPS 和 ELF 一样走 APPS。 */
+    if (!strcmp(folder, ART_FOLDER_NAME)) {
+        if (app->popstarter && app->startup[0] != '\0' && sbIsValidStartupExecName(app->startup) == 0)
+            folder = ART_FOLDER_PS1;
+        else
+            folder = ART_FOLDER_ELF;
+    }
 
     mode = appResolveMode(app);
     if (mode >= BDM_MODE && mode <= HDD_MODE)
@@ -2496,7 +2504,7 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
     if (!strncmp(device, "mc", 2)) {
         char path[128];
 
-        if (strcmp(folder, "ART"))
+        if (strcmp(folder, ART_FOLDER_NAME) && strcmp(folder, ART_FOLDER_PS1) && strcmp(folder, ART_FOLDER_ELF))
             return -1;
 
         snprintf(path, sizeof(path), "%sART/%s_%s", device, artValue, suffix);

@@ -67,8 +67,8 @@ typedef struct
 // forward declaration
 static item_list_t hddGameList;
 
-// 判断APA设备是否使用ART2文件夹
-static int artUseBuckets_APA = 0;
+// APA 设备初始化时探测一次 ART2 分桶
+static art_buckets_t artBuckets_APA;
 
 static int hddLoadGameListCache(hdl_games_list_t *cache);
 static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *game_list);
@@ -430,13 +430,8 @@ int hddLoadSupportModules(void)
             gHDDPrefix = "pfs0:OPL/";
         }
 
-        // 判断是否存在ART2，提升图片读取效率
-        char art2Path[128];
-        snprintf(art2Path, sizeof(art2Path), "%sART2", gHDDPrefix);
-        DIR *art2Dir = opendir(art2Path);
-        artUseBuckets_APA = art2Dir ? 1 : 0;
-        if (art2Dir)
-            closedir(art2Dir);
+        // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
+        sbDetectArtBuckets(gHDDPrefix, "/", &artBuckets_APA);
 
         // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
         int gDmaMode = -1; // 获取配置失败时，不重设传输模式
@@ -873,18 +868,8 @@ static int hddGetImage(item_list_t *itemList, char *folder, int isRelative, char
         return ERR_BAD_FILE;
 
     char path[256];
-    if (isRelative) {
-        if (artUseBuckets_APA) {
-            int len = strlen(value);
-            if (len >= 4 && (value[len - 1] == 'F' || value[len - 1] == 'f'))
-                snprintf(path, sizeof(path), "%sART2/APPS/%s/%s_%s", gHDDPrefix, value, value, suffix);
-            else
-                snprintf(path, sizeof(path), "%sART2/GAMES/%s/%s_%s", gHDDPrefix, value, value, suffix);
-        } else
-            snprintf(path, sizeof(path), "%s%s/%s_%s", gHDDPrefix, folder, value, suffix);
-    } else
-        snprintf(path, sizeof(path), "%s%s_%s", folder, value, suffix);
 
+    sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", &artBuckets_APA, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 

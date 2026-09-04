@@ -47,8 +47,8 @@ static int ethReadNetConfig(void);
 
 static int ethInitSemaID = -1;
 
-// 判断SMB设备是否使用ART2文件夹
-static int artUseBuckets_SMB = 0;
+// SMB 连接成功后探测一次 ART2 分桶
+static art_buckets_t artBuckets_SMB;
 
 // Initializes locking semaphore for network support (not for just SMB support, but for the network subsystem).
 static int ethInitSema(void)
@@ -171,14 +171,9 @@ static void ethSMBConnect(void)
 
     if (gNetworkStartup == 0) {
         // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
-        char art2Path[128];
-        snprintf(art2Path, sizeof(art2Path), "%sART2", ethPrefix);
-        DIR *art2Dir = opendir(art2Path);
-        artUseBuckets_SMB = art2Dir ? 1 : 0;
-        if (art2Dir)
-            closedir(art2Dir);
+        sbDetectArtBuckets(ethPrefix, "\\", &artBuckets_SMB);
     } else
-        artUseBuckets_SMB = 0;
+        memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
 }
 
 static int ethSMBDisconnect(void)
@@ -800,19 +795,8 @@ static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char
         return ERR_BAD_FILE;
 
     char path[256];
-    if (isRelative) {
-        // 判断是否读取ART2文件夹
-        if (artUseBuckets_SMB) {
-            int len = strlen(value);
-            if (len >= 4 && (value[len - 1] == 'F' || value[len - 1] == 'f'))
-                snprintf(path, sizeof(path), "%sART2\\APPS\\%s\\%s_%s", ethPrefix, value, value, suffix);
-            else
-                snprintf(path, sizeof(path), "%sART2\\GAMES\\%s\\%s_%s", ethPrefix, value, value, suffix);
-        } else
-            snprintf(path, sizeof(path), "%s%s\\%s_%s", ethPrefix, folder, value, suffix);
-    } else
-        snprintf(path, sizeof(path), "%s%s_%s", folder, value, suffix);
 
+    sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", &artBuckets_SMB, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 
