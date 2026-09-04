@@ -231,7 +231,7 @@ void ioInit(void)
     gIOThread.gp_reg = &_gp;
     gIOThread.func = &ioWorkerThread;
     gIOThread.stack = thread_stack;
-    gIOThread.initial_priority = 30;
+    gIOThread.initial_priority = 33;
 
     isIORunning = 1;
     isIOPending = 0;
