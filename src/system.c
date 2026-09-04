@@ -16,6 +16,7 @@
 #include "include/pad.h"
 #include "include/system.h"
 #include "include/ioman.h"
+#include "include/iosupport.h"
 #include "include/ioprp.h"
 #include "include/bdmsupport.h"
 #include "include/OSDHistory.h"
@@ -834,6 +835,11 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     char *argv[4];
     void *eeloadCopy, *initUserMemory;
     struct GsmConfig_t gsm_config;
+
+    if (!strcmp(filename, "SLPM_664.19")) {
+        // 只为本次启动追加北欧女神2所需模式，保留用户已选择的其他模式。
+        compatflags |= COMPAT_MODE_3 | COMPAT_MODE_6;
+    }
 
     ethGetNetConfig(local_ip_address, local_netmask, local_gateway);
 #if (!defined(__DEBUG) && !defined(_DTL_T10000))
