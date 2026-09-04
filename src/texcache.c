@@ -28,7 +28,7 @@ static int cdFramesCount = 0; // 手动重复按键
 //static u64 prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
 static char *curStartUp = NULL;
 static int findBGCount = 0; // 寻找背景图的次数
-static int usePthread = 1;  // 使用pthread多线程方法加载图片
+static int usePthread = 0;  // 使用pthread多线程方法加载图片
 //static int texLoadingTimeOut = 0;  // 用于判断加载计数异常时，将texLoading置为0
 
 // 申请线程
