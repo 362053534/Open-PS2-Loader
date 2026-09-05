@@ -975,6 +975,65 @@ int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *
     return scanAppELFs(callback, arg, appsPath);
 }
 
+int oplScanTitleCfgByMode(int mode, int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char appsPath[128];
+    char *prefix;
+    int i, count;
+
+    // 按来源扫 title.cfg，路径规则与旧式 oplScanApps 保持一致。
+    if (mode == APP_MODE) {
+        count = 0;
+        for (i = 0; i < 2; i++) {
+            snprintf(appsPath, sizeof(appsPath), "mc%d:", i);
+            count += scanApps(callback, arg, appsPath, 1);
+        }
+        return count;
+    }
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4) {
+        if (gBDMStartMode == START_MODE_DISABLED)
+            return 0;
+
+        listSupport = list_support[mode].support;
+        if (!listSupport || !listSupport->enabled || !listSupport->itemGetPrefix)
+            return 0;
+
+        prefix = listSupport->itemGetPrefix(listSupport);
+        if (!prefix || !prefix[0])
+            return 0;
+
+        snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+        return scanApps(callback, arg, appsPath, 0);
+    }
+
+    if (mode == ETH_MODE) {
+        listSupport = list_support[ETH_MODE].support;
+        if ((gETHStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
+            return 0;
+
+        prefix = listSupport->itemGetPrefix(listSupport);
+        if (prefix[0] == '\0')
+            return 0;
+
+        // SMB 前缀末尾已带反斜杠。
+        snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+        return scanApps(callback, arg, appsPath, 0);
+    }
+
+    if (mode == HDD_MODE) {
+        listSupport = list_support[HDD_MODE].support;
+        if ((gHDDStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (gHDDPrefix == NULL) || (gHDDPrefix[0] == '\0'))
+            return 0;
+
+        snprintf(appsPath, sizeof(appsPath), "%sAPPS", gHDDPrefix);
+        return scanApps(callback, arg, appsPath, 0);
+    }
+
+    return 0;
+}
+
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
     item_list_t *listSupport;

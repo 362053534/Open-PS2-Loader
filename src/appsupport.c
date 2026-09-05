@@ -414,7 +414,8 @@ typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS
 
 static int appIsPOPSLauncher(const app_info_t *app)
 {
-    return app->popstarter || strstr(app->path, "APPS") == NULL;
+    // 只有 VCD 扫描入口会置位，启动时不再用路径猜测。
+    return app->popstarter;
 }
 
 static int appResolveMode(const app_info_t *app)
@@ -1167,7 +1168,8 @@ static int addAppsLegacyList(struct app_info_linked **appsLinkedList)
 
 static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
 {
-    struct app_info_linked **appsLinkedList = (struct app_info_linked **)arg;
+    app_scan_context_t *context = (app_scan_context_t *)arg;
+    struct app_info_linked **appsLinkedList = context->appsLinkedList;
     struct app_info_linked *app;
     const char *title, *boot, *argv1;
 
@@ -1208,7 +1210,7 @@ static int appScanCallback(const char *path, config_set_t *appConfig, void *arg)
         app->app.popstarter = 0;
         app->app.popsHddSource = OPL_HDD_POPS_SOURCE_NONE;
         app->app.popsHddPartition[0] = '\0';
-        app->app.sourceMode = APP_SOURCE_NONE;
+        app->app.sourceMode = context->sourceMode;
         return 0;
     } else {
         LOG("APPSUPPORT item has no boot/title.\n");
@@ -1644,20 +1646,27 @@ static void appCopyCachedSource(app_info_t *target, int *targetCount, int source
 static int appScanAutoAppsSource(int sourceMode, struct app_info_linked **appsLinkedList)
 {
     app_scan_context_t context;
+    int result;
 
     context.appsLinkedList = appsLinkedList;
     context.sourceMode = sourceMode;
 
     if (sourceMode == APP_SOURCE_MC)
-        return oplScanMCApps(&appScanELFCallback, &context);
-    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
-        return oplScanBDMAppsByMode(sourceMode, &appScanELFCallback, &context);
-    if (sourceMode == ETH_MODE)
-        return oplScanSMBApps(&appScanELFCallback, &context);
-    if (sourceMode == HDD_MODE)
-        return oplScanHDDApps(&appScanELFCallback, &context);
+        result = oplScanMCApps(&appScanELFCallback, &context);
+    else if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
+        result = oplScanBDMAppsByMode(sourceMode, &appScanELFCallback, &context);
+    else if (sourceMode == ETH_MODE)
+        result = oplScanSMBApps(&appScanELFCallback, &context);
+    else if (sourceMode == HDD_MODE)
+        result = oplScanHDDApps(&appScanELFCallback, &context);
+    else
+        return 0;
 
-    return 0;
+    if (result < 0)
+        return result;
+
+    // 根目录 ELF 扫完后，再按旧规则补扫各来源的 title.cfg 子目录。
+    return result + oplScanTitleCfgByMode(sourceMode, &appScanCallback, &context);
 }
 
 static int appScanAutoPOPSSource(int sourceMode, struct app_info_linked **appsLinkedList)
@@ -1843,6 +1852,7 @@ static int appUpdateAutoItemList(void)
 static int appUpdateItemList(item_list_t *itemList)
 {
     struct app_info_linked *appsLinkedList, *appNext;
+    app_scan_context_t context;
 
     if (gAutoDetectPS1Apps)
         return appUpdateAutoItemList();
@@ -1855,7 +1865,9 @@ static int appUpdateItemList(item_list_t *itemList)
     appItemCount += addAppsLegacyList(&appsLinkedList);
 
     // Scan title.cfg files on devices.
-    appItemCount += oplScanApps(&appScanCallback, &appsLinkedList);
+    context.appsLinkedList = &appsLinkedList;
+    context.sourceMode = APP_SOURCE_NONE;
+    appItemCount += oplScanApps(&appScanCallback, &context);
 
     // Generate apps list
     if (appItemCount > 0) {
