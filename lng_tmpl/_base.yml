@@ -149,7 +149,7 @@ gui_strings:
 - label: NO_CONTROLLER
   string: 未检测到摇杆, 等待中…
 - label: COVERART
-  string: 游戏封面
+  string: 游戏图集
 - label: WIDE_SCREEN
   string: 宽屏显示
 - label: POWEROFF
@@ -295,7 +295,7 @@ gui_strings:
 - label: ERR_VMC_CONTINUE
   string: 虚拟记忆卡%s出错，是否改为使用接口%d的物理记忆卡？
 - label: AUTOREFRESH
-  string: 热插拔检测
+  string: BDM热插拔
 - label: ABOUT
   string: 关于
 - label: DEVS

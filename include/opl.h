@@ -169,7 +169,9 @@ extern int gTxtRename;
 extern int gAutosort;
 extern int gAutoRefresh;
 extern int gEnableNotifications;
-extern int gEnableArt;
+extern int gEnableArtBG;
+extern int gEnableArtCOV;
+extern int gEnableArtICO;
 extern int gEnableJpg;
 extern int gWideScreen;
 extern int gVMode; // 0 - Auto, 1 - PAL, 2 - NTSC

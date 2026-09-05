@@ -157,7 +157,9 @@ int gTxtRename;
 int gAutosort;
 int gAutoRefresh;
 int gEnableNotifications;
-int gEnableArt;
+int gEnableArtBG;
+int gEnableArtCOV;
+int gEnableArtICO;
 int gEnableJpg;
 int gWideScreen;
 int gVMode; // 0 - Auto, 1 - PAL, 2 - NTSC
@@ -1883,7 +1885,9 @@ static void _loadConfig(void)
             configGetColor(configOPL, CONFIG_OPL_UI_TEXTCOLOR, gDefaultUITextColor);
             configGetColor(configOPL, CONFIG_OPL_SEL_TEXTCOLOR, gDefaultSelTextColor);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_NOTIFICATIONS, &gEnableNotifications);
-            configGetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, &gEnableArt);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, &gEnableArtBG);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, &gEnableArtCOV);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, &gEnableArtICO);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_JPG, &gEnableJpg);
             configGetInt(configOPL, CONFIG_OPL_WIDESCREEN, &gWideScreen);
 
@@ -2073,7 +2077,11 @@ static void _saveConfig()
         configSetColor(configOPL, CONFIG_OPL_UI_TEXTCOLOR, gDefaultUITextColor);
         configSetColor(configOPL, CONFIG_OPL_SEL_TEXTCOLOR, gDefaultSelTextColor);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_NOTIFICATIONS, gEnableNotifications);
-        configSetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, gEnableArt);
+        // 运行时不再用总开关；写 1 只是避免其它 OPL 读到旧的 enable_coverart=0。
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, 1);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, gEnableArtBG);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, gEnableArtCOV);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, gEnableArtICO);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_JPG, gEnableJpg);
         configSetInt(configOPL, CONFIG_OPL_WIDESCREEN, gWideScreen);
         configSetInt(configOPL, CONFIG_OPL_VMODE, gVMode);
@@ -2782,7 +2790,9 @@ static void setDefaults(void)
     gBDMPrefix[0] = '\0';
     gETHPrefix[0] = '\0';
     gEnableNotifications = 0;
-    gEnableArt = 1;
+    gEnableArtBG = 1;
+    gEnableArtCOV = 1;
+    gEnableArtICO = 1;
     gEnableJpg = 1;
     gWideScreen = 0;
     gEnableSFX = 1;

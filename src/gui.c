@@ -723,6 +723,9 @@ void guiShowUIConfig(void)
     int previousTheme;
     int previousTxtRename;
 
+    const char *coverArtBG[] = {"背景关", "背景开", NULL};
+    const char *coverArtCOV[] = {"封面关", "封面开", NULL};
+    const char *coverArtICO[] = {"光碟关", "光碟开", NULL};
     const char *coverArtMode[] = {"性能模式(仅支持PNG)", "兼容模式(JPG & PNG)", NULL};
 
 reselect_video_mode:
@@ -738,8 +741,13 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_AUTOSORT, gAutosort);
     diaSetInt(diaUIConfig, UICFG_AUTOREFRESH, gAutoRefresh);
     diaSetInt(diaUIConfig, UICFG_NOTIFICATIONS, gEnableNotifications);
-    diaSetInt(diaUIConfig, UICFG_COVERART, gEnableArt);
+    diaSetEnum(diaUIConfig, UICFG_COVERART_BG, coverArtBG);
+    diaSetEnum(diaUIConfig, UICFG_COVERART_COV, coverArtCOV);
+    diaSetEnum(diaUIConfig, UICFG_COVERART_ICO, coverArtICO);
     diaSetEnum(diaUIConfig, UICFG_COVERARTMODE, coverArtMode);
+    diaSetInt(diaUIConfig, UICFG_COVERART_BG, gEnableArtBG);
+    diaSetInt(diaUIConfig, UICFG_COVERART_COV, gEnableArtCOV);
+    diaSetInt(diaUIConfig, UICFG_COVERART_ICO, gEnableArtICO);
     diaSetInt(diaUIConfig, UICFG_COVERARTMODE, gEnableJpg);
     diaSetInt(diaUIConfig, UICFG_WIDESCREEN, gWideScreen);
     diaSetInt(diaUIConfig, UICFG_VMODE, gVMode);
@@ -766,7 +774,9 @@ reselect_video_mode:
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
         diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);
-        diaGetInt(diaUIConfig, UICFG_COVERART, &gEnableArt);
+        diaGetInt(diaUIConfig, UICFG_COVERART_BG, &gEnableArtBG);
+        diaGetInt(diaUIConfig, UICFG_COVERART_COV, &gEnableArtCOV);
+        diaGetInt(diaUIConfig, UICFG_COVERART_ICO, &gEnableArtICO);
         diaGetInt(diaUIConfig, UICFG_COVERARTMODE, &gEnableJpg);
         diaGetInt(diaUIConfig, UICFG_WIDESCREEN, &gWideScreen);
         diaGetInt(diaUIConfig, UICFG_VMODE, &gVMode);

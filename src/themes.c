@@ -537,9 +537,34 @@ static void initStaticImage(const char *themePath, config_set_t *themeConfig, th
 
 // GameImage ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static int artEnabledForCache(image_cache_t *cache)
+{
+    // 三个独立开关只挡背景/封面/光碟，其它 ART 照常读。
+    if (!cache || !cache->suffix)
+        return 1;
+    if (!strncmp(cache->suffix, "BG", 2))
+        return gEnableArtBG;
+    if (!strncmp(cache->suffix, "COV", 3))
+        return gEnableArtCOV;
+    if (!strncmp(cache->suffix, "ICO", 3))
+        return gEnableArtICO;
+    return 1;
+}
+
+static int artHideDefaultTemplate(image_cache_t *cache)
+{
+    if (!cache || !cache->suffix)
+        return 0;
+    if (!strncmp(cache->suffix, "COV", 3))
+        return !gEnableArtCOV;
+    if (!strncmp(cache->suffix, "ICO", 3))
+        return !gEnableArtICO;
+    return 0;
+}
+
 static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struct submenu_item *item)
 {
-    if (gEnableArt) {
+    if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
         char *startup = list->itemGetStartup(list, item->id);
         return cacheGetTexture(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup);
@@ -554,6 +579,9 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
     if (item) {
         GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);
         if (!texture || !texture->Mem) {
+            // 封面/光碟关掉时，连默认模板和卡带框都不画
+            if (artHideDefaultTemplate(gameImage->cache))
+                return;
             if (gameImage->defaultTexture)
                 texture = &gameImage->defaultTexture->source;
             else {
@@ -903,6 +931,9 @@ static void initItemsList(const char *themePath, config_set_t *themeConfig, them
 static void drawItemText(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     if (item) {
+        // 封面关时，封面下方的游戏ID一并隐藏
+        if (!gEnableArtCOV)
+            return;
         item_list_t *support = menu->item->userdata;
         fntRenderString(elem->font, elem->posX, elem->posY, elem->aligned, 0, 0, support->itemGetStartup(support, item->item.id), elem->color);
     }
