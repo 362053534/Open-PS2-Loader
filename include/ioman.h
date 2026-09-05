@@ -12,6 +12,7 @@
 #define IO_ERR_IO_BLOCKED           -5
 
 typedef void (*io_request_handler_t)(void *request);
+typedef void (*io_request_cleanup_t)(void *request);
 
 typedef void (*io_simpleaction_t)(void);
 
@@ -35,6 +36,9 @@ int ioPutRequestUnique(int type, void *data);
  * @param type the type of the requests to remove
  * @return the count of the requests removed */
 int ioRemoveRequests(int type);
+
+/** 删除指定类型的待处理请求，并在队列锁外清理请求数据。 */
+int ioRemoveRequestsWithCleanup(int type, io_request_cleanup_t cleanup);
 
 /** returns the count of pending requests */
 int ioGetPendingRequestCount(void);

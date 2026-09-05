@@ -53,6 +53,7 @@ typedef struct
     image_cache_t *cache;
     item_list_t *list;
     int cacheId;
+    int cacheUID;
     char *value;
 } load_image_request_t;
 load_image_request_t req1 = {0};
@@ -94,6 +95,79 @@ static void cacheClearItem(cache_entry_t *item, int freeTxt)
     item->UID = -1;
     item->texFound = -1;
 }
+
+static void cacheDecreaseLoading(void)
+{
+    pthread_mutex_lock(&texLoadingMutex);
+    if (texLoading > 0)
+        texLoading--;
+    pthread_mutex_unlock(&texLoadingMutex);
+}
+
+static void cacheCancelImageRequest(void *data)
+{
+    load_image_request_t *ioReq = (load_image_request_t *)data;
+    if (!ioReq)
+        return;
+
+    if (ioReq->cache && ioReq->cache->content && ioReq->cacheId >= 0 && ioReq->cacheId < ioReq->cache->count) {
+        cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
+
+        // UID一致才允许释放槽位，避免旧请求清掉后来复用该槽位的新请求。
+        if (entry->UID == ioReq->cacheUID) {
+            entry->qr = 0;
+            entry->lastUsed = 0;
+            entry->texFound = -1;
+        }
+    }
+
+    cacheDecreaseLoading();
+    free(ioReq);
+}
+
+void cacheCancelPendingArtRequests(void)
+{
+    if (usePthread)
+        return;
+
+    pthread_mutex_lock(&texLoadingMutex);
+    int wasLoading = texLoading > 0;
+    pthread_mutex_unlock(&texLoadingMutex);
+
+    // 光标移动瞬间仍有图片未显示时，保留原有的30帧连按保护。
+    if (wasLoading && !ForceRefreshPrevTexCache && !padGetRepeating())
+        cdFramesCount = 1;
+
+    ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
+}
+
+static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value)
+{
+    load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
+    if (!req) {
+        cache->content[cacheId].qr = 0;
+        return;
+    }
+
+    req->cache = cache;
+    req->cacheId = cacheId;
+    req->cacheUID = cache->content[cacheId].UID;
+    req->list = list;
+    req->value = value;
+    req->qr = 1;
+
+    pthread_mutex_lock(&texLoadingMutex);
+    if (texLoading >= 0)
+        texLoading++;
+    else
+        texLoading = 1;
+    pthread_mutex_unlock(&texLoadingMutex);
+
+    // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
+    if (ioPutRequest(IO_CACHE_LOAD_ART, req) != IO_OK)
+        cacheCancelImageRequest(req);
+}
+
 // 加载其他图片时用的线程函数
 static void cacheLoadImage1(void *data)
 {
@@ -570,22 +644,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             else
                 oldestEntry->UID = *UID;
 
-            //  使用pthread的多线程方法
-            pthread_mutex_lock(&texLoadingMutex);
-            if (texLoading >= 0)
-                texLoading++;
-            else
-                texLoading = 1;
-            pthread_mutex_unlock(&texLoadingMutex);
-            load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
-            req->cache = cache;
-            req->cacheId = *cacheId;
-            req->list = list;
-            req->value = value;
-            req->qr = 1;
-
-            // 官方方法加载其他图片
-            ioPutRequest(IO_CACHE_LOAD_ART, req);
+            cacheQueueImageRequest(cache, *cacheId, list, value);
         } else {
             //  加载图片
             if (!strncmp("BG", cache->suffix, 2)) {

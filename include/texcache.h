@@ -63,5 +63,6 @@ extern int ForceRefreshPrevTexCache;
 extern int forceSkipQr;
 extern int texLoading;
 void flushBatchRequests(void);
+void cacheCancelPendingArtRequests(void);
 
 #endif

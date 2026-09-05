@@ -59,6 +59,8 @@ enum GAME_MENU_IDs {
 // global menu variables
 static menu_list_t *menu;
 static menu_list_t *selected_item;
+static menu_item_t *lastArtMenu;
+static submenu_list_t *lastArtCurrent;
 
 static int actionStatus;
 static int itemConfigId;
@@ -287,6 +289,8 @@ void menuInit()
 {
     menu = NULL;
     selected_item = NULL;
+    lastArtMenu = NULL;
+    lastArtCurrent = NULL;
     itemConfigId = -1;
     itemConfig = NULL;
     mainMenu = NULL;
@@ -1005,8 +1009,30 @@ static void menuRenderElements(theme_element_t *elem)
     SignalSema(menuSemaId);
 }
 
+static void menuCheckArtCursorChanged(void)
+{
+    if (!selected_item || !selected_item->item)
+        return;
+
+    menu_item_t *currentMenu = selected_item->item;
+    submenu_list_t *current = currentMenu->current;
+    if (!lastArtMenu) {
+        lastArtMenu = currentMenu;
+        lastArtCurrent = current;
+        return;
+    }
+
+    if (lastArtMenu != currentMenu || lastArtCurrent != current) {
+        cacheCancelPendingArtRequests();
+        lastArtMenu = currentMenu;
+        lastArtCurrent = current;
+    }
+}
+
 void menuRenderMain(void)
 {
+    menuCheckArtCursorChanged();
+
     item_list_t *list = selected_item->item->userdata;
     infoScreen = 0;
     if (list->mode == APP_MODE) {
@@ -1064,6 +1090,8 @@ void menuHandleInputMain()
 
 void menuRenderInfo(void)
 {
+    menuCheckArtCursorChanged();
+
     item_list_t *list = selected_item->item->userdata;
     infoScreen = 1;
     if (list->mode == APP_MODE) {
