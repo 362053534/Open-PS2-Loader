@@ -1804,6 +1804,13 @@ void guiMainLoop(void)
                 else
                     guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
             }
+            if (gHddFormatHint == HDD_FORMAT_HINT_NEED_BDMHDD) {
+                gHddFormatHint = HDD_FORMAT_HINT_NONE;
+                guiMsgBox(lngGetValue()[0] == 'E' ? "Internal HDD is exFAT. Enable HDD(exFAT) in BDM settings." : "内置exFAT硬盘，应启用BDM模式的HDD(exFAT)功能", 0, NULL);
+            } else if (gHddFormatHint == HDD_FORMAT_HINT_NEED_APA) {
+                gHddFormatHint = HDD_FORMAT_HINT_NONE;
+                guiMsgBox(lngGetValue()[0] == 'E' ? "Internal HDD is APA. Enable HDD(APA) start mode." : "内置APA硬盘，应启用HDD(APA)启动模式", 0, NULL);
+            }
         }
 
         // 多线程初始化结束后，才开始处理设备

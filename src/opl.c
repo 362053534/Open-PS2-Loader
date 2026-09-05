@@ -152,6 +152,7 @@ int gEnableUSB;
 int gEnableILK;
 int gEnableMX4SIO;
 int gEnableBdmHDD;
+volatile int gHddFormatHint;
 int gTxtRename;
 int gAutosort;
 int gAutoRefresh;
@@ -1325,6 +1326,7 @@ static volatile unsigned int bdmDevicePresentMask;
 static volatile int bdmListRequestPending;
 static volatile unsigned int bdmListCheckedMask;
 static volatile unsigned int bdmDeviceListReadyMask;
+static volatile int bdmAtaIsApa;
 
 static int bdmGetDeviceTypeFromDriver(const char *driver)
 {
@@ -1393,6 +1395,13 @@ static void bdmStartupDiscovery(void *data)
         bdmProbeErrorMask = probeStatus.error | bdmDiscoveryModuleErrorMask;
 
         if ((bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask) {
+            // ATA 硬件在，不等于 FAT 已挂上。APA 盘不能进 mass 等待，否则欢迎界面会一直转圈。
+            if (!bdmAtaIsApa && gEnableBdmHDD && (bdmProbePresentMask & BDM_STARTUP_TYPE_ATA) &&
+                hddDetectNonSonyFileSystem() == 0) {
+                bdmAtaIsApa = 1;
+                gHddFormatHint = HDD_FORMAT_HINT_NEED_APA;
+            }
+
             count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
             if (count >= 0) {
                 for (int i = 0; i < count; i++) {
@@ -1400,6 +1409,8 @@ static void bdmStartupDiscovery(void *data)
                     int found = 0;
 
                     if (!bdmDeviceTypeEnabled(deviceType))
+                        continue;
+                    if (bdmAtaIsApa && deviceType == BDM_TYPE_ATA)
                         continue;
 
                     // 同一物理设备的整盘与分区会同时注册，只记录一次。
@@ -1496,6 +1507,22 @@ static void bdmStartupListUpdate(void *data)
                     }
                 }
             }
+
+            // 首轮列表时 xhdd 可能还没就绪，再探一次，避免 APA 盘卡在 mass 等待。
+            if (!bdmAtaIsApa && gEnableBdmHDD &&
+                (bdmDiscoveredDeviceMask & ~bdmDiscoveredDeviceReadyMask) &&
+                hddDetectNonSonyFileSystem() == 0) {
+                int i;
+
+                bdmAtaIsApa = 1;
+                gHddFormatHint = HDD_FORMAT_HINT_NEED_APA;
+                for (i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                    if (bdmGetDeviceTypeFromDriver(bdmDiscoveredDevices[i].name) == BDM_TYPE_ATA) {
+                        bdmDiscoveredDeviceMask &= ~(1 << i);
+                        bdmDiscoveredDeviceReadyMask &= ~(1 << i);
+                    }
+                }
+            }
         }
         bdmListCheckedMask |= 1 << mode;
     }
@@ -1523,6 +1550,7 @@ int menuResetBDMStartup(int bdmStarted)
     bdmListRequestPending = 0;
     bdmListCheckedMask = 0;
     bdmDeviceListReadyMask = 0;
+    bdmAtaIsApa = 0;
 
     if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
         (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
@@ -2776,6 +2804,7 @@ static void setDefaults(void)
     gEnableILK = 0;
     gEnableMX4SIO = 0;
     gEnableBdmHDD = 0;
+    gHddFormatHint = HDD_FORMAT_HINT_NONE;
 
     frameCounter = 0;
 

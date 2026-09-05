@@ -65,6 +65,10 @@
 #define BDM_STARTUP_TYPE_SDC   0x04
 #define BDM_STARTUP_TYPE_ATA   0x08
 
+#define HDD_FORMAT_HINT_NONE        0
+#define HDD_FORMAT_HINT_NEED_BDMHDD 1
+#define HDD_FORMAT_HINT_NEED_APA    2
+
 // Codes have been planned to fit the design of the GUI functions within gui.c.
 #define OPL_COMPAT_UPDATE_STAT_WIP        0
 #define OPL_COMPAT_UPDATE_STAT_DONE       1
@@ -159,6 +163,7 @@ extern int gEnableUSB;
 extern int gEnableILK;
 extern int gEnableMX4SIO;
 extern int gEnableBdmHDD;
+extern volatile int gHddFormatHint;
 
 extern int gTxtRename;
 extern int gAutosort;

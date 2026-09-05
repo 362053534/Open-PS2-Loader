@@ -94,6 +94,11 @@ static int hddInitModules(void)
 
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
     while ((result = hddLoadSupportModules())) {
+        // GPT/exFAT 盘不能走 APA，再重试也没用，留给主界面提示改开 BDMHDD。
+        if (hddDetectNonSonyFileSystem() == 1) {
+            gHddFormatHint = HDD_FORMAT_HINT_NEED_BDMHDD;
+            return -1;
+        }
         if (++retryCount >= 20)
             break;
         usleep(100000);
@@ -322,19 +327,16 @@ int hddDetectNonSonyFileSystem()
         return -1;
     }
 
-    // Check for MBR signature.
-    if (pSectorData[0x1FE] == 0x55 && pSectorData[0x1FF] == 0xAA) {
-        // Found MBR partition type.
+    // APA 魔数优先，避免扇区填充碰巧出现 55AA 时被当成 MBR。
+    if (strncmp((const char *)&pSectorData[4], "APA", 3) == 0) {
+        LOG("hddDetectNonSonyFileSystem: found APA partition data\n");
+        result = 0;
+    } else if (pSectorData[0x1FE] == 0x55 && pSectorData[0x1FF] == 0xAA) {
         LOG("hddDetectNonSonyFileSystem: found MBR partition data\n");
         result = 1;
     } else if (strncmp((const char *)&pSectorData[0x200], "EFI PART", 8) == 0) {
-        // Found GPT partition type.
         LOG("hddDetectNonSonyFileSystem: found GPT partition data\n");
         result = 1;
-    } else if (strncmp((const char *)&pSectorData[4], "APA", 3) == 0) {
-        // Found APA partition type.
-        LOG("hddDetectNonSonyFileSystem: found APA partition data\n");
-        result = 0;
     } else {
         // Even though we didn't find evidence of non-APA partition data, if we load the APA irx module
         // it will write to the drive and potentially corrupt any data that might be there.
