@@ -251,17 +251,17 @@ gui_strings:
 - label: HINT_GUEST
   string: GUEST验证留空
 - label: HINT_MODE1
-  string: 精确读取，可解决随机死机，但速度会大幅下降
+  string: 限速模式，模拟DVD光驱速度，可修复异常卡顿和死机问题
 - label: HINT_MODE2
-  string: 同步模式
+  string: 同步模式，可解决某些游戏异常卡顿的问题
 - label: HINT_MODE3
-  string: 脱开系统调用
+  string: 脱开系统调用，适用于某些具有反作弊检测的游戏
 - label: HINT_MODE4
-  string: 跳过视频
+  string: 跳过所有CG动画
 - label: HINT_MODE5
   string: 模拟DVD-DL
 - label: HINT_MODE6
-  string: 禁用IGR
+  string: 禁用IGR，软复位会失效，但极大提升兼容性
 - label: HINT_VMC_SIZE
   string: 改变大小将会重新格式化虚拟记忆卡
 - label: CREATE
