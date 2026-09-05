@@ -1187,6 +1187,14 @@ static int thmLoadResource(GSTEXTURE *texture, int texId, const char *themePath,
     return success;
 }
 
+static void thmApplyTextColor(theme_element_t *elem, u64 color)
+{
+    while (elem) {
+        elem->color = color;
+        elem = elem->next;
+    }
+}
+
 static void thmSetColors(theme_t *theme)
 {
     memcpy(theme->bgColor, gDefaultBgColor, 3);
@@ -1194,11 +1202,11 @@ static void thmSetColors(theme_t *theme)
     theme->uiTextColor = GS_SETREG_RGBA(gDefaultUITextColor[0], gDefaultUITextColor[1], gDefaultUITextColor[2], 0x80);
     theme->selTextColor = GS_SETREG_RGBA(gDefaultSelTextColor[0], gDefaultSelTextColor[1], gDefaultSelTextColor[2], 0x80);
 
-    theme_element_t *elem = theme->mainElems.first;
-    while (elem) {
-        elem->color = theme->textColor;
-        elem = elem->next;
-    }
+    /* APPS 主页/信息页是独立元素链，只改 mainElems 时自定义颜色不会进 APPS。 */
+    thmApplyTextColor(theme->mainElems.first, theme->textColor);
+    thmApplyTextColor(theme->infoElems.first, theme->textColor);
+    thmApplyTextColor(theme->appsMainElems.first, theme->textColor);
+    thmApplyTextColor(theme->appsInfoElems.first, theme->textColor);
 }
 
 static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme_t *theme)
