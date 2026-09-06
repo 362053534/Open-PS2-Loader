@@ -354,8 +354,21 @@ static menu_list_t *AllocMenuItem(menu_item_t *item)
     return it;
 }
 
+static int menuItemMode(menu_item_t *item)
+{
+    item_list_t *support;
+
+    if (!item || !item->userdata)
+        return MODE_COUNT;
+    support = item->userdata;
+    return support->mode;
+}
+
 void menuAppendItem(menu_item_t *item)
 {
+    menu_list_t *newitem;
+    int mode;
+
     assert(item);
 
     WaitSema(menuListSemaId);
@@ -364,18 +377,24 @@ void menuAppendItem(menu_item_t *item)
         menu = AllocMenuItem(item);
         selected_item = menu;
     } else {
-        menu_list_t *cur = menu;
+        // 后挂的设备页按 mode 插到应有位置，避免顶到最右边。
+        newitem = AllocMenuItem(item);
+        mode = menuItemMode(item);
+        if (menuItemMode(menu->item) > mode) {
+            newitem->next = menu;
+            menu->prev = newitem;
+            menu = newitem;
+        } else {
+            menu_list_t *cur = menu;
 
-        // traverse till the end
-        while (cur->next)
-            cur = cur->next;
-
-        // create new item
-        menu_list_t *newitem = AllocMenuItem(item);
-
-        // link
-        cur->next = newitem;
-        newitem->prev = cur;
+            while (cur->next && menuItemMode(cur->next->item) <= mode)
+                cur = cur->next;
+            newitem->next = cur->next;
+            newitem->prev = cur;
+            if (cur->next)
+                cur->next->prev = newitem;
+            cur->next = newitem;
+        }
     }
 
     SignalSema(menuListSemaId);
