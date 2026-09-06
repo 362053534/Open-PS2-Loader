@@ -1427,6 +1427,26 @@ static int bdmDeviceTypeEnabled(int deviceType)
            (deviceType == BDM_TYPE_ATA && gEnableBdmHDD);
 }
 
+static void bdmTurnOffWrongExfatSwitch(void)
+{
+    int i;
+
+    // APA 盘上开了 HDD(exFAT)，当场把开关和对应页关掉，避免和后面的 APA 模式冲突。
+    gEnableBdmHDD = 0;
+    for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+        bdm_device_data_t *pDeviceData;
+
+        if (!list_support[i].support)
+            continue;
+        pDeviceData = list_support[i].support->priv;
+        if (pDeviceData && pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+            list_support[i].menuItem.visible = 0;
+    }
+    guiLock();
+    refreshMenuPosition();
+    guiUnlock();
+}
+
 static void bdmStartupModuleLoad(void *data)
 {
     (void)data;
@@ -1461,6 +1481,7 @@ static void bdmStartupDiscovery(void *data)
                 hddDetectNonSonyFileSystem() == 0) {
                 bdmAtaIsApa = 1;
                 gHddFormatHint = HDD_FORMAT_HINT_NEED_APA;
+                bdmTurnOffWrongExfatSwitch();
             }
 
             count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
@@ -1577,6 +1598,7 @@ static void bdmStartupListUpdate(void *data)
 
                 bdmAtaIsApa = 1;
                 gHddFormatHint = HDD_FORMAT_HINT_NEED_APA;
+                bdmTurnOffWrongExfatSwitch();
                 for (i = 0; i < bdmDiscoveredDeviceCount; i++) {
                     if (bdmGetDeviceTypeFromDriver(bdmDiscoveredDevices[i].name) == BDM_TYPE_ATA) {
                         bdmDiscoveredDeviceMask &= ~(1 << i);
@@ -2243,6 +2265,10 @@ static void loadSupportsBackground(void)
     }
     // 欢迎阶段由BDM三阶段流程统一发现设备和生成列表，此处不提前刷新BDM。
     theardInitDone = 1;
+    // APA 页被关掉后，若光标还停在上面，主界面会继续画那一页。
+    guiLock();
+    refreshMenuPosition();
+    guiUnlock();
 }
 void applyConfig(int themeID, int langID, int skipDeviceRefresh)
 {

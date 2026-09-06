@@ -478,10 +478,14 @@ static void guiShowBlockDeviceConfig(void)
                 gHDDStartMode = 0;
                 // guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
             }
+            // APA 自动启动过之后，页还在链表里；先藏掉再纠正光标，避免仍停在 APA 页。
+            if (gEnableBdmHDD)
+                initSupport(hddGetObject(0), HDD_MODE, 0);
             if (BdmStarted || (!BdmStarted && gBDMStartMode == START_MODE_AUTO &&
                                (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)))
                 reFindBDM();
             applyConfig(-1, -1, 0);
+            refreshMenuPosition();
         }
     }
 }
@@ -589,7 +593,7 @@ reConfig:
         diaGetInt(diaConfig, CFG_DEFDEVICE, &deviceModeIndex);
         gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
 
-        // APA开启时，自动关闭BDMHDD
+        // 两边都开时，后面确认会关掉 APA，避免和 BDMHDD 并存
         diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
@@ -606,9 +610,11 @@ reConfig:
             goto reConfig;
         } else if (ret == UIID_BTN_OK) {
             if (gHDDStartMode && gEnableBdmHDD) {
-                gEnableBdmHDD = 0;
-                // guiMsgBox("检测到冲突！已自动关闭BDMHDD模式！", 0, NULL);
+                gHDDStartMode = 0;
+                // guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
             }
+            if (gEnableBdmHDD)
+                initSupport(hddGetObject(0), HDD_MODE, 0);
             // BDM中途设为自动模式时
             if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
@@ -620,6 +626,7 @@ reConfig:
                  (previousAPPStartMode != START_MODE_AUTO && gAPPStartMode == START_MODE_AUTO)))
                 appForceRefresh();
             menuReinitMainMenu();
+            refreshMenuPosition();
         }
     }
     UiId = -1; // 还原uiid
@@ -1858,6 +1865,9 @@ void guiMainLoop(void)
                             refreshMenuPosition(); // 纠正一下菜单位置，更保险。先切换screen，再刷新BDM菜单的停留位置才有效
                         }
                     }
+                    // 开错 HDD 模式会把启动开关关掉，上面的条件进不去，光标还得挪出隐藏页
+                    if (gHddFormatHint)
+                        refreshMenuPosition();
                     bdmDefaultNeedsCorrection = 0;
                     mainScreenInitDone = 1;
                     // 设备初始化完成后再启动背景音乐，避免音乐所在设备尚未挂载。

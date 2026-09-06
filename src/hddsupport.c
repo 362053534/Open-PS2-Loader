@@ -94,9 +94,10 @@ static int hddInitModules(void)
 
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
     while ((result = hddLoadSupportModules())) {
-        // GPT/exFAT 盘不能走 APA，再重试也没用，留给主界面提示改开 BDMHDD。
+        // GPT/exFAT 盘不能走 APA，再重试也没用，当场关掉错误开关，留给主界面提示改开 BDMHDD。
         if (hddDetectNonSonyFileSystem() == 1) {
             gHddFormatHint = HDD_FORMAT_HINT_NEED_BDMHDD;
+            gHDDStartMode = START_MODE_DISABLED;
             return -1;
         }
         if (++retryCount >= 20)
@@ -480,6 +481,13 @@ void hddInit(item_list_t *itemList)
     hddForceUpdate = 0; // Use cache at initial startup.
     configGetInt(configGetByType(CONFIG_OPL), "hdd_frames_delay", &hddGameList.delay);
     hddGameList.enabled = hddInitModules() == 0;
+    // 开错 APA 时启动模式已被关掉，页也要立刻藏掉，避免和稍后开启的 BDMHDD 撞车。
+    if (gHddFormatHint == HDD_FORMAT_HINT_NEED_BDMHDD && itemList && itemList->owner) {
+        ((opl_io_module_t *)itemList->owner)->menuItem.visible = 0;
+        guiLock();
+        refreshMenuPosition();
+        guiUnlock();
+    }
 }
 
 item_list_t *hddGetObject(int initOnly)
