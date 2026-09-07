@@ -2444,21 +2444,23 @@ void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const cha
             if (buckets->hasAPPS)
                 bucket = "APPS";
         } else if (!strcmp(folder, ART_FOLDER_PS1)) {
-            if (buckets->hasPS1)
+            /* POPS：GAMES 优先，没有才进 PS1。 */
+            if (buckets->hasGAMES)
+                bucket = "GAMES";
+            else if (buckets->hasPS1)
                 bucket = "PS1";
-            else if (buckets->hasGAMES)
-                bucket = "GAMES";
         } else if (!strcmp(folder, ART_FOLDER_NAME)) {
-            /* 游戏列表进不了 ELF，这里不看文件名后缀，避免误进 ART2/APPS。 */
-            if (buckets->hasPS2)
-                bucket = "PS2";
-            else if (buckets->hasGAMES)
+            /* 游戏列表进不了 ELF，这里不看文件名后缀，避免误进 ART2/APPS。
+               PS2：GAMES 优先，没有才进 PS2。 */
+            if (buckets->hasGAMES)
                 bucket = "GAMES";
+            else if (buckets->hasPS2)
+                bucket = "PS2";
         }
     }
 
     if (bucket) {
-        /* 锁到 PS1/PS2 时 BG/SCR 用带序号的文件名；退回 GAMES 仍用旧后缀。 */
+        /* 只有落到 PS1/PS2 时 BG/SCR 才带序号；GAMES 仍用旧后缀。 */
         if ((!strcmp(bucket, "PS1") || !strcmp(bucket, "PS2")) && suffix) {
             if (!strcmp(suffix, "BG"))
                 suffix = "BG_00";
