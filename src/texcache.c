@@ -55,6 +55,7 @@ typedef struct
     int cacheId;
     int cacheUID;
     char *value;
+    int itemId;
 } load_image_request_t;
 load_image_request_t req1 = {0};
 load_image_request_t req2 = {0};
@@ -141,7 +142,7 @@ void cacheCancelPendingArtRequests(void)
     ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
 }
 
-static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value)
+static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
     if (!req) {
@@ -154,6 +155,7 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->cacheUID = cache->content[cacheId].UID;
     req->list = list;
     req->value = value;
+    req->itemId = itemId;
     req->qr = 1;
 
     pthread_mutex_lock(&texLoadingMutex);
@@ -205,7 +207,7 @@ static void cacheLoadImage1(void *data)
     }
 
     // 加载图片
-    int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24);
+    int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
     if (result < 0) {
         ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
@@ -272,7 +274,7 @@ static void *cacheLoadImage(void *data)
         }
 
         // 加载图片
-        int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24);
+        int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
         if (result < 0) {
             ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
@@ -476,7 +478,7 @@ void cacheDestroyCache(image_cache_t *cache)
     free(cache);
 }
 
-GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value)
+GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
 {
     // 默认情况下，触发重复按键时，就会跳过所有Qr
     if (padGetRepeating()) {
@@ -644,7 +646,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             else
                 oldestEntry->UID = *UID;
 
-            cacheQueueImageRequest(cache, *cacheId, list, value);
+            cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
         } else {
             //  加载图片
             if (!strncmp("BG", cache->suffix, 2)) {
@@ -669,6 +671,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     req1.cacheId = *cacheId;
                     req1.list = list;
                     req1.value = value;
+                    req1.itemId = itemId;
                     req1.qr = 1;
                     if (!pthread_created_BG) {
                         pthread_created_BG = 1;
@@ -698,6 +701,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     req2.cacheId = *cacheId;
                     req2.list = list;
                     req2.value = value;
+                    req2.itemId = itemId;
                     req2.qr = 1;
                     if (!pthread_created_COV) {
                         pthread_created_COV = 1;
@@ -727,6 +731,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     req3.cacheId = *cacheId;
                     req3.list = list;
                     req3.value = value;
+                    req3.itemId = itemId;
                     req3.qr = 1;
                     if (!pthread_created_ICO) {
                         pthread_created_ICO = 1;
@@ -756,6 +761,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 req->cacheId = *cacheId;
                 req->list = list;
                 req->value = value;
+                req->itemId = itemId;
                 req->qr = 1;
 
                 // 官方方法加载其他图片

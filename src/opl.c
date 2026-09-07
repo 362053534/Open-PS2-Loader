@@ -677,7 +677,7 @@ int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, ch
 
     listSupport = list_support[mode].support;
     if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
-        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
+        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1) >= 0)
             return 0;
     }
 

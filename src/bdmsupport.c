@@ -951,11 +951,13 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&pDeviceData->bdmGames[id], pDeviceData->bdmPrefix, "/");
 }
 
-static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
     const art_buckets_t *buckets = NULL;
     char path[256];
+
+    (void)id;
 
     if (!value || pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)
         return ERR_BAD_FILE;

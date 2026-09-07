@@ -567,7 +567,7 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
         char *startup = list->itemGetStartup(list, item->id);
-        return cacheGetTexture(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup);
+        return cacheGetTexture(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
     }
 
     return NULL;
@@ -649,7 +649,7 @@ static void drawAttributeImage(struct menu_list *menu, struct submenu_list *item
                 return;
             } else {
                 int posZ = 0;
-                GSTEXTURE *texture = cacheGetTexture(attributeImage->cache, menu->item->userdata, &posZ, &attributeImage->currentUid, attributeImage->currentValue);
+                GSTEXTURE *texture = cacheGetTexture(attributeImage->cache, menu->item->userdata, &posZ, &attributeImage->currentUid, attributeImage->currentValue, -1);
                 if (texture && texture->Mem) {
                     if (attributeImage->overlayTexture) {
                         rmDrawOverlayPixmap(&attributeImage->overlayTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,

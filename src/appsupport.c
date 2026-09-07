@@ -2465,37 +2465,36 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
     return config;
 }
 
-static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int itemId)
 {
     char device[8] = "";
     char dummy[8] = "";
     char *artValue = value;
     char *srcPath = NULL;
-    int id;
     int mode;
     const app_info_t *app = NULL;
 
-    for (id = 0; id < appItemCount; id++) {
-        if (appsList[id].legacy) {
-            struct config_value_t *cur = appGetConfigValue(id);
-            if (value == appGetELFName(cur->val)) {
-                app = &appsList[id];
-                srcPath = cur->val;
-                break;
-            }
-        } else if (value == appsList[id].startup ||
-                   (appsList[id].popstarter && value == appsList[id].boot)) {
-            app = &appsList[id];
-            srcPath = appsList[id].path;
-            break;
-        }
+    (void)itemList;
+
+    if (!value || itemId < 0 || itemId >= appItemCount || !appsList)
+        return -1;
+
+    app = &appsList[itemId];
+    if (app->legacy) {
+        struct config_value_t *cur = appGetConfigValue(itemId);
+        /* 列表刷新后旧请求可能带着过期 ID/指针，对不上就丢弃。 */
+        if (!cur || value != appGetELFName(cur->val))
+            return -1;
+        srcPath = cur->val;
+    } else if (value == app->startup ||
+               (app->popstarter && value == app->boot)) {
+        srcPath = app->path;
+    } else {
+        return -1;
     }
 
-    if (!strcmp(folder, ART_FOLDER_NAME) && value)
+    if (!strcmp(folder, ART_FOLDER_NAME))
         artValue = appGetBoot(dummy, sizeof(dummy), value);
-
-    if (!app)
-        return -1;
 
     /* 有编号的 POPS 走 PS1；未解析到 ID 的 POPS 和 ELF 一样走 APPS。 */
     if (!strcmp(folder, ART_FOLDER_NAME)) {
