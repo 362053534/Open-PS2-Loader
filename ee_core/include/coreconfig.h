@@ -18,6 +18,7 @@ struct GsmConfig_t
     s16 ffmd;
     u32 dx_offset;
     u32 dy_offset;
+    u32 output_width_scale;
     u64 display;
     u64 syncv;
     u64 smode2;

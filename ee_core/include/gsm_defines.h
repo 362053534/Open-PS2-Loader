@@ -72,17 +72,18 @@ GS_MODE_DTV_576P=0x53
 #GSMFlags
 .equ X_offset,              0 # WORD
 .equ Y_offset,              4 # WORD
-.equ ADAPTATION_fix,        8 # BYTE
-.equ PMODE_fix,             9 # BYTE
-.equ SMODE1_fix,           10 # BYTE
-.equ SMODE2_fix,           11 # BYTE
-.equ SRFSH_fix,            12 # BYTE
-.equ SYNCH_fix,            13 # BYTE
-.equ SYNCV_fix,            14 # BYTE
-.equ DISPFB_fix,           15 # BYTE
-.equ DISPLAY_fix,          16 # BYTE
-.equ FIELD_fix,            17 # BYTE
-.equ gs576P_param,         18 # BYTE
+.equ Output_width_scale,    8 # WORD
+.equ ADAPTATION_fix,       12 # BYTE
+.equ PMODE_fix,            13 # BYTE
+.equ SMODE1_fix,           14 # BYTE
+.equ SMODE2_fix,           15 # BYTE
+.equ SRFSH_fix,            16 # BYTE
+.equ SYNCH_fix,            17 # BYTE
+.equ SYNCV_fix,            18 # BYTE
+.equ DISPFB_fix,           19 # BYTE
+.equ DISPLAY_fix,          20 # BYTE
+.equ FIELD_fix,            21 # BYTE
+.equ gs576P_param,         22 # BYTE
 
 #GSMAdapts
 .equ Adapted_DISPLAY1,             0 # DWORD

@@ -102,6 +102,7 @@ static int eecoreInit(int argc, char **argv)
             config->GsmConfig.smode2,
             config->GsmConfig.dx_offset,
             config->GsmConfig.dy_offset,
+            config->GsmConfig.output_width_scale,
             config->GsmConfig.k576P_fix,
             config->GsmConfig.kGsDxDyOffsetSupported,
             config->GsmConfig.FIELD_fix);

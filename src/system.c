@@ -959,6 +959,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
         config->GsmConfig.smode2 = gsm_config.smode2;
         config->GsmConfig.dx_offset = gsm_config.dx_offset;
         config->GsmConfig.dy_offset = gsm_config.dy_offset;
+        config->GsmConfig.output_width_scale = gsm_config.output_width_scale;
         config->GsmConfig.k576P_fix = gsm_config.k576P_fix;
         config->GsmConfig.kGsDxDyOffsetSupported = gsm_config.kGsDxDyOffsetSupported;
         config->GsmConfig.FIELD_fix = gsm_config.FIELD_fix;

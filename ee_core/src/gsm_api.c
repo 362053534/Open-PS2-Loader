@@ -55,6 +55,7 @@ struct GSMFlags
 {
     u32 dx_offset;
     u32 dy_offset;
+    u32 output_width_scale;
     u8 ADAPTATION_fix;
     u8 PMODE_fix;
     u8 SMODE1_fix;
@@ -81,7 +82,7 @@ static unsigned int KSEG_backup[2]; // Copies of the original words at 0x8000010
 /*-------------------*/
 /*-------------------*/
 // Update parameters to be enforced by Hook_SetGsCrt syscall hook and GSHandler service routine functions
-void UpdateGSMParams(s16 interlace, s16 mode, s16 ffmd, u64 display, u64 syncv, u64 smode2, u32 dx_offset, u32 dy_offset, int k576p_fix, int kGsDxDyOffsetSupported, int FIELD_fix)
+void UpdateGSMParams(s16 interlace, s16 mode, s16 ffmd, u64 display, u64 syncv, u64 smode2, u32 dx_offset, u32 dy_offset, u32 output_width_scale, int k576p_fix, int kGsDxDyOffsetSupported, int FIELD_fix)
 {
     unsigned int hvParam = GetGsVParam();
     int gs_DH, gs_DW, gs_DY, gs_DX;
@@ -97,6 +98,7 @@ void UpdateGSMParams(s16 interlace, s16 mode, s16 ffmd, u64 display, u64 syncv, 
 
     GSMFlags.dx_offset = (u32)dx_offset; // X-axis offset -> Use it only when automatic adaptations formulas don't suffice
     GSMFlags.dy_offset = (u32)dy_offset; // Y-axis offset -> Use it only when automatic adaptations formulas don't suffice
+    GSMFlags.output_width_scale = output_width_scale;
     // 0 = Off, 1 = On
     GSMFlags.ADAPTATION_fix = 1; // Default = 1 = On
     GSMFlags.PMODE_fix = 0;      // Default = 0 = Off

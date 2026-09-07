@@ -544,6 +544,12 @@ struct UIItem diaGSConfig[] = {
     {UI_BOOL, GSMCFG_GSMFIELDFIX, 1, 1, _STR_HINT_GSM_FIELD_FIX, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"横向输出缩放", -1}}},
+    {UI_SPACER},
+    {UI_INT, GSMCFG_GSMWIDTHSCALE, 1, 1, -1, -5, 0, {.intvalue = {100, 100, 50, 150}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {"%", -1}}},
+    {UI_BREAK},
+
     // buttons
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
     {UI_BREAK},

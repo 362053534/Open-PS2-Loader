@@ -26,6 +26,7 @@ static int gGSMVMode;    // See the related predef_vmode
 static int gGSMXOffset;  // 0 - Off, Any other positive or negative value - Relative position for X Offset
 static int gGSMYOffset;  // 0 - Off, Any other positive or negative value - Relative position for Y Offset
 static int gGSMFIELDFix; // Enables/disables the FIELD flipping emulation option. 0 for Off, 1 for On.
+static int gGSMWidthScale;
 
 void InitGSMConfig(config_set_t *configSet)
 {
@@ -38,6 +39,7 @@ void InitGSMConfig(config_set_t *configSet)
     gGSMXOffset = 0;
     gGSMYOffset = 0;
     gGSMFIELDFix = 0;
+    gGSMWidthScale = 100;
 
     if (configGetInt(configSet, CONFIG_ITEM_GSMSOURCE, &gGSMSource)) {
         // Load the rest of the per-game GSM configuration, only if GSM is enabled.
@@ -46,6 +48,7 @@ void InitGSMConfig(config_set_t *configSet)
             configGetInt(configSet, CONFIG_ITEM_GSMXOFFSET, &gGSMXOffset);
             configGetInt(configSet, CONFIG_ITEM_GSMYOFFSET, &gGSMYOffset);
             configGetInt(configSet, CONFIG_ITEM_GSMFIELDFIX, &gGSMFIELDFix);
+            configGetInt(configSet, CONFIG_ITEM_GSMWIDTHSCALE, &gGSMWidthScale);
         }
     } else {
         if (configGetInt(configGame, CONFIG_ITEM_ENABLEGSM, &gEnableGSM) && gEnableGSM) {
@@ -53,8 +56,12 @@ void InitGSMConfig(config_set_t *configSet)
             configGetInt(configGame, CONFIG_ITEM_GSMXOFFSET, &gGSMXOffset);
             configGetInt(configGame, CONFIG_ITEM_GSMYOFFSET, &gGSMYOffset);
             configGetInt(configGame, CONFIG_ITEM_GSMFIELDFIX, &gGSMFIELDFix);
+            configGetInt(configGame, CONFIG_ITEM_GSMWIDTHSCALE, &gGSMWidthScale);
         }
     }
+
+    if (gGSMWidthScale < 50 || gGSMWidthScale > 150)
+        gGSMWidthScale = 100;
 }
 
 int GetGSMEnabled(void)
@@ -162,6 +169,7 @@ void PrepareGSM(char *cmdline, struct GsmConfig_t *config)
         config->smode2 = ((predef_vmode[gGSMVMode].ffmd) << 1) | (predef_vmode[gGSMVMode].interlace);
         config->dx_offset = (u32)gGSMXOffset;
         config->dy_offset = (u32)gGSMYOffset;
+        config->output_width_scale = gGSMWidthScale == 100 ? 0 : (u32)gGSMWidthScale;
         config->k576P_fix = k576p_fix;
         config->kGsDxDyOffsetSupported = kGsDxDyOffsetSupported;
         config->FIELD_fix = FIELD_fix;

@@ -62,7 +62,7 @@ GSMSourceGSRegs:    .space 88
 GSMDestGSRegs:      .space 88
 
 .globl GSMFlags
-GSMFlags: .space 19
+GSMFlags: .space 23
 
 .p2align 4                                          # align 16 bytes (IMPORTANT!!!)
 
@@ -697,6 +697,44 @@ have_DISPLAY_write_5:
     add     $t7, $t7, $t0                           #   t7 = Calculated_DW = Calculated_DW + Target_DX - Calculated_DX  # Target DW adjusted
 
 have_DISPLAY_write_6:
+    lw      $t1, Output_width_scale($s2)
+    beq     $t1, $zero, have_DISPLAY_write_6_store
+    nop
+
+    # 仅在用户启用时放大最终输出区域，保留游戏内部渲染与原有 MAGH 参数。
+    addiu   $t0, $t7, 1
+    multu   $t0, $t1
+    mflo    $t1
+    addiu   $t1, $t1, 50
+    li      $t0, 100
+    divu    $t1, $t0
+    mflo    $t1
+    sltiu   $t0, $t1, 1
+    beq     $t0, $zero, have_DISPLAY_write_6_min_checked
+    nop
+    li      $t1, 1
+
+have_DISPLAY_write_6_min_checked:
+    li      $t0, 4096
+    sltu    $t0, $t0, $t1
+    beq     $t0, $zero, have_DISPLAY_write_6_max_checked
+    nop
+    li      $t1, 4096
+
+have_DISPLAY_write_6_max_checked:
+    addiu   $t1, $t1, -1
+    subu    $t0, $t1, $t7
+    dsra    $t0, $t0, 1
+    subu    $t6, $t6, $t0
+    bgez    $t6, have_DISPLAY_write_6_position_checked
+    nop
+    addu    $t1, $t1, $t6
+    move    $t6, $zero
+
+have_DISPLAY_write_6_position_checked:
+    move    $t7, $t1
+
+have_DISPLAY_write_6_store:
     andi    $t7, $t7, 0x0FFF
     andi    $t4, $t4, 0x000F
     andi    $t6, $t6, 0x0FFF
