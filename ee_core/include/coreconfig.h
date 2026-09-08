@@ -54,6 +54,10 @@ struct EECoreConfig_t
     void *ModStorageStart;
     void *ModStorageEnd;
 
+    void *BDMFragmentTable;
+    u32 BDMFragmentTableBytes;
+    u32 BDMFragmentTableCount;
+
     char GameID[CORE_GAME_ID_MAX_LEN];
 
     u32 _CompatMask;

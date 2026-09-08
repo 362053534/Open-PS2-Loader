@@ -29,6 +29,10 @@ static bd_defrag_cursor_t g_bd_defrag_cursor;
 static bd_defrag_index_t g_bd_defrag_index;
 static bd_fragment_t *g_frag_table = NULL;
 static bd_defrag_checkpoint_t *g_bd_defrag_checkpoints = NULL;
+static bd_fragment_t *g_bdm_fragment_pending = NULL;
+static u32 g_bdm_fragment_pending_bytes = 0;
+static u8 g_frag_table_owned = 0;
+static int g_bdm_fragment_rpc_thread_id = -1;
 enum bdm_frag_table_state {
     BDM_FRAG_TABLE_EMPTY = 0,
     BDM_FRAG_TABLE_LOADING,
@@ -104,58 +108,66 @@ void bdm_disconnect_bd(struct block_device *bd)
 // cdvdman "Device" functions
 //
 
-static int bdm_load_fragment_table(void)
+static void *bdm_fragment_rpc_handler(int function, void *buffer, int length)
 {
-    u32 bytes = cdvdman_settings.frag_table_bytes;
-    u32 address = cdvdman_settings.frag_table_ee_addr;
-    u32 offset = 0;
+    struct bdm_fragment_rpc *request = buffer;
     u32 required_bytes;
-    bd_fragment_t *frag_table;
-    bd_defrag_checkpoint_t *checkpoints = NULL;
 
-    if (bytes == 0 || address == 0 || cdvdman_settings.fragfile[0].frag_count == 0 ||
-        cdvdman_settings.fragfile[0].frag_count > 0xFFFFFFFFU / sizeof(bd_fragment_t))
-        return -1;
-    required_bytes = cdvdman_settings.fragfile[0].frag_count * sizeof(bd_fragment_t);
-    if (bytes < required_bytes || (bytes & 0xF) != 0)
-        return -1;
+    if (buffer == NULL || length < (int)sizeof(*request))
+        return buffer;
 
-    frag_table = AllocSysMemory(ALLOC_FIRST, bytes, NULL);
-    if (frag_table == NULL)
-        return -1;
+    request->result = -1;
+    if (request->fragment_count == 0 ||
+        request->fragment_count > 0xFFFFFFFFU / sizeof(bd_fragment_t))
+        return buffer;
 
-    while (offset < bytes) {
-        SifRpcReceiveData_t receive;
-        u32 chunk = bytes - offset;
+    required_bytes = request->fragment_count * sizeof(bd_fragment_t);
+    if (request->fragment_bytes < required_bytes ||
+        (request->fragment_bytes & 0xF) != 0)
+        return buffer;
 
-        if (chunk > 16384)
-            chunk = 16384;
-
-        /* IOP侧的sceSifSetDma只适用于IOP→EE，反向读取必须通过SIFCMD请求。 */
-        if (sceSifGetOtherData(&receive, (void *)(address + offset),
-                               (u8 *)frag_table + offset, chunk, 0) < 0) {
-            FreeSysMemory(frag_table);
-            return -1;
+    if (function == BDM_FRAGMENT_RPC_PREPARE) {
+        if (g_bdm_fragment_pending != NULL)
+            FreeSysMemory(g_bdm_fragment_pending);
+        g_bdm_fragment_pending = AllocSysMemory(ALLOC_FIRST, request->fragment_bytes, NULL);
+        if (g_bdm_fragment_pending == NULL) {
+            g_bdm_fragment_pending_bytes = 0;
+            return buffer;
         }
-        offset += chunk;
+        g_bdm_fragment_pending_bytes = request->fragment_bytes;
+        request->iop_address = (u32)g_bdm_fragment_pending;
+        request->fragment_bytes = g_bdm_fragment_pending_bytes;
+        request->result = 0;
+    } else if (function == BDM_FRAGMENT_RPC_COMMIT) {
+        if (g_bdm_fragment_pending == NULL ||
+            g_bdm_fragment_pending_bytes != request->fragment_bytes ||
+            request->iop_address != (u32)g_bdm_fragment_pending)
+            return buffer;
+
+        g_frag_table = g_bdm_fragment_pending;
+        g_frag_table_owned = 1;
+        g_bdm_fragment_pending = NULL;
+        g_bdm_fragment_pending_bytes = 0;
+        cdvdman_settings.fragfile[0].frag_count = request->fragment_count;
+        request->result = 0;
     }
 
-    {
-        u32 fragcount = cdvdman_settings.fragfile[0].frag_count;
-        u32 stride = bdm_get_checkpoint_stride(fragcount);
-        u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
+    return buffer;
+}
 
-        checkpoints = AllocSysMemory(ALLOC_FIRST,
-                                     checkpoint_count * sizeof(bd_defrag_checkpoint_t), NULL);
-        if (checkpoints == NULL)
-            DPRINTF("fragment index allocation failed; using linear lookup\n");
-    }
+static void bdm_fragment_rpc_thread(void *arg)
+{
+    static SifRpcDataQueue_t rpc_queue __attribute__((aligned(64)));
+    static SifRpcServerData_t rpc_server __attribute__((aligned(64)));
+    static u8 rpc_buffer[64] __attribute__((aligned(64)));
 
-    /* 只有完整复制成功后才发布主表，读取线程不会看到半成品。 */
-    g_frag_table = frag_table;
-    g_bd_defrag_checkpoints = checkpoints;
-
-    return 0;
+    (void)arg;
+    sceSifInitRpc(0);
+    sceSifSetRpcQueue(&rpc_queue, GetThreadId());
+    sceSifRegisterRpc(&rpc_server, BDM_FRAGMENT_RPC_ID,
+                      bdm_fragment_rpc_handler, rpc_buffer,
+                      NULL, NULL, &rpc_queue);
+    sceSifRpcLoop(&rpc_queue);
 }
 
 static int bdm_prepare_fragment_table(void)
@@ -169,7 +181,7 @@ static int bdm_prepare_fragment_table(void)
         return -1;
 
     g_frag_table_state = BDM_FRAG_TABLE_LOADING;
-    if (g_frag_table == NULL && bdm_load_fragment_table() < 0) {
+    if (g_frag_table == NULL) {
         g_frag_table_state = BDM_FRAG_TABLE_FAILED;
         return -1;
     }
@@ -206,6 +218,7 @@ static int bdm_prepare_fragment_table(void)
 void DeviceInit(void)
 {
     iop_sema_t smp;
+    iop_thread_t thread;
 
     DPRINTF("%s\n", __func__);
 
@@ -219,6 +232,20 @@ void DeviceInit(void)
     bd_defrag_index_reset(&g_bd_defrag_index);
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+    if (g_bdm_fragment_pending != NULL) {
+        FreeSysMemory(g_bdm_fragment_pending);
+        g_bdm_fragment_pending = NULL;
+        g_bdm_fragment_pending_bytes = 0;
+    }
+
+    thread.attr = TH_C;
+    thread.option = 0;
+    thread.thread = bdm_fragment_rpc_thread;
+    thread.stacksize = 0x1000;
+    thread.priority = 0x40;
+    g_bdm_fragment_rpc_thread_id = CreateThread(&thread);
+    if (g_bdm_fragment_rpc_thread_id >= 0)
+        StartThread(g_bdm_fragment_rpc_thread_id, NULL);
 
     RegisterLibraryEntries(&_exp_bdm);
 
@@ -237,9 +264,11 @@ void DeviceDeinit(void)
     bd_defrag_index_reset(&g_bd_defrag_index);
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
     if (g_frag_table != NULL) {
-        FreeSysMemory(g_frag_table);
+        if (g_frag_table_owned)
+            FreeSysMemory(g_frag_table);
         g_frag_table = NULL;
     }
+    g_frag_table_owned = 0;
     if (g_bd_defrag_checkpoints != NULL) {
         FreeSysMemory(g_bd_defrag_checkpoints);
         g_bd_defrag_checkpoints = NULL;

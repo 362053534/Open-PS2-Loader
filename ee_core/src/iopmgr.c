@@ -9,6 +9,8 @@
 
 #include <iopcontrol.h>
 #include <libcdvd-common.h>
+#include <sifcmd.h>
+#include <sifdma.h>
 
 #include "ee_core.h"
 #include "iopmgr.h"
@@ -17,6 +19,7 @@
 #include "util.h"
 #include "syshook.h"
 #include "coreconfig.h"
+#include "../../modules/iopcore/common/cdvd_config.h"
 
 extern int _iop_reboot_count;
 static int imgdrv_offset_ioprpimg = 0;
@@ -27,6 +30,57 @@ static int imgdrv_offset_ioprpsiz = 0;
 static SifRpcClientData_t cdvd_init_rpc_client __attribute__((aligned(64)));
 static int cdvd_init_rpc_mode __attribute__((aligned(64)));
 static int cdvd_init_rpc_result[4] __attribute__((aligned(64)));
+static SifRpcClientData_t bdm_fragment_rpc_client __attribute__((aligned(64)));
+static struct bdm_fragment_rpc bdm_fragment_rpc_packet __attribute__((aligned(64)));
+
+static int PushBDMFragmentTable(const struct EECoreConfig_t *config)
+{
+    int dma_id;
+    int rpc_result;
+    SifDmaTransfer_t dma;
+
+    if (config->BDMFragmentTable == NULL ||
+        config->BDMFragmentTableBytes == 0 ||
+        config->BDMFragmentTableCount == 0)
+        return -1;
+
+    memset(&bdm_fragment_rpc_client, 0, sizeof(bdm_fragment_rpc_client));
+    while (1) {
+        if (SifBindRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_ID, 0) >= 0 &&
+            bdm_fragment_rpc_client.server != NULL)
+            break;
+    }
+
+    memset(&bdm_fragment_rpc_packet, 0, sizeof(bdm_fragment_rpc_packet));
+    bdm_fragment_rpc_packet.command = BDM_FRAGMENT_RPC_PREPARE;
+    bdm_fragment_rpc_packet.fragment_count = config->BDMFragmentTableCount;
+    bdm_fragment_rpc_packet.fragment_bytes = config->BDMFragmentTableBytes;
+    rpc_result = SifCallRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_PREPARE, 0,
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            NULL, NULL);
+    if (rpc_result < 0 || bdm_fragment_rpc_packet.result < 0 ||
+        bdm_fragment_rpc_packet.iop_address == 0)
+        return -1;
+
+    SifWriteBackDCache(config->BDMFragmentTable, config->BDMFragmentTableBytes);
+    dma.src = config->BDMFragmentTable;
+    dma.dest = (void *)bdm_fragment_rpc_packet.iop_address;
+    dma.size = bdm_fragment_rpc_packet.fragment_bytes;
+    dma.attr = 0;
+    do {
+        dma_id = SifSetDma(&dma, 1);
+    } while (dma_id == 0);
+    while (SifDmaStat(dma_id) >= 0)
+        ;
+
+    bdm_fragment_rpc_packet.command = BDM_FRAGMENT_RPC_COMMIT;
+    rpc_result = SifCallRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_COMMIT, 0,
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            NULL, NULL);
+    return (rpc_result >= 0 && bdm_fragment_rpc_packet.result == 0) ? 0 : -1;
+}
 
 static int InitBDMCDVDMan(void)
 {
@@ -243,6 +297,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         config->GameMode == BDM_M4S_MODE ||
         config->GameMode == BDM_HDD_MODE ||
         config->GameMode == HDD_MODE) {
+        if (PushBDMFragmentTable(config) < 0) {
+            DPRINTF("BDM fragment table preload failed\n");
+            return;
+        }
         if (InitBDMCDVDMan() < 0)
             DPRINTF("BDM CDVD initialization RPC failed\n");
     }

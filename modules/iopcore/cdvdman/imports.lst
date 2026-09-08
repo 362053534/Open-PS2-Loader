@@ -61,6 +61,7 @@ thsemap_IMPORTS_end
 thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
+I_GetThreadId
 I_DelayThread
 I_SetAlarm
 I_iSetAlarm
@@ -84,7 +85,10 @@ thevent_IMPORTS_end
 #include <sifcmd.h>
 
 sifcmd_IMPORTS_start
-I_sceSifGetOtherData
+I_sceSifInitRpc
+I_sceSifSetRpcQueue
+I_sceSifRegisterRpc
+I_sceSifRpcLoop
 sifcmd_IMPORTS_end
 
 sifman_IMPORTS_start
