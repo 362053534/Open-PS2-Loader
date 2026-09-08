@@ -91,6 +91,19 @@ struct cdvdman_settings_bdm
     u32 frag_table_bytes;
 } __attribute__((packed));
 
+#define BDM_FRAGMENT_RPC_ID      0x800005A0
+#define BDM_FRAGMENT_RPC_PREPARE 0
+#define BDM_FRAGMENT_RPC_COMMIT  1
+
+struct bdm_fragment_rpc
+{
+    u32 command;
+    u32 fragment_count;
+    u32 fragment_bytes;
+    u32 iop_address;
+    s32 result;
+} __attribute__((packed));
+
 #define CDVDMAN_SETTINGS_DEFAULT_COMMON                    \
     {                                                      \
         0x68, 0x68, 0x1234, 0x39393939, "DSKID", 16, 8, 16 \

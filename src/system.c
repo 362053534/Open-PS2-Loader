@@ -462,6 +462,10 @@ static void *GetModStorageLocation(const char *startup, unsigned compatFlags)
     return ((void *)OPL_MOD_STORAGE);
 }
 
+static void *bdmFragmentTableEEAddress;
+static unsigned int bdmFragmentTableBytes;
+static unsigned int bdmFragmentTableCount;
+
 static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, unsigned int modules, void *ModuleStorage, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, void *frag_table, unsigned int frag_count)
 { // Send IOP modules that core must use to Kernel RAM
     irxtab_t *irxtable;
@@ -470,6 +474,10 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
     int i, modcount;
     unsigned int curIrxSize, size_ioprp_image, total_size;
     unsigned int cdvdman_offset = 0;
+
+    bdmFragmentTableEEAddress = NULL;
+    bdmFragmentTableBytes = 0;
+    bdmFragmentTableCount = 0;
 
     if (!strcmp(mode_str, "BDM_USB_MODE"))
         modules |= CORE_IRX_USB;
@@ -631,16 +639,21 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
             unsigned int frag_bytes = (unsigned int)frag_bytes64;
             unsigned int frag_transfer_bytes = (frag_bytes + 0xF) & ~0xF;
             void *frag_dst = irxptr;
+            struct cdvdman_settings_bdm *settings =
+                (struct cdvdman_settings_bdm *)((u8 *)irxptr_tab[1].ptr + cdvdman_offset + cdvdman_settings_offset);
+
             memcpy(frag_dst, frag_table, frag_bytes);
             if (frag_transfer_bytes > frag_bytes)
                 memset((u8 *)frag_dst + frag_bytes, 0, frag_transfer_bytes - frag_bytes);
-            struct cdvdman_settings_bdm *settings = (struct cdvdman_settings_bdm *)((u8 *)irxptr_tab[1].ptr + cdvdman_offset + cdvdman_settings_offset);
-            settings->frag_table_ee_addr = (u32)frag_dst;
+            settings->frag_table_ee_addr = 0;
             settings->frag_table_bytes = frag_transfer_bytes;
             settings->fragfile[0].frag_start = 0;
             settings->fragfile[0].frag_count = frag_count;
-            irxptr = (void *)((u8 *)irxptr + ((frag_bytes + 0xF) & ~0xF));
-            total_size += ((frag_bytes + 0xF) & ~0xF);
+            bdmFragmentTableEEAddress = frag_dst;
+            bdmFragmentTableBytes = frag_transfer_bytes;
+            bdmFragmentTableCount = frag_count;
+            irxptr = (void *)((u8 *)irxptr + frag_transfer_bytes);
+            total_size += frag_transfer_bytes;
         }
     }
 
@@ -986,6 +999,9 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
 
     config->ModStorageStart = ModuleStorage;
     config->ModStorageEnd = ModuleStorageEnd;
+    config->BDMFragmentTable = bdmFragmentTableEEAddress;
+    config->BDMFragmentTableBytes = bdmFragmentTableBytes;
+    config->BDMFragmentTableCount = bdmFragmentTableCount;
 
     strncpy(config->GameID, filename, CORE_GAME_ID_MAX_LEN);
 
