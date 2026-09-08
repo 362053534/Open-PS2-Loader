@@ -13,6 +13,7 @@
 #include "include/cheatman.h"
 #include "include/ps2cnf.h"
 #include "include/gui.h"
+#include "pops_legacy_id_map.h"
 
 #include <dirent.h>
 
@@ -1283,25 +1284,6 @@ static int ReadPOPSVCDSector(int fd, u32 sector)
     return ReadPOPSVCDData(fd, IOBuffer, sizeof(IOBuffer));
 }
 
-static int CopyPOPSVolumeName(const u8 *volumeId, char *name, int maxlength)
-{
-    int length = 0;
-
-    if (maxlength <= 0)
-        return -1;
-
-    while (length < 32 && volumeId[length] != '\0')
-        length++;
-    while (length > 0 && volumeId[length - 1] == ' ')
-        length--;
-    if (length <= 0 || length >= maxlength)
-        return -1;
-
-    memcpy(name, volumeId, length);
-    name[length] = '\0';
-    return 0;
-}
-
 static int CopyPOPSVolumeId(const u8 *volumeId, char *filename, int maxlength)
 {
     char startup[GAME_STARTUP_MAX];
@@ -1339,230 +1321,30 @@ static int CopyPOPSVolumeId(const u8 *volumeId, char *filename, int maxlength)
     return 0;
 }
 
-#define POPS_ID_SCAN_LIMIT  (1024 * 1024)
-#define POPS_ID_SCAN_BATCH_SECTORS 32
-#define POPS_ID_SCAN_BATCH_BYTES (POPS_ID_SCAN_BATCH_SECTORS * 2352)
-#define POPS_ID_PATTERN_LENGTH 12
-#define POPS_ID_SCAN_MAX_DEPTH 32
-
-struct pops_exe_candidate
+static int IsPOPSVolumeCreationTimestampValid(const char *timestamp)
 {
-    u32 lba;
-    u32 size;
-    u32 order;
-    int depth;
-    int priority;
-    char name[64];
-};
+    int i;
 
-struct pops_directory_candidate
-{
-    u32 lba;
-    u32 size;
-    int depth;
-};
-
-static int IsPOPSExeName(const char *name)
-{
-    size_t length = strlen(name);
-
-    return length >= 6 && !strcasecmp(&name[length - 6], ".EXE;1");
-}
-
-static int IsPOPSPSXExeName(const char *name)
-{
-    return !strcasecmp(name, "PSX.EXE;1");
-}
-
-static int IsPOPSExeNameContaining(const char *name, const char *volumeName)
-{
-    size_t nameLength = strlen(name);
-    size_t volumeLength = strlen(volumeName);
-    size_t position;
-
-    if (volumeLength == 0 || volumeLength > nameLength)
-        return 0;
-
-    for (position = 0; position + volumeLength <= nameLength; position++) {
-        if (strncasecmp(&name[position], volumeName, volumeLength) == 0)
-            return 1;
-    }
-
-    return 0;
-}
-
-static int AppendPOPSExeCandidate(struct pops_exe_candidate **candidates, int *count, int *capacity,
-                                  u32 lba, u32 size, int depth, u32 order, const char *name)
-{
-    struct pops_exe_candidate *newCandidates;
-    int newCapacity;
-    struct pops_exe_candidate *candidate;
-
-    if (*count >= *capacity) {
-        newCapacity = *capacity > 0 ? *capacity * 2 : 32;
-        newCandidates = realloc(*candidates, newCapacity * sizeof(struct pops_exe_candidate));
-        if (newCandidates == NULL)
+    for (i = 0; i < 16; i++) {
+        if (timestamp[i] < '0' || timestamp[i] > '9')
             return -1;
-        *candidates = newCandidates;
-        *capacity = newCapacity;
-    }
-
-    candidate = &(*candidates)[(*count)++];
-    memset(candidate, 0, sizeof(*candidate));
-    candidate->lba = lba;
-    candidate->size = size;
-    candidate->order = order;
-    candidate->depth = depth;
-    candidate->priority = !strcasecmp(name, "LOAD.EXE;1") ? 0 :
-                          !strcasecmp(name, "SAVE.EXE;1") ? 1 : 2;
-    strncpy(candidate->name, name, sizeof(candidate->name) - 1);
-    return 0;
-}
-
-static int AppendPOPSDirectoryCandidate(struct pops_directory_candidate **directories, int *count, int *capacity,
-                                         u32 lba, u32 size, int depth)
-{
-    struct pops_directory_candidate *newDirectories;
-    int newCapacity;
-
-    if (*count >= *capacity) {
-        newCapacity = *capacity > 0 ? *capacity * 2 : 16;
-        newDirectories = realloc(*directories, newCapacity * sizeof(struct pops_directory_candidate));
-        if (newDirectories == NULL)
-            return -1;
-        *directories = newDirectories;
-        *capacity = newCapacity;
-    }
-
-    (*directories)[*count].lba = lba;
-    (*directories)[*count].size = size;
-    (*directories)[*count].depth = depth;
-    (*count)++;
-    return 0;
-}
-
-static int ComparePOPSExeCandidates(const void *left, const void *right)
-{
-    const struct pops_exe_candidate *a = (const struct pops_exe_candidate *)left;
-    const struct pops_exe_candidate *b = (const struct pops_exe_candidate *)right;
-
-    if (a->priority != b->priority)
-        return a->priority - b->priority;
-    if (a->depth != b->depth)
-        return a->depth - b->depth;
-    if (a->order < b->order)
-        return -1;
-    if (a->order > b->order)
-        return 1;
-    return 0;
-}
-
-static int CollectPOPSExeCandidates(int fd, u32 directoryLBA, u32 directorySize, int depth,
-                                    struct pops_exe_candidate **candidates, int *candidateCount, int *candidateCapacity,
-                                    struct pops_directory_candidate **directories, int *directoryCount,
-                                    int *directoryCapacity, u32 *scanUsed, u32 *order)
-{
-    u32 sector;
-
-    if (depth > POPS_ID_SCAN_MAX_DEPTH)
-        return 0;
-
-    for (sector = 0; sector < (directorySize + 2047) / 2048; sector++) {
-        u32 sectorSize = directorySize - sector * 2048;
-        u32 position = 0;
-
-        if (sectorSize > 2048)
-            sectorSize = 2048;
-        if (*scanUsed + sectorSize > POPS_ID_SCAN_LIMIT)
-            return 1;
-        if (ReadPOPSVCDSector(fd, directoryLBA + sector) != 0)
-            return -1;
-        *scanUsed += sectorSize;
-
-        while (position < sectorSize) {
-            const u8 recordLength = IOBuffer[position];
-            const u8 *name;
-            u8 nameLength;
-            char entryName[64];
-            u32 entryLBA, entrySize;
-
-            if (!recordLength)
-                break;
-            if (recordLength < 34 || position + recordLength > sectorSize)
-                break;
-
-            nameLength = IOBuffer[position + 32];
-            name = &IOBuffer[position + 33];
-            if (33 + nameLength > recordLength || nameLength >= sizeof(entryName)) {
-                position += recordLength;
-                continue;
-            }
-
-            memcpy(entryName, name, nameLength);
-            entryName[nameLength] = '\0';
-            entryLBA = ReadLE32(&IOBuffer[position + 2]);
-            entrySize = ReadLE32(&IOBuffer[position + 10]);
-
-            if (IOBuffer[position + 25] & 2) {
-                if (nameLength != 1 || (name[0] != 0 && name[0] != 1)) {
-                    /* 使用目录队列而不是递归，避免子目录读取覆盖父目录仍在解析的IOBuffer。 */
-                    if (depth < POPS_ID_SCAN_MAX_DEPTH &&
-                        AppendPOPSDirectoryCandidate(directories, directoryCount, directoryCapacity,
-                                                     entryLBA, entrySize, depth + 1) < 0)
-                        return -1;
-                }
-            } else if (IsPOPSExeName(entryName) && !IsPOPSPSXExeName(entryName)) {
-                if (AppendPOPSExeCandidate(candidates, candidateCount, candidateCapacity,
-                                           entryLBA, entrySize, depth, (*order)++, entryName) < 0)
-                    return -1;
-            }
-
-            position += recordLength;
-        }
     }
 
     return 0;
 }
 
-static int IsPOPSAsciiLetter(u8 value)
+static int LookupPOPSLegacyIdByTimestamp(const char *timestamp, char *filename, int maxlength)
 {
-    return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z');
-}
-
-static int CopyPOPSMemoryCardId(const u8 *data, u32 length, char *filename, int maxlength)
-{
-    char startup[GAME_STARTUP_MAX];
-    u32 i;
-    int j;
+    unsigned int i;
 
     if (maxlength < GAME_STARTUP_MAX - 1)
         return -1;
 
-    for (i = 0; i + POPS_ID_PATTERN_LENGTH <= length; i++) {
-        if ((data[i] != 'B' && data[i] != 'b') || !IsPOPSAsciiLetter(data[i + 1]) ||
-            !IsPOPSAsciiLetter(data[i + 2]) || !IsPOPSAsciiLetter(data[i + 3]) ||
-            !IsPOPSAsciiLetter(data[i + 4]) || !IsPOPSAsciiLetter(data[i + 5]) || data[i + 6] != '-' ||
-            data[i + 7] < '0' || data[i + 7] > '9' || data[i + 8] < '0' || data[i + 8] > '9' ||
-            data[i + 9] < '0' || data[i + 9] > '9' || data[i + 10] < '0' || data[i + 10] > '9' ||
-            data[i + 11] < '0' || data[i + 11] > '9')
-            continue;
-
-        for (j = 0; j < 4; j++) {
-            startup[j] = data[i + 2 + j];
-            if (startup[j] >= 'a' && startup[j] <= 'z')
-                startup[j] -= 'a' - 'A';
-        }
-        startup[4] = '_';
-        startup[5] = data[i + 7];
-        startup[6] = data[i + 8];
-        startup[7] = data[i + 9];
-        startup[8] = '.';
-        startup[9] = data[i + 10];
-        startup[10] = data[i + 11];
-        startup[11] = '\0';
-
-        if (sbIsValidStartupExecName(startup) == 0) {
-            memcpy(filename, startup, GAME_STARTUP_MAX);
+    for (i = 0; i < POPS_LEGACY_ID_MAP_COUNT; i++) {
+        if (!memcmp(popsLegacyIdMap[i].timestamp, timestamp, 16)) {
+            if (sbIsValidStartupExecName(popsLegacyIdMap[i].startup) != 0)
+                return -1;
+            memcpy(filename, popsLegacyIdMap[i].startup, GAME_STARTUP_MAX);
             return 0;
         }
     }
@@ -1570,76 +1352,23 @@ static int CopyPOPSMemoryCardId(const u8 *data, u32 length, char *filename, int 
     return -1;
 }
 
-static int ScanPOPSExeForId(int fd, const struct pops_exe_candidate *candidate, u32 *scanUsed,
-                            u32 scanLimit, u8 *batchBuffer, char *filename, int maxlength)
-{
-    u8 tail[POPS_ID_PATTERN_LENGTH - 1];
-    u8 scanBuffer[(POPS_ID_PATTERN_LENGTH - 1) + 2048];
-    u32 fileOffset = 0;
-    int tailLength = 0;
-
-    while (fileOffset < candidate->size && (scanLimit == 0 || *scanUsed < scanLimit)) {
-        u32 remainingFile = candidate->size - fileOffset;
-        u32 remainingBudget = scanLimit == 0 ? remainingFile : scanLimit - *scanUsed;
-        u32 logicalBytes = remainingFile < remainingBudget ? remainingFile : remainingBudget;
-        u32 sectorCount;
-        u32 physicalBytes;
-        u32 sector;
-
-        if (logicalBytes > POPS_ID_SCAN_BATCH_SECTORS * 2048)
-            logicalBytes = POPS_ID_SCAN_BATCH_SECTORS * 2048;
-        sectorCount = (logicalBytes + 2047) / 2048;
-        physicalBytes = sectorCount * 2352;
-
-        if (lseek64(fd, 0x100000ULL + (u64)candidate->lba * 2352ULL +
-                    (u64)(fileOffset / 2048) * 2352ULL, SEEK_SET) < 0 ||
-            ReadPOPSVCDData(fd, batchBuffer, physicalBytes) != 0)
-            return -1;
-
-        for (sector = 0; sector < sectorCount; sector++) {
-            u32 bytes = logicalBytes - sector * 2048;
-            u32 combinedLength;
-
-            if (bytes > 2048)
-                bytes = 2048;
-            memcpy(scanBuffer, tail, tailLength);
-            memcpy(&scanBuffer[tailLength], &batchBuffer[sector * 2352 + 24], bytes);
-            combinedLength = tailLength + bytes;
-            if (CopyPOPSMemoryCardId(scanBuffer, combinedLength, filename, maxlength) == 0)
-                return 0;
-
-            tailLength = combinedLength > POPS_ID_PATTERN_LENGTH - 1 ? POPS_ID_PATTERN_LENGTH - 1 : combinedLength;
-            memcpy(tail, &scanBuffer[combinedLength - tailLength], tailLength);
-        }
-
-        fileOffset += logicalBytes;
-        *scanUsed += logicalBytes;
-    }
-
-    return -1;
-}
+/* 旧的三级 EXE 内容扫描已由 PVD 卷创建时间查表替代。 */
 
 int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
 {
     int fd, result = -1;
     u8 volumeId[32];
-    char volumeName[33];
     u32 rootLBA, rootSize, sector;
-    struct pops_exe_candidate *candidates = NULL;
-    struct pops_exe_candidate *volumeCandidate = NULL;
-    struct pops_directory_candidate *directories = NULL;
-    int candidateCount = 0, candidateCapacity = 0;
-    int directoryCount = 0, directoryCapacity = 0;
-    u32 scanUsed = 0, order = 0, volumeCandidateOrder = 0xFFFFFFFF;
-    u8 *batchBuffer = NULL;
+    char volumeTimestamp[17];
 
-    volumeName[0] = '\0';
     if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
         return -1;
 
     /* POPS VCD的ISO数据位于固定头部之后，物理扇区包含24字节附加头。 */
     if (ReadPOPSVCDSector(fd, 16) == 0 && IOBuffer[0] == 1 && !memcmp(&IOBuffer[1], "CD001", 5) && IOBuffer[156] >= 34) {
         memcpy(volumeId, &IOBuffer[40], sizeof(volumeId));
+        memcpy(volumeTimestamp, &IOBuffer[813], 16);
+        volumeTimestamp[16] = '\0';
         rootLBA = ReadLE32(&IOBuffer[158]);
         rootSize = ReadLE32(&IOBuffer[166]);
 
@@ -1656,8 +1385,6 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
                 const u8 recordLength = IOBuffer[position];
                 const u8 *name;
                 u8 nameLength;
-                char entryName[64];
-                u32 entryLBA, entrySize;
 
                 if (!recordLength)
                     break;
@@ -1666,99 +1393,27 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
 
                 nameLength = IOBuffer[position + 32];
                 name = &IOBuffer[position + 33];
-                if (33 + nameLength > recordLength || nameLength >= sizeof(entryName)) {
+                if (33 + nameLength > recordLength) {
                     position += recordLength;
                     continue;
                 }
 
-                memcpy(entryName, name, nameLength);
-                entryName[nameLength] = '\0';
-                entryLBA = ReadLE32(&IOBuffer[position + 2]);
-                entrySize = ReadLE32(&IOBuffer[position + 10]);
-
-                if (IOBuffer[position + 25] & 2) {
-                    if (nameLength != 1 || (name[0] != 0 && name[0] != 1)) {
-                        if (AppendPOPSDirectoryCandidate(&directories, &directoryCount, &directoryCapacity,
-                                                         entryLBA, entrySize, 1) < 0) {
-                            result = -1;
-                            break;
-                        }
-                    }
-                } else {
-                    if (CopyStartupName(name, nameLength, 0, filename, maxlength) == 0) {
-                        result = 0;
-                        break;
-                    }
-                    if (IsPOPSExeName(entryName) && !IsPOPSPSXExeName(entryName) &&
-                        AppendPOPSExeCandidate(&candidates, &candidateCount, &candidateCapacity,
-                                               entryLBA, entrySize, 0, order++, entryName) < 0) {
-                        result = -1;
-                        break;
-                    }
+                if (!(IOBuffer[position + 25] & 2) &&
+                    CopyStartupName(name, nameLength, 0, filename, maxlength) == 0) {
+                    result = 0;
+                    break;
                 }
 
                 position += recordLength;
             }
         }
 
-        if (result != 0) {
+        if (result != 0)
             result = CopyPOPSVolumeId(volumeId, filename, maxlength);
-            if (result != 0 && CopyPOPSVolumeName(volumeId, volumeName, sizeof(volumeName)) == 0) {
-                for (sector = 0; sector < (u32)candidateCount; sector++) {
-                    if (candidates[sector].depth == 0 &&
-                        IsPOPSExeNameContaining(candidates[sector].name, volumeName)) {
-                        volumeCandidate = &candidates[sector];
-                        volumeCandidateOrder = candidates[sector].order;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (result != 0 && candidateCount == 0) {
-            for (sector = 0; sector < (u32)directoryCount; sector++) {
-                int collectResult = CollectPOPSExeCandidates(fd, directories[sector].lba, directories[sector].size,
-                                                             directories[sector].depth,
-                                                             &candidates, &candidateCount, &candidateCapacity,
-                                                             &directories, &directoryCount, &directoryCapacity,
-                                                             &scanUsed, &order);
-                if (collectResult > 0)
-                    break;
-                if (collectResult < 0)
-                    result = -1;
-            }
-        }
-
-        if (result != 0 && candidateCount > 0) {
-            batchBuffer = malloc(POPS_ID_SCAN_BATCH_BYTES);
-            if (batchBuffer != NULL) {
-                /* 卷名匹配的根目录EXE优先完整扫描，通用候选才受1MB预算限制。 */
-                if (volumeCandidate != NULL &&
-                    ScanPOPSExeForId(fd, volumeCandidate, &scanUsed, 0, batchBuffer, filename, maxlength) == 0)
-                    result = 0;
-
-                qsort(candidates, candidateCount, sizeof(struct pops_exe_candidate), ComparePOPSExeCandidates);
-                if (volumeCandidate != NULL)
-                    scanUsed = 0;
-                for (sector = 0; result != 0 && sector < (u32)candidateCount && scanUsed < POPS_ID_SCAN_LIMIT; sector++) {
-                    if (candidates[sector].order == volumeCandidateOrder)
-                        continue;
-                    if (ScanPOPSExeForId(fd, &candidates[sector], &scanUsed, POPS_ID_SCAN_LIMIT,
-                                         batchBuffer, filename, maxlength) == 0) {
-                        result = 0;
-                        break;
-                    }
-                }
-            }
-        }
+        if (result != 0 && IsPOPSVolumeCreationTimestampValid(volumeTimestamp) == 0)
+            result = LookupPOPSLegacyIdByTimestamp(volumeTimestamp, filename, maxlength);
     }
 
-    if (batchBuffer != NULL)
-        free(batchBuffer);
-    if (directories != NULL)
-        free(directories);
-    if (candidates != NULL)
-        free(candidates);
     close(fd);
     return result;
 }
