@@ -1354,6 +1354,48 @@ static int LookupPOPSLegacyIdByTimestamp(const char *timestamp, char *filename, 
 
 /* 旧的三级 EXE 内容扫描已由 PVD 卷创建时间查表替代。 */
 
+void sbDebugPOPSVCDFallback(const char *path)
+{
+    int fd;
+    FILE *debugFile;
+    u8 volumeId[32];
+    char volumeName[33];
+    char volumeTimestamp[17];
+    int volumeLength = 0;
+
+    if (path == NULL || (fd = open(path, O_RDONLY, 0666)) < 0)
+        return;
+
+    if (ReadPOPSVCDSector(fd, 16) != 0 ||
+        IOBuffer[0] != 1 || memcmp(&IOBuffer[1], "CD001", 5) != 0) {
+        close(fd);
+        return;
+    }
+
+    memcpy(volumeId, &IOBuffer[40], sizeof(volumeId));
+    memcpy(volumeTimestamp, &IOBuffer[813], 16);
+    volumeTimestamp[16] = '\0';
+    while (volumeLength < (int)sizeof(volumeId) && volumeId[volumeLength] != '\0')
+        volumeLength++;
+    while (volumeLength > 0 && volumeId[volumeLength - 1] == ' ')
+        volumeLength--;
+    if (volumeLength >= (int)sizeof(volumeName)) {
+        close(fd);
+        return;
+    }
+
+    if (volumeLength > 0)
+        memcpy(volumeName, volumeId, volumeLength);
+    volumeName[volumeLength] = '\0';
+    close(fd);
+
+    debugFile = fopen("mass0:pops_vcd_debug.txt", "ab");
+    if (debugFile == NULL)
+        return;
+    fprintf(debugFile, "%s %s\n", volumeName, volumeTimestamp);
+    fclose(debugFile);
+}
+
 int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
 {
     int fd, result = -1;
