@@ -7,6 +7,7 @@
 #define ISO_GAME_NAME_MAX      160
 #define ISO_GAME_EXTENSION_MAX 4
 #define GAME_STARTUP_MAX       12
+#define GENERAL_STARTUP_MAX    32
 
 #define ISO_GAME_FNAME_MAX (ISO_GAME_NAME_MAX + ISO_GAME_EXTENSION_MAX)
 
@@ -19,7 +20,7 @@ enum GAME_FORMAT {
 typedef struct
 {
     char name[ISO_GAME_NAME_MAX + 1]; // MUST be the higher value from UL / ISO
-    char startup[GAME_STARTUP_MAX + 1];
+    char startup[GENERAL_STARTUP_MAX];
     char extension[ISO_GAME_EXTENSION_MAX + 1];
     u8 parts;
     u8 media;

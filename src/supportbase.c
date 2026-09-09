@@ -118,12 +118,8 @@ static int GetStartupExecName(const char *path, char *filename, int maxlength)
             key++;
         }
 
-        if (length > maxlength) {
-            length = maxlength;
-        }
-
-        if (length == 0) {
-            LOG("GetStartupExecName: serial len 0 ':' (%s).\n", ps2disc_boot);
+        if (length == 0 || length > maxlength) {
+            LOG("GetStartupExecName: invalid startup name length %d (%s).\n", length, ps2disc_boot);
             return -1;
         }
 
@@ -462,7 +458,7 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                     }
                 }
             } else {
-                char startup[GAME_STARTUP_MAX];
+                char startup[GENERAL_STARTUP_MAX];
                 int reopenApaTxt = 0;
                 int MountFD = -1;
 
@@ -474,10 +470,10 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                     reopenApaTxt = 1;
                 }
 
-                if (GetStartupExecNameFromISO(fullpath, startup, GAME_STARTUP_MAX - 1) != 0) {
+                if (GetStartupExecNameFromISO(fullpath, startup, GENERAL_STARTUP_MAX - 1) != 0) {
                     MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
 
-                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
+                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GENERAL_STARTUP_MAX - 1) != 0) {
                         fileXioUmount("iso:");
                         // 挂载失败也要重开，保证后续缓存回填/追加仍能写 txt
                         if (reopenApaTxt) {
@@ -489,8 +485,8 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                         continue;
                     }
                 }
-                strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
-                game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                strncpy(game->startup, startup, GENERAL_STARTUP_MAX - 1);
+                game->startup[GENERAL_STARTUP_MAX - 1] = '\0';
                 strncpy(game->name, dirent->d_name, NameLen);
                 game->name[NameLen] = '\0';
                 strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
