@@ -33,6 +33,10 @@ static bd_fragment_t *g_bdm_fragment_pending = NULL;
 static u32 g_bdm_fragment_pending_bytes = 0;
 static u8 g_frag_table_owned = 0;
 static int g_bdm_fragment_rpc_thread_id = -1;
+static volatile u8 g_bdm_fragment_rpc_registered = 0;
+static SifRpcDataQueue_t g_bdm_fragment_rpc_queue __attribute__((aligned(64)));
+static SifRpcServerData_t g_bdm_fragment_rpc_server __attribute__((aligned(64)));
+static u8 g_bdm_fragment_rpc_buffer[64] __attribute__((aligned(64)));
 enum bdm_frag_table_state {
     BDM_FRAG_TABLE_EMPTY = 0,
     BDM_FRAG_TABLE_LOADING,
@@ -157,17 +161,14 @@ static void *bdm_fragment_rpc_handler(int function, void *buffer, int length)
 
 static void bdm_fragment_rpc_thread(void *arg)
 {
-    static SifRpcDataQueue_t rpc_queue __attribute__((aligned(64)));
-    static SifRpcServerData_t rpc_server __attribute__((aligned(64)));
-    static u8 rpc_buffer[64] __attribute__((aligned(64)));
-
     (void)arg;
     sceSifInitRpc(0);
-    sceSifSetRpcQueue(&rpc_queue, GetThreadId());
-    sceSifRegisterRpc(&rpc_server, BDM_FRAGMENT_RPC_ID,
-                      bdm_fragment_rpc_handler, rpc_buffer,
-                      NULL, NULL, &rpc_queue);
-    sceSifRpcLoop(&rpc_queue);
+    sceSifSetRpcQueue(&g_bdm_fragment_rpc_queue, GetThreadId());
+    sceSifRegisterRpc(&g_bdm_fragment_rpc_server, BDM_FRAGMENT_RPC_ID,
+                      bdm_fragment_rpc_handler, g_bdm_fragment_rpc_buffer,
+                      NULL, NULL, &g_bdm_fragment_rpc_queue);
+    g_bdm_fragment_rpc_registered = 1;
+    sceSifRpcLoop(&g_bdm_fragment_rpc_queue);
 }
 
 static int bdm_prepare_fragment_table(void)
@@ -260,6 +261,19 @@ void DeviceInit(void)
 void DeviceDeinit(void)
 {
     DPRINTF("%s\n", __func__);
+
+    /* IGR通常会重启整个IOP，但模块卸载时仍要显式撤销RPC和线程。 */
+    if (g_bdm_fragment_rpc_registered) {
+        sceSifRemoveRpc(&g_bdm_fragment_rpc_server, &g_bdm_fragment_rpc_queue);
+        sceSifRemoveRpcQueue(&g_bdm_fragment_rpc_queue);
+        g_bdm_fragment_rpc_registered = 0;
+    }
+    if (g_bdm_fragment_rpc_thread_id >= 0) {
+        TerminateThread(g_bdm_fragment_rpc_thread_id);
+        DeleteThread(g_bdm_fragment_rpc_thread_id);
+        g_bdm_fragment_rpc_thread_id = -1;
+    }
+
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
     bd_defrag_index_reset(&g_bd_defrag_index);
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
