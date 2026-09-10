@@ -283,6 +283,11 @@ void DeviceDeinit(void)
         g_frag_table = NULL;
     }
     g_frag_table_owned = 0;
+    if (g_bdm_fragment_pending != NULL) {
+        FreeSysMemory(g_bdm_fragment_pending);
+        g_bdm_fragment_pending = NULL;
+        g_bdm_fragment_pending_bytes = 0;
+    }
     if (g_bd_defrag_checkpoints != NULL) {
         FreeSysMemory(g_bd_defrag_checkpoints);
         g_bd_defrag_checkpoints = NULL;
