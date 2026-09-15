@@ -191,6 +191,135 @@ int DeviceReadSectorsCached(u32 lsn, void *buffer, unsigned int sectors)
     return DeviceReadSectors(lsn, buffer, sectors);
 }
 
+#ifdef SMB_DRIVER
+// 普通 ISO 专用扇区缓存，和 ZSO 的 DeviceReadSectorsCached 分开，避免改压缩读路径。
+#define ISO_SECTOR_CACHE_MAX_WAYS 2
+static u8 iso_cache_size = 0;
+static u8 iso_cache_ways = 0;
+static u8 *iso_sector_cache = NULL;
+static u32 iso_cache_lsn[ISO_SECTOR_CACHE_MAX_WAYS];
+static u8 iso_cache_count[ISO_SECTOR_CACHE_MAX_WAYS];
+static u8 iso_cache_mru = 0;
+
+static void iso_sector_cache_reset(void)
+{
+    int i;
+
+    for (i = 0; i < ISO_SECTOR_CACHE_MAX_WAYS; i++) {
+        iso_cache_lsn[i] = 0xFFFFFFFF;
+        iso_cache_count[i] = 0;
+    }
+    iso_cache_mru = 0;
+}
+
+static int iso_sector_cache_try_alloc(u8 cache_size, u8 ways)
+{
+    u8 *buf;
+
+    if (!cache_size || !ways)
+        return 0;
+
+    buf = AllocSysMemory(ALLOC_FIRST, (int)ways * cache_size * 2048, NULL);
+    if (!buf)
+        return 0;
+
+    iso_sector_cache = buf;
+    iso_cache_size = cache_size;
+    iso_cache_ways = ways;
+    iso_sector_cache_reset();
+    return 1;
+}
+
+static void initIsoSectorCache(void)
+{
+    u8 cache_size = cdvdman_settings.common.zso_cache;
+
+    if (iso_sector_cache != NULL || cache_size == 0)
+        return;
+
+    // 旧配置里常见 8/16，接不住「1 扇区后再读 LSN+16」的语音块。
+    if (cache_size < 32)
+        cache_size = 32;
+
+    while (cache_size >= 8) {
+        if (iso_sector_cache_try_alloc(cache_size, ISO_SECTOR_CACHE_MAX_WAYS))
+            return;
+        if (iso_sector_cache_try_alloc(cache_size, 1))
+            return;
+        cache_size >>= 1;
+    }
+}
+
+static int iso_sector_cache_find(u32 lsn, unsigned int sectors)
+{
+    int i;
+    u32 off;
+
+    for (i = 0; i < iso_cache_ways; i++) {
+        if (iso_cache_lsn[i] == 0xFFFFFFFF || lsn < iso_cache_lsn[i])
+            continue;
+        off = lsn - iso_cache_lsn[i];
+        if (off < iso_cache_count[i] && sectors <= (u32)(iso_cache_count[i] - off))
+            return i;
+    }
+    return -1;
+}
+
+static int iso_sector_cache_pick_victim(void)
+{
+    int i;
+
+    for (i = 0; i < iso_cache_ways; i++) {
+        if (iso_cache_lsn[i] == 0xFFFFFFFF)
+            return i;
+    }
+    for (i = 0; i < iso_cache_ways; i++) {
+        if (i != iso_cache_mru)
+            return i;
+    }
+    return 0;
+}
+
+static int DeviceReadSectorsIsoCached(u32 lsn, void *buffer, unsigned int sectors)
+{
+    int way, res;
+    unsigned int fetch;
+    u8 *way_buf;
+
+    // 大块顺序读（音乐 32 扇区）直接穿透，避免把语音窗口挤掉。
+    if (!iso_cache_size || !iso_sector_cache || sectors >= iso_cache_size)
+        return DeviceReadSectors(lsn, buffer, sectors);
+
+    way = iso_sector_cache_find(lsn, sectors);
+    if (way >= 0) {
+        memcpy(buffer, iso_sector_cache + ((way * iso_cache_size) + (lsn - iso_cache_lsn[way])) * 2048, sectors * 2048);
+        iso_cache_mru = (u8)way;
+        return SCECdErNO;
+    }
+
+    way = iso_sector_cache_pick_victim();
+    way_buf = iso_sector_cache + way * iso_cache_size * 2048;
+    fetch = iso_cache_size;
+    if (mediaLsnCount && lsn < mediaLsnCount && (mediaLsnCount - lsn) < fetch)
+        fetch = mediaLsnCount - lsn;
+    if (fetch < sectors)
+        return DeviceReadSectors(lsn, buffer, sectors);
+
+    res = DeviceReadSectors(lsn, way_buf, fetch);
+    if (res != SCECdErNO) {
+        iso_cache_lsn[way] = 0xFFFFFFFF;
+        iso_cache_count[way] = 0;
+        return DeviceReadSectors(lsn, buffer, sectors);
+    }
+
+    iso_cache_lsn[way] = lsn;
+    iso_cache_count[way] = (u8)fetch;
+    iso_cache_mru = (u8)way;
+    memcpy(buffer, way_buf, sectors * 2048);
+    return SCECdErNO;
+}
+#endif
+
 /*
   For ZSO we need to be able to read at arbitrary offsets with arbitrary sizes.
   Since we can only do sector-based reads, this funtions acts as a wrapper.
@@ -275,6 +404,14 @@ static int ProbeZSO(u8 *buffer)
         // redirect sector reader
         DeviceReadSectorsPtr = &DeviceReadSectorsCompressed;
     }
+#ifdef SMB_DRIVER
+    else {
+        // 普通 ISO 走独立缓存，不复用 ZSO 的 DeviceReadSectorsCached。
+        initIsoSectorCache();
+        if (iso_cache_size)
+            DeviceReadSectorsPtr = &DeviceReadSectorsIsoCached;
+    }
+#endif
     return 1;
 }
 
