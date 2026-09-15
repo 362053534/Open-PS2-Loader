@@ -100,6 +100,21 @@ static FT_Vector delta;
 
 #define GLYPH_PAGE_OK(font, pageid) ((pageid <= font->cacheMaxPageID) && (font->glyphCache[pageid]))
 
+/* 坏字节后重新同步，避免标题从某一个汉字开始整行后面都不画。 */
+static int fntUtf8Step(uint32_t *utf8state, uint32_t *codep, char c)
+{
+    uint32_t st = utf8Decode(utf8state, codep, c);
+    if (st == UTF8_REJECT) {
+        *utf8state = UTF8_ACCEPT;
+        st = utf8Decode(utf8state, codep, c);
+        if (st == UTF8_REJECT) {
+            *utf8state = UTF8_ACCEPT;
+            return 1;
+        }
+    }
+    return st;
+}
+
 static void fntCacheFlushPage(fnt_glyph_cache_entry_t *page)
 {
     int i;
@@ -557,7 +572,7 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
 
     // cache glyphs and render as we go
     for (; *string; ++string) {
-        if (utf8Decode(&state, &codepoint, *string)) // accumulate the codepoint value
+        if (fntUtf8Step(&state, &codepoint, *string)) // accumulate the codepoint value
             continue;
 
         glyph = fntCacheGlyph(font, codepoint);
@@ -616,7 +631,7 @@ static void fntRenderSubRTL(font_t *font, const char *startRTL, const char *stri
     }
 
     for (; startRTL != string; ++startRTL) {
-        if (utf8Decode(&state, &codepoint, *startRTL))
+        if (fntUtf8Step(&state, &codepoint, *startRTL))
             continue;
 
         glyph = fntCacheGlyph(font, codepoint);
@@ -681,7 +696,7 @@ int fntRenderString(int id, int x, int y, short aligned, size_t width, size_t he
 
     // cache glyphs and render as we go
     for (; *string; ++string) {
-        if (utf8Decode(&state, &codepoint, *string)) // accumulate the codepoint value
+        if (fntUtf8Step(&state, &codepoint, *string)) // accumulate the codepoint value
             continue;
 
         glyph = fntCacheGlyph(font, codepoint);
@@ -817,7 +832,7 @@ int fntCalcDimensions(int id, const char *str)
 
     // cache glyphs and render as we go
     for (; *str; ++str) {
-        if (utf8Decode(&state, &codepoint, *str)) // accumulate the codepoint value
+        if (fntUtf8Step(&state, &codepoint, *str)) // accumulate the codepoint value
             continue;
 
         // Could just as well only get the glyph dimensions
