@@ -86,6 +86,7 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset);
 int sbProbeISO9660_64(const char *path, base_game_info_t *game, u32 layer1_offset);
 int sbIsValidStartupExecName(const char *startup);
 int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength);
+int sbGetForcedAltStartup(const char *startup, char *filename, int maxlength);
 void sbGetStartupExecNameForLaunch(const char *path, const char *startup, char *filename, int maxlength);
 
 int sbLoadCheats(const char *path, const char *file);

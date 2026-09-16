@@ -1779,6 +1779,45 @@ static int GetStartupExecNameFromISO(const char *path, char *filename, int maxle
     return result;
 }
 
+int sbGetForcedAltStartup(const char *startup, char *filename, int maxlength)
+{
+    /* Splinter Cell sequels: default boot ELF probes DEV9/network and black-screens
+     * over SMB. Prefer the offline / non-online ELF unless the user set AltStartup.
+     * ELF names follow US community reports; JP/PAL discs usually keep the same filenames. */
+    static const struct {
+        const char *id;
+        const char *elf;
+    } table[] = {
+        /* Double Agent */
+        {"SLUS_213.56", "SC4_OFF.ELF"},
+        {"SLES_538.26", "SC4_OFF.ELF"},
+        {"SLES_538.27", "SC4_OFF.ELF"},
+        {"SLPM_666.72", "SC4_OFF.ELF"},
+        /* Chaos Theory */
+        {"SLUS_211.37", "SC3_OFF.ELF"},
+        {"SLES_530.07", "SC3_OFF.ELF"},
+        {"SLES_532.87", "SC3_OFF.ELF"},
+        {"SLPM_661.30", "SC3_OFF.ELF"},
+        /* Pandora Tomorrow — SC2A.ELF freezes; SC2B.ELF is the working path */
+        {"SLUS_209.58", "SC2B.ELF"},
+        {"SLES_521.49", "SC2B.ELF"},
+        {"SLPM_658.15", "SC2B.ELF"},
+        {NULL, NULL}};
+    int i;
+
+    if (!startup || !filename || maxlength <= 0)
+        return 0;
+
+    for (i = 0; table[i].id != NULL; i++) {
+        if (!strncmp(startup, table[i].id, GAME_STARTUP_MAX)) {
+            strncpy(filename, table[i].elf, maxlength);
+            filename[maxlength] = '\0';
+            return 1;
+        }
+    }
+
+    return 0;
+}
 void sbGetStartupExecNameForLaunch(const char *path, const char *startup, char *filename, int maxlength)
 {
     int fd, compressed;
