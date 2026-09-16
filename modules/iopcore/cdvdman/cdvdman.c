@@ -252,9 +252,8 @@ static void initIsoSectorCache(void)
     if (cache_size < 32)
         cache_size = 32;
 
+    /* 默认 1-way×N（32 时约 64KB）。Amazon 类「32 穿透 + 一路 1/16」够用；不动态升 2-way。 */
     while (cache_size >= 8) {
-        if (iso_sector_cache_try_alloc(cache_size, ISO_SECTOR_CACHE_MAX_WAYS))
-            return;
         if (iso_sector_cache_try_alloc(cache_size, 1))
             return;
         cache_size >>= 1;
@@ -297,8 +296,9 @@ static int DeviceReadSectorsIsoCached(u32 lsn, void *buffer, unsigned int sector
     unsigned int fetch;
     u8 *way_buf;
 
-    // 大块顺序读（音乐 32 扇区）直接穿透，避免把语音窗口挤掉。
-    if (!iso_cache_size || !iso_sector_cache || sectors >= iso_cache_size)
+    /* 大于 16 扇区穿透（≥17）。≤16 可查命中；未命中预取填窗（含 2～16）。
+     * Amazon：1/16 双流仍可用缓存；≥17（含音乐 32）直读不占窗。 */
+    if (!iso_cache_size || !iso_sector_cache || sectors > 16)
         return DeviceReadSectors(lsn, buffer, sectors);
 
     way = iso_sector_cache_find(lsn, sectors);
