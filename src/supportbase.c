@@ -1348,6 +1348,138 @@ static int LookupPOPSLegacyIdByTimestamp(const char *timestamp, char *filename, 
     return -1;
 }
 
+static int IsPOPSSYSTEMCNFName(const u8 *name, u8 nameLength)
+{
+    static const char systemCnf[] = "SYSTEM.CNF";
+    unsigned int i;
+
+    if (nameLength < sizeof(systemCnf) - 1)
+        return 0;
+    if (nameLength > sizeof(systemCnf) - 1 && name[sizeof(systemCnf) - 1] != ';')
+        return 0;
+
+    for (i = 0; i < sizeof(systemCnf) - 1; i++) {
+        char c = (char)name[i];
+        if (c >= 'a' && c <= 'z')
+            c -= 'a' - 'A';
+        if (c != systemCnf[i])
+            return 0;
+    }
+
+    return 1;
+}
+
+/* Parse PS1 SYSTEM.CNF BOOT= (not BOOT2) and keep the final executable name. */
+static int CopyPOPSStartupFromCnfBoot(const char *cnf, u32 length, char *filename, int maxlength)
+{
+    const char *end = cnf + length;
+    const char *line = cnf;
+
+    while (line < end) {
+        const char *cursor = line;
+        const char *boot;
+        const char *nameStart;
+        const char *nameEnd;
+        const char *slash;
+        char bootName[64];
+        unsigned int bootLength;
+
+        while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r'))
+            cursor++;
+
+        /* Match BOOT but not BOOT2. */
+        if (cursor + 4 <= end &&
+            (cursor[0] == 'B' || cursor[0] == 'b') &&
+            (cursor[1] == 'O' || cursor[1] == 'o') &&
+            (cursor[2] == 'O' || cursor[2] == 'o') &&
+            (cursor[3] == 'T' || cursor[3] == 't') &&
+            (cursor + 4 == end || cursor[4] != '2')) {
+            boot = cursor + 4;
+            while (boot < end && (*boot == ' ' || *boot == '\t'))
+                boot++;
+            if (boot < end && *boot == '=') {
+                boot++;
+                while (boot < end && (*boot == ' ' || *boot == '\t'))
+                    boot++;
+
+                nameStart = boot;
+                while (nameStart < end && *nameStart != ':' && *nameStart != '\r' && *nameStart != '\n' && *nameStart != '\0')
+                    nameStart++;
+                if (nameStart < end && *nameStart == ':')
+                    nameStart++;
+                while (nameStart < end && (*nameStart == '\\' || *nameStart == '/'))
+                    nameStart++;
+
+                nameEnd = nameStart;
+                while (nameEnd < end && *nameEnd != ';' && *nameEnd != '\r' && *nameEnd != '\n' &&
+                       *nameEnd != '\0' && *nameEnd != ' ' && *nameEnd != '\t')
+                    nameEnd++;
+
+                if (nameEnd > nameStart) {
+                    slash = nameStart;
+                    while (slash < nameEnd) {
+                        if (*slash == '\\' || *slash == '/')
+                            nameStart = slash + 1;
+                        slash++;
+                    }
+
+                    bootLength = (unsigned int)(nameEnd - nameStart);
+                    if (bootLength > 0 && bootLength < sizeof(bootName)) {
+                        memcpy(bootName, nameStart, bootLength);
+                        if (nameEnd < end && *nameEnd == ';' && bootLength + 2 < sizeof(bootName)) {
+                            bootName[bootLength++] = ';';
+                            if (nameEnd + 1 < end && nameEnd[1] >= '0' && nameEnd[1] <= '9')
+                                bootName[bootLength++] = nameEnd[1];
+                            else
+                                bootName[bootLength++] = '1';
+                        }
+                        return CopyStartupName((const u8 *)bootName, bootLength, 0, filename, maxlength);
+                    }
+                }
+            }
+        }
+
+        while (line < end && *line != '\n' && *line != '\0')
+            line++;
+        if (line < end && *line == '\n')
+            line++;
+        else
+            break;
+    }
+
+    return -1;
+}
+
+static int LookupPOPSStartupFromSYSTEMCNF(int fd, u32 cnfLBA, u32 cnfSize, char *filename, int maxlength)
+{
+    u32 sectorCount;
+    u32 sector;
+    u32 offset = 0;
+    char cnf[1024];
+
+    if (cnfSize == 0)
+        return -1;
+    if (cnfSize > sizeof(cnf) - 1)
+        cnfSize = sizeof(cnf) - 1;
+
+    sectorCount = (cnfSize + 2047) / 2048;
+    for (sector = 0; sector < sectorCount; sector++) {
+        u32 chunk = cnfSize - offset;
+
+        if (chunk > 2048)
+            chunk = 2048;
+        if (ReadPOPSVCDSector(fd, cnfLBA + sector) != 0)
+            return -1;
+        memcpy(&cnf[offset], IOBuffer, chunk);
+        offset += chunk;
+    }
+
+    cnf[offset] = '\0';
+    return CopyPOPSStartupFromCnfBoot(cnf, offset, filename, maxlength);
+}
+
+/* Root ID first; if missing, parse BOOT= from marked SYSTEM.CNF. */
+
 /* 旧的三级 EXE 内容扫描已由 PVD 卷创建时间查表替代。 */
 
 int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
@@ -1356,6 +1488,9 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
     u8 volumeId[32];
     u32 rootLBA, rootSize, sector;
     char volumeTimestamp[17];
+    int hasSystemCnf = 0;
+    u32 systemCnfLBA = 0;
+    u32 systemCnfSize = 0;
 
     if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
         return -1;
@@ -1394,16 +1529,24 @@ int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
                     continue;
                 }
 
-                if (!(IOBuffer[position + 25] & 2) &&
-                    CopyStartupName(name, nameLength, 0, filename, maxlength) == 0) {
-                    result = 0;
-                    break;
+                if (!(IOBuffer[position + 25] & 2)) {
+                    if (!hasSystemCnf && IsPOPSSYSTEMCNFName(name, nameLength)) {
+                        hasSystemCnf = 1;
+                        systemCnfLBA = ReadLE32(&IOBuffer[position + 2]);
+                        systemCnfSize = ReadLE32(&IOBuffer[position + 10]);
+                    }
+                    if (CopyStartupName(name, nameLength, 0, filename, maxlength) == 0) {
+                        result = 0;
+                        break;
+                    }
                 }
 
                 position += recordLength;
             }
         }
 
+        if (result != 0 && hasSystemCnf)
+            result = LookupPOPSStartupFromSYSTEMCNF(fd, systemCnfLBA, systemCnfSize, filename, maxlength);
         if (result != 0)
             result = CopyPOPSVolumeId(volumeId, filename, maxlength);
         if (result != 0 && IsPOPSVolumeCreationTimestampValid(volumeTimestamp) == 0)
