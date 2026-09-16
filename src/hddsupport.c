@@ -118,7 +118,7 @@ static int hddInitModules(void)
     sprintf(path, "%sLNG", gHDDPrefix);
     lngAddLanguages(path, "/", hddGameList.mode);
 
-    sbCreateFolders(gHDDPrefix, 0);
+    sbCreateFolders(gHDDPrefix, 1);
     return 0;
 }
 

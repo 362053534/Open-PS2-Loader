@@ -2168,7 +2168,7 @@ static void sbCreateFoldersFromList(const char *path, const char **folders)
 void sbCreateFolders(const char *path, int createDiscImgFolders)
 {
     const char *basicFolders[] = {"CFG", "THM", "LNG", "ART", "VMC", "CHT", "APPS", "CACHE", NULL};
-    const char *discImgFolders[] = {"CD", "DVD", NULL};
+    const char *discImgFolders[] = {"CD", "DVD", "POPS", NULL};
 
     sbCreateFoldersFromList(path, basicFolders);
 
