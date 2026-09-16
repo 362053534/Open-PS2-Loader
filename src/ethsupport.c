@@ -776,10 +776,18 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
         if (!sbGetForcedAltStartup(game->startup, filename, sizeof(filename) - 1))
             sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
     }
-    deinit(NO_EXCEPTION, ETH_MODE); // CAREFUL: deinit will call ethCleanUp, so ethGames/game will be freed
+    /* UYA local multiplayer on SMB needs DEV9 hidden: OPL owns the NIC. */
+    {
+        int uyaHideDev9 = !strcmp(game->startup, "SCUS_973.53") ||
+                          !strcmp(game->startup, "SCES_524.56") ||
+                          !strcmp(game->startup, "SCPS_150.84");
+        deinit(NO_EXCEPTION, ETH_MODE); // CAREFUL: deinit will call ethCleanUp, so ethGames/game will be freed
 
-    settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
-    settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
+        if (uyaHideDev9)
+            settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_HIDE_DEV9;
+    }
 
     // 游戏内 ISO/ZSO 共用这块扇区缓存；SMB 需要至少 32 扇区才能接住 1+16 语音流。
     settings->common.zso_cache = 32;

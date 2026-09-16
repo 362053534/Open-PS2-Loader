@@ -20,6 +20,7 @@
 #define FAKE_MODULE_FLAG_ATAD    (1 << 3) // not used, compiled in
 #define FAKE_MODULE_FLAG_CDVDSTM (1 << 4) // not used, compiled in
 #define FAKE_MODULE_FLAG_CDVDFSV (1 << 5) // not used, compiled in
+#define FAKE_MODULE_FLAG_HIDE_DEV9 (1 << 6) // UYA on SMB: refuse/hide NIC like neutrino i_dev9_hidden
 
 #define ISO_MAX_PARTS 10
 

@@ -82,7 +82,7 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		sio2man.o padman.o mcman.o mcserv.o \
 		httpclient-iop.o netman.o ps2ips.o \
 		bdm_mcemu.o hdd_mcemu.o pfs_bdm_mcemu.o smb_mcemu.o \
-		iremsndpatch.o apemodpatch.o f2techioppatch.o cleareffects.o resetspu.o \
+		iremsndpatch.o apemodpatch.o f2techioppatch.o rcuyapatch.o cleareffects.o resetspu.o \
 		libsd.o audsrv.o
 
 EECORE_OBJS = ee_core.o ioprp.o util.o \
@@ -297,6 +297,8 @@ clean:	download_lwNBD
 	$(MAKE) -C modules/iopcore/patches/f2techioppatch clean
 	echo "   -cleareffects"
 	$(MAKE) -C modules/iopcore/patches/cleareffects clean
+	echo "   -rcuya"
+	$(MAKE) -C modules/iopcore/patches/rcuyapatch clean
 	echo " -isofs"
 	$(MAKE) -C modules/isofs clean
 	echo " -bdmevent"
@@ -494,6 +496,12 @@ modules/iopcore/patches/f2techioppatch/f2techioppatch.irx: modules/iopcore/patch
 	$(MAKE) -C $<
 
 $(EE_ASM_DIR)f2techioppatch.c: modules/iopcore/patches/f2techioppatch/f2techioppatch.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ $(*F)_irx
+
+modules/iopcore/patches/rcuyapatch/rcuyapatch.irx: modules/iopcore/patches/rcuyapatch
+	$(MAKE) -C $<
+
+$(EE_ASM_DIR)rcuyapatch.c: modules/iopcore/patches/rcuyapatch/rcuyapatch.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
 
 modules/iopcore/patches/cleareffects/cleareffects.irx: modules/iopcore/patches/cleareffects

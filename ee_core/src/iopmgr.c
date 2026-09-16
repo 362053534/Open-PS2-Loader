@@ -238,6 +238,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 
     DPRINTF("Loading extra IOP modules...\n");
 
+    /* UYA: stake 0x4C900 before ETH/BDM modules eat IOP RAM (multiplayer IOP reboot path). */
+    if (_strcmp(config->GameID, "SCUS_973.53") == 0 || _strcmp(config->GameID, "SCES_524.56") == 0 || _strcmp(config->GameID, "SCPS_150.84") == 0)
+        LoadOPLModule(OPL_MODULE_ID_IOP_PATCH, 0, 0, NULL);
+
 #ifdef __LOAD_DEBUG_MODULES
 #if !defined(TTY_PPC)
     LoadOPLModule(OPL_MODULE_ID_SMSTCPIP, 0, 0, NULL);
@@ -304,6 +308,7 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         if (InitBDMCDVDMan() < 0)
             DPRINTF("BDM CDVD initialization RPC failed\n");
     }
+
 }
 
 /*----------------------------------------------------------------*/

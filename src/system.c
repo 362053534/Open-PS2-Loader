@@ -413,6 +413,9 @@ static const patchlist_t iop_patch_list[] = {
     {"SLUS_204.13", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (NTSC-U/C)
     {"SLES_504.46", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (PAL)
     {"SLES_506.08", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (PAL German)
+    {"SCUS_973.53", "", &rcuyapatch_irx, &size_rcuyapatch_irx},         // Ratchet & Clank: Up Your Arsenal (NTSC-U/C)
+    {"SCES_524.56", "", &rcuyapatch_irx, &size_rcuyapatch_irx},         // Ratchet & Clank: Up Your Arsenal (PAL)
+    {"SCPS_150.84", "", &rcuyapatch_irx, &size_rcuyapatch_irx},         // Ratchet & Clank 3 Galactic Rangers (NTSC-J)
     {NULL, NULL, NULL, NULL},                                           // Terminator
 };
 
