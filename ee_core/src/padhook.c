@@ -39,6 +39,7 @@
 #define NEWLIB_PORT_AWARE
 #include <fileXio.h>
 #include <io_common.h>
+#include <string.h>
 
 /* scePadPortOpen & scePad2CreateSocket prototypes */
 static int (*scePadPortOpen)(int port, int slot, void *addr);
@@ -86,7 +87,139 @@ static int mountPfs(const char *partition)
     return ret < 0 ? ret : result;
 }
 
-// Load home ELF
+/* IGR home: LoadExecPS2-like wipe + ExecPS2 trampoline */
+#define IGR_USERMEM_START      0x00082000u
+#define IGR_DEFAULT_ELF_BASE   0x00100000u
+#define IGR_TRAMP_PAGE         0x1000u
+
+typedef struct
+{
+    u32 wipe_end;
+    u32 wipe1_start;
+    u32 wipe1_end;
+    u32 epc;
+    u32 gp;
+    u32 argc;
+    char **argv;
+    u32 stack;
+} igr_home_boot_t;
+
+/* Walk PT_LOAD of an ELF already resident at guess (typical homebrew 0x100000). */
+static int igr_elf_pt_load_range(u32 guess, u32 *base_out, u32 *end_out)
+{
+    const u8 *eh = (const u8 *)guess;
+    const u8 *ph;
+    u32 phoff, i, base, end;
+    u16 phentsize, phnum;
+
+    if (eh[0] != 0x7f || eh[1] != 'E' || eh[2] != 'L' || eh[3] != 'F')
+        return -1;
+
+    phoff = *(const u32 *)(eh + 28);
+    phentsize = *(const u16 *)(eh + 42);
+    phnum = *(const u16 *)(eh + 44);
+    if (phentsize < 32 || phnum == 0 || phnum > 32)
+        return -1;
+
+    base = 0xffffffffu;
+    end = 0;
+    for (i = 0; i < phnum; i++) {
+        u32 type, vaddr, memsz;
+
+        ph = eh + phoff + i * phentsize;
+        type = *(const u32 *)(ph + 0);
+        if (type != 1) /* PT_LOAD */
+            continue;
+        vaddr = *(const u32 *)(ph + 8);
+        memsz = *(const u32 *)(ph + 20);
+        if (vaddr < base)
+            base = vaddr;
+        if (vaddr + memsz > end)
+            end = vaddr + memsz;
+    }
+
+    if (base == 0xffffffffu || end <= base)
+        return -1;
+
+    *base_out = base;
+    *end_out = (end + 63u) & ~63u;
+    return 0;
+}
+
+/* After LoadElf: copy wipe+ExecPS2 trampoline above the ELF and jump (never returns). */
+static void igr_home_exec_like_loadexec(const char *path, const t_ExecData *elf)
+{
+    u32 memSize = GetMemorySize();
+    u8 *page = (u8 *)(memSize - IGR_TRAMP_PAGE);
+    u32 codeSize = (u32)((char *)&_IGR_HomeWipeAndExec_end - (char *)IGR_HomeWipeAndExec);
+    u32 elf_base = IGR_DEFAULT_ELF_BASE;
+    u32 elf_end = 0;
+    igr_home_boot_t *boot;
+    char **nargv;
+    char *npath;
+    void (*tramp)(void *);
+
+    if (codeSize < 64 || codeSize > 0x2F0) {
+        char *fb_argv[2];
+
+        fb_argv[0] = (char *)path;
+        fb_argv[1] = NULL;
+        CleanExecPS2((void *)elf->epc, (void *)elf->gp, 1, fb_argv);
+        while (1) {
+            ;
+        }
+    }
+
+    if (elf->epc < elf_base)
+        elf_base = elf->epc & ~0xfffu;
+
+    if (igr_elf_pt_load_range(elf_base, &elf_base, &elf_end) != 0) {
+        elf_end = elf_base; /* skip high wipe if PHDRs unavailable */
+    }
+
+    /* Trampoline page must stay outside wipe ranges. */
+    if (elf_base <= IGR_USERMEM_START || elf_base >= (u32)page)
+        elf_base = IGR_DEFAULT_ELF_BASE;
+    if (elf_end > (u32)page)
+        elf_end = (u32)page;
+
+    memcpy(page, (const void *)IGR_HomeWipeAndExec, codeSize);
+
+    boot = (igr_home_boot_t *)(page + 0x300);
+    nargv = (char **)(page + 0x340);
+    npath = (char *)(page + 0x380);
+
+    strncpy(npath, path, 255);
+    npath[255] = '\0';
+    nargv[0] = npath;
+    nargv[1] = NULL;
+
+    boot->wipe_end = elf_base;
+    if (elf_end > elf_base) {
+        boot->wipe1_start = elf_end;
+        boot->wipe1_end = (u32)page;
+    } else {
+        boot->wipe1_start = 0;
+        boot->wipe1_end = 0;
+    }
+    boot->epc = elf->epc;
+    boot->gp = elf->gp;
+    boot->argc = 1;
+    boot->argv = nargv;
+    boot->stack = (u32)page + 0x0F00;
+
+    FlushCache(0);
+    FlushCache(2);
+
+    tramp = (void (*)(void *))page;
+    tramp(boot);
+
+    while (1) {
+        ;
+    }
+}
+
+
 static void t_loadElf(void)
 {
     USE_LOCAL_EECORE_CONFIG;
@@ -230,8 +363,9 @@ static void t_loadElf(void)
         if (EnableDebug)
             DBGCOL(0x0080FF, LOADELF, "ExecPS2() begins");
 
-        // Execute BOOT.ELF
-        ExecPS2((void *)elf.epc, (void *)elf.gp, 1, argv);
+        /* Approximates LoadExecPS2: wipe [0x82000, elf_base) (+ optional
+         * [elf_end, trampoline)) then ExecPS2 from a high trampoline. */
+        igr_home_exec_like_loadexec(loadPath, &elf);
     }
 
     if (EnableDebug) {

@@ -460,4 +460,100 @@ iResetEE:
     nop
 .end iResetEE
 
+
+/*
+ * IGR home: wipe user RAM then ExecPS2 via syscall.
+ * Must run from a copy ABOVE wipe_end (ee_core will be erased).
+ * a0 = igr_home_boot_t*
+ *   +0  wipe_end      (wipe [0x82000, wipe_end))
+ *   +4  wipe1_start   (optional second range; skipped if start>=end)
+ *   +8  wipe1_end
+ *   +12 epc
+ *   +16 gp
+ *   +20 argc
+ *   +24 argv
+ *   +28 stack
+ */
+.globl IGR_HomeWipeAndExec
+.globl _IGR_HomeWipeAndExec_end
+.ent IGR_HomeWipeAndExec
+IGR_HomeWipeAndExec:
+    por     $s0, $a0, $zero
+
+    lw      $t0, 0($s0)
+    lui     $t1, 0x0008
+    ori     $t1, $t1, 0x2000
+
+1:
+    sltu    $t2, $t1, $t0
+    beqz    $t2, 2f
+    nop
+    sq      $zero, 0($t1)
+    sq      $zero, 16($t1)
+    sq      $zero, 32($t1)
+    sq      $zero, 48($t1)
+    b       1b
+    addiu   $t1, $t1, 64
+
+2:
+    lw      $t1, 4($s0)
+    lw      $t0, 8($s0)
+3:
+    sltu    $t2, $t1, $t0
+    beqz    $t2, 4f
+    nop
+    sq      $zero, 0($t1)
+    sq      $zero, 16($t1)
+    sq      $zero, 32($t1)
+    sq      $zero, 48($t1)
+    b       3b
+    addiu   $t1, $t1, 64
+
+4:
+    addiu   $a0, $zero, 0
+    addiu   $v1, $zero, __NR_FlushCache
+    syscall
+    addiu   $a0, $zero, 2
+    addiu   $v1, $zero, __NR_FlushCache
+    syscall
+
+    lw      $a0, 12($s0)
+    lw      $a1, 16($s0)
+    lw      $a2, 20($s0)
+    lw      $a3, 24($s0)
+
+    por     $at, $zero, $zero
+    por     $v0, $zero, $zero
+    por     $t0, $zero, $zero
+    por     $t1, $zero, $zero
+    por     $t2, $zero, $zero
+    por     $t3, $zero, $zero
+    por     $t4, $zero, $zero
+    por     $t5, $zero, $zero
+    por     $t6, $zero, $zero
+    por     $t7, $zero, $zero
+    por     $s1, $zero, $zero
+    por     $s2, $zero, $zero
+    por     $s3, $zero, $zero
+    por     $s4, $zero, $zero
+    por     $s5, $zero, $zero
+    por     $s6, $zero, $zero
+    por     $s7, $zero, $zero
+    por     $t8, $zero, $zero
+    por     $t9, $zero, $zero
+    por     $fp, $zero, $zero
+    por     $gp, $zero, $zero
+    lw      $sp, 28($s0)
+    por     $s0, $zero, $zero
+    mthi    $zero
+    mtlo    $zero
+
+    addiu   $v1, $zero, __NR__ExecPS2
+    syscall
+    por     $ra, $zero, $zero
+.end IGR_HomeWipeAndExec
+
+_IGR_HomeWipeAndExec_end:
+    nop
+
 .set pop
