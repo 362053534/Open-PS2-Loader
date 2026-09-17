@@ -810,10 +810,8 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.NumParts = 1;
     settings->common.media = hdl_header->discType;
 
-    if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0) {
-        if (!sbGetForcedAltStartup(game->startup, filename, sizeof(filename) - 1))
-            strcpy(filename, game->startup);
-    }
+    if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
+        strcpy(filename, game->startup);
 
     if (gPS2Logo)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
