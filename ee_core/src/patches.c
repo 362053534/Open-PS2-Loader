@@ -8,6 +8,7 @@
   Some parts of the code have been taken from Polo's HD Project and doctorxyz's GSM
 */
 
+#include <kernel.h>
 #include "ee_core.h"
 #include "util.h"
 #include "modules.h"
@@ -304,8 +305,24 @@ static void apply_capcom_protection_patch(void *modpack_addr, int mod_index, int
     capcom_lmb(modpack_addr, mod_index, mod_argc, mod_argv);
 }
 
+/* Clear low-1MB holes Capcom collections are known to choke on after FMCB.
+ * ee_core lives at ~0x84000..0x97000 - do not touch that. ModStorage for these
+ * titles is forced to 0x01C00000 so 0x97000..0x100000 is free to scrub. */
+static void capcom_lowmem_scrub(void)
+{
+    /* Gap before ee_core (HDD browser / FMCB often leave junk here). */
+    WipeUserMemory((void *)0x00082000, (void *)0x00084000);
+    /* Former default ModStorage window, includes 0x000C0000. */
+    WipeUserMemory((void *)0x00097000, (void *)0x00100000);
+    /* Explicit word clear from classic Capcom/OPL notes. */
+    *(vu32 *)0x000C0000 = 0;
+    FlushCache(0);
+}
+
 static void generic_capcom_protection_patches(u32 patch_addr)
 {
+    capcom_lowmem_scrub();
+
     capcom_lmb = (void *)FNADDR(_lw(patch_addr));
     _sw(JAL((u32)apply_capcom_protection_patch), patch_addr);
 }

@@ -446,6 +446,10 @@ typedef struct
 static const modStorageSetting_t mod_storage_location_list[] = {
     {"SLUS_209.77", (void *)0x01fc7000}, // Virtua Quest
     {"SLPM_656.32", (void *)0x01fc7000}, // Virtua Fighter Cyber Generation: Judgment Six No Yabou
+    {"SLUS_213.17", (void *)0x01C00000}, // SFA Anthology US
+    {"SLES_540.85", (void *)0x01C00000}, // SFA Anthology EUR
+    {"SLPM_664.09", (void *)0x01C00000}, // SFZ Generation JP
+    {"SLPM_659.98", (void *)0x01C00000}, // Vampire: Darkstalkers Collection JP
     {NULL, NULL},                        // Terminator
 };
 
