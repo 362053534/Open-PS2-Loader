@@ -12,7 +12,10 @@
 #include "include/system.h"
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
+#include "include/ps2cnf.h"
 #include "modules/iopcore/common/cdvd_config.h"
+
+#include <string.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioFormat, fileXioMount, fileXioUmount, fileXioDevctl
@@ -22,6 +25,12 @@
 
 #define OPL_HDD_MODE_PS2LOGO_OFFSET 0x17F8
 #define HDL_MAX_PART_SPECS           65
+
+// Magic prefix written at the start of the HDL game-list cache file.
+// It embeds sizeof(hdl_game_info_t) so that a cache produced by a build with a
+// different struct layout (e.g. the older 13-byte startup field) is rejected
+// instead of being misinterpreted as valid game entries.
+#define HDL_CACHE_MAGIC (0x4C444800 + (u32)sizeof(hdl_game_info_t)) // 'HDL' + struct size
 
 #include "../modules/isofs/zso.h"
 
@@ -678,6 +687,191 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
     return size_mcemu_irx;
 }
 
+// Reads one 2048-byte logical disc sector from an HDL game's raw APA data,
+// transparently handling ZSO (compressed) images.
+//   base_lba    - HDD LBA of the virtual disc's sector 0
+//                 (= game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET)
+//   compressed  - non-zero when the image is ZSO (ziso already initialised)
+//   disc_sector - logical sector number on the virtual disc
+static int hddReadDiscSector(u32 base_lba, int compressed, u32 disc_sector, void *buf)
+{
+    if (compressed)
+        return ziso_read_sector(buf, disc_sector, 1) == 1 ? 0 : -1;
+
+    // A 2048-byte disc sector maps onto 4 x 512-byte HDD sectors.
+    return hddReadSectors(base_lba + disc_sector * 4, 4, buf);
+}
+
+// Turn a raw BOOT2 value (e.g. "cdrom0:\\SLXX_123.45;1") into a bare exec name
+// (e.g. "SLXX_123.45"). Returns 0 on success.
+static int hddStripBootPath(const char *boot, char *startup, int maxlen)
+{
+    const char *key = boot;
+    const char *start;
+    int length = 0;
+
+    // Skip the device name part of the path ("cdrom0:\\"), if present.
+    for (; *key != ':'; key++) {
+        if (*key == '\0') {
+            key = boot; // No device prefix, take the value as-is.
+            break;
+        }
+    }
+    if (*key == ':')
+        key++;
+    while (*key == '\\' || *key == '/')
+        key++;
+
+    start = key;
+    while (*key != ';' && *key != '\0')
+        length++, key++;
+
+    if (length <= 0 || length >= maxlen)
+        return -1;
+
+    memcpy(startup, start, length);
+    startup[length] = '\0';
+    return 0;
+}
+
+// Resolve the real boot executable for an HDL game by parsing the on-disc
+// SYSTEM.CNF (BOOT2), exactly like a real PS2 / HD Loader does, instead of
+// trusting the static ID snapshotted into the APA header at install time.
+// This fixes "special" images (multiple boot ELFs, non-standard BOOT2 names)
+// that boot fine under HD Loader but white-screen when OPL blindly launches
+// the stored ID. Returns 0 and fills 'startup' (>= GENERAL_STARTUP_MAX bytes)
+// on success, or a negative value to signal the caller to fall back.
+static int hddResolveStartupFromDisc(u32 start_sector, char *startup, int maxlen)
+{
+    u32 base_lba = start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET;
+    u8 *sector;
+    u32 rootLBA, rootSize, s;
+    u32 cnfLBA = 0, cnfSize = 0;
+    int compressed = 0;
+    int found = 0;
+    int result = -1;
+    char cnf[CNF_LEN_MAX];
+    char boot[CNF_PATH_LEN_MAX + 1];
+
+    sector = memalign(64, 2048);
+    if (sector == NULL)
+        return -1;
+
+    // Detect ZSO compression on the raw APA data.
+    if (hddReadSectors(base_lba, 4, sector) != 0)
+        goto done;
+    if (*(u32 *)sector == ZSO_MAGIC) {
+        compressed = 1;
+        probed_fd = 0;
+        probed_lba = base_lba;
+        ziso_init((ZISO_header *)sector, *(u32 *)(sector + sizeof(ZISO_header)));
+    }
+
+    // ISO9660 Primary Volume Descriptor lives at logical disc sector 16.
+    if (hddReadDiscSector(base_lba, compressed, 16, sector) != 0 ||
+        sector[0] != 1 || memcmp(&sector[1], "CD001", 5) != 0 || sector[156] < 34)
+        goto done;
+
+    // Root directory record is embedded in the PVD at offset 156.
+    rootLBA = (u32)sector[158] | ((u32)sector[159] << 8) | ((u32)sector[160] << 16) | ((u32)sector[161] << 24);
+    rootSize = (u32)sector[166] | ((u32)sector[167] << 8) | ((u32)sector[168] << 16) | ((u32)sector[169] << 24);
+    if (rootLBA == 0 || rootSize == 0)
+        goto done;
+
+    // Scan the root directory for SYSTEM.CNF.
+    for (s = 0; s < (rootSize + 2047) / 2048 && !found; s++) {
+        u32 position = 0;
+        u32 sectorSize = rootSize - s * 2048;
+
+        if (sectorSize > 2048)
+            sectorSize = 2048;
+        if (hddReadDiscSector(base_lba, compressed, rootLBA + s, sector) != 0)
+            goto done;
+
+        while (position < sectorSize) {
+            const u8 recordLength = sector[position];
+            const u8 *name;
+            u8 nameLength;
+
+            if (recordLength == 0)
+                break;
+            if (recordLength < 34 || position + recordLength > sectorSize)
+                break;
+
+            nameLength = sector[position + 32];
+            name = &sector[position + 33];
+
+            // Skip directories; match "SYSTEM.CNF" (with optional ";1"), case-insensitive.
+            if (!(sector[position + 25] & 2) && 33 + nameLength <= recordLength) {
+                static const char wanted[] = "SYSTEM.CNF";
+                int i, match = 1;
+
+                if (nameLength >= (int)(sizeof(wanted) - 1) &&
+                    (nameLength == (int)(sizeof(wanted) - 1) || name[sizeof(wanted) - 1] == ';')) {
+                    for (i = 0; i < (int)(sizeof(wanted) - 1); i++) {
+                        char c = (char)name[i];
+                        if (c >= 'a' && c <= 'z')
+                            c -= 'a' - 'A';
+                        if (c != wanted[i]) {
+                            match = 0;
+                            break;
+                        }
+                    }
+                } else {
+                    match = 0;
+                }
+
+                if (match) {
+                    cnfLBA = (u32)sector[position + 2] | ((u32)sector[position + 3] << 8) |
+                             ((u32)sector[position + 4] << 16) | ((u32)sector[position + 5] << 24);
+                    cnfSize = (u32)sector[position + 10] | ((u32)sector[position + 11] << 8) |
+                              ((u32)sector[position + 12] << 16) | ((u32)sector[position + 13] << 24);
+                    found = 1;
+                    break;
+                }
+            }
+
+            position += recordLength;
+        }
+    }
+
+    if (!found || cnfLBA == 0 || cnfSize == 0)
+        goto done;
+
+    // Read SYSTEM.CNF (clamped) into memory and parse the BOOT2 exec path.
+    {
+        u32 offset = 0;
+        u32 remaining;
+
+        if (cnfSize > sizeof(cnf) - 1)
+            cnfSize = sizeof(cnf) - 1;
+        remaining = cnfSize;
+
+        for (s = 0; remaining > 0; s++) {
+            u32 chunk = remaining > 2048 ? 2048 : remaining;
+
+            if (hddReadDiscSector(base_lba, compressed, cnfLBA + s, sector) != 0)
+                goto done;
+            memcpy(&cnf[offset], sector, chunk);
+            offset += chunk;
+            remaining -= chunk;
+        }
+        cnf[offset] = '\0';
+
+        if (ps2cnfGetBootFileFromBuffer(cnf, (int)offset, boot) != 0)
+            goto done;
+    }
+
+    if (hddStripBootPath(boot, startup, maxlen) == 0) {
+        LOG("HDD: resolved startup '%s' from on-disc SYSTEM.CNF.\n", startup);
+        result = 0;
+    }
+
+done:
+    free(sector);
+    return result;
+}
+
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, size_irx = 0;
@@ -810,8 +1004,15 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.NumParts = 1;
     settings->common.media = hdl_header->discType;
 
-    if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
-        strcpy(filename, game->startup);
+    // Boot-file resolution order (highest priority first):
+    //   1. $AltStartup    - explicit per-game override set by the user.
+    //   2. on-disc SYSTEM.CNF (BOOT2) - matches HD Loader, fixes special images
+    //      whose real boot ELF differs from the ID stored in the APA header.
+    //   3. APA header startup - the legacy static snapshot, used as a fallback.
+    if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0) {
+        if (hddResolveStartupFromDisc(game->start_sector, filename, sizeof(filename)) != 0)
+            strcpy(filename, game->startup);
+    }
 
     if (gPS2Logo)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
@@ -979,9 +1180,21 @@ static int hddLoadGameListCache(hdl_games_list_t *cache)
     sprintf(filename, gTxtRename ? "%stxtCache.bin" : "%sCache.bin", gHDDPrefix);
     file = fopen(filename, "rb");
     if (file != NULL) {
+        u32 magic = 0;
+
         fseek(file, 0, SEEK_END);
         size = ftell(file);
         rewind(file);
+
+        // Reject caches without our versioned magic (e.g. from an older build
+        // whose hdl_game_info_t had a different size/layout); they will be
+        // rebuilt from the HDD on the next scan.
+        if (size < (int)sizeof(magic) || fread(&magic, sizeof(magic), 1, file) != 1 || magic != HDL_CACHE_MAGIC) {
+            LOG("hddLoadGameListCache: incompatible or missing cache header, ignoring.\n");
+            fclose(file);
+            return -1;
+        }
+        size -= sizeof(magic);
 
         count = size / sizeof(hdl_game_info_t);
         if (count > 0) {
@@ -1062,7 +1275,12 @@ static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *gam
     if (game_list->count > 0) {
         file = fopen(filename, "wb");
         if (file != NULL) {
-            result = (fwrite(game_list->games, sizeof(hdl_game_info_t), game_list->count, file) == game_list->count) ? 0 : EIO;
+            u32 magic = HDL_CACHE_MAGIC;
+
+            if (fwrite(&magic, sizeof(magic), 1, file) != 1)
+                result = EIO;
+            else
+                result = (fwrite(game_list->games, sizeof(hdl_game_info_t), game_list->count, file) == game_list->count) ? 0 : EIO;
             fclose(file);
         } else {
             result = EIO;
