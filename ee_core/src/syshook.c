@@ -30,21 +30,6 @@ int disable_padOpen_hook = 1;
 
 extern void *_end;
 
-/* 只清内存最上面 1MB。整段高位会清掉读盘/碎片表通道，游戏会直接黑屏。 */
-static void wipe_high_tail(void)
-{
-    u32 mem = GetMemorySize();
-
-    if (mem > 0x00100000u)
-        WipeUserMemory((void *)(mem - 0x00100000u), (void *)mem);
-    FlushCache(0);
-}
-
-void capcom_pre_exec_wipe(void)
-{
-    wipe_high_tail();
-}
-
 // Global data
 u32 (*Old_SifSetDma)(SifDmaTransfer_t *sdd, s32 len);
 int (*Old_SifSetReg)(u32 register_num, int register_value);
@@ -108,6 +93,9 @@ void sysLoadElf(char *filename, int argc, char **argv)
 
     // wipe user memory
     WipeUserMemory((void *)&_end, (void *)config->ModStorageStart);
+    // The upper half (from ModStorageEnd to GetMemorySize()) is taken care of by LoadExecPS2().
+    // WipeUserMemory((void *)ModStorageEnd, (void *)GetMemorySize());
+
     FlushCache(0);
 
     DPRINTF(" done\n");
@@ -121,9 +109,6 @@ void sysLoadElf(char *filename, int argc, char **argv)
         DPRINTF("t_loadElf: trying to apply patches...\n");
         // applying needed patches
         apply_patches(filename);
-
-        /* 游戏 ELF 已读进内存后再清顶 1MB，避开模块区、碎片表和读盘缓冲。 */
-        wipe_high_tail();
 
         FlushCache(0);
         FlushCache(2);
