@@ -39,6 +39,157 @@ void (*Old_Exit)(s32 exit_code);
 void (*Old_SetOsdConfigParam)(ConfigParam *osdconfig);
 void (*Old_GetOsdConfigParam)(ConfigParam *osdconfig);
 
+#define HIGH_WIPE_TRAMP 0x1000u
+#define HIGH_WIPE_KEEP  0x00084000u
+#define HIGH_WIPE_ELF   0x00100000u
+
+typedef struct
+{
+    u32 wipe0_end;
+    u32 wipe1_start;
+    u32 wipe1_end;
+    u32 epc;
+    u32 gp;
+    u32 argc;
+    char **argv;
+    u32 stack;
+    u32 exec_ptr;
+} high_wipe_boot_t;
+
+static void copy_bytes(void *dst, const void *src, unsigned int n)
+{
+    u8 *d = dst;
+    const u8 *s = src;
+
+    while (n--)
+        *d++ = *s++;
+}
+
+static int elf_pt_load_range(u32 guess, u32 *base_out, u32 *end_out)
+{
+    const u8 *eh = (const u8 *)guess;
+    const u8 *ph;
+    u32 phoff, i, base, end;
+    u16 phentsize, phnum;
+
+    if (eh[0] != 0x7f || eh[1] != 'E' || eh[2] != 'L' || eh[3] != 'F')
+        return -1;
+
+    phoff = *(const u32 *)(eh + 28);
+    phentsize = *(const u16 *)(eh + 42);
+    phnum = *(const u16 *)(eh + 44);
+    if (phentsize < 32 || phnum == 0 || phnum > 32)
+        return -1;
+
+    base = 0xffffffffu;
+    end = 0;
+    for (i = 0; i < phnum; i++) {
+        u32 type, vaddr, memsz;
+
+        ph = eh + phoff + i * phentsize;
+        type = *(const u32 *)(ph + 0);
+        if (type != 1)
+            continue;
+        vaddr = *(const u32 *)(ph + 8);
+        memsz = *(const u32 *)(ph + 20);
+        if (vaddr < base)
+            base = vaddr;
+        if (vaddr + memsz > end)
+            end = vaddr + memsz;
+    }
+
+    if (base == 0xffffffffu || end <= base)
+        return -1;
+
+    *base_out = base;
+    *end_out = (end + 63u) & ~63u;
+    return 0;
+}
+
+/* 游戏已在内存中：跳到顶页清空隙再 Exec。成功不返回。 */
+int highmem_wipe_exec(void *epc, void *gp, int argc, char **argv)
+{
+    u32 memSize = GetMemorySize();
+    u8 *page;
+    u32 codeSize;
+    u32 elf_base = HIGH_WIPE_ELF;
+    u32 elf_end = 0;
+    high_wipe_boot_t *boot;
+    char **nargv;
+    char *nstr;
+    void (*tramp)(void *);
+    int i;
+
+    if (Old_ExecPS2 == NULL)
+        Old_ExecPS2 = GetSyscallHandler(__NR__ExecPS2);
+
+    codeSize = (u32)((char *)&_HighWipeAndExec_end - (char *)HighWipeAndExec);
+    if (memSize <= HIGH_WIPE_TRAMP || codeSize < 64 || codeSize > 0x2F0)
+        return -1;
+
+    page = (u8 *)(memSize - HIGH_WIPE_TRAMP);
+
+    if ((u32)epc >= HIGH_WIPE_ELF)
+        elf_base = HIGH_WIPE_ELF;
+    else
+        elf_base = (u32)epc & ~0xfffu;
+
+    if (elf_pt_load_range(elf_base, &elf_base, &elf_end) != 0)
+        return -1;
+
+    if (elf_base < HIGH_WIPE_KEEP)
+        elf_base = HIGH_WIPE_KEEP;
+    if (elf_end > (u32)page)
+        elf_end = (u32)page;
+
+    copy_bytes(page, (const void *)HighWipeAndExec, codeSize);
+
+    boot = (high_wipe_boot_t *)(page + 0x300);
+    nargv = (char **)(page + 0x340);
+    nstr = (char *)(page + 0x380);
+
+    if (argc < 0)
+        argc = 0;
+    if (argc > 4)
+        argc = 4;
+    for (i = 0; i < argc; i++) {
+        const char *s = (argv && argv[i]) ? argv[i] : "";
+        int n = 0;
+
+        while (s[n] && n < 127)
+            n++;
+        copy_bytes(nstr, s, (unsigned int)n + 1);
+        nargv[i] = nstr;
+        nstr += n + 1;
+        if (nstr > (char *)page + 0x0E00)
+            break;
+    }
+
+    boot->wipe0_end = elf_base;
+    if (boot->wipe0_end < HIGH_WIPE_KEEP)
+        boot->wipe0_end = HIGH_WIPE_KEEP;
+    if (elf_end > elf_base && elf_end < (u32)page) {
+        boot->wipe1_start = elf_end;
+        boot->wipe1_end = (u32)page;
+    } else {
+        boot->wipe1_start = 0;
+        boot->wipe1_end = 0;
+    }
+    boot->epc = (u32)epc;
+    boot->gp = (u32)gp;
+    boot->argc = (u32)argc;
+    boot->argv = nargv;
+    boot->stack = (u32)page + 0x0F00;
+    boot->exec_ptr = (u32)Old_ExecPS2;
+
+    FlushCache(0);
+    FlushCache(2);
+
+    tramp = (void (*)(void *))page;
+    tramp(boot);
+    return -1;
+}
+
 /*----------------------------------------------------------------------------------------*/
 /* This function is called when SifSetDma catches a reboot request.                       */
 /*----------------------------------------------------------------------------------------*/
@@ -122,7 +273,9 @@ void sysLoadElf(char *filename, int argc, char **argv)
         disable_padOpen_hook = 0;
 
         DPRINTF("t_loadElf: executing...\n");
-        CleanExecPS2((void *)elf.epc, (void *)elf.gp, argc, argv);
+        /* 游戏已读入后再跳板清高位空隙，避开 EELOAD / 读盘通道。 */
+        if (highmem_wipe_exec((void *)elf.epc, (void *)elf.gp, argc, argv) != 0)
+            CleanExecPS2((void *)elf.epc, (void *)elf.gp, argc, argv);
     }
 
     DPRINTF(" failed\n");

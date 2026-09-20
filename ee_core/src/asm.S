@@ -52,6 +52,7 @@
 .extern Old_ExecPS2
 .extern Old_CreateThread
 .extern sysExit
+.extern highmem_wipe_exec
 
 /* loader.h */
 .extern g_compat_mask
@@ -69,6 +70,8 @@
 .globl  Hook_CreateThread
 .globl  Hook_Exit
 .globl  CleanExecPS2
+.globl  HighWipeAndExec
+.globl  _HighWipeAndExec_end
 .globl  iResetEE
 
 /*
@@ -280,6 +283,13 @@ Hook_ExecPS2:
     la      $v1, padOpen_hooked
     sw      $v0, 0x0000($v1)
 
+    /* 合集选关等二次 Exec：跳板清高位，失败再走原来的 Exec。 */
+    daddu   $a0, $s0, $zero
+    daddu   $a1, $s1, $zero
+    daddu   $a2, $s2, $zero
+    jal     highmem_wipe_exec
+    daddu   $a3, $s3, $zero
+
     /* Restore arguments */
     daddu   $a0, $s0, $zero        # entrypoint
     daddu   $a1, $s1, $zero        # gp
@@ -451,6 +461,99 @@ InitRegsExecPS2:
     jr      $ra
     ctc1    $zero, $f31
 .end InitRegsExecPS2
+
+/*
+ * 游戏 ELF 已在内存中：从跳板清空隙再 Exec。
+ * a0 = high_wipe_boot_t*
+ *   +0  wipe0_end     清 [0x84000, wipe0_end)，保留 EELOAD
+ *   +4  wipe1_start
+ *   +8  wipe1_end
+ *   +12 epc
+ *   +16 gp
+ *   +20 argc
+ *   +24 argv
+ *   +28 stack
+ *   +32 exec_ptr     原 ExecPS2，避免清掉 ee_core 后取不到
+ * 清完后跳 exec_ptr，避免再进 Hook_ExecPS2。
+ */
+.ent HighWipeAndExec
+HighWipeAndExec:
+    por     $s0, $a0, $zero
+
+    lw      $t0, 0($s0)
+    lui     $t1, 0x0008
+    ori     $t1, $t1, 0x4000
+
+1:
+    sltu    $t2, $t1, $t0
+    beqz    $t2, 2f
+    nop
+    sq      $zero, 0($t1)
+    sq      $zero, 16($t1)
+    sq      $zero, 32($t1)
+    sq      $zero, 48($t1)
+    b       1b
+    addiu   $t1, $t1, 64
+
+2:
+    lw      $t1, 4($s0)
+    lw      $t0, 8($s0)
+3:
+    sltu    $t2, $t1, $t0
+    beqz    $t2, 4f
+    nop
+    sq      $zero, 0($t1)
+    sq      $zero, 16($t1)
+    sq      $zero, 32($t1)
+    sq      $zero, 48($t1)
+    b       3b
+    addiu   $t1, $t1, 64
+
+4:
+    addiu   $a0, $zero, 0
+    addiu   $v1, $zero, __NR_FlushCache
+    syscall
+    addiu   $a0, $zero, 2
+    addiu   $v1, $zero, __NR_FlushCache
+    syscall
+
+    lw      $a0, 12($s0)
+    lw      $a1, 16($s0)
+    lw      $a2, 20($s0)
+    lw      $a3, 24($s0)
+    lw      $t9, 32($s0)
+
+    por     $at, $zero, $zero
+    por     $v0, $zero, $zero
+    por     $t0, $zero, $zero
+    por     $t1, $zero, $zero
+    por     $t2, $zero, $zero
+    por     $t3, $zero, $zero
+    por     $t4, $zero, $zero
+    por     $t5, $zero, $zero
+    por     $t6, $zero, $zero
+    por     $t7, $zero, $zero
+    por     $s1, $zero, $zero
+    por     $s2, $zero, $zero
+    por     $s3, $zero, $zero
+    por     $s4, $zero, $zero
+    por     $s5, $zero, $zero
+    por     $s6, $zero, $zero
+    por     $s7, $zero, $zero
+    por     $t8, $zero, $zero
+    por     $fp, $zero, $zero
+    por     $gp, $zero, $zero
+    lw      $sp, 28($s0)
+    por     $s0, $zero, $zero
+    mthi    $zero
+    mtlo    $zero
+
+    jr      $t9
+    por     $ra, $zero, $zero
+.end HighWipeAndExec
+
+_HighWipeAndExec_end:
+    nop
 
 .ent iResetEE
 iResetEE:

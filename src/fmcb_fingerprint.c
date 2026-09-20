@@ -191,14 +191,4 @@ void fmcbShowFingerprint(void)
              pre->osdparam, post.osdparam);
 
     guiShowFingerprint(text);
-
-    /* 游戏启动链上不能清高位（会把读盘通道清掉）。进菜单前只清顶 1MB。 */
-    {
-        u32 mem = GetMemorySize();
-
-        if (mem > 0x00100000u) {
-            memset((void *)(mem - 0x00100000u), 0, 0x00100000u);
-            FlushCache(0);
-        }
-    }
 }
