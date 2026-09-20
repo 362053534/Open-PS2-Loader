@@ -92,7 +92,6 @@ void sysLoadElf(char *filename, int argc, char **argv)
     iop_reboot_count = 1;
 
     SifInitRpc(0);
-    LoadFileInit();
 
     DPRINTF("t_loadElf: elf path = '%s'\n", filename);
 
@@ -103,11 +102,13 @@ void sysLoadElf(char *filename, int argc, char **argv)
 
     // wipe user memory
     WipeUserMemory((void *)&_end, (void *)config->ModStorageStart);
-    /* 官方 LoadExec 会清到内存顶；OPL 走 ExecPS2，这段原来被注释掉了。所有游戏都清。 */
+    /* 碎片表在 ModStorage 里，上面 IOP 复位时已经推过去。
+     * 高位必须在 LoadFileInit 之前清，否则会把读盘缓冲清掉，连 logo 都出不来。 */
     if (config->ModStorageEnd)
         WipeUserMemory(config->ModStorageEnd, (void *)GetMemorySize());
-
     FlushCache(0);
+
+    LoadFileInit();
 
     DPRINTF(" done\n");
 
