@@ -2169,7 +2169,7 @@ void guiShowFingerprint(const char *text)
                 }
                 line[n] = '\0';
                 fntRenderString(font, 70, y, ALIGN_NONE, 0, 0, line, colour);
-                y += 22;
+                y += 16;
                 p += n;
                 if (*p == '\n')
                     p++;

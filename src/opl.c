@@ -3225,6 +3225,9 @@ int main(int argc, char *argv[])
 
     ChangeThreadPriority(GetThreadId(), 31);
 
+    /* 复位前先采样：菜单残留可能被 sysReset 抹掉，对照 PRE/POST。 */
+    fmcbCaptureFingerprint();
+
     // reset, load modules
     reset();
     ResetDeckardXParams();
