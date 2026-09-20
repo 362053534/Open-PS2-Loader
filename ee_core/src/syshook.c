@@ -39,6 +39,9 @@ void (*Old_Exit)(s32 exit_code);
 void (*Old_SetOsdConfigParam)(ConfigParam *osdconfig);
 void (*Old_GetOsdConfigParam)(ConfigParam *osdconfig);
 
+int g_high_wipe_passthru = 0;
+static int g_execps2_seen;
+
 #define HIGH_WIPE_TRAMP 0x1000u
 #define HIGH_WIPE_KEEP  0x00084000u
 #define HIGH_WIPE_ELF   0x00100000u
@@ -106,7 +109,7 @@ static int elf_pt_load_range(u32 guess, u32 *base_out, u32 *end_out)
     return 0;
 }
 
-/* 游戏已在内存中：跳到顶页清空隙再 Exec。成功不返回。 */
+/* 第一次 Exec 是开游戏/合集菜单，不清。选关第二次 Exec 才跳板清高位。 */
 int highmem_wipe_exec(void *epc, void *gp, int argc, char **argv)
 {
     u32 memSize = GetMemorySize();
@@ -120,11 +123,16 @@ int highmem_wipe_exec(void *epc, void *gp, int argc, char **argv)
     void (*tramp)(void *);
     int i;
 
+    if (!g_execps2_seen) {
+        g_execps2_seen = 1;
+        return -1;
+    }
+
     if (Old_ExecPS2 == NULL)
         Old_ExecPS2 = GetSyscallHandler(__NR__ExecPS2);
 
     codeSize = (u32)((char *)&_HighWipeAndExec_end - (char *)HighWipeAndExec);
-    if (memSize <= HIGH_WIPE_TRAMP || codeSize < 64 || codeSize > 0x2F0)
+    if (memSize <= HIGH_WIPE_TRAMP || codeSize < 64 || codeSize > 0x400)
         return -1;
 
     page = (u8 *)(memSize - HIGH_WIPE_TRAMP);
@@ -184,6 +192,9 @@ int highmem_wipe_exec(void *epc, void *gp, int argc, char **argv)
 
     FlushCache(0);
     FlushCache(2);
+
+    /* 跳板里用 syscall ExecPS2，钩子见到此标志就放行，避免再进跳板。 */
+    g_high_wipe_passthru = 1;
 
     tramp = (void (*)(void *))page;
     tramp(boot);
@@ -273,9 +284,7 @@ void sysLoadElf(char *filename, int argc, char **argv)
         disable_padOpen_hook = 0;
 
         DPRINTF("t_loadElf: executing...\n");
-        /* 游戏已读入后再跳板清高位空隙，避开 EELOAD / 读盘通道。 */
-        if (highmem_wipe_exec((void *)elf.epc, (void *)elf.gp, argc, argv) != 0)
-            CleanExecPS2((void *)elf.epc, (void *)elf.gp, argc, argv);
+        CleanExecPS2((void *)elf.epc, (void *)elf.gp, argc, argv);
     }
 
     DPRINTF(" failed\n");

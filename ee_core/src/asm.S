@@ -53,6 +53,7 @@
 .extern Old_CreateThread
 .extern sysExit
 .extern highmem_wipe_exec
+.extern g_high_wipe_passthru
 
 /* loader.h */
 .extern g_compat_mask
@@ -247,6 +248,17 @@ Hook_SifSetReg:
  */
 .ent    Hook_ExecPS2
 Hook_ExecPS2:
+
+    /* 跳板清完后 syscall ExecPS2 会再进钩子，直接放行。 */
+    la      $t0, g_high_wipe_passthru
+    lw      $t1, 0($t0)
+    beqz    $t1, 0f
+    nop
+    sw      $zero, 0($t0)
+    lw      $v0, Old_ExecPS2
+    jr      $v0
+    nop
+0:
 
     /* not needed to preserve sX/ra registers values as ExecPS2 won't return */
 
@@ -521,7 +533,6 @@ HighWipeAndExec:
     lw      $a1, 16($s0)
     lw      $a2, 20($s0)
     lw      $a3, 24($s0)
-    lw      $t9, 32($s0)
 
     por     $at, $zero, $zero
     por     $v0, $zero, $zero
@@ -541,6 +552,7 @@ HighWipeAndExec:
     por     $s6, $zero, $zero
     por     $s7, $zero, $zero
     por     $t8, $zero, $zero
+    por     $t9, $zero, $zero
     por     $fp, $zero, $zero
     por     $gp, $zero, $zero
     lw      $sp, 28($s0)
@@ -548,7 +560,8 @@ HighWipeAndExec:
     mthi    $zero
     mtlo    $zero
 
-    jr      $t9
+    addiu   $v1, $zero, __NR__ExecPS2
+    syscall
     por     $ra, $zero, $zero
 .end HighWipeAndExec
 
