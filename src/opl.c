@@ -2731,9 +2731,8 @@ void handleLwnbdSrv()
 // ----------------------------------------------------------
 static void reset(void)
 {
-    sysReset(SYS_LOAD_MC_MODULES | SYS_LOAD_USB_MODULES | SYS_LOAD_ISOFS_MODULE);
-
-    mcInit(MC_TYPE_XMC);
+    /* 试验：不加载 MCMAN/MCSERV，避免占合集可能用到的地址。SIO2 仍给手柄用。 */
+    sysReset(SYS_LOAD_USB_MODULES | SYS_LOAD_ISOFS_MODULE);
 }
 
 static void supportCleanup(item_list_t *support, int exception, int modeSelected)

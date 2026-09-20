@@ -858,9 +858,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     }
 
     ethGetNetConfig(local_ip_address, local_netmask, local_gateway);
-#if (!defined(__DEBUG) && !defined(_DTL_T10000))
-    AddHistoryRecordUsingFullPath(filename);
-#endif
+    /* 试验：未加载 MCMAN，跳过 OSD 历史，避免 mcGetInfo 一直等。 */
 
     if (gExitPath[0] == '\0')
         strncpy(gExitPath, "Browser", sizeof(gExitPath));

@@ -114,7 +114,7 @@ static void t_loadElf(void)
 
     // Load basic modules
     LoadModule("rom0:SIO2MAN", 0, NULL);
-    LoadModule("rom0:MCMAN", 0, NULL);
+    /* 试验：IGR 回家不再加载 MCMAN。U 盘退出路径若要从记忆卡读 USB 驱动会失败。 */
     delay(1);
 
     if (config->ExitPath[1] == 'a') { // ie mass:
