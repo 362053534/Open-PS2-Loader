@@ -36,10 +36,10 @@ static int is_capcom_collection(const char *game_id)
     if (!game_id)
         return 0;
 
-    return !strcmp(game_id, "SLUS_213.17") ||
-           !strcmp(game_id, "SLES_540.85") ||
-           !strcmp(game_id, "SLPM_664.09") ||
-           !strcmp(game_id, "SLPM_659.98");
+    return !_strcmp(game_id, "SLUS_213.17") ||
+           !_strcmp(game_id, "SLES_540.85") ||
+           !_strcmp(game_id, "SLPM_664.09") ||
+           !_strcmp(game_id, "SLPM_659.98");
 }
 
 // Global data
