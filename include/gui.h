@@ -124,6 +124,7 @@ void guiDestroyOp(struct gui_update_t *op);
 int guiShowKeyboard(char *value, int maxLength);
 int guiMsgBox(const char *text, int addAccept, struct UIItem *ui);
 int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancelText, struct UIItem *ui);
+void guiShowFingerprint(const char *text);
 
 void guiUpdateScrollSpeed(void);
 void guiUpdateScreenScale(void);

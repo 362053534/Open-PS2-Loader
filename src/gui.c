@@ -2134,6 +2134,52 @@ void guiRenderTextScreen(const char *message)
     guiEndFrame();
 }
 
+void guiShowFingerprint(const char *text)
+{
+    int terminate = 0;
+    int font;
+    u64 colour;
+
+    /* 开机诊断画面：逐行画出，方便拍照对照。不走 guiShow，避免开场动画还没起来。 */
+    while (!terminate) {
+        guiStartFrame();
+        readPads();
+
+        if (getKeyOn(gSelectButton) || getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE))
+            terminate = 1;
+
+        rmDrawRect(0, 0, screenWidth, screenHeight, gColDarker);
+        rmDrawLine(50, 40, screenWidth - 50, 40, gColWhite);
+        rmDrawLine(50, 410, screenWidth - 50, 410, gColWhite);
+
+        font = (gTheme && gTheme->fonts[0] >= 0) ? gTheme->fonts[0] : FNT_DEFAULT;
+        colour = gTheme ? gTheme->textColor : gColWhite;
+
+        {
+            char line[128];
+            int y = 50;
+            const char *p = text;
+
+            while (*p && y < 400) {
+                int n = 0;
+
+                while (p[n] && p[n] != '\n' && n < (int)sizeof(line) - 1) {
+                    line[n] = p[n];
+                    n++;
+                }
+                line[n] = '\0';
+                fntRenderString(font, 70, y, ALIGN_NONE, 0, 0, line, colour);
+                y += 22;
+                p += n;
+                if (*p == '\n')
+                    p++;
+            }
+        }
+
+        guiEndFrame();
+    }
+}
+
 void guiWarning(const char *text, int count)
 {
     guiStartFrame();

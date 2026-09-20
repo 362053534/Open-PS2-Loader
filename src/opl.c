@@ -34,6 +34,7 @@
 #include "include/cheatman.h"
 #include "include/sound.h"
 #include "include/xparam.h"
+#include "include/fmcb_fingerprint.h"
 
 // FIXME: We should not need this function.
 //        Use newlib's 'stat' to get GMT time.
@@ -3249,6 +3250,9 @@ int main(int argc, char *argv[])
 
     // until this point in the code is reached, only PREINIT_LOG macro should be used
     //LOG_ENABLE();
+
+    /* 临时诊断：三种进 OPL 的路径各拍一张这屏。 */
+    fmcbShowFingerprint();
 
     guiIntroLoop();
     guiMainLoop();
