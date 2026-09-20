@@ -30,14 +30,19 @@ int disable_padOpen_hook = 1;
 
 extern void *_end;
 
-/* 合集选关走 ExecPS2，不会再进 sysLoadElf。只清内存顶 1MB，避开已加载的 ELF。 */
-void capcom_pre_exec_wipe(void)
+/* 只清内存最上面 1MB。整段高位会清掉读盘/碎片表通道，游戏会直接黑屏。 */
+static void wipe_high_tail(void)
 {
     u32 mem = GetMemorySize();
 
     if (mem > 0x00100000u)
         WipeUserMemory((void *)(mem - 0x00100000u), (void *)mem);
     FlushCache(0);
+}
+
+void capcom_pre_exec_wipe(void)
+{
+    wipe_high_tail();
 }
 
 // Global data
@@ -92,6 +97,7 @@ void sysLoadElf(char *filename, int argc, char **argv)
     iop_reboot_count = 1;
 
     SifInitRpc(0);
+    LoadFileInit();
 
     DPRINTF("t_loadElf: elf path = '%s'\n", filename);
 
@@ -102,13 +108,7 @@ void sysLoadElf(char *filename, int argc, char **argv)
 
     // wipe user memory
     WipeUserMemory((void *)&_end, (void *)config->ModStorageStart);
-    /* 碎片表在 ModStorage 里，上面 IOP 复位时已经推过去。
-     * 高位必须在 LoadFileInit 之前清，否则会把读盘缓冲清掉，连 logo 都出不来。 */
-    if (config->ModStorageEnd)
-        WipeUserMemory(config->ModStorageEnd, (void *)GetMemorySize());
     FlushCache(0);
-
-    LoadFileInit();
 
     DPRINTF(" done\n");
 
@@ -121,6 +121,9 @@ void sysLoadElf(char *filename, int argc, char **argv)
         DPRINTF("t_loadElf: trying to apply patches...\n");
         // applying needed patches
         apply_patches(filename);
+
+        /* 游戏 ELF 已读进内存后再清顶 1MB，避开模块区、碎片表和读盘缓冲。 */
+        wipe_high_tail();
 
         FlushCache(0);
         FlushCache(2);
