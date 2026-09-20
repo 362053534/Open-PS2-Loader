@@ -52,6 +52,7 @@
 .extern Old_ExecPS2
 .extern Old_CreateThread
 .extern sysExit
+.extern capcom_pre_exec_wipe
 
 /* loader.h */
 .extern g_compat_mask
@@ -279,6 +280,10 @@ Hook_ExecPS2:
     addiu   $a2, $zero, PADOPEN_HOOK
     la      $v1, padOpen_hooked
     sw      $v0, 0x0000($v1)
+
+    /* 合集选关再 Exec 前清掉内存顶残留。 */
+    jal     capcom_pre_exec_wipe
+    nop
 
     /* Restore arguments */
     daddu   $a0, $s0, $zero        # entrypoint
