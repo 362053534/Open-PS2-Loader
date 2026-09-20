@@ -30,6 +30,18 @@ int disable_padOpen_hook = 1;
 
 extern void *_end;
 
+/* Capcom 合集选关会再加载内置 ELF，高位内存若仍是菜单/游戏残留就会黑屏。 */
+static int is_capcom_collection(const char *game_id)
+{
+    if (!game_id)
+        return 0;
+
+    return !strcmp(game_id, "SLUS_213.17") ||
+           !strcmp(game_id, "SLES_540.85") ||
+           !strcmp(game_id, "SLPM_664.09") ||
+           !strcmp(game_id, "SLPM_659.98");
+}
+
 // Global data
 u32 (*Old_SifSetDma)(SifDmaTransfer_t *sdd, s32 len);
 int (*Old_SifSetReg)(u32 register_num, int register_value);
@@ -93,8 +105,11 @@ void sysLoadElf(char *filename, int argc, char **argv)
 
     // wipe user memory
     WipeUserMemory((void *)&_end, (void *)config->ModStorageStart);
-    // The upper half (from ModStorageEnd to GetMemorySize()) is taken care of by LoadExecPS2().
-    // WipeUserMemory((void *)ModStorageEnd, (void *)GetMemorySize());
+    /* 官方 LoadExec 会清到内存顶；OPL 走 ExecPS2，这段原来被注释掉了。
+     * 三路指纹：合集黑屏时 HI02/HI1F 仍脏，加载器入口没变。只给合集补清高位。 */
+    if (is_capcom_collection(config->GameID) && config->ModStorageEnd) {
+        WipeUserMemory(config->ModStorageEnd, (void *)GetMemorySize());
+    }
 
     FlushCache(0);
 
