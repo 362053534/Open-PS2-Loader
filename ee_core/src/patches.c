@@ -977,8 +977,7 @@ void apply_patches(const char *path)
                         SDF_Macross_patch();
                     break;
                 case PATCH_GENERIC_CAPCOM:
-                    if (file_eq_gameid)
-                        generic_capcom_protection_patches(p->patch.val); // Capcom anti cdvd emulator protection patch
+                    /* 试验：先不打合集防模拟补丁，看选关黑屏是不是它引起的。 */
                     break;
                 case PATCH_SRW_IMPACT:
                     if (file_eq_gameid)

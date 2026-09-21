@@ -350,8 +350,7 @@ int New_Reset_Iop(const char *arg, int arglen)
             DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }
 
-    /* 试验：进游戏不加载 MCEMU，避免额外 MC 服务占 IOP/相关地址。 */
-    if (0 && iop_reboot_count >= 2) {
+    if (iop_reboot_count >= 2) {
 #ifdef PADEMU
         config->PadEmuSettings |= (LoadOPLModule(OPL_MODULE_ID_MCEMU, 0, 0, NULL) > 0) << 24;
 #else
