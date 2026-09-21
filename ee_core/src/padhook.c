@@ -211,17 +211,18 @@ static void t_loadElf(void)
     FlushCache(0);
 
     ret = LoadElf(argv[0], &elf);
-    // 有效的退出 ELF 可能只是暂时无法读取（设备尚未就绪等），因此重试若干次。
-    // 但不再无限循环：路径无效时必须能跳出，走下面的“干净重启”兜底，
-    // 而不是永远卡死。
+    // 有效的退出 ELF 可能只是暂时无法读取（设备刚复位、USB/HDD 还在枚举等），
+    // 因此需要持续重试一段时间再判定失败。这里 20 次 × delay(2)（约 0.6s）
+    // 合计约 12 秒，确保至少撑到 10 秒；仍然是有限循环，路径确实无效时能跳出，
+    // 走下面的“干净重启”兜底而不是永远卡死。
     {
-        int retries = 8;
+        int retries = 20;
         while (ret && retries-- > 0) {
             // 失败后重新绑定 LOADFILE，避免沿用失效的 RPC 客户端状态。
             LoadFileExit();
             SifExitRpc();
             SifInitRpc(0);
-            delay(1);
+            delay(2);
             ret = LoadElf(argv[0], &elf);
         }
     }
