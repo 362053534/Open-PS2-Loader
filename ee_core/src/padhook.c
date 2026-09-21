@@ -380,9 +380,7 @@ int IGRResetComboTrigger = 0; // IGR连续按两次重启的变量
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
 static int IGR_Intc_Handler(int cause)
 {
-#ifdef IGS
     USE_LOCAL_EECORE_CONFIG;
-#endif
     int i;
     u8 pad_pos_state, pad_pos_frame, pad_pos_combo1, pad_pos_combo2;
 
@@ -448,24 +446,33 @@ static int IGR_Intc_Handler(int cause)
 
     ee_kmode_enter();
 
-    // Check power button press
-    if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
-        // Increment button press counter
-        Power_Button.press++;
+    // Power button handling.
+    // On APA (HDD_MODE) and internal-ATA BDMHDD (BDM_HDD_MODE), deliberately do
+    // NOT intercept the power button: let the Mechacon handle it with its default
+    // behaviour (a single press powers the console off). Only the pad combo IGR
+    // (Start+Select reset, etc.) stays active for these modes.
+    // Other modes keep the OPL-managed behaviour (single press = poweroff,
+    // double press = IGR reset).
+    if (config->GameMode != HDD_MODE && config->GameMode != BDM_HDD_MODE) {
+        // Check power button press
+        if ((*CDVD_R_NDIN & 0x20) && (*CDVD_R_POFF & 0x04)) {
+            // Increment button press counter
+            Power_Button.press++;
 
-        // Cancel poweroff to catch the second button press
-        *CDVD_R_SDIN = 0x00;
-        *CDVD_R_SCMD = 0x1B;
-    }
+            // Cancel poweroff to catch the second button press
+            *CDVD_R_SDIN = 0x00;
+            *CDVD_R_SCMD = 0x1B;
+        }
 
-    // Start VBlank counter when power button is pressed
-    if (Power_Button.press) {
-        // Check number of power button press after 1 ~ sec
-        if (Power_Button.vb_count++ >= 50) {
-            if (Power_Button.press == 1)
-                Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 1 time, so poweroff
-            else
-                Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 2 time, so reset
+        // Start VBlank counter when power button is pressed
+        if (Power_Button.press) {
+            // Check number of power button press after 1 ~ sec
+            if (Power_Button.vb_count++ >= 50) {
+                if (Power_Button.press == 1)
+                    Pad_Data.combo_type = IGR_COMBO_R3_L3; // power button press 1 time, so poweroff
+                else
+                    Pad_Data.combo_type = IGR_COMBO_START_SELECT; // power button press 2 time, so reset
+            }
         }
     }
 
