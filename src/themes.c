@@ -1162,12 +1162,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         cur = prev;
     }
 
-    // 填充右侧：向后遍历；到末尾时环绕回第一项。
+    // 填充右侧：向后遍历。右边缘同样【不做环绕】，到列表末尾即停止，让最后一项右侧
+    //（centerIndex 之后）的槽位保持为空 —— 与首项左侧留空的规则保持一致，避免末项
+    // 右侧又把开头的游戏绕回来显示、造成首/末表现不统一。
     cur = item;
     for (ci = centerIndex + 1; ci < coverCount; ci++) {
         submenu_list_t *next = cur->next;
-        if (next == NULL)
-            next = menu->item->submenu;
         if (next == NULL || next == item)
             break;
         covers[ci].game = next;
