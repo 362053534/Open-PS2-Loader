@@ -776,14 +776,15 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
 
     snprintf(elemProp, sizeof(elemProp), "%s_aligned", name);
     if (configGetInt(themeConfig, elemProp, &intValue)) {
-        // 兼容 wOPL/RiptOPL 主题的对齐取值：0=左上(NONE)、1=居中(CENTER)、2=右对齐(RIGHT)。
+        // 兼容 wOPL/RiptOPL 主题的对齐取值：0=左上(NONE)、1=居中(CENTER)、2=右对齐+垂直居中。
         // 旧代码只区分 0 与非 0（非 0 一律当居中），导致第三方主题写的 aligned=2（本意右对齐）
         // 被误当成居中；配合 x=-8（负值换算成 posX=屏宽-8=右缘附近）会把元素推出屏幕右侧
-        // （menuicon / BdmIndex 超屏、与其它元素重叠）。这里补上右对齐分支。
+        // （menuicon / BdmIndex 超屏、与其它元素重叠）。这里补上右对齐分支，取值与 RiptOPL
+        // 一致（aligned=2 → ALIGN_VCENTER | ALIGN_RIGHT）。
         if (intValue == 0)
             elem->aligned = ALIGN_NONE;
         else if (intValue == 2)
-            elem->aligned = ALIGN_RIGHT;
+            elem->aligned = (ALIGN_VCENTER | ALIGN_RIGHT); // 与 RiptOPL 一致：右对齐 + 垂直居中
         else
             elem->aligned = ALIGN_CENTER;
     } else
@@ -1023,8 +1024,11 @@ static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上
 static clock_t animationStartTime = 0;
 
 // 可调参数。本构建没有实时设置菜单，因此这些保持硬编码默认值。
-static int gCoverflowCount = 3;        // 同屏显示的封面数（1..5，奇数观感更好）
-static int gCoverflowCenterScale = 30; // 中间封面额外放大的像素数
+// Coverflow 全局参数：完全对齐 RiptOPL 的默认值（src/themes.c 里 gCoverflowCount=3/
+// CenterScale=30/AnimSpeed=200/DimCovers=0）。本 fork 暂固定同屏显示 5 张封面（见下）。
+// 这些暂为硬编码；后续再接入设置菜单（且会比 RiptOPL 多一个"优先读取主题参数"选项）。
+static int gCoverflowCount = 5;        // 同屏显示的封面数（本 fork 固定 5；drawCoverFlow 夹取到 1..5）
+static int gCoverflowCenterScale = 30; // 中间封面额外放大的【像素】数（RiptOPL 默认 30，UI 档位 0/15/30/45）
 static int gCoverflowAnimSpeed = 200;  // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = 0;    // 是否将非中心封面变暗
 
@@ -1637,21 +1641,16 @@ static void thmLoad(const char *themePath)
     if (configGetColor(themeConfig, "sel_text_color", color))
         newT->selTextColor = GS_SETREG_RGBA(color[0], color[1], color[2], 0x80);
 
-    // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。
+    // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。这是 RiptOPL 文档 §2 里
+    // 合法的【主题级】键，予以保留、从主题 cfg 读取。
     configGetInt(themeConfig, "coverflow_cover_offset", &newT->coverflowCoverOffset);
 
-    // Coverflow 主题级全局参数（wOPL/RiptOPL 约定）。之前这些键被忽略、一直用硬编码默认值，
-    // 导致第三方主题写的 coverflow_count=5 / coverflow_center_scale=80 等不生效（只出 3 张、
-    // 中心放大不足）。这里按主题读取；先复位成默认值，避免切到未定义这些键的主题时残留上一个
-    // 主题的设置。gCoverflowCount 的越界夹取在 drawCoverFlow 里完成（covers[] 上限 5）。
-    gCoverflowCount = 3;
-    gCoverflowCenterScale = 30;
-    gCoverflowAnimSpeed = 200;
-    gCoverflowDimCovers = 0;
-    configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
-    configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
-    configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
-    configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
+    // 注意：coverflow_count / coverflow_center_scale(scale) / animation_speed(anim) / dim 这几个
+    // 是 RiptOPL 的【全局设置项】（住 settings_riptopl.cfg、由 Coverflow Settings 菜单调），
+    // 文档 §8 明确标注 "Global Coverflow tuning (NOT in the theme)" —— 不从主题 cfg 读取。
+    // 因此这里【不再】解析主题里的这些键，改用与 RiptOPL 一致的引擎默认值
+    // （见文件顶部 gCoverflow* 定义：count=5(本 fork 固定)、scale=30px、anim=200ms、dim=0）。
+    // 后续如加设置菜单，会在 RiptOPL 选项基础上再多一个"优先读取主题参数"开关。
 
     // before loading the element definitions, we have to have the fonts prepared
     // for that, we load the fonts and a translation table
