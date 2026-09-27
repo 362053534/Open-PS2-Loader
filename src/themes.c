@@ -1140,12 +1140,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     {
         submenu_list_t *game;
         GSTEXTURE *texture;
+        int renderPosX; // 预计算好的横向绘制坐标（供按层级顺序绘制时取用）
     } covers[5];
 
     int ci;
     for (ci = 0; ci < coverCount; ci++) {
         covers[ci].game = NULL;
         covers[ci].texture = NULL;
+        covers[ci].renderPosX = 0;
     }
     covers[centerIndex].game = item;
 
@@ -1196,14 +1198,33 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int scaling = gCoverflowCenterScale;
     int leavingIndex = (animationDirection > 0) ? (centerIndex + 1) : (centerIndex - 1);
 
+    // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
     int i;
     for (i = 0; i < coverCount; i++) {
-        int renderPosX = posX;
+        covers[i].renderPosX = posX;
         posX += coverDistance;
+    }
+
+    // 生成绘制顺序，实现画家算法的正确层级：
+    //   先画左侧（i 从 0 递增到 centerIndex-1，越靠近中心越后画，压在外侧之上），
+    //   再画右侧（i 从 coverCount-1 递减到 centerIndex+1，同样越靠近中心越后画），
+    //   最后画中心封面 —— 保证放大后的中心封面永远在最上层，不被两侧邻居遮挡。
+    int drawOrder[5];
+    int drawCount = 0;
+    for (i = 0; i < centerIndex; i++)
+        drawOrder[drawCount++] = i;
+    for (i = coverCount - 1; i > centerIndex; i--)
+        drawOrder[drawCount++] = i;
+    drawOrder[drawCount++] = centerIndex;
+
+    int oi;
+    for (oi = 0; oi < drawCount; oi++) {
+        i = drawOrder[oi];
 
         if (covers[i].game == NULL)
             continue;
 
+        int renderPosX = covers[i].renderPosX;
         int currentCoverWidth = coverWidth;
         int currentCoverHeight = coverHeight;
 
