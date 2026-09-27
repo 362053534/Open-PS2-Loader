@@ -775,9 +775,18 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
         elem->height = h;
 
     snprintf(elemProp, sizeof(elemProp), "%s_aligned", name);
-    if (configGetInt(themeConfig, elemProp, &intValue))
-        elem->aligned = (intValue == 0) ? ALIGN_NONE : ALIGN_CENTER;
-    else
+    if (configGetInt(themeConfig, elemProp, &intValue)) {
+        // 兼容 wOPL/RiptOPL 主题的对齐取值：0=左上(NONE)、1=居中(CENTER)、2=右对齐(RIGHT)。
+        // 旧代码只区分 0 与非 0（非 0 一律当居中），导致第三方主题写的 aligned=2（本意右对齐）
+        // 被误当成居中；配合 x=-8（负值换算成 posX=屏宽-8=右缘附近）会把元素推出屏幕右侧
+        // （menuicon / BdmIndex 超屏、与其它元素重叠）。这里补上右对齐分支。
+        if (intValue == 0)
+            elem->aligned = ALIGN_NONE;
+        else if (intValue == 2)
+            elem->aligned = ALIGN_RIGHT;
+        else
+            elem->aligned = ALIGN_CENTER;
+    } else
         elem->aligned = aligned;
 
     snprintf(elemProp, sizeof(elemProp), "%s_scaled", name);
@@ -1630,6 +1639,19 @@ static void thmLoad(const char *themePath)
 
     // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。
     configGetInt(themeConfig, "coverflow_cover_offset", &newT->coverflowCoverOffset);
+
+    // Coverflow 主题级全局参数（wOPL/RiptOPL 约定）。之前这些键被忽略、一直用硬编码默认值，
+    // 导致第三方主题写的 coverflow_count=5 / coverflow_center_scale=80 等不生效（只出 3 张、
+    // 中心放大不足）。这里按主题读取；先复位成默认值，避免切到未定义这些键的主题时残留上一个
+    // 主题的设置。gCoverflowCount 的越界夹取在 drawCoverFlow 里完成（covers[] 上限 5）。
+    gCoverflowCount = 3;
+    gCoverflowCenterScale = 30;
+    gCoverflowAnimSpeed = 200;
+    gCoverflowDimCovers = 0;
+    configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
+    configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
+    configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
+    configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
 
     // before loading the element definitions, we have to have the fonts prepared
     // for that, we load the fonts and a translation table
