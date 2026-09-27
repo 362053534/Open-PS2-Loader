@@ -56,9 +56,6 @@ typedef struct
     int cacheUID;
     char *value;
     int itemId;
-    int ignoreCd; // 为 1 时后台加载忽略 cdFramesCount（单封面连按CD节流）；仍尊重 forceSkipQr。
-                  // Coverflow 走 cacheGetTextureQuiet，主界面从不调用 cacheGetTexture，
-                  // 因此没人重置 cdFramesCount，若不忽略会被永久卡住、loading 一直转。
 } load_image_request_t;
 load_image_request_t req1 = {0};
 load_image_request_t req2 = {0};
@@ -145,17 +142,7 @@ void cacheCancelPendingArtRequests(void)
     ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
 }
 
-// 主动清零单封面"连按CD"节流状态。cdFramesCount 是本文件的 static，Coverflow 主界面只走
-// cacheGetTextureQuiet、从不调用 cacheGetTexture，所以一旦被 cacheCancelPendingArtRequests 置 1
-// 就没人清零、导致后台加载被永久卡住、loading 一直转。Coverflow 每帧调用本函数把它清掉
-//（Coverflow 不需要这套单封面节流，它有自己的缓存与预取）。与请求上的 ignoreCd 标记互为双保险。
-void cacheResetCd(void)
-{
-    cdFramesCount = 0;
-    findBGCount = 0;
-}
-
-static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId, int ignoreCd)
+static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
     if (!req) {
@@ -170,7 +157,6 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->value = value;
     req->itemId = itemId;
     req->qr = 1;
-    req->ignoreCd = ignoreCd;
 
     pthread_mutex_lock(&texLoadingMutex);
     if (texLoading >= 0)
@@ -210,7 +196,7 @@ static void cacheLoadImage1(void *data)
     }
 
     // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
-    if ((cdFramesCount && !ioReq->ignoreCd) || forceSkipQr) {
+    if (cdFramesCount || forceSkipQr) {
         pthread_mutex_lock(&texLoadingMutex);
         if (texLoading > 0)
             texLoading--;
@@ -279,7 +265,7 @@ static void *cacheLoadImage(void *data)
         }
 
         // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
-        if ((cdFramesCount && !ioReq->ignoreCd) || forceSkipQr) {
+        if (cdFramesCount || forceSkipQr) {
             ioReq->cache->content[ioReq->cacheId].qr = 0;
             pthread_mutex_lock(&texLoadingMutex);
             if (texLoading > 0)
@@ -663,7 +649,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             else
                 oldestEntry->UID = *UID;
 
-            cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0);
+            cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
         } else {
             //  加载图片
             if (!strncmp("BG", cache->suffix, 2)) {
@@ -872,7 +858,7 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
         else
             oldest->UID = *UID;
         oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
-        cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // Coverflow：忽略连按CD节流
+        cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
     }
     return NULL;
 }
