@@ -1153,6 +1153,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
     // 填充左侧：从中心向前回溯。左边缘不做环绕
     //（本分支的 menu_item_t 没有 "last" 指针），所以第一项左侧的槽位保持为空。
+    // leftmostVisible / rightmostVisible 记录可见窗口两端的实际游戏节点，供下面预取使用。
+    submenu_list_t *leftmostVisible = item;
+    submenu_list_t *rightmostVisible = item;
     submenu_list_t *cur = item;
     for (ci = centerIndex - 1; ci >= 0; ci--) {
         submenu_list_t *prev = cur->prev;
@@ -1161,6 +1164,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         covers[ci].game = prev;
         cur = prev;
     }
+    leftmostVisible = cur;
 
     // 填充右侧：向后遍历。右边缘同样【不做环绕】，到列表末尾即停止，让最后一项右侧
     //（centerIndex 之后）的槽位保持为空 —— 与首项左侧留空的规则保持一致，避免末项
@@ -1173,6 +1177,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         covers[ci].game = next;
         cur = next;
     }
+    rightmostVisible = cur;
 
     // 用三次缓出（cubic ease-out）计算滑动偏移。
     float eased = 1.0f;
@@ -1258,6 +1263,38 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset, ALIGN_CENTER,
                              currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
                              elem->width, elem->height);
+    }
+
+    // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。
+    // 封面缓存槽位数（cache->count，见 initCoverflow 传入的 15）通常大于同屏封面数，
+    // 富余的槽位就用来缓存离屏封面；这样左右滚动时这些封面已在缓存里，能直接命中、
+    // 减少滑动时才临时加载、露出占位图的情况。这里只【请求】纹理、不绘制。
+    // 每侧预取数量按缓存富余量平分，并留 1 个槽位余量给滚动期间的换页抖动，
+    // 保证每帧请求的封面总数不超过缓存槽位数（否则会互相挤占、频繁重载）。
+    if (img->cache && img->cache->count > coverCount) {
+        int spare = img->cache->count - coverCount;
+        if (spare > 1)
+            spare -= 1; // 预留 1 槽余量
+        int preloadPerSide = spare / 2;
+
+        submenu_list_t *pcur = leftmostVisible;
+        int p;
+        for (p = 0; p < preloadPerSide && pcur; p++) {
+            submenu_list_t *prev = pcur->prev;
+            if (prev == NULL || prev == item)
+                break;
+            getCoverflowTexture(img->cache, sourceList, &prev->item);
+            pcur = prev;
+        }
+
+        pcur = rightmostVisible;
+        for (p = 0; p < preloadPerSide && pcur; p++) {
+            submenu_list_t *next = pcur->next;
+            if (next == NULL || next == item)
+                break;
+            getCoverflowTexture(img->cache, sourceList, &next->item);
+            pcur = next;
+        }
     }
 }
 
@@ -1413,7 +1450,11 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 elem->drawElem = &drawBDMIndex;
             } else if (!strcmp(elementsType[ELEM_TYPE_COVERFLOW], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_COVERFLOW, 0, 0, ALIGN_NONE, DIM_UNDEF, DIM_UNDEF, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                initCoverflow(themePath, themeConfig, theme, elem, name, 10, NULL, NULL);
+                // 第 4 个参数是封面缓存槽位数：同屏最多显示 5 张，多出来的槽位用于
+                // 预取（prefetch）两侧当前看不见的封面。数值越大，可提前缓存的离屏封面越多、
+                // 滚动越不容易露出占位图，但占用内存也越多（每张封面约 100KB 量级）。
+                // drawCoverFlow 会按 (count - 同屏数) 自动决定每侧预取多少张。
+                initCoverflow(themePath, themeConfig, theme, elem, name, 15, NULL, NULL);
                 theme->coverflow = elem;
             }
 
