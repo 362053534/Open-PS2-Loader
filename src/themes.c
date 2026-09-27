@@ -1047,6 +1047,18 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         // 不影响内置主题；同时兼容第三方按元素尺寸书写顶点的主题。
         float sx = (baseW > 0) ? (float)w / (float)baseW : 1.0f;
         float sy = (baseH > 0) ? (float)h / (float)baseH : 1.0f;
+        // NULL 保护：rmDrawOverlayPixmap 会直接解引用 inlay 指针（无 NULL 检查）。
+        // 若既没有封面、也没有占位图（第三方主题未提供 cover.png 且内置 COVER_DEFAULT
+        // 也不可用），则不能带 inlay 调用，否则会崩溃。此时【仍然单独把 case 外壳画出来】，
+        // 避免整块 case 模块直接消失（修复"缺图时整个 case 都不显示"的问题）。
+        if (!texture || !texture->Mem) {
+            if (reflection)
+                rmDrawPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color);
+            else
+                rmDrawPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color);
+            return;
+        }
+
         int ulx = (int)(ov->upperLeft_x * sx);
         int uly = (int)(ov->upperLeft_y * sy);
         int urx = (int)(ov->upperRight_x * sx);
@@ -1061,6 +1073,9 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         else
             rmDrawOverlayPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
     } else {
+        // 无外壳（纯封面）主题：没有可用贴图就直接跳过。
+        if (!texture || !texture->Mem)
+            return;
         if (reflection)
             rmDrawPixmapReflect(texture, x, y, aligned, w, h, SCALING_NONE, color);
         else
@@ -1198,8 +1213,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (!covers[i].texture || !covers[i].texture->Mem)
             covers[i].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
 
-        if (!covers[i].texture || !covers[i].texture->Mem)
-            continue;
+        // 不再因缺图而 continue：即使没有封面也没有占位图，coverflowDrawTexture 会在
+        // 主题带 overlay(case) 时至少画出空的 case 外壳，避免整块 case 模块消失。
 
         u64 coverColor = gDefaultCol;
         if (gCoverflowDimCovers && i != centerIndex)
