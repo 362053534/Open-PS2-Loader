@@ -1073,14 +1073,29 @@ void menuRenderMain(void)
 
 void menuHandleInputMain()
 {
+    // Coverflow 主题：对调【上下】与【左右】——左右切换封面(游戏)、上下切换分类页签(设备)。
+    // 非 coverflow 主题保持默认映射。切回非 coverflow 主题时 gTheme->coverflow 变为 NULL，
+    // 会自动恢复默认操作，无需任何持久化状态。
     if (getKey(KEY_LEFT)) {
-        menuPrevH();
+        if (gTheme->coverflow)
+            menuPrevV(); // 左 = 上一张封面
+        else
+            menuPrevH();
     } else if (getKey(KEY_RIGHT)) {
-        menuNextH();
+        if (gTheme->coverflow)
+            menuNextV(); // 右 = 下一张封面
+        else
+            menuNextH();
     } else if (getKey(KEY_UP)) {
-        menuPrevV();
+        if (gTheme->coverflow)
+            menuPrevH(); // 上 = 上一个分类页签
+        else
+            menuPrevV();
     } else if (getKey(KEY_DOWN)) {
-        menuNextV();
+        if (gTheme->coverflow)
+            menuNextH(); // 下 = 下一个分类页签
+        else
+            menuNextV();
     } else if (getKeyOn(KEY_CROSS)) {
         selected_item->item->execCross(selected_item->item);
     } else if (getKeyOn(KEY_TRIANGLE)) {
@@ -1140,9 +1155,18 @@ void menuHandleInputInfo()
         else
             selected_item->item->execCross(selected_item->item);
     } else if (getKey(KEY_UP)) {
-        menuPrevV();
+        // Coverflow 主题：详情页也对调方向——上/下不做任何事（由左/右切换游戏）。
+        if (!gTheme->coverflow)
+            menuPrevV();
     } else if (getKey(KEY_DOWN)) {
-        menuNextV();
+        if (!gTheme->coverflow)
+            menuNextV();
+    } else if (getKey(KEY_LEFT)) {
+        if (gTheme->coverflow)
+            menuPrevV(); // 左 = 上一款游戏
+    } else if (getKey(KEY_RIGHT)) {
+        if (gTheme->coverflow)
+            menuNextV(); // 右 = 下一款游戏
     } else if (getKeyOn(KEY_CIRCLE)) {
         if (gSelectButton == KEY_CROSS)
             guiSwitchScreen(GUI_SCREEN_MAIN);
