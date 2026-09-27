@@ -586,6 +586,23 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
+// Coverflow 缺图封面的定时重试机制。
+//
+// 背景：art 加载失败（texDiscoverLoad→texLoadAll 的 open() 失败）时，无论"文件真的不存在"
+// 还是"SMB/网络瞬断、读取失败"，返回值都是同一个 ERR_BAD_FILE，无法区分。cacheGetTextureQuiet
+// 会把加载失败的封面永久标记为 cache_id=-2（"确认无此 art、永不再排队"），该标记只有整份游戏
+// 列表重建时才清除。普通主题一次只取一张封面，影响有限；但 Coverflow 每帧并发取 ~9 张，一次网络
+// 抖动会把可见+预取的封面同时打成 -2，继续滚动又不断把新封面打成 -2，最终所有封面都是 -2 →
+// cacheGetTextureQuiet 直接早退、再也不入队 → OPL 再也不发起读取请求、loading 图标不再出现、
+// 封面永久加载不出来（即使网络已恢复）。
+//
+// 修复：每隔 COVERFLOW_MISSING_RETRY_MS 毫秒放行一帧，把当帧要显示/预取的封面里被标成 -2 的
+// 重置为 -1 重新尝试一次。连接恢复后很快自动重载；真的缺图会再次失败、自动回落 -2 并再等一轮，
+// 开销很小且自限。全部封面都有图时没有 -2，零开销。此机制仅作用于 Coverflow，不影响其它主题。
+#define COVERFLOW_MISSING_RETRY_MS 2500
+static clock_t gCovMissingRetryAt = 0;   // 下次允许重试"缺图"封面的时间点
+static int gCovRetryMissingThisFrame = 0; // 本帧是否放行重试（由 drawCoverFlow 每帧设置）
+
 // 与 getGameImageTexture() 相同，但走 Coverflow 专用的 cacheGetTextureQuiet()，
 // 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
 // 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
@@ -593,8 +610,17 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 {
     if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
+        int uid = cache->userId;
+
+        // 缺图封面（-2）定时重试：放行帧里把 -2 重置为 -1，让其重新排队加载一次。
+        // 这样瞬时的网络/读取失败不会把封面永久钉死为"无 art"。
+        if (gCovRetryMissingThisFrame && item->cache_id[uid] == -2) {
+            item->cache_id[uid] = -1;
+            item->cache_uid[uid] = -1;
+        }
+
         char *startup = list->itemGetStartup(list, item->id);
-        return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
+        return cacheGetTextureQuiet(cache, list, &item->cache_id[uid], &item->cache_uid[uid], startup, item->id);
     }
 
     return NULL;
@@ -1112,6 +1138,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // cacheGetTexture，所以 cdFramesCount 一旦被 cacheCancelPendingArtRequests 置 1 就没人清零，
     // 会导致后台加载被永久卡住、loading 图标一直转、再也加载不出任何封面。这里保证它始终为 0。
     cacheResetCd();
+
+    // 缺图封面（-2）定时重试放行：每隔 COVERFLOW_MISSING_RETRY_MS 毫秒放行一帧，让 getCoverflowTexture
+    // 把当帧封面里被标成 -2 的重置回 -1 重试一次（详见 getCoverflowTexture 处说明）。避免一次网络/读取
+    // 瞬断把封面永久钉死为"无 art"、导致 Coverflow 再也加载不出任何封面。
+    gCovRetryMissingThisFrame = 0;
+    {
+        clock_t now = clock();
+        if (now >= gCovMissingRetryAt) {
+            gCovRetryMissingThisFrame = 1;
+            gCovMissingRetryAt = now + (clock_t)COVERFLOW_MISSING_RETRY_MS * CLOCKS_PER_SEC / 1000;
+        }
+    }
 
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
