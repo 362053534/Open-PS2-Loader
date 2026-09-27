@@ -1032,7 +1032,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_SCALE 30  // 中间封面额外放大的像素数默认值
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
-#define COVERFLOW_DEFAULT_PRELOAD 4 // 每侧屏幕外预取封面数默认值（左右各 4 张，共 8 张）
+#define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额外放大的【像素】数
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
@@ -1275,7 +1275,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
     // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
     //
-    // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 4）。
+    // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 2）。
     // 例如填 3 就是左右屏幕外各预读 3 张、共 6 张。此值【不设上限】：主题包填过大会因缓存/内存
     // 过大而出问题，属用户行为，不额外处理。封面缓存槽位数在 initCoverflow 处按
     // (同屏数 + 2*预取数 + 1) 分配，确保这些预取封面都放得下、预取真正生效。
