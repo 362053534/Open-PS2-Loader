@@ -534,10 +534,15 @@ static int ethUpdateGameList(item_list_t *itemList)
         if (gNetworkStartup != 0)
             return 0;
 
-        if ((sbReadList(&ethGames, ethPrefix, &ethULSizePrev, &ethGameCount)) < 0) {
+        int rl = sbReadList(&ethGames, ethPrefix, &ethULSizePrev, &ethGameCount);
+        if (rl < 0) {
             gNetworkStartup = ERROR_ETH_SMB_LISTGAMES;
             ethDisplayErrorStatus();
         }
+        // 【诊断日志】记录一次共享内游戏列表刷新的结果。若 SMB 会话已死，sbReadList 里的
+        // opendir 会失败并【返回 0】（不是 <0），于是 gNetworkStartup 不置错、列表变空、
+        // 不报错也不重连——这正是"服务器正常但 OPL 列表怎么刷都空"的根源，注意对照 sbReadList 的日志。
+        LOG("ETHSUPPORT ethUpdateGameList(share): sbReadList=%d ethGameCount=%d gNetworkStartup=%d\n", rl, ethGameCount, gNetworkStartup);
     } else {
         int i, count, attempt;
         int shareListAttempts = gETHStartMode == START_MODE_AUTO && ethShareListPending && !ethShareListRetryUsed ? 2 : 1;

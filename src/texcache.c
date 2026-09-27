@@ -224,6 +224,9 @@ static void cacheLoadImage1(void *data)
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
     if (result < 0) {
+        // 【诊断日志】某张 art 后台加载失败。coverflow 会并发取多张，若某时刻起大量连续失败，
+        // 多半是 SMB 会话掉了（详见 texLoadAll 的 open/read errno 日志）。
+        LOG("cacheLoadImage: itemGetImage FAILED result=%d suffix=%s value=%s\n", result, ioReq->cache->suffix ? ioReq->cache->suffix : "?", ioReq->value ? ioReq->value : "?");
         ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
         ioReq->cache->content[ioReq->cacheId].texFound = 0;
         //*ioReq->cacheId = -2;

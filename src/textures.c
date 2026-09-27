@@ -4,6 +4,7 @@
 #include "include/ioman.h"
 #include <png.h>
 #include <libjpg_ps2_addons.h>
+#include <errno.h> // 诊断日志需要 errno
 //#include <timer.h>
 //#include "include/pad.h"
 
@@ -478,22 +479,29 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         WaitSema(fileLockId);
         int fd = open(filePath, O_RDONLY);
         if (fd < 0) {
+            // 【诊断日志】open 失败。注意：本层【无法区分】"文件不存在"和"SMB 会话已死"——
+            // 两者都只返回负 fd。若某一时刻起所有 art 的 open 都开始失败、errno 变成连接类错误，
+            // 就说明 SMB 会话在此时掉了（而不是缺图）。请重点观察这里的 fd/errno。
+            LOG("texLoadAll: open FAILED fd=%d errno=%d path=%s\n", fd, errno, filePath);
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
 
         int fileSize = lseek(fd, 0, SEEK_END);
         lseek(fd, 0, SEEK_SET);
+        if (fileSize < 0)
+            LOG("texLoadAll: lseek returned %d errno=%d path=%s\n", fileSize, errno, filePath);
 
         pFileBuffer = malloc(fileSize);
         if (pFileBuffer == NULL) {
+            LOG("texLoadAll: malloc(%d) failed path=%s\n", fileSize, filePath);
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE; // There's no out of memory error...
         }
 
         if (read(fd, pFileBuffer, fileSize) != fileSize) {
-            LOG("texLoadAll: failed to read file %s\n", filePath);
+            LOG("texLoadAll: read FAILED size=%d errno=%d path=%s\n", fileSize, errno, filePath);
             free(pFileBuffer);
             close(fd);
             SignalSema(fileLockId);
