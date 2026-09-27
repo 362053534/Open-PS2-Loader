@@ -3,13 +3,22 @@
 > 本文件是给**新会话的 agent** 的完整交接。目标：把下方补丁提交到用户的 PS2SDK fork 并开 PR。
 > 目标仓库：`https://github.com/362053534/ps2sdk`（fork 自 `ps2dev/ps2sdk`，默认分支 `master`）。
 >
-> **本次共两处同类泄漏，需各提一份修复（可两个 PR，也可合成一个）：**
-> 1. **SMB 链路**：`iop/network/smbman/src/smb_fio.c` 的 `smb_close()`（详见第 2~6 节）。
-> 2. **BDM 链路（USB / BDMHDD / MX4SIO / SD 等块设备）**：`iop/fs/bdmfs_fatfs/src/fs_driver.c` 的 `fs_close()`/`fs_dclose()`（详见第 9 节）。
+> **本次共两条链路、三份补丁，分属两个仓库：**
 >
-> 两者是**同一类 bug**：驱动在 close 时，遇到网络/设备抖动就不回收自己的本地句柄槽位，
-> 槽位逐渐漏满（smbman 32、bdmfs 文件 128 / 目录 16）后所有 open()/opendir() 返回 -EMFILE，
-> 表现为浏览一段时间后游戏列表清空、冻死。coverflow 因 art open/close 量大而更易触发。
+> | # | 仓库 | 文件 / 函数 | 说明 | 详见 |
+> |---|------|-------------|------|------|
+> | 1 | `362053534/ps2sdk` | `iop/network/smbman/src/smb_fio.c` → `smb_close()` | **SMB 链路根修（必做）** | 第 2~6 节 |
+> | 2 | **`362053534/FatFs-PS2OPL`（分支 `iop-r0.15`）** | `source/ff.c` → `f_close()` / `f_closedir()` | **BDM 链路根修（推荐主修）** | 第 9 节 |
+> | 3 | `362053534/ps2sdk` | `iop/fs/bdmfs_fatfs/src/fs_driver.c` → `fs_close()` / `fs_dclose()` | BDM 链路驱动侧防御纵深（可选，与 #2 二选一或都要） | 第 9 节 |
+>
+> 三者是**同一类 bug**：close 时遇到网络/设备抖动，句柄不被回收，本地句柄槽位逐渐漏满
+> （smbman 32、bdmfs 文件 128 / 目录 16）后所有 `open()`/`opendir()` 返回 `-EMFILE`，
+> 表现为浏览一段时间后设备/游戏列表清空、冻死。coverflow 因 art open/close 量大而更易触发。
+>
+> **BDM 修在哪一层？** 缺陷本体在 FatFs 的 `f_close`/`f_closedir`（出错路径不清 `obj.fs`），
+> 所以 **#2（FatFs-PS2OPL）才是根上修**，一处覆盖所有用这套 FatFs 的驱动（当前仓内只有
+> `bdmfs_fatfs`；`bdmfs_vfat` 不用它、HDD 走 PFS）。**#3 是驱动侧防御**（驱动强制回收自己
+> 的槽位），更保险且让驱动自洽，但非必需。推荐至少做 #1 + #2；#3 视口味决定。
 
 ---
 
@@ -236,8 +245,59 @@ index dce5b1a..175f7cb 100644
   - `f_closedir` 只有 `validate()` 成功才 `dp->obj.fs = 0`；设备掉线/重枚举时失败 → **不清槽位**。目录槽仅 16 个，很快漏满。
 - 累积到上限 → 后续 `open()`/`opendir()` 全 `-EMFILE`，与 smbman 同症。
 
-### 修复（改 `fs_driver.c`，不动第三方 FatFs 库）
-在 `fs_close`/`fs_dclose` 里，无论 `f_close`/`f_closedir` 返回什么，都**在驱动层强制回收本地槽位**（把 `obj.fs` 清成 NULL —— 这正是 `fs_find_free_fil/dir_structure()` 判定空闲的字段）。这样即使 flush/validate 因设备抖动失败，槽位也不再泄漏。
+### 修复位置：两层，推荐主修 #2（FatFs 根修）
+
+BDM 有两个合理的修复点，二者都能解决问题：
+
+- **#2 根修（推荐，提到 `362053534/FatFs-PS2OPL@iop-r0.15`）**：缺陷本体就在 FatFs，改这里一处治本，覆盖所有消费者。见 9A。
+- **#3 驱动侧防御（可选，提到 `362053534/ps2sdk` 的 `fs_driver.c`）**：驱动层强制回收自己的槽位，不动第三方库。见 9B。
+
+推荐至少做 #2；#3 作为防御纵深可留可去。
+
+---
+
+### 9A. #2 根修：`362053534/FatFs-PS2OPL@iop-r0.15` 的 `source/ff.c`
+
+FatFs 的 `f_close` 只在 `f_sync()` **且** `validate()` 成功时清 `fp->obj.fs = 0`；`f_closedir` 只在 `validate()` 成功时清 `dp->obj.fs = 0`。上层驱动以 `obj.fs == NULL` 判定槽位空闲，所以出错不清 = 槽位泄漏。
+
+改法：在两个函数 `return res;` 之前，**无论结果如何都把 `obj.fs` 清零**回收槽位。错误路径上不持有卷锁（validate 失败未加锁、f_sync 内部已 LEAVE 解锁），故安全；成功路径重复清零无害。FF_FS_LOCK=0 时不涉及 lockid 计数。
+
+- 补丁文件（OPL 仓库根）：`FatFs-PS2OPL-fix-EMFILE-handle-leak.patch`
+- 目标仓库/分支：`362053534/FatFs-PS2OPL`，基于 `iop-r0.15`；建议特性分支名 `fix/fclose-invalidate-on-error`
+- 提交说明（中文）：
+```
+ff: f_close/f_closedir 出错时也失效对象，修复句柄槽位泄漏 -EMFILE
+
+原实现仅在 f_sync 且 validate 成功(f_close)、或 validate 成功(f_closedir)时
+才把 obj.fs 清零。块设备(USB/MX4SIO/SD)抖动、掉线或重枚举会让 flush/validate
+失败，obj.fs 不被清空。上层 fs 驱动以 obj.fs==NULL 判定句柄槽位空闲，于是槽位
+永久占用；累积到驱动的固定句柄池上限后，所有 open()/opendir() 返回 -EMFILE，
+表现为浏览一段时间后设备列表清空/冻死。
+
+PS2/OPL 场景介质会突然消失且驱动从不重试 close，故改为无论 f_sync/validate
+结果如何都在返回前将 obj.fs 清零，回收槽位（错误路径上不持有卷锁，安全）。
+```
+- 修复后（`ff.c`，两个函数的尾部各加一段，示意 f_close）：
+```c
+        }
+    }
+
+    /* PS2/OPL fix: always invalidate the object so the fs-driver handle slot
+       (detected via obj.fs == NULL) is reclaimed even when f_sync()/validate()
+       failed on a removed or flaky medium. Without this, obj.fs stays set and
+       the fixed handle pool leaks until every open()/opendir() returns -EMFILE. */
+    fp->obj.fs = 0;   /* f_closedir 里对应写 dp->obj.fs = 0; */
+    return res;
+}
+```
+- 注意：`ff.c` 是 **CRLF + Tab** 文件，手改时保持行尾/缩进；直接 `git am` 补丁最稳。
+- 落地：clone `362053534/FatFs-PS2OPL` 的 `iop-r0.15` → 建分支 → `git am FatFs-PS2OPL-fix-EMFILE-handle-leak.patch` → push → 对 `iop-r0.15` 开 PR。
+  （OPL 构建时 `download_dependencies.sh` 会从该 fork 的 `iop-r0.15` 拉 FatFs，故 PR 合进 `iop-r0.15` 后重新拉依赖即可生效。）
+
+---
+
+### 9B. #3 驱动侧防御（可选）：改 `362053534/ps2sdk` 的 `iop/fs/bdmfs_fatfs/src/fs_driver.c`
+在 `fs_close`/`fs_dclose` 里，无论 `f_close`/`f_closedir` 返回什么，都**在驱动层强制回收本地槽位**（把 `obj.fs` 清成 NULL —— 这正是 `fs_find_free_fil/dir_structure()` 判定空闲的字段）。即使只做 #2，这一层也无害；只做 #3 也能独立解决问题。
 
 - 补丁文件（OPL 仓库根）：`bdmfs_fatfs-fix-EMFILE-handle-leak.patch`
 - 建议分支名：`fix/bdmfs-fatfs-fdhandle-leak`
@@ -307,18 +367,22 @@ static int fs_dclose(iop_file_t *fd)
 ```
 
 ### BDM 验证
-1. 重编 bdmfs_fatfs：`cd iop/fs/bdmfs_fatfs && make` → 新 `bdmfs_fatfs.irx` 装到 `$(PS2SDK)/iop/irx/`（注意：首次可能需先 `download_dependencies.sh` 拉 FatFs）。
-2. 重编 OPL，用 USB / BDMHDD / MX4SIO / SD 设备 + coverflow 长时间浏览，尤其制造设备抖动/热插拔场景。
-3. 期望：不再列表清空/冻死，日志无成片 `errno=24`。
+1. 若走 #2（FatFs 根修）：把修复合进 `362053534/FatFs-PS2OPL@iop-r0.15` 后，在 ps2sdk 里删掉已缓存的 `common/external_deps/fatfs` 并重新 `download_dependencies.sh` 拉取（或直接在缓存目录里 `git pull`），再 `cd iop/fs/bdmfs_fatfs && make` 得到新 `bdmfs_fatfs.irx` 装到 `$(PS2SDK)/iop/irx/`。
+2. 若走 #3（驱动侧）：直接 `cd iop/fs/bdmfs_fatfs && make`（首次可能需先 `download_dependencies.sh` 拉 FatFs）。
+3. 重编 OPL，用 USB / BDMHDD / MX4SIO / SD 设备 + coverflow 长时间浏览，尤其制造设备抖动/热插拔场景。
+4. 期望：不再列表清空/冻死，日志无成片 `errno=24`。
 
 ---
 
 ## 10. 现状小结（交接时点）
 
-- 两份补丁均已写好并本地验证语法/逻辑正确，存于 OPL 仓库根：
-  - `smbman-fix-EMFILE-handle-leak.patch`（SMB 链路，见第 3~6 节）
-  - `bdmfs_fatfs-fix-EMFILE-handle-leak.patch`（BDM 链路，见第 9 节）
-- 两者都在 `362053534/ps2sdk` 仓库；建议各开一个分支/ PR（`fix/smbman-fdhandle-leak`、`fix/bdmfs-fatfs-fdhandle-leak`），也可合成一个 PR。
-- 本会话 GitHub 令牌只覆盖 `362053534/Open-PS2-Loader`，无法 push `362053534/ps2sdk`（403）。用户已在 GitHub App 里把 `ps2sdk` 加入 Repository access，但令牌需 Arena 重新签发才会生效 —— 故改由**新会话**完成 SDK 提交。
-- OPL 仓库侧的"过渡缓解"（对 smb 的 opendir 至少 readdir 一次）尚未实施；根治靠上述 SDK 补丁，过渡缓解可选。
+- 三份补丁均已写好并本地验证语法/逻辑正确，存于 OPL 仓库根：
+  - `smbman-fix-EMFILE-handle-leak.patch` — #1 SMB 根修 → `362053534/ps2sdk`（`smb_fio.c`），见第 3~6 节
+  - `FatFs-PS2OPL-fix-EMFILE-handle-leak.patch` — #2 BDM 根修（推荐）→ `362053534/FatFs-PS2OPL@iop-r0.15`（`source/ff.c`），见第 9A 节
+  - `bdmfs_fatfs-fix-EMFILE-handle-leak.patch` — #3 BDM 驱动侧防御（可选）→ `362053534/ps2sdk`（`fs_driver.c`），见第 9B 节
+- 建议 PR：`fix/smbman-fdhandle-leak`（ps2sdk）、`fix/fclose-invalidate-on-error`（FatFs-PS2OPL）；可选 `fix/bdmfs-fatfs-fdhandle-leak`（ps2sdk）。ps2sdk 内的 #1/#3 可合成一个 PR，FatFs 的 #2 是独立仓库必须单独 PR。
+- 至少做 **#1 + #2** 即可根治 SMB + BDM 两条链路；#3 视口味决定。
+- 本会话 GitHub 令牌只覆盖 `362053534/Open-PS2-Loader`，无法 push `362053534/ps2sdk` 与 `362053534/FatFs-PS2OPL`（均 403，installation 只含 OPL 一个仓库）。用户已在 GitHub App 里加了 `ps2sdk` 的 Repository access，但令牌需 Arena 重新签发才生效；`FatFs-PS2OPL` 亦需一并加入。故 SDK/FatFs 提交改由**新会话**在令牌覆盖到这两个仓库后完成。
+- 三份补丁都是 `git format-patch` 格式，`git am` 最省事；若行号/hash 对不齐，文档内附了修复后代码，可 `git apply --3way` 或手改（注意 `ff.c` 是 CRLF+Tab）。
+- OPL 仓库侧的"过渡缓解"（对 smb 的 opendir 至少 readdir 一次）尚未实施；根治靠上述补丁，过渡缓解可选。
 ```
