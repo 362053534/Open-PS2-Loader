@@ -797,3 +797,65 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
     return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
 }
+
+// Coverflow 专用取图函数。
+// 常规的 cacheGetTexture() 依赖 curStartUp / skipQr / cdFramesCount / PrevCacheID_*
+// 等一整套"每帧只取选中项这一张封面"的全局状态；Coverflow 每帧需要为多张封面取图，
+// 会把这些启发式打乱，导致封面永远排不进加载、只显示占位图。
+// 本函数刻意不触碰上述任何全局状态，改用与通用分支相同的 cacheQueueImageRequest()
+// 多请求加载路径，因此可在同一帧安全地为多张封面并行取图/排队加载。
+// 命中返回纹理；未命中则排队后台加载并返回 NULL（本帧先由调用方显示占位图）。
+GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
+{
+    if (!cache || !cache->content || !value)
+        return NULL;
+
+    // 已确认该项没有对应 art 文件：直接返回，避免反复排队
+    if (*cacheId == -2)
+        return NULL;
+
+    // 已分配槽位：检查是否命中
+    if (*cacheId >= 0 && *cacheId < cache->count) {
+        cache_entry_t *entry = &cache->content[*cacheId];
+        if (entry->UID == *UID) {
+            if (entry->qr)
+                return NULL; // 正在后台加载
+            if (entry->texFound == 1 && entry->texture.Mem) {
+                entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
+                return &entry->texture;
+            }
+            if (entry->texFound == 0) {
+                *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
+                return NULL;
+            }
+            // texFound == -1：上次加载被 CD/skipQr 中断，落到下面重新排队
+        }
+        *cacheId = -1; // UID 不匹配（槽被别的封面抢走）→ 重新查找
+    }
+
+    // 需要加载：挑一个空闲/最旧、且未在加载中的槽
+    cache_entry_t *oldest = NULL;
+    int slot = -1;
+    u64 rtime = guiFrameId;
+    int i;
+    for (i = 0; i < cache->count; i++) {
+        cache_entry_t *e = &cache->content[i];
+        if (!e->qr && e->lastUsed < rtime) {
+            oldest = e;
+            rtime = e->lastUsed;
+            slot = i;
+        }
+    }
+    if (oldest) {
+        *cacheId = slot;
+        cacheClearItem(oldest, 1); // 注意：会把 qr 清 0、texFound 置 -1
+        oldest->qr = 1;
+        if (*UID == -1)
+            oldest->UID = *UID = cache->nextUID++;
+        else
+            oldest->UID = *UID;
+        oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
+        cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
+    }
+    return NULL;
+}

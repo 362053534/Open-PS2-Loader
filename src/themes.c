@@ -586,6 +586,20 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
+// 与 getGameImageTexture() 相同，但走 Coverflow 专用的 cacheGetTextureQuiet()，
+// 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
+// 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
+static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struct submenu_item *item)
+{
+    if (artEnabledForCache(cache)) {
+        item_list_t *list = (item_list_t *)support;
+        char *startup = list->itemGetStartup(list, item->id);
+        return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
+    }
+
+    return NULL;
+}
+
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
@@ -1018,18 +1032,25 @@ void thmTriggerCoverflowAnim(int direction)
 
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
-static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection, int offsetX, int offsetY, float scaleFactor)
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection)
 {
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
-        int ulx = (int)(ov->upperLeft_x * scaleFactor);
-        int uly = (int)(ov->upperLeft_y * scaleFactor);
-        int urx = (int)(ov->upperRight_x * scaleFactor) + offsetX;
-        int ury = (int)(ov->upperRight_y * scaleFactor);
-        int blx = (int)(ov->lowerLeft_x * scaleFactor);
-        int bly = (int)(ov->lowerLeft_y * scaleFactor) + offsetY;
-        int brx = (int)(ov->lowerRight_x * scaleFactor) + offsetX;
-        int bry = (int)(ov->lowerRight_y * scaleFactor) + offsetY;
+
+        // overlay_* 顶点是相对【外壳纹理原生像素】给出的（与默认主题 ItemCover 一致）。
+        // 这里按【实际绘制尺寸 / 外壳纹理原生尺寸】把顶点等比缩放到当前封面大小，
+        // 这样无论封面被放大/缩小，封面都能精确吸附进外壳内框（修复外壳不贴合问题）。
+        // 中间封面放大时 w/h 已随之增大，顶点自然一起放大，无需再额外加偏移。
+        float sx = (ov->source.Width > 0) ? (float)w / (float)ov->source.Width : 1.0f;
+        float sy = (ov->source.Height > 0) ? (float)h / (float)ov->source.Height : 1.0f;
+        int ulx = (int)(ov->upperLeft_x * sx);
+        int uly = (int)(ov->upperLeft_y * sy);
+        int urx = (int)(ov->upperRight_x * sx);
+        int ury = (int)(ov->upperRight_y * sy);
+        int blx = (int)(ov->lowerLeft_x * sx);
+        int bly = (int)(ov->lowerLeft_y * sy);
+        int brx = (int)(ov->lowerRight_x * sx);
+        int bry = (int)(ov->lowerRight_y * sy);
 
         if (reflection)
             rmDrawOverlayPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
@@ -1060,7 +1081,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
     int coverHeight = elem->height;
     int coverWidth = gWideScreen ? rmWideScale(elem->width) : elem->width;
-    int origCoverWidth = coverWidth;
 
     // 限制封面尺寸，使其能全部横向排入屏幕。
     int coverYOffset = 0;
@@ -1071,8 +1091,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         coverWidth = maxCoverWidth;
         coverYOffset = (origHeight - coverHeight) / 2;
     }
-
-    float coverScaleRatio = (origCoverWidth > 0) ? (float)coverWidth / (float)origCoverWidth : 1.0f;
 
     int totalCoversWidth = coverCount * coverWidth;
     int totalRemainingSpace = screenWidth - totalCoversWidth;
@@ -1156,10 +1174,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         int currentCoverWidth = coverWidth;
         int currentCoverHeight = coverHeight;
-        int overlayOffsetY = 0;
-        int overlayOffsetX = 0;
 
         // 插值缩放：进入中心的封面逐渐放大，离开中心的封面逐渐缩小。
+        // 外壳顶点在 coverflowDrawTexture 里会随 w/h 等比缩放，这里不再需要额外偏移。
         int currentScaling = 0;
         if (i == centerIndex) {
             float growFactor = isAnimating ? eased : 1.0f;
@@ -1171,11 +1188,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (currentScaling > 0) {
             currentCoverWidth += currentScaling;
             currentCoverHeight += currentScaling;
-            overlayOffsetY = currentScaling;
-            overlayOffsetX = (int)(currentScaling * (gWideScreen ? (4.0f / 3.0f) : 1.0f) - (currentScaling * ((4.0f / 3.0f) - 1.0f) / 2.0f));
         }
 
-        covers[i].texture = getGameImageTexture(img->cache, sourceList, &covers[i].game->item);
+        covers[i].texture = getCoverflowTexture(img->cache, sourceList, &covers[i].game->item);
         if (!covers[i].texture || !covers[i].texture->Mem)
             covers[i].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
 
@@ -1187,8 +1202,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             coverColor = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x40);
 
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset, ALIGN_CENTER,
-                             currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
-                             overlayOffsetX, overlayOffsetY, coverScaleRatio);
+                             currentCoverWidth, currentCoverHeight, coverColor, elem->reflection);
     }
 }
 
