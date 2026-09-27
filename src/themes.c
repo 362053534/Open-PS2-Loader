@@ -1032,17 +1032,21 @@ void thmTriggerCoverflowAnim(int direction)
 
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
-static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection)
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection, int baseW, int baseH)
 {
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
 
-        // overlay_* 顶点是相对【外壳纹理原生像素】给出的（与默认主题 ItemCover 一致）。
-        // 这里按【实际绘制尺寸 / 外壳纹理原生尺寸】把顶点等比缩放到当前封面大小，
-        // 这样无论封面被放大/缩小，封面都能精确吸附进外壳内框（修复外壳不贴合问题）。
+        // overlay_* 顶点遵循 wOPL/RiptOPL 约定：相对【元素配置尺寸 width/height】给出，
+        // 而不是相对外壳纹理原生像素。例如第三方主题 width=150 / height=212 时，
+        // overlay_lry=212、overlay_urx=140 都是落在 0..150 × 0..212 这个元素坐标系里的。
+        // 因此这里按【实际绘制尺寸 / 元素配置尺寸】把顶点等比缩放到当前封面大小，
+        // 封面才能精确吸附进外壳内框（修复第三方主题封面与顶点未对齐问题）。
         // 中间封面放大时 w/h 已随之增大，顶点自然一起放大，无需再额外加偏移。
-        float sx = (ov->source.Width > 0) ? (float)w / (float)ov->source.Width : 1.0f;
-        float sy = (ov->source.Height > 0) ? (float)h / (float)ov->source.Height : 1.0f;
+        // 说明：内置 Coverflow cfg 的 width/height 恰好等于纹理原生尺寸(256)，故本次改动
+        // 不影响内置主题；同时兼容第三方按元素尺寸书写顶点的主题。
+        float sx = (baseW > 0) ? (float)w / (float)baseW : 1.0f;
+        float sy = (baseH > 0) ? (float)h / (float)baseH : 1.0f;
         int ulx = (int)(ov->upperLeft_x * sx);
         int uly = (int)(ov->upperLeft_y * sy);
         int urx = (int)(ov->upperRight_x * sx);
@@ -1201,8 +1205,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gCoverflowDimCovers && i != centerIndex)
             coverColor = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x40);
 
+        // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset, ALIGN_CENTER,
-                             currentCoverWidth, currentCoverHeight, coverColor, elem->reflection);
+                             currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
+                             elem->width, elem->height);
     }
 }
 
