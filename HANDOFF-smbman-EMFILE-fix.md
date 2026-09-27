@@ -19,6 +19,8 @@
 > 所以 **#2（FatFs-PS2OPL）才是根上修**，一处覆盖所有用这套 FatFs 的驱动（当前仓内只有
 > `bdmfs_fatfs`；`bdmfs_vfat` 不用它、HDD 走 PFS）。**#3 是驱动侧防御**（驱动强制回收自己
 > 的槽位），更保险且让驱动自洽，但非必需。推荐至少做 #1 + #2；#3 视口味决定。
+>
+> **APA / HDD（PFS）链路已核查：不受影响，无需改动。** 详见第 11 节。
 
 ---
 
@@ -385,4 +387,24 @@ static int fs_dclose(iop_file_t *fd)
 - 本会话 GitHub 令牌只覆盖 `362053534/Open-PS2-Loader`，无法 push `362053534/ps2sdk` 与 `362053534/FatFs-PS2OPL`（均 403，installation 只含 OPL 一个仓库）。用户已在 GitHub App 里加了 `ps2sdk` 的 Repository access，但令牌需 Arena 重新签发才生效；`FatFs-PS2OPL` 亦需一并加入。故 SDK/FatFs 提交改由**新会话**在令牌覆盖到这两个仓库后完成。
 - 三份补丁都是 `git format-patch` 格式，`git am` 最省事；若行号/hash 对不齐，文档内附了修复后代码，可 `git apply --3way` 或手改（注意 `ff.c` 是 CRLF+Tab）。
 - OPL 仓库侧的"过渡缓解"（对 smb 的 opendir 至少 readdir 一次）尚未实施；根治靠上述补丁，过渡缓解可选。
-```
+
+---
+
+## 11. APA / HDD（PFS）链路：已核查，不受影响（无需改动）
+
+用户追问内置硬盘的 **APA ISO** 与 **APA HDL** 两种模式是否也有同类泄漏。已核查：**没有，不需要打补丁。**
+
+两种模式的 art / 配置读写最终都走 **PFS 文件系统驱动**（`pfs0:`，源码 `iop/hdd/pfs/src/`），它是与 smbman/bdmfs 对等的那一层。逐条比对结论：
+
+- **槽位表**：`pfsFileSlots[]`，空闲判据 `.fd == NULL`，满了返回 `-EMFILE`（结构与 smbman/bdmfs 同构）。
+- **关闭路径（关键，无泄漏）**：`pfs.c` 的 ops 表里 `close` 与 `dclose` **都指向 `pfsFioClose`** → `pfsFioCloseFileSlot()`；该函数**结尾无条件 `memset(fileSlot, 0, sizeof(pfs_file_slot_t))`**，对回写/`pfsCacheFlushAllDirty` 的返回值**直接忽略、不做错误跳转**。即**没有任何"出错就跳过释放"的分支**，槽位每次都被回收。
+  - 对比：smbman 是 `if (r != 0) goto io_unlock;` 跳过 memset；FatFs 是仅在 `f_sync`+`validate` 成功时才清 `obj.fs`。PFS 两种坑都没有。
+- **目录**：`pfsFioDopen` 复用 `pfsFioOpen`，`dclose` 复用 `pfsFioClose`，同样每次 memset 回收；无独立 dclose 漏点。
+- **打开失败**：`openFile()` 出错时 `freeSlot->clink=NULL` 且 `pfsCacheFree(fileInode)`，槽位保持干净（`fd==NULL`）可复用，不半占用。
+- **早返回**：`pfsFioClose` 若 `clink==NULL` 返回 `-EBADF`，那是槽位本就已释放，不是泄漏。
+
+**为什么只有 SMB / BDM 中招：** ①它们的驱动在 close 错误路径上**跳过了释放**（smbman 的 `goto`、FatFs 的"仅成功才清"）；②SMB（网络）、BDM（USB/MX4SIO/SD 可插拔）本就易出瞬时错误，频繁踩中那条错误路径。PFS 既无"跳过释放"的分支，内置 APA HDD 又稳定，两头都不沾。
+
+> 备注：PFS 的取舍是"忽略回写错误、强制释放槽位"（坏盘写入时可能**静默丢数据**），但这不影响只读的 art 浏览，也正是它不漏句柄的原因。
+
+**故三条链路里只有 SMB + BDM 需要打补丁（#1 / #2 / #3），APA/HDD（PFS）无需改动。**
