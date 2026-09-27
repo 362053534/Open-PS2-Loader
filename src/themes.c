@@ -10,6 +10,9 @@
 #include "include/pad.h"
 #include "include/sound.h"
 
+#include <math.h>
+#include <time.h>
+
 #define MENU_POS_V     50
 #define HINT_HEIGHT    32
 #define DECORATOR_SIZE 20
@@ -46,6 +49,7 @@ enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_LOADING_ICON,
     ELEM_TYPE_BDM_INDEX,
     ELEM_TYPE_GAME_COUNT_TEXT,
+    ELEM_TYPE_COVERFLOW,
     ELEM_TYPE_COUNT
 };
 
@@ -74,7 +78,8 @@ static const char *elementsType[ELEM_TYPE_COUNT] = {
     "InfoHintText",
     "LoadingIcon",
     "BdmIndex",
-    "GameCountText"};
+    "GameCountText",
+    "Coverflow"};
 
 // Common functions for Text ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -771,6 +776,11 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
             elem->font = theme->fonts[intValue];
     }
 
+    elem->reflection = 0;
+    snprintf(elemProp, sizeof(elemProp), "%s_reflection", name);
+    if (configGetInt(themeConfig, elemProp, &intValue))
+        elem->reflection = intValue;
+
     return elem;
 }
 
@@ -872,7 +882,9 @@ static void drawItemsList(struct menu_list *menu, struct submenu_list *item, con
             posY -= elem->height >> 1;
         }
 
-        submenu_list_t *ps = menu->item->pagestart;
+        // Coverflow 模式下让列表从选中项开始，这样那一行可见文字
+        // 就充当中心封面的标题，而不是一整页滚动列表。
+        submenu_list_t *ps = (gTheme->coverflow != NULL) ? item : menu->item->pagestart;
         int others = 0;
         u64 color;
         while (ps && (others++ < itemsList->displayedItems)) {
@@ -967,6 +979,220 @@ static void drawInfoHintText(struct menu_list *menu, struct submenu_list *item, 
     x = guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? infoIcons[0] : infoIcons[1], infoHints[0], elem->font, x, elem->posY, elem->color);
     x += elem->width;
     x = guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? infoIcons[1] : infoIcons[0], infoHints[1], elem->font, x, elem->posY, elem->color);
+}
+
+// Coverflow ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 从 wOPL 移植的游戏列表滚动封面轮播。以当前选中项为中心渲染 N 张封面（默认 3 张），
+// 放大中间那张，并在导航时用三次缓出（cubic ease-out）平移整排。
+// 倒影通过专用的 rmDraw*Reflect() 辅助函数绘制，从而保持共用的 rmDrawPixmap() 路径原样不动。
+
+static int isAnimating = 0;        // 动画进行中标志
+static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上一个（向右滚动）
+static clock_t animationStartTime = 0;
+
+// 可调参数。本构建没有实时设置菜单，因此这些保持硬编码默认值。
+static int gCoverflowCount = 3;        // 同屏显示的封面数（1..5，奇数观感更好）
+static int gCoverflowCenterScale = 30; // 中间封面额外放大的像素数
+static int gCoverflowAnimSpeed = 200;  // 滑动时长（毫秒，<=0 关闭动画）
+static int gCoverflowDimCovers = 0;    // 是否将非中心封面变暗
+
+void thmTriggerCoverflowAnim(int direction)
+{
+    // 仅当启用了 Coverflow 主题时才生效，因此不影响列表主题下的导航。
+    if (!gTheme || gTheme->coverflow == NULL)
+        return;
+
+    isAnimating = 1;
+    animationDirection = direction;
+    animationStartTime = clock();
+}
+
+// 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
+// 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection, int offsetX, int offsetY, float scaleFactor)
+{
+    if (img->overlayTexture) {
+        image_texture_t *ov = img->overlayTexture;
+        int ulx = (int)(ov->upperLeft_x * scaleFactor);
+        int uly = (int)(ov->upperLeft_y * scaleFactor);
+        int urx = (int)(ov->upperRight_x * scaleFactor) + offsetX;
+        int ury = (int)(ov->upperRight_y * scaleFactor);
+        int blx = (int)(ov->lowerLeft_x * scaleFactor);
+        int bly = (int)(ov->lowerLeft_y * scaleFactor) + offsetY;
+        int brx = (int)(ov->lowerRight_x * scaleFactor) + offsetX;
+        int bry = (int)(ov->lowerRight_y * scaleFactor) + offsetY;
+
+        if (reflection)
+            rmDrawOverlayPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
+        else
+            rmDrawOverlayPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
+    } else {
+        if (reflection)
+            rmDrawPixmapReflect(texture, x, y, aligned, w, h, SCALING_NONE, color);
+        else
+            rmDrawPixmap(texture, x, y, aligned, w, h, SCALING_NONE, color);
+    }
+}
+
+static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
+{
+    if (item == NULL)
+        return;
+
+    mutable_image_t *img = (mutable_image_t *)elem->extended;
+    item_list_t *sourceList = menu->item->userdata;
+
+    int coverCount = gCoverflowCount;
+    if (coverCount < 1)
+        coverCount = 1;
+    if (coverCount > 5)
+        coverCount = 5;
+    int centerIndex = coverCount / 2;
+
+    int coverHeight = elem->height;
+    int coverWidth = gWideScreen ? rmWideScale(elem->width) : elem->width;
+    int origCoverWidth = coverWidth;
+
+    // 限制封面尺寸，使其能全部横向排入屏幕。
+    int coverYOffset = 0;
+    int maxCoverWidth = (screenWidth - (coverCount - 1) * 10) / coverCount;
+    if (coverWidth > maxCoverWidth) {
+        int origHeight = coverHeight;
+        coverHeight = (coverHeight * maxCoverWidth) / coverWidth;
+        coverWidth = maxCoverWidth;
+        coverYOffset = (origHeight - coverHeight) / 2;
+    }
+
+    float coverScaleRatio = (origCoverWidth > 0) ? (float)coverWidth / (float)origCoverWidth : 1.0f;
+
+    int totalCoversWidth = coverCount * coverWidth;
+    int totalRemainingSpace = screenWidth - totalCoversWidth;
+    int coverSpacing = totalRemainingSpace / (coverCount + 1);
+    if (coverSpacing < 0)
+        coverSpacing = 0;
+    if (gWideScreen)
+        coverSpacing = rmWideScale(coverSpacing);
+
+    int coverDistance = coverWidth + coverSpacing;
+    int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
+    int basePosX = (screenWidth - totalGroupWidth) / 2 + (coverWidth >> 1) + (coverWidth * gTheme->coverflowCoverOffset / 256);
+
+    struct
+    {
+        submenu_list_t *game;
+        GSTEXTURE *texture;
+    } covers[5];
+
+    int ci;
+    for (ci = 0; ci < coverCount; ci++) {
+        covers[ci].game = NULL;
+        covers[ci].texture = NULL;
+    }
+    covers[centerIndex].game = item;
+
+    // 填充左侧：从中心向前回溯。左边缘不做环绕
+    //（本分支的 menu_item_t 没有 "last" 指针），所以第一项左侧的槽位保持为空。
+    submenu_list_t *cur = item;
+    for (ci = centerIndex - 1; ci >= 0; ci--) {
+        submenu_list_t *prev = cur->prev;
+        if (prev == NULL || prev == item)
+            break;
+        covers[ci].game = prev;
+        cur = prev;
+    }
+
+    // 填充右侧：向后遍历；到末尾时环绕回第一项。
+    cur = item;
+    for (ci = centerIndex + 1; ci < coverCount; ci++) {
+        submenu_list_t *next = cur->next;
+        if (next == NULL)
+            next = menu->item->submenu;
+        if (next == NULL || next == item)
+            break;
+        covers[ci].game = next;
+        cur = next;
+    }
+
+    // 用三次缓出（cubic ease-out）计算滑动偏移。
+    float eased = 1.0f;
+    float animOffset = 0.0f;
+    if (isAnimating) {
+        if (gCoverflowAnimSpeed <= 0) {
+            isAnimating = 0;
+        } else {
+            clock_t elapsed = clock() - animationStartTime;
+            float t = (float)elapsed / ((float)gCoverflowAnimSpeed * CLOCKS_PER_SEC / 1000);
+            if (t >= 1.0f) {
+                t = 1.0f;
+                isAnimating = 0;
+                animationStartTime = 0;
+            }
+            float inv = 1.0f - t;
+            eased = 1.0f - inv * inv * inv;
+            animOffset = (float)animationDirection * (float)coverDistance * (eased - 1.0f);
+        }
+    }
+
+    int posX = basePosX + (int)animOffset;
+    int scaling = gCoverflowCenterScale;
+    int leavingIndex = (animationDirection > 0) ? (centerIndex + 1) : (centerIndex - 1);
+
+    int i;
+    for (i = 0; i < coverCount; i++) {
+        int renderPosX = posX;
+        posX += coverDistance;
+
+        if (covers[i].game == NULL)
+            continue;
+
+        int currentCoverWidth = coverWidth;
+        int currentCoverHeight = coverHeight;
+        int overlayOffsetY = 0;
+        int overlayOffsetX = 0;
+
+        // 插值缩放：进入中心的封面逐渐放大，离开中心的封面逐渐缩小。
+        int currentScaling = 0;
+        if (i == centerIndex) {
+            float growFactor = isAnimating ? eased : 1.0f;
+            currentScaling = (int)(scaling * growFactor);
+        } else if (isAnimating && i == leavingIndex) {
+            currentScaling = (int)(scaling * (1.0f - eased));
+        }
+
+        if (currentScaling > 0) {
+            currentCoverWidth += currentScaling;
+            currentCoverHeight += currentScaling;
+            overlayOffsetY = currentScaling;
+            overlayOffsetX = (int)(currentScaling * (gWideScreen ? (4.0f / 3.0f) : 1.0f) - (currentScaling * ((4.0f / 3.0f) - 1.0f) / 2.0f));
+        }
+
+        covers[i].texture = getGameImageTexture(img->cache, sourceList, &covers[i].game->item);
+        if (!covers[i].texture || !covers[i].texture->Mem)
+            covers[i].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
+
+        if (!covers[i].texture || !covers[i].texture->Mem)
+            continue;
+
+        u64 coverColor = gDefaultCol;
+        if (gCoverflowDimCovers && i != centerIndex)
+            coverColor = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x40);
+
+        coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset, ALIGN_CENTER,
+                             currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
+                             overlayOffsetX, overlayOffsetY, coverScaleRatio);
+    }
+}
+
+static void initCoverflow(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, int count, const char *texture, const char *overlay)
+{
+    mutable_image_t *mutableImage = initMutableImage(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, "COV", count, texture, overlay);
+    elem->extended = mutableImage;
+    elem->endElem = &endMutableImage;
+
+    if (mutableImage->cache)
+        elem->drawElem = &drawCoverFlow;
+    else
+        LOG("THEMES Coverflow %s: NO pattern, elem disabled !!\n", name);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1107,6 +1333,10 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
             } else if (!strcmp(elementsType[ELEM_TYPE_BDM_INDEX], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_BDM_INDEX, screenWidth >> 1, 355, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
                 elem->drawElem = &drawBDMIndex;
+            } else if (!strcmp(elementsType[ELEM_TYPE_COVERFLOW], type)) {
+                elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_COVERFLOW, 0, 0, ALIGN_NONE, DIM_UNDEF, DIM_UNDEF, SCALING_NONE, gDefaultCol, theme->fonts[0]);
+                initCoverflow(themePath, themeConfig, theme, elem, name, 10, NULL, NULL);
+                theme->coverflow = elem;
             }
 
             if (elem) {
@@ -1349,6 +1579,9 @@ static void thmLoad(const char *themePath)
 
     if (configGetColor(themeConfig, "sel_text_color", color))
         newT->selTextColor = GS_SETREG_RGBA(color[0], color[1], color[2], 0x80);
+
+    // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。
+    configGetInt(themeConfig, "coverflow_cover_offset", &newT->coverflowCoverOffset);
 
     // before loading the element definitions, we have to have the fonts prepared
     // for that, we load the fonts and a translation table

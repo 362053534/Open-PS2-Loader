@@ -96,6 +96,17 @@ void rmDrawPixmap(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, sho
 void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
                          GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry);
 
+/** 与 rmDrawPixmap() 相同，但会在图像下方额外绘制一段渐隐的镜像倒影。
+ *  为 Coverflow 主题元素新增；主图仍复用 rmDrawPixmap() 绘制，
+ *  因此常规的 pixmap 绘制路径保持原样不动。 */
+void rmDrawPixmapReflect(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, short scaled, u64 color);
+
+/** 与 rmDrawOverlayPixmap() 相同，但会在（inlay + overlay）图像下方额外绘制
+ *  一段渐隐的镜像倒影。为 Coverflow 主题元素新增；主图仍复用
+ *  rmDrawOverlayPixmap() 绘制。 */
+void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                                GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry);
+
 /** Queues a opaque rectangle to be rendered */
 void rmDrawRect(int x, int y, int w, int h, u64 color);
 

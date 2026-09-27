@@ -78,6 +78,10 @@ typedef struct theme_element
     u64 color;
     int font;
 
+    // 非 0 时，图像类元素会在自身下方绘制镜像倒影。
+    // 目前由 Coverflow 元素使用。
+    int reflection;
+
     void *extended;
 
     void (*drawElem)(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem);
@@ -122,11 +126,20 @@ typedef struct theme
     theme_element_t *loadingIcon;
     int loadingIconCount;
 
+    // Coverflow：当前主题声明了 Coverflow 元素时非 NULL。
+    // 设置后，游戏列表会以滚动封面轮播的形式渲染。
+    theme_element_t *coverflow;
+    int coverflowCoverOffset;
+
     GSTEXTURE textures[TEXTURES_COUNT];
     int fonts[THM_MAX_FONTS]; //!< Storage of font handles for removal once not needed
 } theme_t;
 
 extern theme_t *gTheme;
+
+// 触发 Coverflow 滑动动画。direction：-1 = 下一个（向左滚动），
+// 1 = 上一个（向右滚动）。即使当前没有启用 Coverflow 主题，调用也是安全的。
+void thmTriggerCoverflowAnim(int direction);
 
 void thmInit(void);
 void thmReinit(const char *path);

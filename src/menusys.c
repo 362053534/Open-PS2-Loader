@@ -718,6 +718,8 @@ static void menuNextV()
     if (cur && cur->next) {
         selected_item->item->current = cur->next;
 
+        thmTriggerCoverflowAnim(-1); // 滑动 Coverflow 整排（列表主题下为空操作）
+
         // if the current item is beyond the page start, move the page start one page down
         cur = selected_item->item->pagestart;
         int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
@@ -733,6 +735,8 @@ static void menuNextV()
         selected_item->item->pagestart = selected_item->item->current;
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to start
+        if (cur && (cur->next || cur->prev))
+            thmTriggerCoverflowAnim(-1);
         menuFirstPage();
     }
 }
@@ -744,6 +748,8 @@ static void menuPrevV()
     if (cur && cur->prev) {
         selected_item->item->current = cur->prev;
 
+        thmTriggerCoverflowAnim(1); // 滑动 Coverflow 整排（列表主题下为空操作）
+
         // if the current item is on the page start, move the page start one page up
         if (selected_item->item->pagestart == cur) {
             int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1; // +1 because the selection will move as well
@@ -754,6 +760,8 @@ static void menuPrevV()
         }
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
+        if (cur && (cur->next || cur->prev))
+            thmTriggerCoverflowAnim(1);
         menuLastPage();
     }
 }

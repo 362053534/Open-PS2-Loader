@@ -380,6 +380,134 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
     rmDrawQuad(&quad);
 }
 
+// 在由 (x,y,w,h,aligned,scaled) 描述的四边形正下方，绘制该纹理向下、
+// 渐隐的镜像倒影。拆分成若干细横行，使 alpha 随距离逐渐淡出。
+// 供各 reflect 函数共用的辅助函数。
+static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 color)
+{
+    float rowHeight = 1.0f;
+    float totalHeight = quad->br.y - quad->ul.y;
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+
+    if (totalHeight <= 0.0f)
+        return;
+
+    // 确保渐隐的各行能正常进行 alpha 混合。
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    gsKit_TexManager_bind(gsGlobal, txt);
+
+    for (float row = 0; row < totalHeight; row += rowHeight) {
+        float alpha;
+        if (row < totalHeight / 4.0f)
+            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
+        else
+            alpha = 0x00;
+
+        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
+
+        // 自底向上采样纹理，使倒影呈镜像效果。
+        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * txt->Height;
+        float texBottom = ((totalHeight - row) / totalHeight) * txt->Height;
+
+        float screenTop = quad->br.y + fRenderYOff + row;
+        float screenBottom = quad->br.y + fRenderYOff + row + rowHeight;
+
+        gsKit_prim_sprite_texture(gsGlobal, txt,
+                                  quad->ul.x + fRenderXOff, screenTop,
+                                  quad->ul.u, texTop,
+                                  quad->br.x + fRenderXOff, screenBottom,
+                                  quad->br.u, texBottom,
+                                  order, reflectionColor);
+        order++;
+    }
+}
+
+void rmDrawPixmapReflect(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, short scaled, u64 color)
+{
+    // 主图仍走原封不动的公共绘制路径。
+    rmDrawPixmap(txt, x, y, aligned, w, h, scaled, color);
+
+    // 重新计算几何，再追加渐隐倒影。
+    rm_quad_t quad;
+    rmSetupQuad(txt, x, y, aligned, w, h, scaled, color, &quad);
+    rmDrawReflectionRows(txt, &quad, color);
+}
+
+void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                                GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry)
+{
+    // 主图（inlay + overlay）仍走原封不动的公共绘制路径。
+    rmDrawOverlayPixmap(overlay, x, y, aligned, w, h, scaled, color, inlay, ulx, uly, urx, ury, blx, bly, brx, bry);
+
+    // 重新计算几何（以及按宽高比缩放后的 overlay 四角偏移），以便在图像下方
+    // 逐行绘制 inlay 与 overlay 的镜像。
+    rm_quad_t quad;
+    rmSetupQuad(overlay, x, y, aligned, w, h, scaled, color, &quad);
+
+    ulx = X_SCALE(ulx * iAspectWidth) >> 2;
+    urx = X_SCALE(urx * iAspectWidth) >> 2;
+    blx = X_SCALE(blx * iAspectWidth) >> 2;
+    brx = X_SCALE(brx * iAspectWidth) >> 2;
+    uly = Y_SCALE(uly);
+    ury = Y_SCALE(ury);
+    bly = Y_SCALE(bly);
+    bry = Y_SCALE(bry);
+
+    float rowHeight = 1.0f;
+    float totalHeight = quad.br.y - quad.ul.y;
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+
+    if (totalHeight <= 0.0f)
+        return;
+
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+
+    for (float row = 0; row < totalHeight; row += rowHeight) {
+        float alpha;
+        if (row < totalHeight / 4.0f)
+            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
+        else
+            alpha = 0x00;
+
+        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
+
+        float screenTop = quad.br.y + fRenderYOff + row;
+        float screenBottom = quad.br.y + fRenderYOff + row + rowHeight;
+
+        // Inlay（实际封面图）行。
+        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
+        float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, inlay);
+        gsKit_prim_quad_texture(gsGlobal, inlay,
+                                quad.ul.x + ulx + fRenderXOff, screenTop,
+                                0.0f, texTop,
+                                quad.ul.x + urx + fRenderXOff, screenTop,
+                                inlay->Width, texTop,
+                                quad.ul.x + blx + fRenderXOff, screenBottom,
+                                0.0f, texBottom,
+                                quad.ul.x + brx + fRenderXOff, screenBottom,
+                                inlay->Width, texBottom,
+                                order, reflectionColor);
+        order++;
+
+        // Overlay（盒装外壳边框）行。
+        texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
+        texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, overlay);
+        gsKit_prim_sprite_texture(gsGlobal, overlay,
+                                  quad.ul.x + fRenderXOff, screenTop,
+                                  quad.ul.u, texTop,
+                                  quad.br.x + fRenderXOff, screenBottom,
+                                  quad.br.u, texBottom,
+                                  order, reflectionColor);
+        order++;
+    }
+}
+
 void rmDrawRect(int x, int y, int w, int h, u64 color)
 {
     float fx = X_SCALE(x) + fRenderXOff;
