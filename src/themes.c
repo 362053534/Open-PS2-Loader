@@ -1269,6 +1269,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 封面缓存槽位数（cache->count，见 initCoverflow 传入的 15）通常大于同屏封面数，
     // 富余的槽位就用来缓存离屏封面；这样左右滚动时这些封面已在缓存里，能直接命中、
     // 减少滑动时才临时加载、露出占位图的情况。这里只【请求】纹理、不绘制。
+    //
+    // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
+    //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
+    // 封面也提前加载好，环绕跳转时才不会露出占位图。
+    //
     // 每侧预取数量按缓存富余量平分，并留 1 个槽位余量给滚动期间的换页抖动，
     // 保证每帧请求的封面总数不超过缓存槽位数（否则会互相挤占、频繁重载）。
     if (img->cache && img->cache->count > coverCount) {
@@ -1277,19 +1282,31 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             spare -= 1; // 预留 1 槽余量
         int preloadPerSide = spare / 2;
 
+        submenu_list_t *head = menu->item->submenu;
+
+        // 左侧预取：到列表头(prev==NULL)时环绕到列表尾继续。
         submenu_list_t *pcur = leftmostVisible;
         int p;
         for (p = 0; p < preloadPerSide && pcur; p++) {
             submenu_list_t *prev = pcur->prev;
+            if (prev == NULL && head) {
+                // 环绕到列表尾（本分支无 last 指针，从表头走到末尾；只会在首次触边时走一次）。
+                prev = head;
+                while (prev->next)
+                    prev = prev->next;
+            }
             if (prev == NULL || prev == item)
-                break;
+                break; // 空列表，或列表太短已绕回中心项，停止
             getCoverflowTexture(img->cache, sourceList, &prev->item);
             pcur = prev;
         }
 
+        // 右侧预取：到列表尾(next==NULL)时环绕到列表头继续。
         pcur = rightmostVisible;
         for (p = 0; p < preloadPerSide && pcur; p++) {
             submenu_list_t *next = pcur->next;
+            if (next == NULL)
+                next = head; // 环绕到列表头
             if (next == NULL || next == item)
                 break;
             getCoverflowTexture(img->cache, sourceList, &next->item);
