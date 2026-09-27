@@ -1023,14 +1023,21 @@ static int isAnimating = 0;        // 动画进行中标志
 static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上一个（向右滚动）
 static clock_t animationStartTime = 0;
 
-// 可调参数。本构建没有实时设置菜单，因此这些保持硬编码默认值。
-// Coverflow 全局参数：完全对齐 RiptOPL 的默认值（src/themes.c 里 gCoverflowCount=3/
-// CenterScale=30/AnimSpeed=200/DimCovers=0）。本 fork 暂固定同屏显示 5 张封面（见下）。
-// 这些暂为硬编码；后续再接入设置菜单（且会比 RiptOPL 多一个"优先读取主题参数"选项）。
-static int gCoverflowCount = 5;        // 同屏显示的封面数（本 fork 固定 5；drawCoverFlow 夹取到 1..5）
-static int gCoverflowCenterScale = 30; // 中间封面额外放大的【像素】数（RiptOPL 默认 30，UI 档位 0/15/30/45）
-static int gCoverflowAnimSpeed = 200;  // 滑动时长（毫秒，<=0 关闭动画）
-static int gCoverflowDimCovers = 0;    // 是否将非中心封面变暗
+// Coverflow 可调参数。
+// 规则：如果主题 cfg 里写了对应键，则【优先使用主题的定制值】；主题没写才回退到这里的默认值。
+// 这些默认值与 RiptOPL 对齐（count=5 本 fork 默认、scale=30px、anim=200ms、dim=0）。
+// 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
+#define COVERFLOW_MAX 15            // 同屏封面数的硬上限（covers[]/drawOrder[] 数组大小，防越界）
+#define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值
+#define COVERFLOW_DEFAULT_SCALE 30  // 中间封面额外放大的像素数默认值
+#define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
+#define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
+#define COVERFLOW_DEFAULT_PRELOAD 4 // 每侧屏幕外预取封面数默认值（左右各 4 张，共 8 张）
+static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
+static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额外放大的【像素】数
+static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
+static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
+static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
 
 void thmTriggerCoverflowAnim(int direction)
 {
@@ -1107,8 +1114,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int coverCount = gCoverflowCount;
     if (coverCount < 1)
         coverCount = 1;
-    if (coverCount > 5)
-        coverCount = 5;
+    if (coverCount > COVERFLOW_MAX)
+        coverCount = COVERFLOW_MAX; // 夹取到数组上限，防止 covers[]/drawOrder[] 越界
     int centerIndex = coverCount / 2;
 
     int coverHeight = elem->height;
@@ -1141,7 +1148,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         submenu_list_t *game;
         GSTEXTURE *texture;
         int renderPosX; // 预计算好的横向绘制坐标（供按层级顺序绘制时取用）
-    } covers[5];
+    } covers[COVERFLOW_MAX];
 
     int ci;
     for (ci = 0; ci < coverCount; ci++) {
@@ -1214,7 +1221,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     //   先画左侧（i 从 0 递增到 centerIndex-1，越靠近中心越后画，压在外侧之上），
     //   再画右侧（i 从 coverCount-1 递减到 centerIndex+1，同样越靠近中心越后画），
     //   最后画中心封面 —— 保证放大后的中心封面永远在最上层，不被两侧邻居遮挡。
-    int drawOrder[5];
+    int drawOrder[COVERFLOW_MAX];
     int drawCount = 0;
     for (i = 0; i < centerIndex; i++)
         drawOrder[drawCount++] = i;
@@ -1265,22 +1272,19 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                              elem->width, elem->height);
     }
 
-    // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。
-    // 封面缓存槽位数（cache->count，见 initCoverflow 传入的 15）通常大于同屏封面数，
-    // 富余的槽位就用来缓存离屏封面；这样左右滚动时这些封面已在缓存里，能直接命中、
-    // 减少滑动时才临时加载、露出占位图的情况。这里只【请求】纹理、不绘制。
+    // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
+    // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
+    //
+    // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 4）。
+    // 例如填 3 就是左右屏幕外各预读 3 张、共 6 张。此值【不设上限】：主题包填过大会因缓存/内存
+    // 过大而出问题，属用户行为，不额外处理。封面缓存槽位数在 initCoverflow 处按
+    // (同屏数 + 2*预取数 + 1) 分配，确保这些预取封面都放得下、预取真正生效。
     //
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
-    //
-    // 每侧预取数量按缓存富余量平分，并留 1 个槽位余量给滚动期间的换页抖动，
-    // 保证每帧请求的封面总数不超过缓存槽位数（否则会互相挤占、频繁重载）。
-    if (img->cache && img->cache->count > coverCount) {
-        int spare = img->cache->count - coverCount;
-        if (spare > 1)
-            spare -= 1; // 预留 1 槽余量
-        int preloadPerSide = spare / 2;
+    if (img->cache && gCoverflowPreload > 0) {
+        int preloadPerSide = gCoverflowPreload;
 
         submenu_list_t *head = menu->item->submenu;
 
@@ -1467,11 +1471,12 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 elem->drawElem = &drawBDMIndex;
             } else if (!strcmp(elementsType[ELEM_TYPE_COVERFLOW], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_COVERFLOW, 0, 0, ALIGN_NONE, DIM_UNDEF, DIM_UNDEF, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                // 第 4 个参数是封面缓存槽位数：同屏最多显示 5 张，多出来的槽位用于
-                // 预取（prefetch）两侧当前看不见的封面。数值越大，可提前缓存的离屏封面越多、
-                // 滚动越不容易露出占位图，但占用内存也越多（每张封面约 100KB 量级）。
-                // drawCoverFlow 会按 (count - 同屏数) 自动决定每侧预取多少张。
-                initCoverflow(themePath, themeConfig, theme, elem, name, 15, NULL, NULL);
+                // 封面缓存槽位数按 (同屏数 + 两侧预取数 + 1 余量) 动态分配，确保同屏封面与
+                // 左右预取封面都放得下、预取真正生效。gCoverflowCount / gCoverflowPreload 已在
+                // 上面的主题级解析里按“优先读主题、缺失用默认”确定。预取数不设上限，故槽位数也
+                // 可能很大（主题填过大导致内存不足属用户行为，不额外处理）。
+                int coverflowCacheSlots = gCoverflowCount + 2 * gCoverflowPreload + 1;
+                initCoverflow(themePath, themeConfig, theme, elem, name, coverflowCacheSlots, NULL, NULL);
                 theme->coverflow = elem;
             }
 
@@ -1720,16 +1725,36 @@ static void thmLoad(const char *themePath)
     if (configGetColor(themeConfig, "sel_text_color", color))
         newT->selTextColor = GS_SETREG_RGBA(color[0], color[1], color[2], 0x80);
 
-    // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。这是 RiptOPL 文档 §2 里
-    // 合法的【主题级】键，予以保留、从主题 cfg 读取。
+    // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。
     configGetInt(themeConfig, "coverflow_cover_offset", &newT->coverflowCoverOffset);
 
-    // 注意：coverflow_count / coverflow_center_scale(scale) / animation_speed(anim) / dim 这几个
-    // 是 RiptOPL 的【全局设置项】（住 settings_riptopl.cfg、由 Coverflow Settings 菜单调），
-    // 文档 §8 明确标注 "Global Coverflow tuning (NOT in the theme)" —— 不从主题 cfg 读取。
-    // 因此这里【不再】解析主题里的这些键，改用与 RiptOPL 一致的引擎默认值
-    // （见文件顶部 gCoverflow* 定义：count=5(本 fork 固定)、scale=30px、anim=200ms、dim=0）。
-    // 后续如加设置菜单，会在 RiptOPL 选项基础上再多一个"优先读取主题参数"开关。
+    // Coverflow 定制参数：【优先读取主题 cfg 内的定制值；主题没写才回退到引擎默认值】。
+    // 每次加载主题都先把这些全局复位为默认，再按当前主题覆盖，避免切换到未定义这些键的
+    // 主题时残留上一个主题的设置。本函数在元素定义解析（initCoverflow）之前运行，因此这里
+    // 读到的 count/preload 在分配封面缓存时即可用。
+    //   coverflow_count            —— 同屏封面数（夹取到 1..COVERFLOW_MAX）
+    //   coverflow_center_scale     —— 中间封面额外放大的像素数
+    //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
+    //   coverflow_dim_covers       —— 非中心封面是否变暗（0/1）
+    //   coverflow_preload          —— 每侧屏幕外预取封面数（如填 3 = 左右各 3、共 6；无上限）
+    gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
+    gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE;
+    gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
+    gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
+    gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
+    configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
+    configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
+    configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
+    configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
+    configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
+    // count 夹取到显示数组上限，防止 covers[]/drawOrder[] 越界崩溃；preload 只挡负值、不设上限
+    //（主题填过大导致内存/崩溃属用户行为，不额外处理）。
+    if (gCoverflowCount < 1)
+        gCoverflowCount = 1;
+    if (gCoverflowCount > COVERFLOW_MAX)
+        gCoverflowCount = COVERFLOW_MAX;
+    if (gCoverflowPreload < 0)
+        gCoverflowPreload = 0;
 
     // before loading the element definitions, we have to have the fonts prepared
     // for that, we load the fonts and a translation table
