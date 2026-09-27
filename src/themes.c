@@ -1108,6 +1108,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (item == NULL)
         return;
 
+    // 每帧主动清零单封面"连按CD"节流状态。Coverflow 只走 cacheGetTextureQuiet，永远不会调用
+    // cacheGetTexture，所以 cdFramesCount 一旦被 cacheCancelPendingArtRequests 置 1 就没人清零，
+    // 会导致后台加载被永久卡住、loading 图标一直转、再也加载不出任何封面。这里保证它始终为 0。
+    cacheResetCd();
+
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 

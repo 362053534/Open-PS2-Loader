@@ -145,6 +145,16 @@ void cacheCancelPendingArtRequests(void)
     ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
 }
 
+// 主动清零单封面"连按CD"节流状态。cdFramesCount 是本文件的 static，Coverflow 主界面只走
+// cacheGetTextureQuiet、从不调用 cacheGetTexture，所以一旦被 cacheCancelPendingArtRequests 置 1
+// 就没人清零、导致后台加载被永久卡住、loading 一直转。Coverflow 每帧调用本函数把它清掉
+//（Coverflow 不需要这套单封面节流，它有自己的缓存与预取）。与请求上的 ignoreCd 标记互为双保险。
+void cacheResetCd(void)
+{
+    cdFramesCount = 0;
+    findBGCount = 0;
+}
+
 static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId, int ignoreCd)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
