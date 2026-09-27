@@ -248,7 +248,8 @@ void guiCheckNotifications(int checkTheme, int checkLang)
 {
     if (gEnableNotifications) {
         if (checkTheme) {
-            if (thmGetGuiValue() != 0)
+            // 仅用户主题才有文件路径可提示；内置主题（默认/ Coverflow）跳过弹窗。
+            if (thmGetGuiValue() >= THM_NUM_BUILTIN)
                 showThmPopup = 1;
         }
 

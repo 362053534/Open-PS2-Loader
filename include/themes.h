@@ -8,6 +8,14 @@
 #define THM_MAX_FILES 64
 #define THM_MAX_FONTS 16
 
+// 内置主题数量：GUI 主题列表开头固定的两套内置主题
+//   索引 0 = 默认主题（强化原生主题-支持背景图）
+//   索引 1 = 内置 Coverflow 封面流主题（复用默认主题美术资源）
+// 用户从存储设备加载的主题从索引 THM_NUM_BUILTIN 开始排列。
+#define THM_NUM_BUILTIN 2
+// 内置 Coverflow 主题在 GUI 列表中显示的名称（同时用于配置保存/匹配）
+#define THM_COVERFLOW_NAME "封面流主题(Coverflow)"
+
 typedef struct
 {
     // optional, only for overlays

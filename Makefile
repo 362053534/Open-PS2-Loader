@@ -105,7 +105,7 @@ GFX_OBJS = $(PNG_ASSETS:%=%_png.o) poeveticanew.o icon_sys.o icon_icn.o
 
 AUDIO_OBJS =	boot.o cancel.o confirm.o cursor.o message.o transition.o bd_connect.o bd_disconnect.o
 
-MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o \
+MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o conf_theme_coverflow.o \
 		popstarter_usbd.o popstarter_usbhdfsd.o popstarter_bdmhdd.o popstarter_mx4sio.o popstarter_elf.o \
 		popstarter_smb_poweroff.o popstarter_smb_ps2dev9.o popstarter_smb_ps2ip.o \
 		popstarter_smb_ps2smap.o popstarter_smb_smbman.o popstarter_smb_smsutils.o
@@ -773,6 +773,9 @@ $(EE_ASM_DIR)icon_sys_C.c: misc/icon_C.sys | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)
 
 $(EE_ASM_DIR)conf_theme_OPL.c: misc/conf_theme_OPL.cfg | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ $(*F)_cfg
+
+$(EE_ASM_DIR)conf_theme_coverflow.c: misc/conf_theme_coverflow.cfg | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_cfg
 
 $(EE_ASM_DIR)boot.c: audio/boot.adp | $(EE_ASM_DIR)

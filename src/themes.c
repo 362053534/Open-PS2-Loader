@@ -19,6 +19,14 @@
 
 extern const char conf_theme_OPL_cfg;
 extern u16 size_conf_theme_OPL_cfg;
+// 内置 Coverflow 主题模板（由 misc/conf_theme_coverflow.cfg 经 bin2c 嵌入）
+extern const char conf_theme_coverflow_cfg;
+extern u16 size_conf_theme_coverflow_cfg;
+
+// thmLoad(NULL) 时选择加载哪一套内置主题：
+//   0 = 默认主题；1 = 内置 Coverflow 主题。
+// 由 thmSetGuiValue()/thmReinit() 在调用 thmLoad(NULL) 前设置。
+static int builtinThemeID = 0;
 
 static int screenWidth;
 static int screenHeight;
@@ -637,7 +645,8 @@ static void drawAttributeImage(struct menu_list *menu, struct submenu_list *item
             configGetStr(config, attributeImage->cache->suffix, (const char **)&attributeImage->currentValue);
         }
         if (attributeImage->currentValue) {
-            if (thmGetGuiValue() == 0) {
+            // 内置主题（默认/ Coverflow）没有外部路径，属性图使用内置贴图查找。
+            if (thmGetGuiValue() < THM_NUM_BUILTIN) {
                 int texId;
                 char *seppos = strchr(attributeImage->currentValue, '/');
                 if (!seppos)
@@ -1550,9 +1559,13 @@ static void thmLoad(const char *themePath)
 
     config_set_t *themeConfig = NULL;
     if (!themePath) {
-        // No theme specified. Prepare and load the default theme.
+        // 未指定主题路径：加载内置主题模板。根据 builtinThemeID 选择
+        // 默认主题还是内置 Coverflow 主题（两者都不依赖外部图片资源）。
         themeConfig = configAlloc(0, NULL, NULL);
-        configReadBuffer(themeConfig, &conf_theme_OPL_cfg, size_conf_theme_OPL_cfg);
+        if (builtinThemeID == 1)
+            configReadBuffer(themeConfig, &conf_theme_coverflow_cfg, size_conf_theme_coverflow_cfg);
+        else
+            configReadBuffer(themeConfig, &conf_theme_OPL_cfg, size_conf_theme_OPL_cfg);
     } else {
         snprintf(path, sizeof(path), "%sconf_theme.cfg", themePath);
         themeConfig = configAlloc(0, NULL, path);
@@ -1674,17 +1687,20 @@ static void thmRebuildGuiNames(void)
         free(guiThemesNames);
 
     // build the themes name list
-    guiThemesNames = (const char **)malloc((nThemes + 2) * sizeof(char **));
+    // 列表结构：THM_NUM_BUILTIN 套内置主题 + nThemes 套用户主题 + 1 个 NULL 结束标记
+    guiThemesNames = (const char **)malloc((nThemes + THM_NUM_BUILTIN + 1) * sizeof(char **));
 
-    // add default internal
+    // 两套内置主题固定排在最前
     guiThemesNames[0] = "强化原生主题-支持背景图";
+    guiThemesNames[1] = THM_COVERFLOW_NAME;
 
+    // 用户主题接在内置主题之后
     int i = 0;
     for (; i < nThemes; i++) {
-        guiThemesNames[i + 1] = themes[i].name;
+        guiThemesNames[i + THM_NUM_BUILTIN] = themes[i].name;
     }
 
-    guiThemesNames[nThemes + 1] = NULL;
+    guiThemesNames[nThemes + THM_NUM_BUILTIN] = NULL;
 }
 
 int thmAddElements(char *path, const char *separator, int forceRefresh)
@@ -1722,6 +1738,7 @@ void thmInit(void)
 
 void thmReinit(const char *path)
 {
+    builtinThemeID = 0;
     thmLoad(NULL);
     guiThemeID = 0;
 
@@ -1757,13 +1774,20 @@ int thmSetGuiValue(int themeID, int reload)
 {
     if (themeID != -1) {
         if (guiThemeID != themeID || reload) {
-            thmLoad(themeID != 0 ? themes[themeID - 1].filePath : NULL);
+            if (themeID < THM_NUM_BUILTIN) {
+                // 内置主题（0=默认，1=Coverflow）：无外部路径，走内置模板
+                builtinThemeID = themeID;
+                thmLoad(NULL);
+            } else {
+                // 用户主题：GUI 索引需减去内置主题数量才是 themes[] 下标
+                thmLoad(themes[themeID - THM_NUM_BUILTIN].filePath);
+            }
 
             guiThemeID = themeID;
 
             //ForceRefreshPrevTexCache = 1; // 刷新ART缓存，防止死机
             return 1;
-        } else if (guiThemeID == 0)
+        } else if (guiThemeID < THM_NUM_BUILTIN)
             thmSetColors(gTheme);
     }
     return 0;
@@ -1777,12 +1801,17 @@ int thmGetGuiValue(void)
 int thmFindGuiID(const char *theme)
 {
     if (theme) {
+        // 先匹配内置 Coverflow 主题（GUI 索引 1）
+        if (strcasecmp(theme, THM_COVERFLOW_NAME) == 0)
+            return 1;
+        // 再匹配用户主题（GUI 索引需加上内置主题数量偏移）
         int i = 0;
         for (; i < nThemes; i++) {
             if (strcasecmp(themes[i].name, theme) == 0)
-                return i + 1;
+                return i + THM_NUM_BUILTIN;
         }
     }
+    // 未匹配到则回退默认主题（GUI 索引 0）
     return 0;
 }
 
@@ -1793,7 +1822,8 @@ const char **thmGetGuiList(void)
 
 char *thmGetFilePath(int themeID)
 {
-    theme_file_t *currTheme = &themes[themeID - 1];
+    // 仅用户主题拥有文件路径；GUI 索引需减去内置主题数量才是 themes[] 下标。
+    theme_file_t *currTheme = &themes[themeID - THM_NUM_BUILTIN];
     char *path = currTheme->filePath;
 
     return path;
