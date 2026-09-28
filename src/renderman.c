@@ -590,18 +590,27 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
+    // fill convention（半像素填充）：浮点缩放后 case/inlay 的底边、右边落在非整数坐标，
+    // GS 扫描线采样会丢掉最底一行/最右一列像素（放大后底部“缺一行”的成因）。把底边(y)与
+    // 右边(x)各向外扩 EDGE_FILL=0.5px，使该行/列的采样点落进图元内、补齐边缘。0.5 是常量、
+    // 不随缩放变化，不会重新引入蠕动。顶边/左边不动，避免整体偏移。
+    const float EDGE_FILL = 0.5f;
+
     gsKit_TexManager_bind(gsGlobal, inlay);
     gsKit_prim_quad_texture(gsGlobal, inlay,
                             quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
                             0.0f, 0.0f,
-                            quad.ul.x + urx + fRenderXOff, quad.ul.y + ury + fRenderYOff,
+                            quad.ul.x + urx + EDGE_FILL + fRenderXOff, quad.ul.y + ury + fRenderYOff,
                             inlay->Width, 0.0f,
-                            quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + fRenderYOff,
+                            quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + EDGE_FILL + fRenderYOff,
                             0.0f, inlay->Height,
-                            quad.ul.x + brx + fRenderXOff, quad.ul.y + bry + fRenderYOff,
+                            quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
                             inlay->Width, inlay->Height, order, color);
     order++;
 
+    // case 外壳同样把右边、底边各扩 0.5px，与 inlay 一致补齐最右列/最底行。
+    quad.br.x += EDGE_FILL;
+    quad.br.y += EDGE_FILL;
     rmDrawQuad(&quad);
 }
 
@@ -630,6 +639,9 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
     float totalHeight = quad.br.y - quad.ul.y;
     float alphaStart = 0x20;
     float alphaEnd = 0x00;
+    // 主图底边在 rmDrawOverlayPixmapFrac 里已向下扩了 0.5px 补底行；倒影从同样的 +0.5 处
+    // 起画，与主图严丝合缝、不覆盖补出来的最底一行。
+    const float EDGE_FILL = 0.5f;
 
     if (totalHeight <= 0.0f)
         return;
@@ -645,8 +657,8 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
 
         u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
 
-        float screenTop = quad.br.y + fRenderYOff + row;
-        float screenBottom = quad.br.y + fRenderYOff + row + rowHeight;
+        float screenTop = quad.br.y + EDGE_FILL + fRenderYOff + row;
+        float screenBottom = quad.br.y + EDGE_FILL + fRenderYOff + row + rowHeight;
 
         // Inlay（实际封面图）行。
         float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
