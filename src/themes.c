@@ -1059,7 +1059,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET 20 // 非中心封面相对中心封面额外下移的像素数
+#define COVERFLOW_NONCENTER_YOFFSET 22 // 非中心封面相对中心封面额外下移的像素数
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额外放大的【像素】数
