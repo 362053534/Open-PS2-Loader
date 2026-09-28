@@ -544,3 +544,43 @@ cacheGetTexture → cacheQueueImageRequest → ioPutRequest(IO_CACHE_LOAD_ART)
 
 - `67069fe` 改的是死代码，无害但也无用；未回退（避免额外 churn），本节已如实标注。**第 13 节的根因结论作废，以本节为准。**
 - 待实机日志锁定 14.5 的分支后再动真正修法；届时按第二十三问回退全部排查诊断日志，只留最终修复。
+
+---
+
+## 15. 真因坐实并根治：io worker【丢唤醒】导致封面永久停载（commit `f751761`）
+
+### 15.1 决定性实机日志（第二版诊断，含 `d5bd91a`）
+
+卡死时段每 2s 一帧快照，长期恒为：
+
+```
+texcache DIAG: texLoading=11 inflight=11 ioQueuedART=11 ioActive=-1 stuckFrames=241 lastQueued=COV/SLUS_214.23 lastActive=-/-
+texcache DIAG: texLoading=11 inflight=11 ioQueuedART=11 ioActive=-1 stuckFrames=601 lastQueued=COV/SLUS_214.23 lastActive=-/-
+```
+
+判读：
+
+- **`inflight == texLoading == ioQueuedART` 全程严格相等** → 排除“计数泄漏”(增减完全配对)，也排除“请求丢失”(计数即队列实际长度)。
+- **`ioActive == -1`(worker 空闲)但 `ioQueuedART=11`(队列里压着 11 个请求)** → 单条 io worker **睡死在非空队列上**，不去取。
+- 只有当**别处**再触发一次 `ioPutRequest`(日志中 `loadISOGameListCache`/`ethUpdateGameList` 等)才把 worker 顺带唤醒 → `ioActive` 短暂变 `2`(IO_CACHE_LOAD_ART) 把积压清掉，随后再次停住。
+- 全程 **没有** `ioActive==2` 且 `stuckFrames` 持续上涨的情况 → **排除**第 14.3 的“单 worker 卡在 SMB 读”假设。故本故障**不需要** I/O 读超时来解决(那仍是第 12 节的独立可选加固)。
+
+### 15.2 根因：`SleepThread()/WakeupThread()` 丢唤醒
+
+本 fork 把 `src/ioman.c` 的 io worker 改成了 `SleepThread()` 睡、入队时 `WakeupThread(gIOThreadId)` 唤醒。**PS2 EE 的 `WakeupThread` 对“当前不处于睡眠态”的目标线程会直接丢弃（返回错误、不累积唤醒计数）。** 渲染线程在一帧内**成批**入队多张封面(coverflow 预取)，若 worker 恰好处在“刚把队列清空、还没执行到 `SleepThread()`”的窗口，这一整批 `WakeupThread` 全部落空；worker 随即 `SleepThread()` 永久沉睡，队列里的请求无人处理。源码原注释 `// Worker thread cannot wake itself up (WakeupThread will return an error), but it will find the new request before sleeping.` 已自认 `WakeupThread` 会失败，却错误地依赖“sleep 前一定会先发现新请求”——正是这个假设在批量入队 + 时序窗口下失效。
+
+### 15.3 修法：计数信号量（回到上游 OPL 原始做法）
+
+- 新增计数信号量 `gWorkerSemaId`(`init_count=0`, `max_count=MAX_IO_REQUESTS`)。
+- worker 主循环把 `SleepThread()` 换成 `WaitSema(gWorkerSemaId)`。
+- 入队成功后把 `WakeupThread(gIOThreadId)` 换成 `SignalSema(gWorkerSemaId)`——信号**可靠累积**，即便 worker 在“清空后未及等待”的窗口，本次 +1 也不丢，下一轮 `WaitSema` 必取到。
+- `ioEnd()` 里把唤醒 worker 退出的 `WakeupThread` 换成 `SignalSema(gWorkerSemaId)`；worker 退出路径 `DeleteSema(gWorkerSemaId)`。
+- worker 每轮唤醒仍一次性排空整条队列，故 `max_count` 取池大小即足够；多余信号只会造成几次“取到但队列已空”的空转，无害。
+
+**定位**：纯 EE 侧、根在 OPL 自身 `src/ioman.c` 的 worker 改写，**属根治而非绕过**(与 EMFILE/BDM 那类根在 IOP 驱动的问题不同，无需改 ps2sdk)。
+
+### 15.4 说明 / 待办
+
+- 第 13、14 节的历史根因结论均以本节为准(第 13 节的 `else` 分支泄漏、第 14 节的 SMB-读阻塞假设均被实机数据否定)。`67069fe` 改的是死代码，无害、未回退。
+- **待用户实机验证**：含 `f751761` 的 build 复现(停 INFO → 圈返回列表/coverflow 快速上下)，观察 `texcache DIAG` 中 `texLoading/ioQueuedART` 是否浏览停止后即回落 0、封面不再全停、圈不再无限转。
+- 验证通过后按第二十三问回退全部排查诊断日志（`textures.c` 的 open/read ENTER/OK；`texcache.c` 的 `texcache DIAG`、in-flight/last* 记录、`cacheLoadImage FAILED`；`ioman.c` 的 `ioGetPendingRequestCountByType`/`ioGetActiveRequestType` 若不再需要也可撤），只保留 15.3 的根治。回退前建议存档一次带日志的成功复现。
