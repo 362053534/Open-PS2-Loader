@@ -157,6 +157,15 @@ extern theme_t *gTheme;
 // 1 = 上一个（向右滚动）。即使当前没有启用 Coverflow 主题，调用也是安全的。
 void thmTriggerCoverflowAnim(int direction);
 
+// 翻页滚动专用：以 durationMs 毫秒、线性插值滑动一步（连续多步连成流畅滚动）。
+void thmTriggerCoverflowAnimStep(int direction, int durationMs);
+
+// 当前是否正处于 Coverflow 滑动动画中。
+int thmCoverflowIsAnimating(void);
+
+// Coverflow 动画是否启用（主题配置滑动时长 >0）。
+int thmCoverflowAnimEnabled(void);
+
 // Coverflow 主题下 L1/R1 整页跳转的步长（= 同屏封面数，1..COVERFLOW_MAX）。
 // 未启用 Coverflow 主题时返回 0，调用方回退到列表主题的 displayedItems 步长。
 int thmGetCoverflowJumpCount(void);

@@ -1066,6 +1066,12 @@ static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额�
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
+// 本次滑动实际使用的时长（毫秒）。单步导航用主题配置的 gCoverflowAnimSpeed；
+// L1/R1 翻页滚动的每一步用更短的时长，让多步连成流畅滚动。
+static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
+// 本次滑动是否用线性插值。翻页滚动逐格连续进行时用线性(=1)保持匀速、不在每格
+// 边界减速抖动；单步导航仍用三次缓出(=0)，手感不变。
+static int gCoverflowLinearAnim = 0;
 
 void thmTriggerCoverflowAnim(int direction)
 {
@@ -1076,6 +1082,39 @@ void thmTriggerCoverflowAnim(int direction)
     isAnimating = 1;
     animationDirection = direction;
     animationStartTime = clock();
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed; // 单步：用主题配置的时长
+    gCoverflowLinearAnim = 0;                        // 单步：三次缓出，手感不变
+}
+
+// 翻页滚动专用的一步滑动：每一步用更短的时长(durationMs)且用线性插值，
+// 连续多步就连成一段匀速、流畅的滚动，而不是硬切。durationMs<=0 时回退到
+// 主题配置的时长。仅在启用 Coverflow 主题时生效。
+void thmTriggerCoverflowAnimStep(int direction, int durationMs)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return;
+
+    isAnimating = 1;
+    animationDirection = direction;
+    animationStartTime = clock();
+    gCoverflowActiveAnimSpeed = (durationMs > 0) ? durationMs : gCoverflowAnimSpeed;
+    gCoverflowLinearAnim = 1;
+}
+
+// 当前是否正处于 Coverflow 滑动动画中（供 menusys 判断“上一步走完没有”）。
+int thmCoverflowIsAnimating(void)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+    return isAnimating;
+}
+
+// Coverflow 动画是否启用（主题配置时长 >0）。关闭时翻页应直接硬跳，尊重用户设置。
+int thmCoverflowAnimEnabled(void)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+    return gCoverflowAnimSpeed > 0;
 }
 
 // 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
@@ -1234,22 +1273,28 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     }
     rightmostVisible = cur;
 
-    // 用三次缓出（cubic ease-out）计算滑动偏移。
+    // 计算滑动偏移。单步导航用三次缓出（cubic ease-out）；翻页滚动的每一步用线性插值，
+    // 让连续多步连成匀速、流畅的滚动（gCoverflowLinearAnim / gCoverflowActiveAnimSpeed
+    // 由 thmTriggerCoverflowAnim / thmTriggerCoverflowAnimStep 在触发时设定）。
     float eased = 1.0f;
     float animOffset = 0.0f;
     if (isAnimating) {
-        if (gCoverflowAnimSpeed <= 0) {
+        if (gCoverflowActiveAnimSpeed <= 0) {
             isAnimating = 0;
         } else {
             clock_t elapsed = clock() - animationStartTime;
-            float t = (float)elapsed / ((float)gCoverflowAnimSpeed * CLOCKS_PER_SEC / 1000);
+            float t = (float)elapsed / ((float)gCoverflowActiveAnimSpeed * CLOCKS_PER_SEC / 1000);
             if (t >= 1.0f) {
                 t = 1.0f;
                 isAnimating = 0;
                 animationStartTime = 0;
             }
-            float inv = 1.0f - t;
-            eased = 1.0f - inv * inv * inv;
+            if (gCoverflowLinearAnim) {
+                eased = t; // 线性：匀速，翻页滚动逐格衔接不抖动
+            } else {
+                float inv = 1.0f - t;
+                eased = 1.0f - inv * inv * inv; // 三次缓出：单步导航手感
+            }
             animOffset = (float)animationDirection * (float)coverDistance * (eased - 1.0f);
         }
     }
