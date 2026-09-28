@@ -107,6 +107,18 @@ void rmDrawPixmapReflect(GSTEXTURE *txt, int x, int y, short aligned, int w, int
 void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
                                 GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry);
 
+/** Coverflow 专用带外壳绘制：inlay 顶点以 case quad 实际尺寸按浮点比例(顶点/baseW、
+ *  顶点/baseH)定位，使封面主图与 case 内框完全锁定、同步缩放，消除二者相对蠕动；
+ *  宽屏自动一致。ov* 为 overlay 顶点(元素坐标系 0..baseW × 0..baseH)。 */
+void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                             GSTEXTURE *inlay, int baseW, int baseH,
+                             int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry);
+
+/** rmDrawOverlayPixmapFrac 的倒影版。 */
+void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                                    GSTEXTURE *inlay, int baseW, int baseH,
+                                    int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry);
+
 /** Queues a opaque rectangle to be rendered */
 void rmDrawRect(int x, int y, int w, int h, u64 color);
 
@@ -131,7 +143,6 @@ void rmSetAspectRatio(enum rm_aratio dar);
 
 /** Widescreen scaling */
 int rmWideScale(int x);
-float rmWideUnscaleF(int x);
 
 /** Get Pixel Aspect Ratio of native resolution */
 float rmGetPAR();

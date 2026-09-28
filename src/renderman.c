@@ -512,6 +512,124 @@ void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned,
     }
 }
 
+// Coverflow 专用：外壳(overlay)按 w/h 绘制；内嵌封面(inlay)四角以 case quad 的
+// 【实际绘制像素尺寸】caseW/caseH 为基准，用浮点比例(顶点/baseW、顶点/baseH)定位。
+// 这样 inlay 与 case 内框完全锁定、按同一 caseW/caseH 同步缩放——中心封面放大或滑动
+// 收尾时二者【不会相对蠕动】(整体仍可能有像素级步进，但相对关系恒定)。宽屏也自动一致：
+// caseW 已包含 case 自身的横向压缩，inlay 按同一 caseW 取比例，无需再单独处理宽屏。
+// ov* 为 overlay 顶点，落在元素坐标系 0..baseW × 0..baseH 内。
+void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                             GSTEXTURE *inlay, int baseW, int baseH,
+                             int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry)
+{
+    rm_quad_t quad;
+    rmSetupQuad(overlay, x, y, aligned, w, h, scaled, color, &quad);
+
+    float caseW = quad.br.x - quad.ul.x;
+    float caseH = quad.br.y - quad.ul.y;
+    float fbw = (baseW > 0) ? (float)baseW : 1.0f;
+    float fbh = (baseH > 0) ? (float)baseH : 1.0f;
+
+    float ulx = caseW * ((float)ovUlx / fbw), uly = caseH * ((float)ovUly / fbh);
+    float urx = caseW * ((float)ovUrx / fbw), ury = caseH * ((float)ovUry / fbh);
+    float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
+    float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
+
+    if ((inlay->PSM == GS_PSM_CT32) || (inlay->Clut && inlay->ClutPSM == GS_PSM_CT32))
+        gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    else
+        gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+
+    gsKit_TexManager_bind(gsGlobal, inlay);
+    gsKit_prim_quad_texture(gsGlobal, inlay,
+                            quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
+                            0.0f, 0.0f,
+                            quad.ul.x + urx + fRenderXOff, quad.ul.y + ury + fRenderYOff,
+                            inlay->Width, 0.0f,
+                            quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + fRenderYOff,
+                            0.0f, inlay->Height,
+                            quad.ul.x + brx + fRenderXOff, quad.ul.y + bry + fRenderYOff,
+                            inlay->Width, inlay->Height, order, color);
+    order++;
+
+    rmDrawQuad(&quad);
+}
+
+// rmDrawOverlayPixmapFrac 的倒影版：主图走上面的 Frac 路径，另在下方逐行绘制渐隐倒影。
+// inlay 倒影的横向偏移同样用 caseW 浮点比例，保证倒影里封面与外壳也不相对蠕动。
+void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                                    GSTEXTURE *inlay, int baseW, int baseH,
+                                    int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry)
+{
+    rmDrawOverlayPixmapFrac(overlay, x, y, aligned, w, h, scaled, color, inlay, baseW, baseH,
+                            ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry);
+
+    rm_quad_t quad;
+    rmSetupQuad(overlay, x, y, aligned, w, h, scaled, color, &quad);
+
+    float caseW = quad.br.x - quad.ul.x;
+    float fbw = (baseW > 0) ? (float)baseW : 1.0f;
+
+    // 倒影里 inlay 各行的横向偏移（纵向用逐行 texTop/texBottom，无需 y 偏移）。
+    float ulx = caseW * ((float)ovUlx / fbw);
+    float urx = caseW * ((float)ovUrx / fbw);
+    float blx = caseW * ((float)ovBlx / fbw);
+    float brx = caseW * ((float)ovBrx / fbw);
+
+    float rowHeight = 1.0f;
+    float totalHeight = quad.br.y - quad.ul.y;
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+
+    if (totalHeight <= 0.0f)
+        return;
+
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+
+    for (float row = 0; row < totalHeight; row += rowHeight) {
+        float alpha;
+        if (row < totalHeight / 4.0f)
+            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
+        else
+            alpha = 0x00;
+
+        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
+
+        float screenTop = quad.br.y + fRenderYOff + row;
+        float screenBottom = quad.br.y + fRenderYOff + row + rowHeight;
+
+        // Inlay（实际封面图）行。
+        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
+        float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, inlay);
+        gsKit_prim_quad_texture(gsGlobal, inlay,
+                                quad.ul.x + ulx + fRenderXOff, screenTop,
+                                0.0f, texTop,
+                                quad.ul.x + urx + fRenderXOff, screenTop,
+                                inlay->Width, texTop,
+                                quad.ul.x + blx + fRenderXOff, screenBottom,
+                                0.0f, texBottom,
+                                quad.ul.x + brx + fRenderXOff, screenBottom,
+                                inlay->Width, texBottom,
+                                order, reflectionColor);
+        order++;
+
+        // Overlay（盒装外壳边框）行。
+        texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
+        texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, overlay);
+        gsKit_prim_sprite_texture(gsGlobal, overlay,
+                                  quad.ul.x + fRenderXOff, screenTop,
+                                  quad.ul.u, texTop,
+                                  quad.br.x + fRenderXOff, screenBottom,
+                                  quad.br.u, texBottom,
+                                  order, reflectionColor);
+        order++;
+    }
+}
+
 void rmDrawRect(int x, int y, int w, int h, u64 color)
 {
     float fx = X_SCALE(x) + fRenderXOff;
@@ -558,15 +676,6 @@ void rmSetAspectRatio(enum rm_aratio dar)
 int rmWideScale(int x)
 {
     return (x * iAspectWidth) >> 2;
-}
-
-// rmWideScale 的逆运算（浮点版）：撤掉一次宽屏横向压缩，且【不做整数截断】，
-// 结果随输入平滑变化。用于 Coverflow 封面主图 inlay 顶点缩放——整数版会让 inlay
-// 相对 case 随宽度增长出现不均匀的 ±1px 跳变（滑动收尾时的“蠕动感”来源之一）。
-// 4:3 下 iAspectWidth==4，返回原值。
-float rmWideUnscaleF(int x)
-{
-    return iAspectWidth ? ((float)(x << 2) / (float)iAspectWidth) : (float)x;
 }
 
 // Get the pixel aspect ratio (how wide or narrow are the pixels?)

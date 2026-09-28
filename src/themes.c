@@ -1144,25 +1144,7 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
 
-        // overlay_* 顶点遵循 wOPL/RiptOPL 约定：相对【元素配置尺寸 width/height】给出，
-        // 而不是相对外壳纹理原生像素。例如第三方主题 width=150 / height=212 时，
-        // overlay_lry=212、overlay_urx=140 都是落在 0..150 × 0..212 这个元素坐标系里的。
-        // 因此这里按【实际绘制尺寸 / 元素配置尺寸】把顶点等比缩放到当前封面大小，
-        // 封面才能精确吸附进外壳内框（修复第三方主题封面与顶点未对齐问题）。
-        // 中间封面放大时 w/h 已随之增大，顶点自然一起放大，无需再额外加偏移。
-        // 说明：内置 Coverflow cfg 的 width/height 恰好等于纹理原生尺寸(256)，故本次改动
-        // 不影响内置主题；同时兼容第三方按元素尺寸书写顶点的主题。
-        // 宽屏修正：rmDrawOverlayPixmap 会对 inlay（封面主图）横向顶点再乘一次宽屏因子
-        // (iAspectWidth/4)，而这里的 w 已在 drawCoverFlow 里用 rmWideScale 预乘过一次。
-        // 若直接用 w/baseW 计算横向顶点，封面主图会被宽屏压缩两次、比外壳(case)更窄，
-        // 露出空白。用 rmWideUnscaleF(w) 先撤掉这一次，交给 rmDrawOverlayPixmap 统一压，
-        // 保证封面主图与外壳一起、且只压一次（4:3 下为恒等，不受影响）。
-        // 用【浮点】版而非整数版：整数截断会让 sx 随 w 增长不均匀跳变，导致中心封面
-        // 放大动画收尾时 inlay 相对 case 出现 ±1px 蠕动；浮点让 sx 随 w 平滑变化。
-        // 纵向没有宽屏压缩，sy 直接用 h/baseH。
-        float sx = (baseW > 0) ? rmWideUnscaleF(w) / (float)baseW : 1.0f;
-        float sy = (baseH > 0) ? (float)h / (float)baseH : 1.0f;
-        // NULL 保护：rmDrawOverlayPixmap 会直接解引用 inlay 指针（无 NULL 检查）。
+        // NULL 保护：rmDrawOverlayPixmap*Frac 会直接解引用 inlay 指针（无 NULL 检查）。
         // 若既没有封面、也没有占位图（第三方主题未提供 cover.png 且内置 COVER_DEFAULT
         // 也不可用），则不能带 inlay 调用，否则会崩溃。此时【仍然单独把 case 外壳画出来】，
         // 避免整块 case 模块直接消失（修复"缺图时整个 case 都不显示"的问题）。
@@ -1174,20 +1156,22 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
             return;
         }
 
-        // 顶点用【四舍五入】而非直接截断，缩小每帧的取整误差，进一步减轻收尾蠕动。
-        int ulx = (int)(ov->upperLeft_x * sx + 0.5f);
-        int uly = (int)(ov->upperLeft_y * sy + 0.5f);
-        int urx = (int)(ov->upperRight_x * sx + 0.5f);
-        int ury = (int)(ov->upperRight_y * sy + 0.5f);
-        int blx = (int)(ov->lowerLeft_x * sx + 0.5f);
-        int bly = (int)(ov->lowerLeft_y * sy + 0.5f);
-        int brx = (int)(ov->lowerRight_x * sx + 0.5f);
-        int bry = (int)(ov->lowerRight_y * sy + 0.5f);
-
+        // overlay_* 顶点遵循 wOPL/RiptOPL 约定：相对【元素配置尺寸 width/height】(=baseW/baseH)
+        // 给出（例如第三方主题 width=150/height=212 时，overlay_lry=212 落在 0..212 内）。
+        // 这里原样把顶点 + baseW/baseH 传给 rmDrawOverlayPixmap*Frac，由它以 case quad 的
+        // 【实际绘制尺寸】按浮点比例定位 inlay——inlay 与 case 内框完全锁定、同步缩放，
+        // 中心封面放大/滑动收尾时二者【不相对蠕动】。宽屏也自动一致（caseW 已含横向压缩），
+        // 故不再需要手动 sx/sy 及宽屏预缩放。
         if (reflection)
-            rmDrawOverlayPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
+            rmDrawOverlayPixmapReflectFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
+                                           baseW, baseH,
+                                           ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
+                                           ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
         else
-            rmDrawOverlayPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
+            rmDrawOverlayPixmapFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
+                                    baseW, baseH,
+                                    ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
+                                    ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
     } else {
         // 无外壳（纯封面）主题：没有可用贴图就直接跳过。
         if (!texture || !texture->Mem)
