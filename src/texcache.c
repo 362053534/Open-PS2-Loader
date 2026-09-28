@@ -66,6 +66,13 @@ typedef struct
     int cacheUID;
     char *value;
     int itemId;
+    // quiet==1 表示该请求来自 Coverflow 专用取图路径(cacheGetTextureQuiet)。
+    // Coverflow 每帧为多张封面排队，且不使用 cacheGetTexture 那套“单封面防抖”的
+    // cdFramesCount 冷却状态；而 cdFramesCount 只在常规 cacheGetTexture 内被推进/清零。
+    // 在 Coverflow 主界面上封面走的是 quiet 路径，一旦 cdFramesCount 被其它路径(如进出
+    // 详情页)置成非 0 就再没人把它清零，导致 cacheLoadImage1 永久跳过所有封面加载、
+    // 封面被反复排队又跳过(texLoading 卡住不归零)。因此 quiet 请求必须无视 cdFramesCount。
+    int quiet;
 } load_image_request_t;
 load_image_request_t req1 = {0};
 load_image_request_t req2 = {0};
@@ -155,7 +162,7 @@ void cacheCancelPendingArtRequests(void)
     ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
 }
 
-static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId)
+static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId, int quiet)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
     if (!req) {
@@ -170,6 +177,7 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->value = value;
     req->itemId = itemId;
     req->qr = 1;
+    req->quiet = quiet;
 
     pthread_mutex_lock(&texLoadingMutex);
     if (texLoading >= 0)
@@ -212,8 +220,12 @@ static void cacheLoadImage1(void *data)
         return;
     }
 
-    // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
-    if (cdFramesCount || forceSkipQr) {
+    // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿。
+    // 【封面永久停载根治】cdFramesCount 是常规 cacheGetTexture 的“单封面防抖冷却”，只在该函数内被
+    // 推进/清零。Coverflow 主界面封面走 quiet 路径、不经过那段逻辑；若 cdFramesCount 被进出详情页等
+    // 操作置成非 0 便再无人清零，会让所有封面在此被永久跳过、反复排队(texLoading 卡死不归零)。
+    // 因此 quiet(Coverflow)请求无视 cdFramesCount，只在真正退出(forceSkipQr)时才跳过。
+    if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
         cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         free(ioReq);
@@ -709,7 +721,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             else
                 oldestEntry->UID = *UID;
 
-            cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
+            cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0); // quiet=0：常规单封面路径
         } else {
             //  加载图片
             if (!strncmp("BG", cache->suffix, 2)) {
@@ -829,7 +841,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 // 修法：统一改用已有的 cacheQueueImageRequest()（与 !usePthread 分支完全一致）。
                 // 它对 calloc 失败与 ioPutRequest 失败都会同步回滚 texLoading 与槽位状态
                 // (cacheCancelImageRequest)，从根本上杜绝该泄漏。
-                cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
+                cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0); // quiet=0：常规路径(死代码分支)
             }
         }
 
@@ -905,7 +917,7 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
         else
             oldest->UID = *UID;
         oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
-        cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
+        cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // quiet=1：Coverflow 路径
     }
     return NULL;
 }
