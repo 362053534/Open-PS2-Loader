@@ -1219,6 +1219,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (coverSpacing < 0)
         coverSpacing = 0;
 
+    // 保留夹取后、宽屏压缩前的【4:3 逻辑宽度】。中心放大动画在宽屏下要对
+    // “逻辑宽度 + 放大增量”整体做一次 rmWideScale（而非对逐帧的小增量单独压缩），
+    // 以减轻宽高不同步造成的形变蠕动感（见下方 currentCoverWidth 处注释）。
+    int coverWidthLogical = coverWidth;
+
     // 宽屏(16:9)：只把【横向尺寸】（封面宽度 + 间距）按宽屏因子压窄，高度保持不变。
     // 这样在 16:9 电视把 4:3 画面横向拉伸回来后，封面比例与大小都正确，而不会像
     // 之前那样纵向放大、上采样变模糊。4:3 下 rmWideScale 为恒等，行为不变。
@@ -1378,13 +1383,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 四舍五入而非截断：让放大动画收尾时每帧的取整步进更均匀，减轻蠕动感。
         int currentScaling = (int)(scaling * centerFactor + 0.5f);
         if (currentScaling > 0) {
-            // 宽屏修正：基础封面宽度已在上面用 rmWideScale 横向压缩过，但放大增量
-            // 若直接原样加到宽度上，经 16:9 电视把 4:3 画面横向拉回来(×4/3)后，这部分
-            // 增量会被多拉伸一次，使中心封面比外围封面横向变宽、比例失真。因此把【横向】
-            // 增量也走同一条 rmWideScale 压缩链，纵向增量保持不变——拉回来后横向与纵向
-            // 增量在屏幕上恰好相等，中心封面与外围封面比例一致（4:3 下 rmWideScale 恒等）。
-            currentCoverWidth += gWideScreen ? rmWideScale(currentScaling) : currentScaling;
             currentCoverHeight += currentScaling;
+            // 宽屏修正（折中方案）：放大增量必须与宽度走同一条宽屏压缩链，否则经 16:9
+            // 电视横向拉回(×4/3)后会比例失真。但若对逐帧的小增量 currentScaling 单独
+            // rmWideScale，(x*3)>>2 的整数截断会让横向增量步进不均匀(0,0,1,2,3,3…)，
+            // 与纵向的均匀 +1 不同步 → 放大过程中宽高比逐帧微抖、产生形变蠕动感。
+            // 改为对【4:3 逻辑宽度 + 放大增量】这个大基数整体做一次 rmWideScale：只截断
+            // 一次、且作用在大数上，相对形变小得多，宽高不同步大幅减轻（4:3 下恒等，
+            // 直接加 currentScaling，与纵向严格同步、无蠕动）。
+            if (gWideScreen)
+                currentCoverWidth = rmWideScale(coverWidthLogical + currentScaling);
+            else
+                currentCoverWidth += currentScaling;
         }
 
         // 非中心封面整体下移 COVERFLOW_NONCENTER_YOFFSET 像素，中心封面不动；
