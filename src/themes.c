@@ -457,6 +457,9 @@ static void endMutableImage(struct theme_element *elem)
         if (mutableImage->overlayTexture && !mutableImage->overlayTextureLinked)
             freeImageTexture(mutableImage->overlayTexture);
 
+        if (mutableImage->maskTexture && !mutableImage->maskTextureLinked)
+            freeImageTexture(mutableImage->maskTexture);
+
         free(mutableImage);
     }
 
@@ -475,6 +478,8 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
     mutableImage->defaultTextureLinked = 0;
     mutableImage->overlayTexture = NULL;
     mutableImage->overlayTextureLinked = 0;
+    mutableImage->maskTexture = NULL;
+    mutableImage->maskTextureLinked = 0;
 
     char elemProp[64];
 
@@ -498,6 +503,13 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         configGetStr(themeConfig, elemProp, &overlayTexture);
     }
 
+    // 背景元素可选的 <元素>_mask：仅当真正画出当前游戏背景图时才叠加的 alpha 遮罩。
+    const char *maskTexture = NULL;
+    if (type == ELEM_TYPE_BACKGROUND) {
+        snprintf(elemProp, sizeof(elemProp), "%s_mask", name);
+        configGetStr(themeConfig, elemProp, &maskTexture);
+    }
+
     findDuplicate(theme->mainElems.first, cachePattern, defaultTexture, overlayTexture, mutableImage);
     findDuplicate(theme->infoElems.first, cachePattern, defaultTexture, overlayTexture, mutableImage);
     findDuplicate(theme->appsMainElems.first, cachePattern, defaultTexture, overlayTexture, mutableImage);
@@ -519,6 +531,13 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
 
     if (overlayTexture && !mutableImage->overlayTexture)
         mutableImage->overlayTexture = initImageTexture(themePath, themeConfig, name, overlayTexture, 1);
+
+    if (!themePath)
+        if (maskTexture && !mutableImage->maskTexture)
+            mutableImage->maskTexture = initImageInternalTexture(themeConfig, maskTexture);
+
+    if (maskTexture && !mutableImage->maskTexture)
+        mutableImage->maskTexture = initImageTexture(themePath, themeConfig, name, maskTexture, 0);
 
     return mutableImage;
 }
@@ -605,7 +624,9 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
     if (item) {
         GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);
-        if (!texture || !texture->Mem) {
+        // 是否真正取到"当前游戏的背景图/封面"本身（区别于回退到默认兜底贴图）。
+        int drewGameArt = (texture && texture->Mem);
+        if (!drewGameArt) {
             // 封面/光碟关掉时，连默认模板和卡带框都不画
             if (artHideDefaultTemplate(gameImage->cache))
                 return;
@@ -624,6 +645,11 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
                                 gameImage->overlayTexture->lowerLeft_x, gameImage->overlayTexture->lowerLeft_y, gameImage->overlayTexture->lowerRight_x, gameImage->overlayTexture->lowerRight_y);
         } else
             rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+
+        // 仅当真正画出当前游戏背景图时，才在其上叠加 alpha 遮罩压暗背景；
+        // 回退到兜底默认背景时不叠加，避免遮罩影响兜底背景图。
+        if (drewGameArt && gameImage->maskTexture)
+            rmDrawPixmap(&gameImage->maskTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
     } else if (elem->type == ELEM_TYPE_BACKGROUND) {
         if (gameImage->defaultTexture)

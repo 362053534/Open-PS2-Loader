@@ -52,6 +52,12 @@ typedef struct
 
     image_texture_t *overlayTexture;
     int overlayTextureLinked;
+
+    // 仅背景(Background)元素使用：只有当真正画出"当前游戏的背景图(BG art)"时，
+    // 才在其上叠加这张 1 像素 alpha 透明遮罩；回退到兜底默认背景时不绘制，
+    // 从而不让遮罩压暗兜底背景图。通过 cfg 键 <元素>_mask 指定贴图名。
+    image_texture_t *maskTexture;
+    int maskTextureLinked;
 } mutable_image_t;
 
 typedef struct
