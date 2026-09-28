@@ -1082,13 +1082,8 @@ void thmTriggerCoverflowAnim(int direction)
     isAnimating = 1;
     animationDirection = direction;
     animationStartTime = clock();
-    // 单步：速度提到匀速的 3 倍（时长缩短到主题配置的 1/3）。移除三次缓出后，
-    // 原本靠缓出起步(t=0 导数为 3)带来的“快”手感消失、整体显慢；用 1/3 时长补回。
-    // 至少保留 1ms，避免 <=0 被当作“关闭动画”。
-    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed / 3;
-    if (gCoverflowActiveAnimSpeed < 1)
-        gCoverflowActiveAnimSpeed = 1;
-    gCoverflowLinearAnim = 0;                        // 单步：线性匀速（缓动已移除）
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed; // 单步：用主题配置的时长
+    gCoverflowLinearAnim = 0;                        // 单步：三次缓出（带末段速度地板）
 }
 
 // 翻页滚动专用的一步滑动：每一步用更短的时长(durationMs)且用线性插值，
@@ -1300,10 +1295,22 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                 isAnimating = 0;
                 animationStartTime = 0;
             }
-            // 单步导航与翻页滚动均采用线性插值：匀速滑动/放大，结尾不再减速。
-            // （原单步用三次缓出 1-(1-t)^3 做收尾减速手感，应用户要求已移除。）
-            eased = t;
-            (void)gCoverflowLinearAnim;
+            if (gCoverflowLinearAnim) {
+                eased = t; // 线性：匀速，翻页滚动逐格衔接不抖动
+            } else {
+                // 单步导航：三次缓出 1-(1-t)^3 做收尾减速手感，但给末段速度设一个【地板】。
+                // 纯缓出末尾速度 3*(1-t)^2 会趋近于 0，最后几帧位移极小，整数量化下最容易
+                // 暴露蠕动感。做法：当缓出瞬时速度降到阈值 EASE_VMIN（相对匀速的比例）以下时，
+                // 改用恒定 EASE_VMIN 速度线性收尾到 1。切换点取 inv=sqrt(VMIN) 处，可证此时
+                // 位置连续、终点恰为 1（剩余位移 sc^3 / 剩余时间 sc = sc^2 = VMIN）。
+                const float EASE_VMIN = 0.2f;              // 末段最低速度（匀速的 20%）
+                float sc = sqrtf(EASE_VMIN);              // = 切换点处的 inv (1-t)
+                float inv = 1.0f - t;
+                if (inv < sc)
+                    eased = (1.0f - sc * sc * sc) + EASE_VMIN * (t - (1.0f - sc)); // 恒速收尾
+                else
+                    eased = 1.0f - inv * inv * inv;         // 三次缓出主体
+            }
             animOffset = (float)animationDirection * (float)coverDistance * (eased - 1.0f);
         }
     }
