@@ -24,7 +24,7 @@ extern const char conf_theme_coverflow_cfg;
 extern u16 size_conf_theme_coverflow_cfg;
 
 // thmLoad(NULL) 时选择加载哪一套内置主题：
-//   0 = 默认主题；1 = 内置 Coverflow 主题。
+//   0 = 内置 Coverflow 主题（默认）；1 = 强化原生列表主题。
 // 由 thmSetGuiValue()/thmReinit() 在调用 thmLoad(NULL) 前设置。
 static int builtinThemeID = 0;
 
@@ -1692,12 +1692,12 @@ static void thmLoad(const char *themePath)
     config_set_t *themeConfig = NULL;
     if (!themePath) {
         // 未指定主题路径：加载内置主题模板。根据 builtinThemeID 选择
-        // 默认主题还是内置 Coverflow 主题（两者都不依赖外部图片资源）。
+        // 内置 Coverflow 主题(默认)还是强化原生列表主题（两者都不依赖外部图片资源）。
         themeConfig = configAlloc(0, NULL, NULL);
         if (builtinThemeID == 1)
-            configReadBuffer(themeConfig, &conf_theme_coverflow_cfg, size_conf_theme_coverflow_cfg);
-        else
             configReadBuffer(themeConfig, &conf_theme_OPL_cfg, size_conf_theme_OPL_cfg);
+        else
+            configReadBuffer(themeConfig, &conf_theme_coverflow_cfg, size_conf_theme_coverflow_cfg);
     } else {
         snprintf(path, sizeof(path), "%sconf_theme.cfg", themePath);
         themeConfig = configAlloc(0, NULL, path);
@@ -1829,11 +1829,11 @@ static void thmLoad(const char *themePath)
     for (i = BDM_ICON; i <= START_ICON; i++)
         thmLoadResource(&newT->textures[i], i, themePath, GS_PSM_CT32, newT->useDefault);
 
-    // 内置 Coverflow 主题(builtinThemeID==1, 无外部主题路径)的设备图标改用 wOPL 风格的
-    // 单设备大图(带 BDM/SMB/APA/APPS 标签), 而不是默认列表主题那套四合一标签条。
-    // 仅覆盖内置 Coverflow 这一套的 textures[] 槽位, 默认列表主题与外部主题都不受影响。
+    // 内置 Coverflow 主题(builtinThemeID==0, 无外部主题路径)的设备图标改用 wOPL 风格的
+    // 单设备大图(带 BDM/SMB/APA/APPS 标签), 而不是原列表主题那套四合一标签条。
+    // 仅覆盖内置 Coverflow 这一套的 textures[] 槽位, 列表主题与外部主题都不受影响。
     // 上面的循环已把默认图标载入这些槽, 这里先 texFree 再载入 cf_ 版本以避免内存泄漏。
-    if (!themePath && builtinThemeID == 1) {
+    if (!themePath && builtinThemeID == 0) {
         static const struct
         {
             int slot;
@@ -1884,9 +1884,9 @@ static void thmRebuildGuiNames(void)
     // 列表结构：THM_NUM_BUILTIN 套内置主题 + nThemes 套用户主题 + 1 个 NULL 结束标记
     guiThemesNames = (const char **)malloc((nThemes + THM_NUM_BUILTIN + 1) * sizeof(char **));
 
-    // 两套内置主题固定排在最前
-    guiThemesNames[0] = "强化原生主题-支持背景图";
-    guiThemesNames[1] = THM_COVERFLOW_NAME;
+    // 两套内置主题固定排在最前：Coverflow 现为默认(索引 0)，原列表主题顺移到其后(索引 1)
+    guiThemesNames[0] = THM_COVERFLOW_NAME;
+    guiThemesNames[1] = THM_LIST_NAME;
 
     // 用户主题接在内置主题之后
     int i = 0;
@@ -1995,8 +1995,11 @@ int thmGetGuiValue(void)
 int thmFindGuiID(const char *theme)
 {
     if (theme) {
-        // 先匹配内置 Coverflow 主题（GUI 索引 1）
+        // 内置 Coverflow 主题现为默认（GUI 索引 0）
         if (strcasecmp(theme, THM_COVERFLOW_NAME) == 0)
+            return 0;
+        // 原列表主题顺移到 Coverflow 之后（GUI 索引 1）
+        if (strcasecmp(theme, THM_LIST_NAME) == 0)
             return 1;
         // 再匹配用户主题（GUI 索引需加上内置主题数量偏移）
         int i = 0;
@@ -2005,7 +2008,7 @@ int thmFindGuiID(const char *theme)
                 return i + THM_NUM_BUILTIN;
         }
     }
-    // 未匹配到则回退默认主题（GUI 索引 0）
+    // 未匹配到则回退默认主题（现在是 Coverflow, GUI 索引 0）
     return 0;
 }
 
