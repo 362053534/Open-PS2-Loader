@@ -1060,13 +1060,12 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 200
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -40 // 非中心封面相对 140×200 的增减（默认缩小）
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -70 // 非中心封面相对 140×200 的增减（默认缩小）
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
 #define COVERFLOW_NONCENTER_YOFFSET 22 // 非中心封面相对中心封面额外下移的像素数
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
-#define COVERFLOW_DEFAULT_HIDE_CASE 0 // 调试开关默认关：1=隐藏 case 外壳、只画封面主图(inlay)
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 封面主图基准宽（cfg 可覆盖）
 static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 封面主图基准高（cfg 可覆盖）
@@ -1075,10 +1074,6 @@ static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非�
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
-// 【调试】隐藏 case 外壳：1 = 完全不画 overlay(case)，只把封面主图(inlay)按其目标尺寸
-// 原样绘制，且 frac 强制为 1（内框占比不参与反推）→ inlay 直接 = 140×200(±scale)。
-// 用来先把封面主图的点对点尺寸校准，再把 case 加回来。cfg 键 coverflow_hide_case。
-static int gCoverflowHideCase = COVERFLOW_DEFAULT_HIDE_CASE;
 // 本次滑动实际使用的时长（毫秒）。单步导航用主题配置的 gCoverflowAnimSpeed；
 // L1/R1 翻页滚动的每一步用更短的时长，让多步连成流畅滚动。
 static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
@@ -1154,18 +1149,6 @@ int thmGetCoverflowJumpCount(void)
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
 static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
 {
-    // 【调试】隐藏 case 外壳：只画封面主图(inlay)，跳过 overlay。传入的 w/h 在 hide-case
-    // 模式下已是 inlay 目标尺寸(drawCoverFlow 里 frac 被强制为 1)，直接原样绘制即可。
-    if (gCoverflowHideCase) {
-        if (!texture || !texture->Mem)
-            return;
-        if (reflection)
-            rmDrawPixmapReflect(texture, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
-        else
-            rmDrawPixmap(texture, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
-        return;
-    }
-
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
 
@@ -1229,8 +1212,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // case 外壳不再是主导尺寸，而是按 overlay 顶点给出的【内框占比】反推，使其内框正好
     // 套住原生封面（case 被拉伸的轻微失真无所谓）。fracW/fracH = 内框在元素坐标系里的占比。
     float fracW = 1.0f, fracH = 1.0f;
-    // hide-case 调试模式：不做 case 反推，frac 恒为 1 → inlay 直接 = 140×200(±scale)。
-    if (!gCoverflowHideCase && img->overlayTexture && elem->width > 0 && elem->height > 0) {
+    if (img->overlayTexture && elem->width > 0 && elem->height > 0) {
         image_texture_t *ov = img->overlayTexture;
         int iw = ov->upperRight_x - ov->upperLeft_x; // 内框宽（元素坐标）
         int ih = ov->lowerLeft_y - ov->upperLeft_y;  // 内框高（元素坐标）
@@ -1931,7 +1913,6 @@ static void thmLoad(const char *themePath)
     //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
     //   coverflow_dim_covers       —— 非中心封面是否变暗（0/1）
     //   coverflow_preload          —— 每侧屏幕外预取封面数（如填 3 = 左右各 3、共 6；无上限）
-    //   coverflow_hide_case        —— 【调试】1=隐藏 case 外壳、只画封面主图(inlay)，用于校准点对点
     gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
     gCoverflowCoverW = COVERFLOW_COVER_W;
     gCoverflowCoverH = COVERFLOW_COVER_H;
@@ -1940,7 +1921,6 @@ static void thmLoad(const char *themePath)
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
-    gCoverflowHideCase = COVERFLOW_DEFAULT_HIDE_CASE;
     configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
     configGetInt(themeConfig, "coverflow_cover_width", &gCoverflowCoverW);
     configGetInt(themeConfig, "coverflow_cover_height", &gCoverflowCoverH);
@@ -1949,7 +1929,6 @@ static void thmLoad(const char *themePath)
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
-    configGetInt(themeConfig, "coverflow_hide_case", &gCoverflowHideCase);
     // count 夹取到显示数组上限，防止 covers[]/drawOrder[] 越界崩溃；preload 只挡负值、不设上限
     //（主题填过大导致内存/崩溃属用户行为，不额外处理）。
     if (gCoverflowCount < 1)
