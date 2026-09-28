@@ -560,6 +560,14 @@ int rmWideScale(int x)
     return (x * iAspectWidth) >> 2;
 }
 
+// rmWideScale 的逆运算：撤掉一次宽屏横向压缩。
+// 用于已经手动 rmWideScale 过、但又会经过 rmDrawOverlayPixmap 再压一次的坐标
+//（如 Coverflow 封面主图 inlay 顶点），避免被压两次。4:3 下 iAspectWidth==4，返回原值。
+int rmWideUnscale(int x)
+{
+    return (x << 2) / iAspectWidth;
+}
+
 // Get the pixel aspect ratio (how wide or narrow are the pixels?)
 float rmGetPAR()
 {

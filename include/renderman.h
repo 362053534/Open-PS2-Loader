@@ -131,6 +131,7 @@ void rmSetAspectRatio(enum rm_aratio dar);
 
 /** Widescreen scaling */
 int rmWideScale(int x);
+int rmWideUnscale(int x);
 
 /** Get Pixel Aspect Ratio of native resolution */
 float rmGetPAR();

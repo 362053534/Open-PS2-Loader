@@ -1152,7 +1152,13 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         // 中间封面放大时 w/h 已随之增大，顶点自然一起放大，无需再额外加偏移。
         // 说明：内置 Coverflow cfg 的 width/height 恰好等于纹理原生尺寸(256)，故本次改动
         // 不影响内置主题；同时兼容第三方按元素尺寸书写顶点的主题。
-        float sx = (baseW > 0) ? (float)w / (float)baseW : 1.0f;
+        // 宽屏修正：rmDrawOverlayPixmap 会对 inlay（封面主图）横向顶点再乘一次宽屏因子
+        // (iAspectWidth/4)，而这里的 w 已在 drawCoverFlow 里用 rmWideScale 预乘过一次。
+        // 若直接用 w/baseW 计算横向顶点，封面主图会被宽屏压缩两次、比外壳(case)更窄，
+        // 露出空白。用 rmWideUnscale(w) 先撤掉这一次，交给 rmDrawOverlayPixmap 统一压，
+        // 保证封面主图与外壳一起、且只压一次（4:3 下 rmWideUnscale 为恒等，不受影响）。
+        // 纵向没有宽屏压缩，sy 直接用 h/baseH。
+        float sx = (baseW > 0) ? (float)rmWideUnscale(w) / (float)baseW : 1.0f;
         float sy = (baseH > 0) ? (float)h / (float)baseH : 1.0f;
         // NULL 保护：rmDrawOverlayPixmap 会直接解引用 inlay 指针（无 NULL 检查）。
         // 若既没有封面、也没有占位图（第三方主题未提供 cover.png 且内置 COVER_DEFAULT
