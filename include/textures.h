@@ -92,11 +92,10 @@ enum INTERNAL_TEXTURE {
     LOGO_PICTURE,
     CASE_OVERLAY,
     APPS_CASE_OVERLAY,
-    // Coverflow(第二套内置主题, 对齐 wOPL)专用内置贴图:
-    // settings_bg 背景 + plank 底部搁板 + wOPL 版盒装/软件外壳
+    // Coverflow(内置主题, 对齐 wOPL)专用内置贴图:
+    // plank 底部搁板 + wOPL 版盒装/软件外壳
     // (以 cf_ 前缀命名, 避免覆盖默认列表主题共用的 case/apps_case;
-    //  封面占位图沿用默认主题的 cover, 不再单独引入)
-    SETTINGS_BG,
+    //  封面占位图沿用默认主题的 cover, 兜底背景复用默认的 background, 不再单独引入)
     PLANK_PICTURE,
     CF_CASE_OVERLAY,
     CF_APPS_CASE_OVERLAY,

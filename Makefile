@@ -99,7 +99,7 @@ PNG_ASSETS = load0 load1 load2 load3 load4 load5 load6 load7 usb usb_bd ilk_bd \
 	Scan_480p1 Scan_480p2 Scan_480p3 Scan_480p4 Scan_480p5 Scan_576i Scan_576p Scan_720p \
 	Scan_1080i Scan_1080i2 Scan_1080p Vmode_multi Vmode_ntsc Vmode_pal logo case apps_case\
 	Index_0 Index_1 Index_2 Index_3 Index_4 \
-	settings_bg plank cf_case cf_apps_case \
+	plank cf_case cf_apps_case \
 	cf_usb cf_usb_bd cf_ilk_bd cf_m4s_bd cf_hdd_bd cf_hdd cf_eth cf_app
 	# unused icons - up down l1 l2 l3 r1 r2 r3
 

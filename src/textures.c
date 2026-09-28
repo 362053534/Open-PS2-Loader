@@ -103,8 +103,7 @@ extern void *logo_png;
 extern void *case_png;
 extern void *apps_case_png;
 
-// Coverflow(第二套内置主题)专用内置贴图, 对齐 wOPL 的 CF 主题资源
-extern void *settings_bg_png;
+// Coverflow(内置主题)专用内置贴图, 对齐 wOPL 的 CF 主题资源
 extern void *plank_png;
 extern void *cf_case_png;
 extern void *cf_apps_case_png;
@@ -257,8 +256,7 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {LOGO_PICTURE, "logo", &logo_png},
     {CASE_OVERLAY, "case", &case_png},
     {APPS_CASE_OVERLAY, "apps_case", &apps_case_png},
-    // Coverflow(第二套内置主题)专用资源, 对齐 wOPL 的 CF 主题
-    {SETTINGS_BG, "settings_bg", &settings_bg_png},
+    // Coverflow(内置主题)专用资源, 对齐 wOPL 的 CF 主题
     {PLANK_PICTURE, "plank", &plank_png},
     {CF_CASE_OVERLAY, "cf_case", &cf_case_png},
     {CF_APPS_CASE_OVERLAY, "cf_apps_case", &cf_apps_case_png},
