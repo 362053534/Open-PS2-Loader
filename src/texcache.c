@@ -768,37 +768,24 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 else
                     oldestEntry->UID = *UID;
 
-                //  使用pthread的多线程方法
-                pthread_mutex_lock(&texLoadingMutex);
-                if (texLoading >= 0)
-                    texLoading++;
-                else
-                    texLoading = 1;
-                pthread_mutex_unlock(&texLoadingMutex);
-                load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
-                req->cache = cache;
-                req->cacheId = *cacheId;
-                req->list = list;
-                req->value = value;
-                req->itemId = itemId;
-                req->qr = 1;
-
-                // 官方方法加载其他图片
-                ioPutRequest(IO_CACHE_LOAD_ART, req);
-
-                //// pthread方法加载其他图片
-                //pthread_t _tid;
-                //pthread_attr_t _attr;
-                //// 初始化pthread线程属性
-                //pthread_attr_init(&_attr);
-
-                //// 线程分离，如果不需要pthread_join
-                //pthread_attr_setdetachstate(&_attr, PTHREAD_CREATE_DETACHED);
-
-                //// 设置合适的栈空间，防止爆栈等错误
-                //pthread_attr_setstacksize(&_attr, 32 * 1024); // kb
-                //pthread_create(&_tid, &_attr, cacheLoadImage1, req);
-                //pthread_attr_destroy(&_attr);
+                // 【第二十八问修复：texLoading 计数泄漏导致封面永久停载】
+                // 非 BG/COV/ICO 的 art（典型是 INFO 详情页的 SCR/SCR2 截图）即使在
+                // usePthread 模式下也走官方 IO 队列(IO_CACHE_LOAD_ART)。
+                // 旧代码在此手写了一份加载逻辑：先 texLoading++，再 calloc(req)，
+                // 然后 ioPutRequest(...) 且【忽略返回值】。IO 请求池是定长的
+                // (ioman.c: MAX_IO_REQUESTS=16)，在 INFO 页快速上下浏览、同时 coverflow
+                // 预取也在抢占请求槽时，请求池会被占满，ioPutRequest 返回
+                // IO_ERR_IO_BLOCKED —— 请求既没入队、其处理函数(cacheLoadImage1)也永不执行，
+                // 于是这一次的 texLoading++ 再也没有对应的 --，造成 texLoading 只增不减地
+                // 永久泄漏（同时泄漏 calloc 出的 req、并把该缓存槽 qr 永久钉在 1）。
+                // 一旦 texLoading 卡在 >0，cacheGetTexture 顶部的
+                // `curStartUp != value && texLoading > 0` 门控会在每次光标移动时触发
+                // cdFramesCount 冷却 / skipQr，从此不再派发任何新封面加载 —— 现象就是
+                // “按圈返回列表后封面全停、按刷新也不恢复、只有切主题重建缓存才恢复”。
+                // 修法：统一改用已有的 cacheQueueImageRequest()（与 !usePthread 分支完全一致）。
+                // 它对 calloc 失败与 ioPutRequest 失败都会同步回滚 texLoading 与槽位状态
+                // (cacheCancelImageRequest)，从根本上杜绝该泄漏。
+                cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
             }
         }
 
