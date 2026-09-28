@@ -1298,18 +1298,21 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             if (gCoverflowLinearAnim) {
                 eased = t; // 线性：匀速，翻页滚动逐格衔接不抖动
             } else {
-                // 单步导航：三次缓出 1-(1-t)^3 做收尾减速手感，但给末段速度设一个【地板】。
-                // 纯缓出末尾速度 3*(1-t)^2 会趋近于 0，最后几帧位移极小，整数量化下最容易
-                // 暴露蠕动感。做法：当缓出瞬时速度降到阈值 EASE_VMIN（相对匀速的比例）以下时，
-                // 改用恒定 EASE_VMIN 速度线性收尾到 1。切换点取 inv=sqrt(VMIN) 处，可证此时
-                // 位置连续、终点恰为 1（剩余位移 sc^3 / 剩余时间 sc = sc^2 = VMIN）。
-                const float EASE_VMIN = 0.2f;              // 末段最低速度（匀速的 20%）
-                float sc = sqrtf(EASE_VMIN);              // = 切换点处的 inv (1-t)
+                // 单步导航：完全沿用原三次缓出 1-(1-t)^3；仅给瞬时速度设一个地板。
+                // 原缓出速度为 3*(1-t)^2，末尾趋近 0，最后几帧位移极小、易暴露整数量化蠕动。
+                // 当速度自然降到阈值 EASE_VMIN（相对匀速 d(eased)/dt=1 的比例）以下时，
+                // 强制以 EASE_VMIN 匀速续行。切换点在 3*(1-t)^2==EASE_VMIN 处，即 inv=sqrt(VMIN/3)，
+                // 该点速度与位置都连续（原速度在此恰好等于 VMIN），收尾夹到 1 防止过冲。
+                const float EASE_VMIN = 0.2f;
                 float inv = 1.0f - t;
-                if (inv < sc)
-                    eased = (1.0f - sc * sc * sc) + EASE_VMIN * (t - (1.0f - sc)); // 恒速收尾
-                else
-                    eased = 1.0f - inv * inv * inv;         // 三次缓出主体
+                float sc = sqrtf(EASE_VMIN / 3.0f); // 缓出速度降到 VMIN 处的 inv 值
+                if (inv >= sc) {
+                    eased = 1.0f - inv * inv * inv; // 原三次缓出，原封不动
+                } else {
+                    eased = (1.0f - sc * sc * sc) + EASE_VMIN * (t - (1.0f - sc)); // 速度钳到 VMIN
+                    if (eased > 1.0f)
+                        eased = 1.0f;
+                }
             }
             animOffset = (float)animationDirection * (float)coverDistance * (eased - 1.0f);
         }
