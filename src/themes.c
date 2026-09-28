@@ -1058,6 +1058,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_SCALE 30  // 中间封面额外放大的像素数默认值
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
+#define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额外放大的【像素】数
@@ -1288,9 +1289,26 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 不再因缺图而 continue：即使没有封面也没有占位图，coverflowDrawTexture 会在
         // 主题带 overlay(case) 时至少画出空的 case 外壳，避免整块 case 模块消失。
 
+        // 明暗随过渡动画渐变（与上面的缩放插值同步，不再按槽位硬切）：
+        //   中心封面：动画中亮度随 eased 由暗→亮，定格时全亮；
+        //   离开中心的封面：亮度随 eased 由亮→暗；
+        //   其余非中心封面：恒为压暗亮度。
+        // 关闭 coverflow_dim_covers 时恒为全亮(gDefaultCol)。压暗对【封面主图+case 外壳】
+        // 一并生效（依赖 rmDrawOverlayPixmap 内嵌图改用传入 color）。
         u64 coverColor = gDefaultCol;
-        if (gCoverflowDimCovers && i != centerIndex)
-            coverColor = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x40);
+        if (gCoverflowDimCovers) {
+            float brightFactor;
+            if (i == centerIndex)
+                brightFactor = isAnimating ? eased : 1.0f;
+            else if (isAnimating && i == leavingIndex)
+                brightFactor = 1.0f - eased;
+            else
+                brightFactor = 0.0f;
+            // 亮度=1 → 原亮度(0x80)；亮度=0 → 压暗到 COVERFLOW_DIM_RGB。
+            // alpha 固定 0x80 保持不透明（只压暗、不发虚透背景）。
+            int rgb = (int)(0x80 * brightFactor + COVERFLOW_DIM_RGB * (1.0f - brightFactor) + 0.5f);
+            coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
+        }
 
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset, ALIGN_CENTER,

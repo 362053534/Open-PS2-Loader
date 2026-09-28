@@ -366,6 +366,10 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
+    // 内嵌图(inlay，如 Coverflow 的封面主图)与外壳(overlay)共用同一个调制色 color。
+    // 原先此处写死 gDefaultCol，导致压暗外壳时封面主图仍是满亮度、两者不一致。
+    // 改用传入的 color 后：所有现有调用者传的都是 gDefaultCol（效果不变），
+    // 只有 Coverflow 压暗路径传入压暗色，从而封面主图与外壳一起被压暗。
     gsKit_prim_quad_texture(gsGlobal, inlay,
                             quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
                             0.0f, 0.0f,
@@ -374,7 +378,7 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
                             quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + fRenderYOff,
                             0.0f, inlay->Height,
                             quad.ul.x + brx + fRenderXOff, quad.ul.y + bry + fRenderYOff,
-                            inlay->Width, inlay->Height, order, gDefaultCol);
+                            inlay->Width, inlay->Height, order, color);
     order++;
 
     rmDrawQuad(&quad);
