@@ -1295,12 +1295,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                 isAnimating = 0;
                 animationStartTime = 0;
             }
-            if (gCoverflowLinearAnim) {
-                eased = t; // 线性：匀速，翻页滚动逐格衔接不抖动
-            } else {
-                float inv = 1.0f - t;
-                eased = 1.0f - inv * inv * inv; // 三次缓出：单步导航手感
-            }
+            // 单步导航与翻页滚动均采用线性插值：匀速滑动/放大，结尾不再减速。
+            // （原单步用三次缓出 1-(1-t)^3 做收尾减速手感，应用户要求已移除。）
+            eased = t;
+            (void)gCoverflowLinearAnim;
             animOffset = (float)animationDirection * (float)coverDistance * (eased - 1.0f);
         }
     }
