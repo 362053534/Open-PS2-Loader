@@ -1155,10 +1155,12 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         // 宽屏修正：rmDrawOverlayPixmap 会对 inlay（封面主图）横向顶点再乘一次宽屏因子
         // (iAspectWidth/4)，而这里的 w 已在 drawCoverFlow 里用 rmWideScale 预乘过一次。
         // 若直接用 w/baseW 计算横向顶点，封面主图会被宽屏压缩两次、比外壳(case)更窄，
-        // 露出空白。用 rmWideUnscale(w) 先撤掉这一次，交给 rmDrawOverlayPixmap 统一压，
-        // 保证封面主图与外壳一起、且只压一次（4:3 下 rmWideUnscale 为恒等，不受影响）。
+        // 露出空白。用 rmWideUnscaleF(w) 先撤掉这一次，交给 rmDrawOverlayPixmap 统一压，
+        // 保证封面主图与外壳一起、且只压一次（4:3 下为恒等，不受影响）。
+        // 用【浮点】版而非整数版：整数截断会让 sx 随 w 增长不均匀跳变，导致中心封面
+        // 放大动画收尾时 inlay 相对 case 出现 ±1px 蠕动；浮点让 sx 随 w 平滑变化。
         // 纵向没有宽屏压缩，sy 直接用 h/baseH。
-        float sx = (baseW > 0) ? (float)rmWideUnscale(w) / (float)baseW : 1.0f;
+        float sx = (baseW > 0) ? rmWideUnscaleF(w) / (float)baseW : 1.0f;
         float sy = (baseH > 0) ? (float)h / (float)baseH : 1.0f;
         // NULL 保护：rmDrawOverlayPixmap 会直接解引用 inlay 指针（无 NULL 检查）。
         // 若既没有封面、也没有占位图（第三方主题未提供 cover.png 且内置 COVER_DEFAULT
@@ -1172,14 +1174,15 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
             return;
         }
 
-        int ulx = (int)(ov->upperLeft_x * sx);
-        int uly = (int)(ov->upperLeft_y * sy);
-        int urx = (int)(ov->upperRight_x * sx);
-        int ury = (int)(ov->upperRight_y * sy);
-        int blx = (int)(ov->lowerLeft_x * sx);
-        int bly = (int)(ov->lowerLeft_y * sy);
-        int brx = (int)(ov->lowerRight_x * sx);
-        int bry = (int)(ov->lowerRight_y * sy);
+        // 顶点用【四舍五入】而非直接截断，缩小每帧的取整误差，进一步减轻收尾蠕动。
+        int ulx = (int)(ov->upperLeft_x * sx + 0.5f);
+        int uly = (int)(ov->upperLeft_y * sy + 0.5f);
+        int urx = (int)(ov->upperRight_x * sx + 0.5f);
+        int ury = (int)(ov->upperRight_y * sy + 0.5f);
+        int blx = (int)(ov->lowerLeft_x * sx + 0.5f);
+        int bly = (int)(ov->lowerLeft_y * sy + 0.5f);
+        int brx = (int)(ov->lowerRight_x * sx + 0.5f);
+        int bry = (int)(ov->lowerRight_y * sy + 0.5f);
 
         if (reflection)
             rmDrawOverlayPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture, ulx, uly, urx, ury, blx, bly, brx, bry);
@@ -1388,7 +1391,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         // 插值缩放：进入中心的封面逐渐放大，离开中心的封面逐渐缩小。
         // 外壳顶点在 coverflowDrawTexture 里会随 w/h 等比缩放，这里不再需要额外偏移。
-        int currentScaling = (int)(scaling * centerFactor);
+        // 四舍五入而非截断：让放大动画收尾时每帧的取整步进更均匀，减轻蠕动感。
+        int currentScaling = (int)(scaling * centerFactor + 0.5f);
         if (currentScaling > 0) {
             currentCoverWidth += currentScaling;
             currentCoverHeight += currentScaling;
