@@ -1078,6 +1078,26 @@ void thmTriggerCoverflowAnim(int direction)
     animationStartTime = clock();
 }
 
+// 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
+// 该值 = 当前同屏显示的封面数（gCoverflowCount，夹取到 1..COVERFLOW_MAX，
+// 与 drawCoverFlow 实际显示的封面数保持一致；第三方主题把 coverflow_count 设为
+// 10 时即返回 10）。未启用 Coverflow 主题时返回 0，调用方据此回退到列表主题的
+// 原有整页步长（displayedItems）。
+int thmGetCoverflowJumpCount(void)
+{
+    int n;
+
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+
+    n = gCoverflowCount;
+    if (n < 1)
+        n = 1;
+    if (n > COVERFLOW_MAX)
+        n = COVERFLOW_MAX;
+    return n;
+}
+
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
 static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection, int baseW, int baseH)

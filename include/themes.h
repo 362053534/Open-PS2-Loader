@@ -157,6 +157,10 @@ extern theme_t *gTheme;
 // 1 = 上一个（向右滚动）。即使当前没有启用 Coverflow 主题，调用也是安全的。
 void thmTriggerCoverflowAnim(int direction);
 
+// Coverflow 主题下 L1/R1 整页跳转的步长（= 同屏封面数，1..COVERFLOW_MAX）。
+// 未启用 Coverflow 主题时返回 0，调用方回退到列表主题的 displayedItems 步长。
+int thmGetCoverflowJumpCount(void);
+
 void thmInit(void);
 void thmReinit(const char *path);
 void thmReloadScreenExtents(void);

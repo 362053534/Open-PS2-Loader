@@ -768,7 +768,11 @@ static void menuPrevV()
 
 static void menuNextPage()
 {
-    submenu_list_t *cur = selected_item->item->pagestart;
+    // Coverflow 主题：L1/R1 一次跳「同屏封面数」个游戏，且以当前居中的游戏（current）
+    // 为基准前跳，而不是列表主题里的页首（pagestart）。cfJump==0 表示未启用 Coverflow，
+    // 走列表主题原有整页步长（displayedItems）。
+    int cfJump = thmGetCoverflowJumpCount();
+    submenu_list_t *cur = (cfJump > 0) ? selected_item->item->current : selected_item->item->pagestart;
 
     if (cur && cur->next) {
         if (!selected_item->item->current->next) { // 没有下一个游戏时，切到首页
@@ -776,7 +780,7 @@ static void menuNextPage()
             return;
         }
 
-        int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
+        int itms = (cfJump > 0 ? cfJump : ((items_list_t *)gTheme->itemsList->extended)->displayedItems) + 1;
         int moveCount = 0;
 
         while (--itms && cur->next) { // 找到下一页的第一个游戏
@@ -786,9 +790,9 @@ static void menuNextPage()
 
         selected_item->item->current = cur;
 
-        // 翻页了才刷新，不翻页不刷新
-        if (itms == 0) {       // 判断是否翻页了
-            fntRefreshCache(); // 刷新字模缓存
+        // 翻页了才刷新，不翻页不刷新；Coverflow 跳转必刷新并同步 pagestart。
+        if (itms == 0 || cfJump > 0) { // 判断是否翻页了
+            fntRefreshCache();         // 刷新字模缓存
             selected_item->item->pagestart = selected_item->item->current;
         }
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
@@ -799,7 +803,10 @@ static void menuNextPage()
 
 static void menuPrevPage()
 {
-    submenu_list_t *cur = selected_item->item->pagestart;
+    // Coverflow 主题：L1/R1 一次跳「同屏封面数」个游戏，且以当前居中的游戏（current）
+    // 为基准回跳。cfJump==0 表示未启用 Coverflow，走列表主题原有整页步长。
+    int cfJump = thmGetCoverflowJumpCount();
+    submenu_list_t *cur = (cfJump > 0) ? selected_item->item->current : selected_item->item->pagestart;
 
     // 如果处于首页，就把光标先移动到顶部
     if (cur && (cur == selected_item->item->submenu)) {
@@ -811,7 +818,7 @@ static void menuPrevPage()
     }
 
     if (cur && cur->prev) {
-        int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1;
+        int itms = (cfJump > 0 ? cfJump : ((items_list_t *)gTheme->itemsList->extended)->displayedItems) + 1;
         int moveCount = 0;
 
         while (--itms && cur->prev) { // 找到上一页的第一个游戏
