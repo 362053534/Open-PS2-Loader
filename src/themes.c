@@ -1882,7 +1882,7 @@ static void thmLoad(const char *themePath)
 
     // 缺图占位纹理 COVER_DEFAULT：Coverflow / GameImage 等元素在未显式配置 default= 时，
     // 会退回 thmGetTexture(COVER_DEFAULT) 作为缺图占位。但上面的常规加载区间并不覆盖
-    // COVER_DEFAULT（它落在 MAIN_BG..VMODE_PAL 之间，而该段仅在内置主题、且从 ELF_FORMAT
+    // COVER_DEFAULT（它落在 SETTINGS_BG..VMODE_PAL 之间，而该段仅在内置主题、且从 ELF_FORMAT
     // 起才加载），导致这张占位纹理对任何主题都从未被加载、恒为 NULL。于是没有在 coverflow
     // 段写 default=cover 的第三方主题，缺图时既无 img->defaultTexture 也无 COVER_DEFAULT，
     // 占位图完全不显示。这里从主题目录加载 cover.png（缺失时回退内置 cover_png，useDefault

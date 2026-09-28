@@ -48,7 +48,7 @@ extern void *R1_png;
 extern void *R2_png;
 extern void *R3_png; */
 
-extern void *background_png;
+extern void *settings_bg_png;
 extern void *alphamask_png;
 extern void *info_png;
 extern void *cover_png;
@@ -204,7 +204,7 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {R1_ICON, "R1", &R1_png},
     {R2_ICON, "R2", &R2_png},
     {R3_ICON, "R3", &R3_png}, */
-    {MAIN_BG, "background", &background_png},
+    {SETTINGS_BG, "settings_bg", &settings_bg_png},
     {MAIN_BG_MASK, "alphamask", &alphamask_png},
     {INFO_BG, "info", &info_png},
     {COVER_DEFAULT, "cover", &cover_png},
