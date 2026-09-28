@@ -452,3 +452,48 @@ static int fs_dclose(iop_file_t *fd)
   - **判读**：卡死时可见 `texLoading` 长期 >0、某个 `reqN.qr` 恒为 1、`frames` 持续上涨——直接指认卡死的 worker（BG=1/COV=2/ICO=3）。
 
 > 这些仅诊断，不改变任何行为逻辑；根因锁定后连同前述排查日志一并回退。**未做**任何 EE 侧兜底/看门狗（用户明确要求）。
+
+## 13. 【修正并根治】封面全盘停载的真因 = EE 侧 `texLoading` 计数泄漏（非 smbman 超时）
+
+> 本节**修正第 12 节的根因判断**。第 12 节把"封面全停"归因于 smbman 无接收超时导致 `read` 永久阻塞、全局 `fileLockId` 被占死。用户随后给出**可靠复现步骤**并附实机日志（~2942–2977s），据此逐层读码后确认：**第 12 节现象的真正原因是 EE 侧 texcache 的 `texLoading` 计数泄漏，与 I/O 阻塞无关**。smbman 超时补丁仍是"若真的发生 read 阻塞"时的有益加固（第 12 节保留），但它**不是本故障的根因**，单独打它也修不好本故障。
+
+### 13.1 可靠复现（用户提供）
+
+1. 在游戏列表按 **方块** 进入某游戏的 **INFO 详情页**；
+2. 在详情页内用 **UP/DOWN 反复切换游戏浏览**（会持续加载 SCR/SCR2 截图）；
+3. 按 **圈** 返回游戏列表 → **大概率所有封面加载全停**；
+4. 此后**按刷新也不恢复**；**切换主题才恢复**。
+
+### 13.2 关键日志事实（推翻 smbman-阻塞假设）
+
+- **没有任何阻塞 I/O**：`texLoadAll` 的每个 `>>> open ENTER` 都有 `<<< open OK`，每个 `>>> read ENTER` 都有 `<<< read OK`（BG/SCR/SCR2 全部读完）。SMB 读**没卡**。
+- **`texcache DIAG` 显示计数泄漏**：卡死期每行恒为 `texLoading=N(>0) req1(BG).qr=0 req2(COV).qr=0 req3(ICO).qr=0`，`frames` 持续上涨。即**三个 pthread worker 全空闲(qr=0)，但 texLoading 永久卡在正值**（观测到 1/2/3/5/6/8/9/11 等）——`++` 漏了对应的 `--`。
+
+### 13.3 根因（已读码坐实）
+
+`src/texcache.c` 的 `cacheGetTexture()`：非 BG/COV/ICO 后缀的 art（**典型就是 INFO 详情页的 SCR/SCR2 截图**）即使在 `usePthread` 模式下也走**官方 IO 队列**（`IO_CACHE_LOAD_ART`），落在那段 `else` 分支。该分支旧代码**手写**了加载逻辑：
+
+```c
+texLoading++;                                   // 先增
+req = calloc(...); req->qr = 1;
+ioPutRequest(IO_CACHE_LOAD_ART, req);           // ← 忽略返回值！
+```
+
+IO 请求池是**定长的**（`src/ioman.c`：`#define MAX_IO_REQUESTS 16`，`AllocIoRequest()` 满则返回 NULL、`ioPutRequest` 返回 `IO_ERR_IO_BLOCKED`）。在 INFO 页快速上下浏览、同时 coverflow 预取也在抢占请求槽时，**请求池被占满** → `ioPutRequest` 失败 → **请求既没入队、其处理函数 `cacheLoadImage1` 也永不执行** → 这次的 `texLoading++` 再也没有对应的 `--` → **`texLoading` 只增不减地永久泄漏**（同时泄漏 `calloc` 出的 `req`、并把该缓存槽 `qr` 永久钉在 1）。
+
+**泄漏 → 封面全停的机理**：`texLoading` 一旦卡在 >0，`cacheGetTexture` 顶部的门控 `if (curStartUp != value)` → `if (curStartUp && !ForceRefreshPrevTexCache && texLoading > 0)` 会在**每次光标移动**时置 `cdFramesCount=1`/`skipQr=1`，随后 `if (skipQr) return ...` 直接返回、**不再派发任何新封面加载**。刷新不清 `texLoading`（故不恢复）；切主题触发 cache teardown/reinit，`texLoading` 与门控被重置（故恢复）。**与实机现象逐条吻合。**
+
+**为何是"非对称 bug"**：同一文件另有两处入队 `IO_CACHE_LOAD_ART` 的调用都**正确校验了返回值并回滚**——`cacheQueueImageRequest()`（`src/texcache.c:169`，`!= IO_OK` 时调 `cacheCancelImageRequest` 回滚 `texLoading`/槽位/内存），以及 `!usePthread` 分支和 coverflow 的 `cacheGetTextureQuiet()` 都走 `cacheQueueImageRequest()`。唯独这段 `else` 分支是手写的漏检副本。
+
+### 13.4 修复（本会话已改并推送，commit `67069fe`）
+
+把该 `else` 分支的手写加载逻辑整段替换为调用现成的 `cacheQueueImageRequest(cache, *cacheId, list, value, itemId)`，与 `!usePthread` 分支完全一致。该 helper 对 `calloc` 失败与 `ioPutRequest` 失败都会**同步回滚** `texLoading` 与槽位状态（`cacheCancelImageRequest`），从根本上杜绝泄漏。改后全文件仅剩 `cacheQueueImageRequest` 内一处带返回值校验的 `IO_CACHE_LOAD_ART` 入队点。
+
+- **改动文件**：`src/texcache.c`（仅此一处，纯 EE 侧）。
+- **不涉及** IOP/SDK：本故障根在 OPL 的 EE 代码，**不需要**改 ps2sdk/smbman 即可修复（与 EMFILE/BDM 那类"根在 IOP 驱动"的问题不同）。第 12 节的 smbman `SO_RCVTIMEO` 加固仍建议做，但定位为"真发生网络阻塞时的防御"，与本故障相互独立。
+
+### 13.5 待用户实机验证
+
+1. 用含本 commit 的 build 复现 13.1 的步骤（INFO 页反复浏览 → 圈返回）；
+2. 观察 `texcache DIAG`：`texLoading` 应能在浏览停止后**回落到 0**，不再恒为正值；封面加载不再全停、刷新即恢复。
+3. 验证通过后，按用户既定惯例（第二十三问）**回退第 12.4 节所列的排查诊断日志**（`textures.c` 的 open/read ENTER/OK、`texcache.c` 的 `texcache DIAG`、`cacheLoadImage FAILED`），只保留本修复。回退前建议保留一次带日志的复现结果存档。
