@@ -408,3 +408,47 @@ static int fs_dclose(iop_file_t *fd)
 > 备注：PFS 的取舍是"忽略回写错误、强制释放槽位"（坏盘写入时可能**静默丢数据**），但这不影响只读的 art 浏览，也正是它不漏句柄的原因。
 
 **故三条链路里只有 SMB + BDM 需要打补丁（#1 / #2 / #3），APA/HDD（PFS）无需改动。**
+
+---
+
+## 12. 句柄修复之后暴露出的"第二个"故障：art 加载全盘卡死（根因：smbman 缺接收超时）
+
+### 12.1 现象（用户 ~290s 实机日志，build `...-51e1d54-main.elf`，SMB/eth + coverflow 主题）
+
+- **句柄修复确认有效**：整段 290s 重度浏览**全程零 `errno=24`（EMFILE）**（旧问题 ~34s 必爆），现存 failure 全是 `errno=5`（真缺 art，正常）。
+- **但出现一个此前被 EMFILE 崩溃掩盖住的、独立且更罕见的新故障**：某一刻起 loading 无限转圈、**所有封面停载变占位图**；按刷新**不再返回 0 个游戏**（游戏列表/SMB 会话仍活）、只是封面全空；**切换主题后封面加载恢复**。日志在 `[289.18] CONFIG No file smb:CFGSLPM_624.61.cfg.` 后戛然而止。
+
+这**不是**句柄泄漏（fd 没耗尽），是另一类故障。
+
+### 12.2 根因链（已逐层读码确认）
+
+1. **单一全局 art I/O 锁**：`src/textures.c` 的 `texLoadAll()` 用**唯一**的 `fileLockId`（`textures.c:110/146`）把整段 `open + lseek + read + close`（479–512 行）全程锁住。所有 art（BG/COV/ICO/SCR…）都串行经过它。
+2. **SMB read/open 无超时**：`texLoadAll` 里的 `open`/`read` 打到 `smb:` 时最终走 smbman(IOP) → SMSTCPIP。**smbman 的数据 socket 没有设置接收超时**，网络一打嗝，那次 `read`（或 `open`）就**永久阻塞**、`SignalSema(fileLockId)` 永远执行不到。
+3. **全局锁被永久占住** → 其余两个 worker 及后续所有 art 加载全部堵在 `WaitSema(fileLockId)` → **所有封面停载变占位图**。
+4. **派发闸门永久关闭（不自愈的关键）**：`src/texcache.c` dispatch 的门控是 `if (!reqN.qr)`（COV 在 684 行）。worker 只在 `itemGetImage` **返回之后**才执行 `ioReq->qr = 0`（`texcache.c:299`）。卡死的 worker 永远清不掉 `req2.qr=1`，于是**即便锁被放开，COV 这条队列也永久派发不出新图**。
+5. **游戏列表为何还活**：列表走 `sbReadList` 的 `opendir/readdir`，**完全不经过 `texLoadAll`/`fileLockId`**，故刷新不归零、会话不死。
+6. **切主题为何能恢复**：切主题触发 cache 的 deinit/reinit —— `DeleteSema(fileLockId)`+`CreateSema`（`textures.c:146/151`）建了一把全新锁，并复位 `forceSkipQr`/`reqN.qr` 门控，新加载得以继续（那个卡死的 worker/syscall 被泄漏掉了，但功能上恢复）。
+
+**旁证**：`src/texcache.c:307–333` 有一段作者**已注释掉的看门狗**（"加载超 10s 无按键就 `pthread_cancel`+重建三 worker+`texLoading=0`"），并自注"补救措施，大概率没用作用"——正说明作者早知有"加载卡死"故障，也知道 cancel+重建救不了（线程卡在 syscall 里、锁放不出来）。**用户已明确要求不做 EE 侧兜底**（怕副作用），故此看门狗保持注释、不启用。
+
+### 12.3 根治位置（与 EMFILE / BDM 同一模式：根在 IOP 驱动，EE 只是暴露它）
+
+**在 smbman（`362053534/ps2sdk`，`iop/network/smbman/src/`）的数据连接建立后给 socket 设接收超时**，让卡死的 `read` 超时返回错误，而非永久阻塞。链路自愈：`read` 超时 → `texLoadAll` 返回 `ERR_BAD_FILE` 并 `SignalSema(fileLockId)` 放锁 → worker 走到 `ioReq->qr = 0` → 该封面标记失败、其余封面继续加载，不再全盘冻结。
+
+**可行性已核实**：OPL 自带的 SMSTCPIP **支持 `SO_RCVTIMEO`**——`sockets.c:1361` 写入 `conn->recv_timeout`，并在 `api_lib.c:436/482` 的 `sys_arch_mbox_fetch(..., conn->recv_timeout)` 中真正生效（超时返回 `SYS_ARCH_TIMEOUT`）。因此 smbman 侧 `setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, ...)` 即可根治。
+
+> 待新会话在 ps2sdk 令牌覆盖到位后落实：找到 smbman 建立 TCP 数据连接（connect 成功）之后的位置，加 `SO_RCVTIMEO`（并视需要 `SO_SNDTIMEO`），超时值取一个既能容忍正常大图传输、又能及时判死的量级（如 10s，可再调）。同时确认 smb_read 对 recv 返回负值/超时的错误处理会把错误一路上报到 EE 的 `read()`。
+
+### 12.4 本会话已加的定向诊断日志（排查用，事后按惯例回退，只留诊断期）
+
+目的：实机复现时**钉死是哪条 art、卡在 open 还是 read、以及门控是否卡住**。
+
+- **`src/textures.c` `texLoadAll`**：在 `open` 前后、`read` 前后各打一对"进入/返回"标记：
+  - `texLoadAll: >>> open ENTER path=...` / `texLoadAll: <<< open OK fd=... path=...`
+  - `texLoadAll: >>> read ENTER size=... path=...` / `texLoadAll: <<< read OK size=... path=...`
+  - **判读**：若某条只出现 `>>> ... ENTER` 而无对应 `<<< ... OK`、且其后日志停住，即该次 I/O 卡死点（并区分 open vs read、定位到具体文件）。
+- **`src/texcache.c` `flushBatchRequests`（每帧调一次）**：`texLoading>0` 时每 120 帧(~2s)打一次门控快照，回落 0 即复位：
+  - `texcache DIAG: texLoading=.. req1(BG).qr=.. req2(COV).qr=.. req3(ICO).qr=.. frames=..`
+  - **判读**：卡死时可见 `texLoading` 长期 >0、某个 `reqN.qr` 恒为 1、`frames` 持续上涨——直接指认卡死的 worker（BG=1/COV=2/ICO=3）。
+
+> 这些仅诊断，不改变任何行为逻辑；根因锁定后连同前述排查日志一并回退。**未做**任何 EE 侧兜底/看门狗（用户明确要求）。

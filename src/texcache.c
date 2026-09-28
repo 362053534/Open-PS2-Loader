@@ -300,6 +300,22 @@ static void *cacheLoadImage(void *data)
 
 void flushBatchRequests(void)
 {
+    // 【诊断日志·卡死排查】每帧监控 texLoading 与 3 个 worker 的门控标志(req1/2/3.qr)。
+    // 派发闸门是 if(!reqN.qr)：worker 卡在 texLoadAll 的 SMB open/read 里就永远清不掉 reqN.qr=1，
+    // 该类型(BG=1 / COV=2 / ICO=3)从此再也派发不出新图。正常时 texLoading 会很快回落到 0；
+    // 若它长时间停在 >0 且某个 reqN.qr 恒为 1、frames 一直往上涨，就锁定是该 worker 卡死。
+    // 为避免刷屏，仅在 texLoading 持续 >0 时每 120 帧(约 2s)打印一次快照，回落到 0 即复位计数。
+    {
+        static int diagStallFrames = 0;
+        if (texLoading > 0) {
+            if ((diagStallFrames++ % 120) == 0)
+                LOG("texcache DIAG: texLoading=%d req1(BG).qr=%d req2(COV).qr=%d req3(ICO).qr=%d frames=%d\n",
+                    texLoading, req1.qr, req2.qr, req3.qr, diagStallFrames);
+        } else {
+            diagStallFrames = 0;
+        }
+    }
+
     // 左右切页签强制刷新缓存的变量，需要判断当前游戏所有图片是否都处理完毕
     if (ForceRefreshPrevTexCache > 1)
         ForceRefreshPrevTexCache = 0;
