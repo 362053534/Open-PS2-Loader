@@ -1082,8 +1082,13 @@ void thmTriggerCoverflowAnim(int direction)
     isAnimating = 1;
     animationDirection = direction;
     animationStartTime = clock();
-    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed; // 单步：用主题配置的时长
-    gCoverflowLinearAnim = 0;                        // 单步：三次缓出，手感不变
+    // 单步：速度提到匀速的 3 倍（时长缩短到主题配置的 1/3）。移除三次缓出后，
+    // 原本靠缓出起步(t=0 导数为 3)带来的“快”手感消失、整体显慢；用 1/3 时长补回。
+    // 至少保留 1ms，避免 <=0 被当作“关闭动画”。
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed / 3;
+    if (gCoverflowActiveAnimSpeed < 1)
+        gCoverflowActiveAnimSpeed = 1;
+    gCoverflowLinearAnim = 0;                        // 单步：线性匀速（缓动已移除）
 }
 
 // 翻页滚动专用的一步滑动：每一步用更短的时长(durationMs)且用线性插值，
