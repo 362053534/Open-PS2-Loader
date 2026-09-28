@@ -1265,6 +1265,32 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         posX += coverDistance;
     }
 
+    // 纹理【加载/请求顺序】：从中心向两侧扩散，中心封面最先入加载队列。
+    // io worker 单线程按 FIFO 处理请求，先请求的先加载，所以这样能让居中封面
+    // 最先加载、最先显示，再依次向外侧铺开——与下面的【绘制层级】完全解耦：
+    // 绘制仍按画家算法（外侧先画、中心最后画=置顶），保证中心封面始终在最上层。
+    // 顺序示例（centerIndex=3）：3, 2,4, 1,5, 0,6。
+    int loadOrder[COVERFLOW_MAX];
+    int loadCount = 0;
+    loadOrder[loadCount++] = centerIndex;
+    int d;
+    for (d = 1; d <= centerIndex || centerIndex + d < coverCount; d++) {
+        if (centerIndex - d >= 0)
+            loadOrder[loadCount++] = centerIndex - d;
+        if (centerIndex + d < coverCount)
+            loadOrder[loadCount++] = centerIndex + d;
+    }
+
+    int li;
+    for (li = 0; li < loadCount; li++) {
+        int idx = loadOrder[li];
+        if (covers[idx].game == NULL)
+            continue;
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item);
+        if (!covers[idx].texture || !covers[idx].texture->Mem)
+            covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
+    }
+
     // 生成绘制顺序，实现画家算法的正确层级：
     //   先画左侧（i 从 0 递增到 centerIndex-1，越靠近中心越后画，压在外侧之上），
     //   再画右侧（i 从 coverCount-1 递减到 centerIndex+1，同样越靠近中心越后画），
@@ -1313,9 +1339,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
         int centerYOffset = (int)(COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor) + 0.5f);
 
-        covers[i].texture = getCoverflowTexture(img->cache, sourceList, &covers[i].game->item);
-        if (!covers[i].texture || !covers[i].texture->Mem)
-            covers[i].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
+        // 纹理已在上面的【中心向外扩散】加载遍里请求并填好 covers[i].texture，
+        // 这里直接取用，不再重复请求（避免打乱加载优先级）。
 
         // 不再因缺图而 continue：即使没有封面也没有占位图，coverflowDrawTexture 会在
         // 主题带 overlay(case) 时至少画出空的 case 外壳，避免整块 case 模块消失。
