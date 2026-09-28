@@ -107,15 +107,17 @@ void rmDrawPixmapReflect(GSTEXTURE *txt, int x, int y, short aligned, int w, int
 void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
                                 GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry);
 
-/** Coverflow 专用带外壳绘制：inlay 顶点以 case quad 实际尺寸按浮点比例(顶点/baseW、
- *  顶点/baseH)定位，使封面主图与 case 内框完全锁定、同步缩放，消除二者相对蠕动；
- *  宽屏自动一致。ov* 为 overlay 顶点(元素坐标系 0..baseW × 0..baseH)。 */
-void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+/** Coverflow 专用带外壳绘制（浮点旁路）：x/y/w/h 用 float，内部走浮点版 rmSetupQuadF，
+ *  使中心封面放大动画连续变化、消除整数量化蠕动（尤其宽屏）。inlay 顶点以 case quad
+ *  实际尺寸按浮点比例(顶点/baseW、顶点/baseH)定位，与 case 内框完全锁定、同步缩放；
+ *  宽屏自动一致。ov* 为 overlay 顶点(元素坐标系 0..baseW × 0..baseH)。
+ *  仅 Coverflow 主题调用，不影响非 Coverflow 绘制路径。 */
+void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h, short scaled, u64 color,
                              GSTEXTURE *inlay, int baseW, int baseH,
                              int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry);
 
-/** rmDrawOverlayPixmapFrac 的倒影版。 */
-void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+/** rmDrawOverlayPixmapFrac 的倒影版（同为浮点旁路）。 */
+void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h, short scaled, u64 color,
                                     GSTEXTURE *inlay, int baseW, int baseH,
                                     int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry);
 
@@ -143,6 +145,8 @@ void rmSetAspectRatio(enum rm_aratio dar);
 
 /** Widescreen scaling */
 int rmWideScale(int x);
+/** rmWideScale 的浮点版：横向宽屏压缩、不做整数截断；供 Coverflow 浮点旁路使用。 */
+float rmWideScaleF(float x);
 
 /** Get Pixel Aspect Ratio of native resolution */
 float rmGetPAR();

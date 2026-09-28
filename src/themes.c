@@ -1139,7 +1139,7 @@ int thmGetCoverflowJumpCount(void)
 
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
-static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection, int baseW, int baseH)
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
 {
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
@@ -1150,9 +1150,9 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         // 避免整块 case 模块直接消失（修复"缺图时整个 case 都不显示"的问题）。
         if (!texture || !texture->Mem) {
             if (reflection)
-                rmDrawPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color);
+                rmDrawPixmapReflect(&ov->source, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
             else
-                rmDrawPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color);
+                rmDrawPixmap(&ov->source, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
             return;
         }
 
@@ -1177,9 +1177,9 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         if (!texture || !texture->Mem)
             return;
         if (reflection)
-            rmDrawPixmapReflect(texture, x, y, aligned, w, h, SCALING_NONE, color);
+            rmDrawPixmapReflect(texture, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
         else
-            rmDrawPixmap(texture, x, y, aligned, w, h, SCALING_NONE, color);
+            rmDrawPixmap(texture, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
     }
 }
 
@@ -1375,8 +1375,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             continue;
 
         int renderPosX = covers[i].renderPosX;
-        int currentCoverWidth = coverWidth;
-        int currentCoverHeight = coverHeight;
+        // 浮点旁路：宽/高用 float 全程连续，交给 coverflowDrawTexture→rmSetupQuadF 绘制。
+        float currentCoverWidth = (float)coverWidth;
+        float currentCoverHeight = (float)coverHeight;
 
         // 统一的"居中程度"因子（与滑动动画同步）：1 = 完全处于中心，0 = 完全非中心。
         //   中心封面：动画中随 eased 由 0→1，定格为 1；
@@ -1393,21 +1394,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         // 插值缩放：进入中心的封面逐渐放大，离开中心的封面逐渐缩小。
         // 外壳顶点在 coverflowDrawTexture 里会随 w/h 等比缩放，这里不再需要额外偏移。
-        // 四舍五入而非截断：让放大动画收尾时每帧的取整步进更均匀，减轻蠕动感。
-        int currentScaling = (int)(scaling * centerFactor + 0.5f);
-        if (currentScaling > 0) {
-            currentCoverHeight += currentScaling;
-            // 宽屏修正（折中方案）：放大增量必须与宽度走同一条宽屏压缩链，否则经 16:9
-            // 电视横向拉回(×4/3)后会比例失真。但若对逐帧的小增量 currentScaling 单独
-            // rmWideScale，(x*3)>>2 的整数截断会让横向增量步进不均匀(0,0,1,2,3,3…)，
-            // 与纵向的均匀 +1 不同步 → 放大过程中宽高比逐帧微抖、产生形变蠕动感。
-            // 改为对【4:3 逻辑宽度 + 放大增量】这个大基数整体做一次 rmWideScale：只截断
-            // 一次、且作用在大数上，相对形变小得多，宽高不同步大幅减轻（4:3 下恒等，
-            // 直接加 currentScaling，与纵向严格同步、无蠕动）。
+        // 浮点旁路：currentScaling 用 float、不取整，宽度用 rmWideScaleF（不做 >>2 整数
+        // 截断），使横向增量随动画连续变化、与纵向增量严格同步 → 放大过程中宽高比恒定、
+        // 不再有整数截断导致的形变蠕动（宽屏与 4:3 都平滑；rmSetupQuadF 全程浮点收尾）。
+        float currentScaling = scaling * centerFactor;
+        if (currentScaling > 0.0f) {
+            currentCoverHeight = (float)coverHeight + currentScaling;
+            // 宽屏：对【4:3 逻辑宽度 + 放大增量】整体做一次浮点宽屏压缩；4:3 下 rmWideScaleF
+            // 为恒等，直接加 currentScaling，与纵向增量完全同步。
             if (gWideScreen)
-                currentCoverWidth = rmWideScale(coverWidthLogical + currentScaling);
+                currentCoverWidth = rmWideScaleF((float)coverWidthLogical + currentScaling);
             else
-                currentCoverWidth += currentScaling;
+                currentCoverWidth = (float)coverWidth + currentScaling;
         }
 
         // 非中心封面整体下移 COVERFLOW_NONCENTER_YOFFSET 像素，中心封面不动；

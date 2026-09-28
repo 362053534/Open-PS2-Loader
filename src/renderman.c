@@ -512,18 +512,68 @@ void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned,
     }
 }
 
+// rmSetupQuad 的【浮点】版本：x/y/w/h 用 float，X_SCALE/Y_SCALE、宽屏压缩与对齐全程
+// 浮点、不做任何整数取整。仅供下方 Coverflow 浮点旁路(rmDrawOverlayPixmap*Frac)调用，
+// 使中心封面放大动画的宽/高连续变化，消除整数量化导致的宽高不同步形变蠕动（尤其宽屏）。
+// 【重要】不改动、不影响整数版 rmSetupQuad 及所有非 Coverflow 绘制路径。
+static void rmSetupQuadF(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color, rm_quad_t *q)
+{
+    if (txt) {
+        if (w == (float)DIM_UNDEF)
+            w = txt->Width;
+        if (h == (float)DIM_UNDEF)
+            h = txt->Height;
+    }
+
+    // Legacy scaling（浮点，不取整）
+    x = (x * iDisplayWidth) / 640.0f;
+    y = (y * iDisplayHeight) / 480.0f;
+    if (scaled & SCALING_RATIO)
+        w = (w * iDisplayWidth / 640.0f) * (float)iAspectWidth / 4.0f;
+    else
+        w = (w * iDisplayWidth) / 640.0f;
+    h = (h * iDisplayHeight) / 480.0f;
+
+    // Align LEFT/HCENTER/RIGHT
+    if (aligned & ALIGN_HCENTER)
+        q->ul.x = x - w / 2.0f;
+    else if (aligned & ALIGN_RIGHT)
+        q->ul.x = x - w;
+    else
+        q->ul.x = x;
+    q->br.x = q->ul.x + w;
+
+    // Align TOP/VCENTER/BOTTOM
+    if (aligned & ALIGN_VCENTER)
+        q->ul.y = y - h / 2.0f;
+    else if (aligned & ALIGN_BOTTOM)
+        q->ul.y = y - h;
+    else
+        q->ul.y = y;
+    q->br.y = q->ul.y + h;
+
+    q->color = color;
+    if (txt) {
+        q->txt = txt;
+        q->ul.u = 0;
+        q->ul.v = 0;
+        q->br.u = txt->Width;
+        q->br.v = txt->Height;
+    }
+}
+
 // Coverflow 专用：外壳(overlay)按 w/h 绘制；内嵌封面(inlay)四角以 case quad 的
 // 【实际绘制像素尺寸】caseW/caseH 为基准，用浮点比例(顶点/baseW、顶点/baseH)定位。
 // 这样 inlay 与 case 内框完全锁定、按同一 caseW/caseH 同步缩放——中心封面放大或滑动
 // 收尾时二者【不会相对蠕动】(整体仍可能有像素级步进，但相对关系恒定)。宽屏也自动一致：
 // caseW 已包含 case 自身的横向压缩，inlay 按同一 caseW 取比例，无需再单独处理宽屏。
 // ov* 为 overlay 顶点，落在元素坐标系 0..baseW × 0..baseH 内。
-void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h, short scaled, u64 color,
                              GSTEXTURE *inlay, int baseW, int baseH,
                              int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry)
 {
     rm_quad_t quad;
-    rmSetupQuad(overlay, x, y, aligned, w, h, scaled, color, &quad);
+    rmSetupQuadF(overlay, x, y, aligned, w, h, scaled, color, &quad);
 
     float caseW = quad.br.x - quad.ul.x;
     float caseH = quad.br.y - quad.ul.y;
@@ -557,7 +607,7 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, int x, int y, short aligned, in
 
 // rmDrawOverlayPixmapFrac 的倒影版：主图走上面的 Frac 路径，另在下方逐行绘制渐隐倒影。
 // inlay 倒影的横向偏移同样用 caseW 浮点比例，保证倒影里封面与外壳也不相对蠕动。
-void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h, short scaled, u64 color,
                                     GSTEXTURE *inlay, int baseW, int baseH,
                                     int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry)
 {
@@ -565,7 +615,7 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, int x, int y, short alig
                             ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry);
 
     rm_quad_t quad;
-    rmSetupQuad(overlay, x, y, aligned, w, h, scaled, color, &quad);
+    rmSetupQuadF(overlay, x, y, aligned, w, h, scaled, color, &quad);
 
     float caseW = quad.br.x - quad.ul.x;
     float fbw = (baseW > 0) ? (float)baseW : 1.0f;
@@ -676,6 +726,14 @@ void rmSetAspectRatio(enum rm_aratio dar)
 int rmWideScale(int x)
 {
     return (x * iAspectWidth) >> 2;
+}
+
+// rmWideScale 的【浮点】版本：横向宽屏压缩但不做 >>2 整数截断，结果随输入连续变化。
+// 仅供 Coverflow 浮点旁路计算中心封面放大后的连续宽度，消除整数截断造成的形变蠕动。
+// 4:3 下 iAspectWidth==4，返回原值。
+float rmWideScaleF(float x)
+{
+    return x * (float)iAspectWidth / 4.0f;
 }
 
 // Get the pixel aspect ratio (how wide or narrow are the pixels?)
