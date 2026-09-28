@@ -1059,6 +1059,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
+#define COVERFLOW_NONCENTER_YOFFSET 20 // 非中心封面相对中心封面额外下移的像素数
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额外放大的【像素】数
@@ -1267,20 +1268,30 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         int currentCoverWidth = coverWidth;
         int currentCoverHeight = coverHeight;
 
+        // 统一的"居中程度"因子（与滑动动画同步）：1 = 完全处于中心，0 = 完全非中心。
+        //   中心封面：动画中随 eased 由 0→1，定格为 1；
+        //   离开中心的封面：随 eased 由 1→0；
+        //   其余非中心封面：恒为 0。
+        // 缩放 / 明暗 / 垂直偏移都据此插值，保证三者与动画完全同步、平滑过渡。
+        float centerFactor;
+        if (i == centerIndex)
+            centerFactor = isAnimating ? eased : 1.0f;
+        else if (isAnimating && i == leavingIndex)
+            centerFactor = 1.0f - eased;
+        else
+            centerFactor = 0.0f;
+
         // 插值缩放：进入中心的封面逐渐放大，离开中心的封面逐渐缩小。
         // 外壳顶点在 coverflowDrawTexture 里会随 w/h 等比缩放，这里不再需要额外偏移。
-        int currentScaling = 0;
-        if (i == centerIndex) {
-            float growFactor = isAnimating ? eased : 1.0f;
-            currentScaling = (int)(scaling * growFactor);
-        } else if (isAnimating && i == leavingIndex) {
-            currentScaling = (int)(scaling * (1.0f - eased));
-        }
-
+        int currentScaling = (int)(scaling * centerFactor);
         if (currentScaling > 0) {
             currentCoverWidth += currentScaling;
             currentCoverHeight += currentScaling;
         }
+
+        // 非中心封面整体下移 COVERFLOW_NONCENTER_YOFFSET 像素，中心封面不动；
+        // 偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
+        int centerYOffset = (int)(COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor) + 0.5f);
 
         covers[i].texture = getCoverflowTexture(img->cache, sourceList, &covers[i].game->item);
         if (!covers[i].texture || !covers[i].texture->Mem)
@@ -1289,29 +1300,20 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 不再因缺图而 continue：即使没有封面也没有占位图，coverflowDrawTexture 会在
         // 主题带 overlay(case) 时至少画出空的 case 外壳，避免整块 case 模块消失。
 
-        // 明暗随过渡动画渐变（与上面的缩放插值同步，不再按槽位硬切）：
-        //   中心封面：动画中亮度随 eased 由暗→亮，定格时全亮；
-        //   离开中心的封面：亮度随 eased 由亮→暗；
-        //   其余非中心封面：恒为压暗亮度。
+        // 明暗随过渡动画渐变（用同一 centerFactor，不再按槽位硬切）：
+        //   中心封面动画中由暗→亮、定格全亮；离开中心的由亮→暗；其余非中心恒压暗。
         // 关闭 coverflow_dim_covers 时恒为全亮(gDefaultCol)。压暗对【封面主图+case 外壳】
         // 一并生效（依赖 rmDrawOverlayPixmap 内嵌图改用传入 color）。
         u64 coverColor = gDefaultCol;
         if (gCoverflowDimCovers) {
-            float brightFactor;
-            if (i == centerIndex)
-                brightFactor = isAnimating ? eased : 1.0f;
-            else if (isAnimating && i == leavingIndex)
-                brightFactor = 1.0f - eased;
-            else
-                brightFactor = 0.0f;
             // 亮度=1 → 原亮度(0x80)；亮度=0 → 压暗到 COVERFLOW_DIM_RGB。
             // alpha 固定 0x80 保持不透明（只压暗、不发虚透背景）。
-            int rgb = (int)(0x80 * brightFactor + COVERFLOW_DIM_RGB * (1.0f - brightFactor) + 0.5f);
+            int rgb = (int)(0x80 * centerFactor + COVERFLOW_DIM_RGB * (1.0f - centerFactor) + 0.5f);
             coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
         }
 
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
-        coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset, ALIGN_CENTER,
+        coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
                              currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
                              elem->width, elem->height);
     }
