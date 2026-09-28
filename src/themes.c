@@ -1378,7 +1378,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 四舍五入而非截断：让放大动画收尾时每帧的取整步进更均匀，减轻蠕动感。
         int currentScaling = (int)(scaling * centerFactor + 0.5f);
         if (currentScaling > 0) {
-            currentCoverWidth += currentScaling;
+            // 宽屏修正：基础封面宽度已在上面用 rmWideScale 横向压缩过，但放大增量
+            // 若直接原样加到宽度上，经 16:9 电视把 4:3 画面横向拉回来(×4/3)后，这部分
+            // 增量会被多拉伸一次，使中心封面比外围封面横向变宽、比例失真。因此把【横向】
+            // 增量也走同一条 rmWideScale 压缩链，纵向增量保持不变——拉回来后横向与纵向
+            // 增量在屏幕上恰好相等，中心封面与外围封面比例一致（4:3 下 rmWideScale 恒等）。
+            currentCoverWidth += gWideScreen ? rmWideScale(currentScaling) : currentScaling;
             currentCoverHeight += currentScaling;
         }
 
