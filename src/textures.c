@@ -103,6 +103,13 @@ extern void *logo_png;
 extern void *case_png;
 extern void *apps_case_png;
 
+// Coverflow(第二套内置主题)专用内置贴图, 对齐 wOPL 的 CF 主题资源
+extern void *settings_bg_png;
+extern void *plank_png;
+extern void *cf_cover_png;
+extern void *cf_case_png;
+extern void *cf_apps_case_png;
+
 // Not related to screen size, just to limit at some point
 static int maxSize = 720 * 512 * 4;
 
@@ -242,6 +249,12 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {LOGO_PICTURE, "logo", &logo_png},
     {CASE_OVERLAY, "case", &case_png},
     {APPS_CASE_OVERLAY, "apps_case", &apps_case_png},
+    // Coverflow(第二套内置主题)专用资源, 对齐 wOPL 的 CF 主题
+    {SETTINGS_BG, "settings_bg", &settings_bg_png},
+    {PLANK_PICTURE, "plank", &plank_png},
+    {CF_COVER_DEFAULT, "cf_cover", &cf_cover_png},
+    {CF_CASE_OVERLAY, "cf_case", &cf_case_png},
+    {CF_APPS_CASE_OVERLAY, "cf_apps_case", &cf_apps_case_png},
 };
 
 int texLookupInternalTexId(const char *name)
