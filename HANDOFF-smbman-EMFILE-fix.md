@@ -497,3 +497,50 @@ IO 请求池是**定长的**（`src/ioman.c`：`#define MAX_IO_REQUESTS 16`，`A
 1. 用含本 commit 的 build 复现 13.1 的步骤（INFO 页反复浏览 → 圈返回）；
 2. 观察 `texcache DIAG`：`texLoading` 应能在浏览停止后**回落到 0**，不再恒为正值；封面加载不再全停、刷新即恢复。
 3. 验证通过后，按用户既定惯例（第二十三问）**回退第 12.4 节所列的排查诊断日志**（`textures.c` 的 open/read ENTER/OK、`texcache.c` 的 `texcache DIAG`、`cacheLoadImage FAILED`），只保留本修复。回退前建议保留一次带日志的复现结果存档。
+
+---
+
+## 14. 重大更正：第 13 节根因与 `67069fe` 修复均落在【死代码】上，实机无效
+
+### 14.1 关键事实：`usePthread == 0`
+
+`src/texcache.c:31` `static int usePthread = 0;`，**全程无处改写**。因此：
+
+- `req1/req2/req3` 三个 pthread worker 结构、`cacheLoadImage()` 线程函数、`cacheInit()`/`cacheEnd()` 里 `if (usePthread)` 的信号量/线程创建、以及 `cacheGetTexture()` 里 `if (oldestEntry) { ... } else { /* BG/COV/ICO/else 四分支 */ }` 中的 **`else`（pthread）整块**，**全部是不可达的死代码**。
+- 第 13 节判定的“泄漏点”正是这块 `else` 里的 BG/COV/ICO **之外**的 `else` 子分支；`67069fe` 把它改成 `cacheQueueImageRequest()`。**但该代码永不执行**，故实机毫无变化——用户用含 `67069fe` 的 build 复现问题依旧，正由此解释。
+- 同理，第 12 节起沿用的 `texcache DIAG` 打印的 `req1/2/3.qr` 是 **pthread 结构体字段，`usePthread==0` 下恒为 0**，对真实链路零信息量。“三 worker 空闲”是被这套无效诊断误导的结论。
+
+### 14.2 真实的活动链路（单线程 IO worker）
+
+`usePthread==0` 时 `cacheGetTexture()` 走 `if (oldestEntry) { if (!usePthread) { cacheQueueImageRequest(...); } }`：
+
+```
+cacheGetTexture → cacheQueueImageRequest → ioPutRequest(IO_CACHE_LOAD_ART)
+                → 【单条 ioWorkerThread】→ cacheLoadImage1（含 itemGetImage 的 SMB open/read）
+```
+
+`ioman.c` 只有**一条** io worker 线程串行处理所有请求。`cacheQueueImageRequest()` 与 `cacheLoadImage1()` 的 `texLoading++/--` 经静态审查**是配平的**（入队失败 `cacheCancelImageRequest` 回滚；四个出口都 `--`）。
+
+### 14.3 最强假设：单 worker 卡在某次 `itemGetImage`（SMB 阻塞）拖垮整条队列
+
+- 只有一条 io worker。一旦某次 `itemGetImage` 的 SMB `open/read` 长时间不返回，**后续所有封面请求全部积压**在 `gReqList` 里，`texLoading` 只增不减 → 卡地板、爬到 3/11、圈无限转。
+- 完全吻合“停 INFO（少量、串行的 BG/SCR/SCR2）正常；一旋圈返回列表/coverflow（大量并发请求）即全停”。
+- 与第 27 节确认的 SMB 会话易抖动（keepalive、DEV9 噪声）自洽。“切主题恢复”＝重建 cache/复位槽位把卡住的局面顶开。
+- 备选假设（真·计数泄漏：某处 `++` 无配对 `--`）静态审查未发现，但仍用诊断兜住。
+
+### 14.4 本会话所做（仅诊断，遵循第二十三问“先实机日志再定修法”）— commit `d5bd91a`
+
+- `ioman.c`/`ioman.h`：新增 `ioGetPendingRequestCountByType(type)`（队列积压数）、`ioGetActiveRequestType()`（worker 正在处理的类型，空闲 -1）。
+- `texcache.c`：新增 in-flight 计数 `diagArtInFlight`（与 `texLoading` 同增同减，用于自检“增减是否配对”）、`diagLastQueued*`/`diagActive*`（最后入队 / 正在处理的 suffix/value）；`cacheLoadImage1` 四个出口统一走 `cacheDecreaseLoading()`。
+- `flushBatchRequests()` 的 DIAG 快照改为打印：
+  `texLoading / inflight / ioQueuedART / ioActive / stuckFrames / lastQueued / lastActive`。
+
+### 14.5 用实机日志判读（下一步）
+
+- **若 `ioActive==IO_CACHE_LOAD_ART` 且 `stuckFrames` 持续增长、`lastActive` 长时间不变**：坐实 14.3——单 worker 卡在该张图的 `itemGetImage`。修法方向：I/O 层给 SMB 读加超时/取消（与第 12 节 `SO_RCVTIMEO` 加固合流），或让 art 加载可被中断，而非在 EE 侧堆计数。
+- **若 `ioActive==-1` 且 `ioQueuedART==0` 但 `texLoading>0` 不降**：真·计数泄漏；再看 `inflight` 是否同样 >0（请求丢失）还是为 0（加减不配对），据此定位具体路径。
+
+### 14.6 注意
+
+- `67069fe` 改的是死代码，无害但也无用；未回退（避免额外 churn），本节已如实标注。**第 13 节的根因结论作废，以本节为准。**
+- 待实机日志锁定 14.5 的分支后再动真正修法；届时按第二十三问回退全部排查诊断日志，只留最终修复。
