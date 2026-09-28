@@ -49,15 +49,6 @@ static s32 gIOThreadId;
 static s32 gEndSemaId;
 // ioPrintf sema id
 static s32 gIOPrintfSemaId;
-// 【卡死根治】worker 唤醒用的计数信号量。
-// 旧实现用 SleepThread()/WakeupThread() 唤醒 worker，但 PS2 EE 的 WakeupThread 对
-// “当前不处于睡眠态”的线程会直接丢弃(返回错误、不累积)。当渲染线程一帧内成批入队多张
-// 封面、而 worker 恰好处在“刚清空队列、尚未 SleepThread”的窗口时，这些唤醒全部丢失，
-// worker 随后 SleepThread 永久沉睡，队列里 N 个请求无人处理(实机日志实测：ioActive=-1、
-// ioQueuedART=texLoading 卡在 10/11 不降，只有别处再来一次 ioPutRequest 才被顺带唤醒)。
-// 改用计数信号量：每次入队 SignalSema(+1)、worker 每轮 WaitSema(-1)，计数可靠累积，
-// 彻底消除丢唤醒。这也正是上游 OPL 原始 ioman 的做法。
-static s32 gWorkerSemaId;
 
 static ee_thread_t gIOThread;
 static ee_sema_t gQueueSema;
@@ -145,45 +136,42 @@ static void ioProcessRequest(struct io_request_t *req)
 
 static void ioWorkerThread(void *arg)
 {
+    // 【卡死根治·最终方案：轮询，不依赖任何唤醒信号】
+    // 背景：本 fork 先后用过 SleepThread()/WakeupThread() 与计数信号量两种“事件唤醒”
+    // 方案，实机日志均出现同一死结——队列里有请求(ioQueuedART>0)、worker 却空闲
+    // (ioActive=-1)且永不取，说明唤醒在“渲染线程一帧内批量入队、worker 恰处于清空
+    // 队列后尚未进入等待”的窗口被丢失。为彻底杜绝，worker 改为主动轮询队列：有请求
+    // 就处理，队列空则短暂休眠 2ms 再查。丢唤醒在此结构下不可能发生。2ms 空闲轮询对
+    // 后台 art 加载的延迟可忽略，CPU 占用也极低。
     while (!gIOTerminate) {
-        // 等待“有新请求”的计数信号(替代原 SleepThread，避免丢唤醒导致队列无人处理)
-        WaitSema(gWorkerSemaId);
-        // if term requested exit immediately from the loop
-        if (gIOTerminate)
-            break;
-
-        // do we have a request in the queue?
-        while (1) {
-            // if term requested exit immediately from the loop
-            if (gIOTerminate)
-                break;
-
-            // 队列取头节点，注意：此时队列仍然持有
-            WaitSema(gEndSemaId);
-            struct io_request_t *req = gReqList;
-            if (req) {
-                gReqList = req->next;
-                if (!gReqList)
-                    gReqEnd = NULL;
-                gActiveRequestType = req->type;
-                gActiveRequestData = req->data;
-            } else
-                gReqEnd = NULL; // 队列为空时，保险起见设NULL
-
-            if (!req) {
-                isIOPending = 0;
-                SignalSema(gEndSemaId);
-                break;
-            }
-            SignalSema(gEndSemaId);
-
-            ioProcessRequest(req);
-            WaitSema(gEndSemaId);
-            gActiveRequestType = -1;
-            gActiveRequestData = NULL;
-            SignalSema(gEndSemaId);
-            FreeIoRequest(req);
+        // 队列取头节点(整段在队列锁内完成)
+        WaitSema(gEndSemaId);
+        struct io_request_t *req = gReqList;
+        if (req) {
+            gReqList = req->next;
+            if (!gReqList)
+                gReqEnd = NULL;
+            gActiveRequestType = req->type;
+            gActiveRequestData = req->data;
+        } else {
+            gReqEnd = NULL;   // 队列为空时，保险起见设NULL
+            isIOPending = 0;
         }
+        SignalSema(gEndSemaId);
+
+        if (!req) {
+            // 队列为空：短暂休眠后再轮询，避免忙等空转，也不依赖任何唤醒信号。
+            usleep(2000); // 2ms
+            continue;
+        }
+
+        ioProcessRequest(req);
+
+        WaitSema(gEndSemaId);
+        gActiveRequestType = -1;
+        gActiveRequestData = NULL;
+        SignalSema(gEndSemaId);
+        FreeIoRequest(req);
     }
     WaitSema(gEndSemaId);
     // 提前退出时，清理所有线程，防止内存泄露
@@ -201,7 +189,6 @@ static void ioWorkerThread(void *arg)
     // 此时信号量一定没人再用，可以销毁
     DeleteSema(gEndSemaId);
     DeleteSema(gIOPrintfSemaId);
-    DeleteSema(gWorkerSemaId);
     ExitDeleteThread();
 }
 
@@ -233,16 +220,6 @@ void ioInit(void)
 
     gEndSemaId = CreateSema(&gQueueSema);
     gIOPrintfSemaId = CreateSema(&gQueueSema);
-
-    // worker 唤醒用的计数信号量：初值 0(无请求时 worker 阻塞在 WaitSema)，
-    // 上限取请求池大小即可(并发在途请求最多 MAX_IO_REQUESTS 个，故最多累计这么多次未消费信号)。
-    {
-        ee_sema_t workerSema;
-        workerSema.init_count = 0;
-        workerSema.max_count = MAX_IO_REQUESTS;
-        workerSema.option = 0;
-        gWorkerSemaId = CreateSema(&workerSema);
-    }
 
     // default custom simple action handler
     ioRegisterHandler(IO_CUSTOM_SIMPLEACTION, &ioSimpleActionHandler);
@@ -314,9 +291,7 @@ static int ioPutRequestInternal(int type, void *data, int unique)
 
     SignalSema(gEndSemaId);
 
-    // 计数信号量 +1 唤醒 worker。相比 WakeupThread，信号会可靠累积，即便 worker 正处于
-    // “刚清空队列、尚未进入等待”的窗口，本次信号也不会丢失，worker 下一轮 WaitSema 必定取到。
-    SignalSema(gWorkerSemaId);
+    // 无需唤醒 worker：worker 采用轮询，会在下一轮(最多 2ms 后)自动发现新入队的请求。
 
     return IO_OK;
 }
@@ -386,8 +361,7 @@ int ioRemoveRequests(int type)
 void ioEnd(void)
 {
     gIOTerminate = 1;
-    // 唤醒可能正阻塞在 WaitSema 的 worker，让它看到 gIOTerminate 并退出。
-    SignalSema(gWorkerSemaId);
+    // 无需唤醒：worker 轮询循环每轮(最多 2ms)都会检查 gIOTerminate 并自行退出。
 
     // 等待worker线程彻底退出
     while (isIORunning)
