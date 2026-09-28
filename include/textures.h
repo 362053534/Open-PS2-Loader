@@ -93,13 +93,23 @@ enum INTERNAL_TEXTURE {
     CASE_OVERLAY,
     APPS_CASE_OVERLAY,
     // Coverflow(第二套内置主题, 对齐 wOPL)专用内置贴图:
-    // settings_bg 背景 + plank 底部搁板, 以及 wOPL 版封面/外壳
-    // (以 cf_ 前缀命名, 避免覆盖默认列表主题共用的 case/cover/apps_case)
+    // settings_bg 背景 + plank 底部搁板 + wOPL 版盒装/软件外壳
+    // (以 cf_ 前缀命名, 避免覆盖默认列表主题共用的 case/apps_case;
+    //  封面占位图沿用默认主题的 cover, 不再单独引入)
     SETTINGS_BG,
     PLANK_PICTURE,
-    CF_COVER_DEFAULT,
     CF_CASE_OVERLAY,
     CF_APPS_CASE_OVERLAY,
+    // wOPL 风格的单设备图标(带 BDM/SMB/APA/APPS 标签), 仅 Coverflow 内置主题使用,
+    // 在 thmLoad 里覆盖到对应的设备图标槽(BDM_ICON..APP_ICON), 默认列表主题不受影响。
+    CF_DEV_BDM,
+    CF_DEV_USB,
+    CF_DEV_ILK,
+    CF_DEV_M4S,
+    CF_DEV_HDD_BD,
+    CF_DEV_HDD,
+    CF_DEV_ETH,
+    CF_DEV_APP,
 
     TEXTURES_COUNT
 };

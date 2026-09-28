@@ -106,9 +106,17 @@ extern void *apps_case_png;
 // Coverflow(第二套内置主题)专用内置贴图, 对齐 wOPL 的 CF 主题资源
 extern void *settings_bg_png;
 extern void *plank_png;
-extern void *cf_cover_png;
 extern void *cf_case_png;
 extern void *cf_apps_case_png;
+// wOPL 风格设备图标(仅 Coverflow 内置主题使用)
+extern void *cf_usb_png;
+extern void *cf_usb_bd_png;
+extern void *cf_ilk_bd_png;
+extern void *cf_m4s_bd_png;
+extern void *cf_hdd_bd_png;
+extern void *cf_hdd_png;
+extern void *cf_eth_png;
+extern void *cf_app_png;
 
 // Not related to screen size, just to limit at some point
 static int maxSize = 720 * 512 * 4;
@@ -252,9 +260,17 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     // Coverflow(第二套内置主题)专用资源, 对齐 wOPL 的 CF 主题
     {SETTINGS_BG, "settings_bg", &settings_bg_png},
     {PLANK_PICTURE, "plank", &plank_png},
-    {CF_COVER_DEFAULT, "cf_cover", &cf_cover_png},
     {CF_CASE_OVERLAY, "cf_case", &cf_case_png},
     {CF_APPS_CASE_OVERLAY, "cf_apps_case", &cf_apps_case_png},
+    // wOPL 风格设备图标(384x256, 带 BDM/SMB/APA/APPS 标签), 仅 Coverflow 主题
+    {CF_DEV_BDM, "cf_usb", &cf_usb_png},
+    {CF_DEV_USB, "cf_usb_bd", &cf_usb_bd_png},
+    {CF_DEV_ILK, "cf_ilk_bd", &cf_ilk_bd_png},
+    {CF_DEV_M4S, "cf_m4s_bd", &cf_m4s_bd_png},
+    {CF_DEV_HDD_BD, "cf_hdd_bd", &cf_hdd_bd_png},
+    {CF_DEV_HDD, "cf_hdd", &cf_hdd_png},
+    {CF_DEV_ETH, "cf_eth", &cf_eth_png},
+    {CF_DEV_APP, "cf_app", &cf_app_png},
 };
 
 int texLookupInternalTexId(const char *name)

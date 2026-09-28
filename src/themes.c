@@ -1829,6 +1829,31 @@ static void thmLoad(const char *themePath)
     for (i = BDM_ICON; i <= START_ICON; i++)
         thmLoadResource(&newT->textures[i], i, themePath, GS_PSM_CT32, newT->useDefault);
 
+    // 内置 Coverflow 主题(builtinThemeID==1, 无外部主题路径)的设备图标改用 wOPL 风格的
+    // 单设备大图(带 BDM/SMB/APA/APPS 标签), 而不是默认列表主题那套四合一标签条。
+    // 仅覆盖内置 Coverflow 这一套的 textures[] 槽位, 默认列表主题与外部主题都不受影响。
+    // 上面的循环已把默认图标载入这些槽, 这里先 texFree 再载入 cf_ 版本以避免内存泄漏。
+    if (!themePath && builtinThemeID == 1) {
+        static const struct
+        {
+            int slot;
+            int cfTex;
+        } cfDevIcons[] = {
+            {BDM_ICON, CF_DEV_BDM},
+            {USB_ICON, CF_DEV_USB},
+            {ILINK_ICON, CF_DEV_ILK},
+            {MX4SIO_ICON, CF_DEV_M4S},
+            {HDD_BD_ICON, CF_DEV_HDD_BD},
+            {HDD_ICON, CF_DEV_HDD},
+            {ETH_ICON, CF_DEV_ETH},
+            {APP_ICON, CF_DEV_APP}};
+        int k;
+        for (k = 0; k < (int)(sizeof(cfDevIcons) / sizeof(cfDevIcons[0])); k++) {
+            texFree(&newT->textures[cfDevIcons[k].slot]);
+            texLoadInternal(&newT->textures[cfDevIcons[k].slot], cfDevIcons[k].cfTex);
+        }
+    }
+
     // 缺图占位纹理 COVER_DEFAULT：Coverflow / GameImage 等元素在未显式配置 default= 时，
     // 会退回 thmGetTexture(COVER_DEFAULT) 作为缺图占位。但上面的常规加载区间并不覆盖
     // COVER_DEFAULT（它落在 MAIN_BG..VMODE_PAL 之间，而该段仅在内置主题、且从 ELF_FORMAT
