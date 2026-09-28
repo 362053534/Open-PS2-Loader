@@ -143,7 +143,30 @@ static void ioWorkerThread(void *arg)
     // 队列后尚未进入等待”的窗口被丢失。为彻底杜绝，worker 改为主动轮询队列：有请求
     // 就处理，队列空则短暂休眠 2ms 再查。丢唤醒在此结构下不可能发生。2ms 空闲轮询对
     // 后台 art 加载的延迟可忽略，CPU 占用也极低。
+    //
+    // 【本次诊断】上一轮实机日志显示队列非空(ioQueuedART=3)而 worker 空闲(ioActive=-1)长达
+    // 10 秒——这在轮询结构下逻辑上不可能。为判定“究竟跑的是不是轮询固件、worker 循环有没有
+    // 在转”，加一个启动横幅 + 心跳日志：
+    //   - 启动横幅只打印一次，证明本 ELF 确为轮询版；
+    //   - 心跳每 500 次循环打印一次(空闲时约 1 秒一次)，附带累计取件数与当前队列长度。
+    //     若卡死期间心跳照常增长而队列不降 → worker 在转但取不到件(需深挖)；
+    //     若卡死期间心跳停滞 → worker 根本没被调度/是旧固件。
+    LOG("IOMAN: polling worker START (build=poll-diag)\n");
+    unsigned int iterCount = 0;
+    unsigned int poppedCount = 0;
     while (!gIOTerminate) {
+        // 心跳：每 500 次循环打印一次当前状态(队列遍历需在锁内以防与入队竞争)
+        if ((iterCount % 500) == 0) {
+            int pend = 0;
+            WaitSema(gEndSemaId);
+            struct io_request_t *p = gReqList;
+            while (p) { pend++; p = p->next; }
+            SignalSema(gEndSemaId);
+            LOG("IOMAN: worker heartbeat iter=%u popped=%u pending=%d active=%d\n",
+                iterCount, poppedCount, pend, gActiveRequestType);
+        }
+        iterCount++;
+
         // 队列取头节点(整段在队列锁内完成)
         WaitSema(gEndSemaId);
         struct io_request_t *req = gReqList;
@@ -165,6 +188,7 @@ static void ioWorkerThread(void *arg)
             continue;
         }
 
+        poppedCount++;
         ioProcessRequest(req);
 
         WaitSema(gEndSemaId);
