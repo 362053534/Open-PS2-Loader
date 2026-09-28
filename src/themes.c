@@ -1125,24 +1125,31 @@ int thmCoverflowAnimEnabled(void)
     return gCoverflowAnimSpeed > 0;
 }
 
-// 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
-// 该值 = 当前同屏显示的封面数（gCoverflowCount，夹取到 1..COVERFLOW_MAX，
-// 与 drawCoverFlow 实际显示的封面数保持一致；第三方主题把 coverflow_count 设为
-// 10 时即返回 10）。未启用 Coverflow 主题时返回 0，调用方据此回退到列表主题的
-// 原有整页步长（displayedItems）。
-int thmGetCoverflowJumpCount(void)
+// 当前实际同屏显示的封面数：= coverflow_count，且【宽屏时自动 +2】（两侧各多显示一张，
+// 例如默认 7 张 → 宽屏 9 张），最终夹取到 1..COVERFLOW_MAX。绘制 / 翻页跳转 / 缓存槽位
+// 都以此为准，保证三者一致（宽屏多出的封面也有对应缓存槽，边缘不缺图）。
+static int getCoverflowDisplayCount(void)
 {
-    int n;
-
-    if (!gTheme || gTheme->coverflow == NULL)
-        return 0;
-
-    n = gCoverflowCount;
+    int n = gCoverflowCount;
+    if (gWideScreen)
+        n += 2;
     if (n < 1)
         n = 1;
     if (n > COVERFLOW_MAX)
         n = COVERFLOW_MAX;
     return n;
+}
+
+// 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
+// 该值 = 当前同屏显示的封面数（getCoverflowDisplayCount，含宽屏 +2，夹取到 1..COVERFLOW_MAX，
+// 与 drawCoverFlow 实际显示的封面数保持一致）。未启用 Coverflow 主题时返回 0，调用方据此
+// 回退到列表主题的原有整页步长（displayedItems）。
+int thmGetCoverflowJumpCount(void)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+
+    return getCoverflowDisplayCount();
 }
 
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
@@ -1199,11 +1206,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 
-    int coverCount = gCoverflowCount;
-    if (coverCount < 1)
-        coverCount = 1;
-    if (coverCount > COVERFLOW_MAX)
-        coverCount = COVERFLOW_MAX; // 夹取到数组上限，防止 covers[]/drawOrder[] 越界
+    // 同屏封面数：宽屏自动 +2（见 getCoverflowDisplayCount），已夹取到 1..COVERFLOW_MAX，
+    // 不会越界 covers[]/drawOrder[]（数组大小 = COVERFLOW_MAX）。
+    int coverCount = getCoverflowDisplayCount();
     int centerIndex = coverCount / 2;
 
     // ——封面主图为主、case 外壳逆向适配——
@@ -1648,7 +1653,10 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 // 左右预取封面都放得下、预取真正生效。gCoverflowCount / gCoverflowPreload 已在
                 // 上面的主题级解析里按“优先读主题、缺失用默认”确定。预取数不设上限，故槽位数也
                 // 可能很大（主题填过大导致内存不足属用户行为，不额外处理）。
-                int coverflowCacheSlots = gCoverflowCount + 2 * gCoverflowPreload + 1;
+                // 额外 +2：宽屏时同屏封面会自动 +2（getCoverflowDisplayCount）。缓存在主题解析时
+                // 一次性分配、之后不随宽屏开关重建，故【无条件预留】这 2 个槽位，保证运行中打开
+                // 宽屏后多出的两张边缘封面也有缓存槽、不缺图。
+                int coverflowCacheSlots = gCoverflowCount + 2 + 2 * gCoverflowPreload + 1;
                 initCoverflow(themePath, themeConfig, theme, elem, name, coverflowCacheSlots, NULL, NULL);
                 theme->coverflow = elem;
             }
