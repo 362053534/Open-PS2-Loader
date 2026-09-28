@@ -392,6 +392,31 @@ int ioHasPendingRequests(void)
     return isIOPending;
 }
 
+// 【诊断用】返回指定类型仍排在队列(gReqList)里、尚未开始处理的请求数量。
+// 注意：不含“正在处理中”的那一个(见 ioGetActiveRequestType)。
+int ioGetPendingRequestCountByType(int type)
+{
+    int count = 0;
+
+    WaitSema(gEndSemaId);
+    struct io_request_t *req = gReqList;
+    while (req) {
+        if (req->type == type)
+            count++;
+        req = req->next;
+    }
+    SignalSema(gEndSemaId);
+    return count;
+}
+
+// 【诊断用】返回 io worker 线程“当前正在处理”的请求类型；空闲时为 -1。
+// 若该值长时间恒等于某类型(如 IO_CACHE_LOAD_ART)且不变，说明 worker 卡在该请求的
+// 处理函数里(例如 itemGetImage 的 SMB open/read 迟迟不返回)，后续请求全部积压。
+int ioGetActiveRequestType(void)
+{
+    return gActiveRequestType;
+}
+
 #ifdef __EESIO_DEBUG
 static char tbuf[2048];
 #endif

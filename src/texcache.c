@@ -12,6 +12,16 @@ int ForceRefreshPrevTexCache = 0;
 int forceSkipQr = 0;
 int texLoading = 0;
 
+// 【诊断用·卡死排查第二版】跟踪真实 IO 链路(cacheQueueImageRequest/cacheLoadImage1)的在途请求。
+// diagArtInFlight：已成功入队但尚未回收(完成/取消)的 art 请求数，正常应≈texLoading；
+// diagLastQueued*：最近一次成功入队的请求(便于看“最后压进去的是谁”)；
+// diagActive*：io worker 当前正在处理的请求(便于看“卡在谁身上”)，完成后清空。
+static int diagArtInFlight = 0;
+static char diagLastQueuedSuffix[8] = "-";
+static char diagLastQueuedValue[32] = "-";
+static char diagActiveSuffix[8] = "-";
+static char diagActiveValue[32] = "-";
+
 static int PrevCacheID = -2;
 static int PrevCacheID_COV = -2;
 static int PrevCacheID_ICO = -2;
@@ -102,6 +112,9 @@ static void cacheDecreaseLoading(void)
     pthread_mutex_lock(&texLoadingMutex);
     if (texLoading > 0)
         texLoading--;
+    // 【诊断用】in-flight 与 texLoading 同步递减；二者若长期不一致即暴露计数丢失。
+    if (diagArtInFlight > 0)
+        diagArtInFlight--;
     pthread_mutex_unlock(&texLoadingMutex);
 }
 
@@ -163,6 +176,16 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
         texLoading++;
     else
         texLoading = 1;
+    // 【诊断用】记录本次入队，in-flight 与 texLoading 同步递增。
+    diagArtInFlight++;
+    if (cache->suffix) {
+        strncpy(diagLastQueuedSuffix, cache->suffix, sizeof(diagLastQueuedSuffix) - 1);
+        diagLastQueuedSuffix[sizeof(diagLastQueuedSuffix) - 1] = '\0';
+    }
+    if (value) {
+        strncpy(diagLastQueuedValue, value, sizeof(diagLastQueuedValue) - 1);
+        diagLastQueuedValue[sizeof(diagLastQueuedValue) - 1] = '\0';
+    }
     pthread_mutex_unlock(&texLoadingMutex);
 
     // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
@@ -176,20 +199,14 @@ static void cacheLoadImage1(void *data)
     load_image_request_t *ioReq = (load_image_request_t *)data;
     // Safeguards...
     if (!ioReq->cache || !ioReq->cache->content) {
-        pthread_mutex_lock(&texLoadingMutex);
-        if (texLoading > 0)
-            texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+        cacheDecreaseLoading();
         free(ioReq);
         return;
     }
 
     item_list_t *handler = ioReq->list;
     if (!handler) {
-        pthread_mutex_lock(&texLoadingMutex);
-        if (texLoading > 0)
-            texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+        cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         free(ioReq);
         return;
@@ -197,13 +214,22 @@ static void cacheLoadImage1(void *data)
 
     // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
     if (cdFramesCount || forceSkipQr) {
-        pthread_mutex_lock(&texLoadingMutex);
-        if (texLoading > 0)
-            texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+        cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         free(ioReq);
         return;
+    }
+
+    // 【诊断用】记录“正在处理的请求”，用于在卡死时看清 io worker 卡在哪张图上。
+    // 若快照里 ioActive==IO_CACHE_LOAD_ART 且 stuckFrames 持续增长、lastActive 一直不变，
+    // 就锁定是这张图的 itemGetImage(SMB open/read)迟迟不返回，阻塞了整条 io 队列。
+    if (ioReq->cache->suffix) {
+        strncpy(diagActiveSuffix, ioReq->cache->suffix, sizeof(diagActiveSuffix) - 1);
+        diagActiveSuffix[sizeof(diagActiveSuffix) - 1] = '\0';
+    }
+    if (ioReq->value) {
+        strncpy(diagActiveValue, ioReq->value, sizeof(diagActiveValue) - 1);
+        diagActiveValue[sizeof(diagActiveValue) - 1] = '\0';
     }
 
     // 加载图片
@@ -220,10 +246,10 @@ static void cacheLoadImage1(void *data)
         ioReq->cache->content[ioReq->cacheId].lastUsed = guiFrameId;
         ioReq->cache->content[ioReq->cacheId].texFound = 1;
     }
-    pthread_mutex_lock(&texLoadingMutex);
-    if (texLoading > 0)
-        texLoading--;
-    pthread_mutex_unlock(&texLoadingMutex);
+    cacheDecreaseLoading();
+    // 【诊断用】处理完毕，清空 active 标记。
+    strcpy(diagActiveSuffix, "-");
+    strcpy(diagActiveValue, "-");
     ioReq->cache->content[ioReq->cacheId].qr = 0;
     ioReq->qr = 0;
     free(ioReq);
@@ -300,17 +326,35 @@ static void *cacheLoadImage(void *data)
 
 void flushBatchRequests(void)
 {
-    // 【诊断日志·卡死排查】每帧监控 texLoading 与 3 个 worker 的门控标志(req1/2/3.qr)。
-    // 派发闸门是 if(!reqN.qr)：worker 卡在 texLoadAll 的 SMB open/read 里就永远清不掉 reqN.qr=1，
-    // 该类型(BG=1 / COV=2 / ICO=3)从此再也派发不出新图。正常时 texLoading 会很快回落到 0；
-    // 若它长时间停在 >0 且某个 reqN.qr 恒为 1、frames 一直往上涨，就锁定是该 worker 卡死。
+    // 【诊断日志·卡死排查·第二版】
+    // 重要修正：本 build 里 usePthread==0，req1/2/3 那套 pthread worker 是死代码，其 .qr 恒为 0，
+    // 旧诊断打印它们毫无意义。真正的加载链路是【单条 io worker 线程】：
+    //   cacheGetTexture → cacheQueueImageRequest → ioPutRequest(IO_CACHE_LOAD_ART) → cacheLoadImage1
+    // 因此这里改为监控真实链路：
+    //   texLoading      —— art 加载计数(每入队 +1，每完成/取消 -1)，卡住不归 0 即异常；
+    //   inflight        —— 本文件自记的“已入队未回收”计数，正常应≈texLoading；若二者长期不等，
+    //                      说明存在计数丢失(某条 texLoading++ 没有对应的 --)，即真·计数泄漏；
+    //   ioQueuedART     —— 仍在 io 队列里排队、尚未开始处理的 IO_CACHE_LOAD_ART 数；
+    //   ioActive        —— io worker 当前正在处理的请求类型(-1=空闲)；
+    //
+    // 据此可一举分辨两种根因：
+    //   (A) ioActive 长期 == IO_CACHE_LOAD_ART 且 stuckFrames 一直涨、ioQueuedART>0 不下降
+    //       → 单条 io worker 卡在某次 itemGetImage 的 SMB open/read 里，后续封面全部积压
+    //         (完全吻合“停 INFO 正常、返回列表全停、圈越转越久”)。修法应在 I/O 层做超时/取消。
+    //   (B) ioActive==-1(空闲) 且 ioQueuedART==0，但 texLoading>0 迟迟不降
+    //       → 真·计数泄漏：某条请求 texLoading++ 后其 -- 路径被漏掉(请求凭空消失)。
+    //         若同时 inflight==0 而 texLoading>0，则泄漏发生在“加减不配对”而非“请求丢失”。
     // 为避免刷屏，仅在 texLoading 持续 >0 时每 120 帧(约 2s)打印一次快照，回落到 0 即复位计数。
     {
         static int diagStallFrames = 0;
         if (texLoading > 0) {
-            if ((diagStallFrames++ % 120) == 0)
-                LOG("texcache DIAG: texLoading=%d req1(BG).qr=%d req2(COV).qr=%d req3(ICO).qr=%d frames=%d\n",
-                    texLoading, req1.qr, req2.qr, req3.qr, diagStallFrames);
+            if ((diagStallFrames++ % 120) == 0) {
+                int ioQueuedART = ioGetPendingRequestCountByType(IO_CACHE_LOAD_ART);
+                int ioActive = ioGetActiveRequestType();
+                LOG("texcache DIAG: texLoading=%d inflight=%d ioQueuedART=%d ioActive=%d stuckFrames=%d lastQueued=%s/%s lastActive=%s/%s\n",
+                    texLoading, diagArtInFlight, ioQueuedART, ioActive, diagStallFrames,
+                    diagLastQueuedSuffix, diagLastQueuedValue, diagActiveSuffix, diagActiveValue);
+            }
         } else {
             diagStallFrames = 0;
         }

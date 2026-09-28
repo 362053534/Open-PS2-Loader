@@ -43,6 +43,12 @@ int ioRemoveRequestsWithCleanup(int type, io_request_cleanup_t cleanup);
 /** returns the count of pending requests */
 int ioGetPendingRequestCount(void);
 
+/** 【诊断用】返回指定类型仍在队列中排队(未开始处理)的请求数 */
+int ioGetPendingRequestCountByType(int type);
+
+/** 【诊断用】返回 io worker 线程当前正在处理的请求类型，空闲为 -1 */
+int ioGetActiveRequestType(void);
+
 /** returns nonzero if there are any pending io requests */
 int ioHasPendingRequests(void);
 
