@@ -1212,9 +1212,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int centerIndex = coverCount / 2;
 
     int coverHeight = elem->height;
-    int coverWidth = gWideScreen ? rmWideScale(elem->width) : elem->width;
+    int coverWidth = elem->width;
 
-    // 限制封面尺寸，使其能全部横向排入屏幕。
+    // 先在 4:3 逻辑空间按【原始宽高比】限制封面尺寸，使其横向排得下。
+    // 关键：这里用未经宽屏压缩的宽度来算高度，否则宽屏时会把高度按被压窄的宽度反推、
+    // 导致封面纵向被拉长、整体放大变模糊（本次修复的问题）。
     int coverYOffset = 0;
     int maxCoverWidth = (screenWidth - (coverCount - 1) * 10) / coverCount;
     if (coverWidth > maxCoverWidth) {
@@ -1229,8 +1231,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int coverSpacing = totalRemainingSpace / (coverCount + 1);
     if (coverSpacing < 0)
         coverSpacing = 0;
-    if (gWideScreen)
+
+    // 宽屏(16:9)：只把【横向尺寸】（封面宽度 + 间距）按宽屏因子压窄，高度保持不变。
+    // 这样在 16:9 电视把 4:3 画面横向拉伸回来后，封面比例与大小都正确，而不会像
+    // 之前那样纵向放大、上采样变模糊。4:3 下 rmWideScale 为恒等，行为不变。
+    if (gWideScreen) {
+        coverWidth = rmWideScale(coverWidth);
         coverSpacing = rmWideScale(coverSpacing);
+    }
 
     int coverDistance = coverWidth + coverSpacing;
     int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
