@@ -438,8 +438,14 @@ static void itemExecCircle(struct menu_item *curMenu)
 
 static void itemExecSquare(struct menu_item *curMenu)
 {
-    if (curMenu->current && gTheme->infoElems.first)
+    if (curMenu->current && gTheme->infoElems.first) {
+        // 进入详情页是一次上下文切换(等同切换设备页签)：重置“上一张已显示图”的占位状态，
+        // 保证进入详情页的一瞬间不残留上一个游戏的 art(BG 尚未加载完时改显默认底图，
+        // 而非列表里上一个高亮游戏的背景)。只重置全局占位指针 PrevCacheID_*，不动各 item
+        // 自身缓存，故本游戏若已缓存仍会秒显。
+        ForceRefreshPrevTexCache = 1;
         guiSwitchScreen(GUI_SCREEN_INFO);
+    }
 }
 
 static void itemExecTriangle(struct menu_item *curMenu)
