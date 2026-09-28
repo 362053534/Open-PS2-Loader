@@ -1220,8 +1220,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         coverSpacing = 0;
 
     // 保留夹取后、宽屏压缩前的【4:3 逻辑宽度】。中心放大动画在宽屏下要对
-    // “逻辑宽度 + 放大增量”整体做一次 rmWideScale（而非对逐帧的小增量单独压缩），
-    // 以减轻宽高不同步造成的形变蠕动感（见下方 currentCoverWidth 处注释）。
+    // “逻辑宽度 + 放大增量”整体做一次浮点宽屏压缩 rmWideScaleF（而非对逐帧的小增量
+    // 单独压缩），以消除宽高不同步造成的形变蠕动感（见下方 currentCoverWidth 处注释）。
     int coverWidthLogical = coverWidth;
 
     // 宽屏(16:9)：只把【横向尺寸】（封面宽度 + 间距）按宽屏因子压窄，高度保持不变。
