@@ -1055,14 +1055,22 @@ static clock_t animationStartTime = 0;
 // 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
 #define COVERFLOW_MAX 15            // 同屏封面数的硬上限（covers[]/drawOrder[] 数组大小，防越界）
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值
-#define COVERFLOW_DEFAULT_SCALE 30  // 中间封面额外放大的像素数默认值
+// 封面主图基准尺寸：PS2 封面标准分辨率 140×200（cfg 可用 coverflow_cover_width/height 覆盖）。
+// 中心/非中心封面各自 = 基准 ± 各自的 scale（等比，加到高度、宽按 140:200 跟随）。
+#define COVERFLOW_COVER_W 140
+#define COVERFLOW_COVER_H 200
+#define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -40 // 非中心封面相对 140×200 的增减（默认缩小）
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
 #define COVERFLOW_NONCENTER_YOFFSET 22 // 非中心封面相对中心封面额外下移的像素数
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
-static int gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE; // 中间封面额外放大的【像素】数
+static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 封面主图基准宽（cfg 可覆盖）
+static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 封面主图基准高（cfg 可覆盖）
+static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
+static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
@@ -1198,20 +1206,29 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         coverCount = COVERFLOW_MAX; // 夹取到数组上限，防止 covers[]/drawOrder[] 越界
     int centerIndex = coverCount / 2;
 
-    int coverHeight = elem->height;
-    int coverWidth = elem->width;
-
-    // 先在 4:3 逻辑空间按【原始宽高比】限制封面尺寸，使其横向排得下。
-    // 关键：这里用未经宽屏压缩的宽度来算高度，否则宽屏时会把高度按被压窄的宽度反推、
-    // 导致封面纵向被拉长、整体放大变模糊（本次修复的问题）。
-    int coverYOffset = 0;
-    int maxCoverWidth = (screenWidth - (coverCount - 1) * 10) / coverCount;
-    if (coverWidth > maxCoverWidth) {
-        int origHeight = coverHeight;
-        coverHeight = (coverHeight * maxCoverWidth) / coverWidth;
-        coverWidth = maxCoverWidth;
-        coverYOffset = (origHeight - coverHeight) / 2;
+    // ——封面主图为主、case 外壳逆向适配——
+    // 封面主图基准尺寸 = 140×200（COVERFLOW_COVER_W/H，cfg 可覆盖）。中心/非中心封面各自
+    // = 基准 ± 各自 scale（等比），中心 scale=0 时即原生点对点、无缩放失真。
+    // case 外壳不再是主导尺寸，而是按 overlay 顶点给出的【内框占比】反推，使其内框正好
+    // 套住原生封面（case 被拉伸的轻微失真无所谓）。fracW/fracH = 内框在元素坐标系里的占比。
+    float fracW = 1.0f, fracH = 1.0f;
+    if (img->overlayTexture && elem->width > 0 && elem->height > 0) {
+        image_texture_t *ov = img->overlayTexture;
+        int iw = ov->upperRight_x - ov->upperLeft_x; // 内框宽（元素坐标）
+        int ih = ov->lowerLeft_y - ov->upperLeft_y;  // 内框高（元素坐标）
+        if (iw > 0)
+            fracW = (float)iw / (float)elem->width;
+        if (ih > 0)
+            fracH = (float)ih / (float)elem->height;
     }
+
+    // 非中心封面（静止态）尺寸 → 反推非中心 case 尺寸，供布局排布使用。
+    float nonInlayH = (float)gCoverflowCoverH + (float)gCoverflowNonCenterScale;
+    if (nonInlayH < 1.0f)
+        nonInlayH = 1.0f;
+    float nonInlayW = (float)gCoverflowCoverW * nonInlayH / (float)gCoverflowCoverH;
+    int coverWidth = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽，供布局排布）
+    int coverYOffset = 0;                             // 保留以兼容下方绘制调用的 Y 组合（当前恒 0）
 
     int totalCoversWidth = coverCount * coverWidth;
     int totalRemainingSpace = screenWidth - totalCoversWidth;
@@ -1219,14 +1236,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (coverSpacing < 0)
         coverSpacing = 0;
 
-    // 保留夹取后、宽屏压缩前的【4:3 逻辑宽度】。中心放大动画在宽屏下要对
-    // “逻辑宽度 + 放大增量”整体做一次浮点宽屏压缩 rmWideScaleF（而非对逐帧的小增量
-    // 单独压缩），以消除宽高不同步造成的形变蠕动感（见下方 currentCoverWidth 处注释）。
-    int coverWidthLogical = coverWidth;
-
     // 宽屏(16:9)：只把【横向尺寸】（封面宽度 + 间距）按宽屏因子压窄，高度保持不变。
-    // 这样在 16:9 电视把 4:3 画面横向拉伸回来后，封面比例与大小都正确，而不会像
-    // 之前那样纵向放大、上采样变模糊。4:3 下 rmWideScale 为恒等，行为不变。
+    // 这样在 16:9 电视把 4:3 画面横向拉伸回来后，封面比例与大小都正确。4:3 下恒等。
     if (gWideScreen) {
         coverWidth = rmWideScale(coverWidth);
         coverSpacing = rmWideScale(coverSpacing);
@@ -1319,7 +1330,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     }
 
     int posX = basePosX + (int)animOffset;
-    int scaling = gCoverflowCenterScale;
     int leavingIndex = (animationDirection > 0) ? (centerIndex + 1) : (centerIndex - 1);
 
     // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
@@ -1375,9 +1385,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             continue;
 
         int renderPosX = covers[i].renderPosX;
-        // 浮点旁路：宽/高用 float 全程连续，交给 coverflowDrawTexture→rmSetupQuadF 绘制。
-        float currentCoverWidth = (float)coverWidth;
-        float currentCoverHeight = (float)coverHeight;
 
         // 统一的"居中程度"因子（与滑动动画同步）：1 = 完全处于中心，0 = 完全非中心。
         //   中心封面：动画中随 eased 由 0→1，定格为 1；
@@ -1392,21 +1399,23 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         else
             centerFactor = 0.0f;
 
-        // 插值缩放：进入中心的封面逐渐放大，离开中心的封面逐渐缩小。
-        // 外壳顶点在 coverflowDrawTexture 里会随 w/h 等比缩放，这里不再需要额外偏移。
-        // 浮点旁路：currentScaling 用 float、不取整，宽度用 rmWideScaleF（不做 >>2 整数
-        // 截断），使横向增量随动画连续变化、与纵向增量严格同步 → 放大过程中宽高比恒定、
-        // 不再有整数截断导致的形变蠕动（宽屏与 4:3 都平滑；rmSetupQuadF 全程浮点收尾）。
-        float currentScaling = scaling * centerFactor;
-        if (currentScaling > 0.0f) {
-            currentCoverHeight = (float)coverHeight + currentScaling;
-            // 宽屏：对【4:3 逻辑宽度 + 放大增量】整体做一次浮点宽屏压缩；4:3 下 rmWideScaleF
-            // 为恒等，直接加 currentScaling，与纵向增量完全同步。
-            if (gWideScreen)
-                currentCoverWidth = rmWideScaleF((float)coverWidthLogical + currentScaling);
-            else
-                currentCoverWidth = (float)coverWidth + currentScaling;
-        }
+        // 本封面的等比 scale：非中心 ↔ 中心 随 centerFactor 插值（浮点连续，供动画平滑过渡）。
+        //   centerFactor=1 → 中心 scale；=0 → 非中心 scale；动画中间平滑取值。
+        float coverScale = (float)gCoverflowNonCenterScale +
+                           (float)(gCoverflowCenterScale - gCoverflowNonCenterScale) * centerFactor;
+        // 封面主图目标尺寸 = 基准 140×200 + coverScale（等比：加到高度、宽按 140:200 跟随），
+        // 中心 scale=0 时即原生 140×200、点对点无失真。
+        float inlayH = (float)gCoverflowCoverH + coverScale;
+        if (inlayH < 1.0f)
+            inlayH = 1.0f;
+        float inlayW = (float)gCoverflowCoverW * inlayH / (float)gCoverflowCoverH;
+        // 反推 case 尺寸：内框占比 fracW/fracH → case = inlay ÷ 占比，使内框正好套住封面。
+        // 浮点旁路：宽/高全程 float 连续（交给 coverflowDrawTexture→rmSetupQuadF），放大动画
+        // 无整数截断蠕动。宽屏只对 case 宽做浮点横向压缩（高度不压，比例正确）。
+        float currentCoverHeight = inlayH / fracH;
+        float currentCoverWidth = inlayW / fracW;
+        if (gWideScreen)
+            currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
         // 非中心封面整体下移 COVERFLOW_NONCENTER_YOFFSET 像素，中心封面不动；
         // 偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
@@ -1897,17 +1906,26 @@ static void thmLoad(const char *themePath)
     // 主题时残留上一个主题的设置。本函数在元素定义解析（initCoverflow）之前运行，因此这里
     // 读到的 count/preload 在分配封面缓存时即可用。
     //   coverflow_count            —— 同屏封面数（夹取到 1..COVERFLOW_MAX）
-    //   coverflow_center_scale     —— 中间封面额外放大的像素数
+    //   coverflow_cover_width       —— 封面主图基准宽（默认 140，PS2 标准封面）
+    //   coverflow_cover_height      —— 封面主图基准高（默认 200）
+    //   coverflow_center_scale     —— 中心封面相对基准的等比增减像素（0=原生点对点、无失真）
+    //   coverflow_noncenter_scale  —— 非中心封面相对基准的等比增减像素（负值=缩小）
     //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
     //   coverflow_dim_covers       —— 非中心封面是否变暗（0/1）
     //   coverflow_preload          —— 每侧屏幕外预取封面数（如填 3 = 左右各 3、共 6；无上限）
     gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
-    gCoverflowCenterScale = COVERFLOW_DEFAULT_SCALE;
+    gCoverflowCoverW = COVERFLOW_COVER_W;
+    gCoverflowCoverH = COVERFLOW_COVER_H;
+    gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
+    gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
     configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
+    configGetInt(themeConfig, "coverflow_cover_width", &gCoverflowCoverW);
+    configGetInt(themeConfig, "coverflow_cover_height", &gCoverflowCoverH);
     configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
+    configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
@@ -1919,6 +1937,11 @@ static void thmLoad(const char *themePath)
         gCoverflowCount = COVERFLOW_MAX;
     if (gCoverflowPreload < 0)
         gCoverflowPreload = 0;
+    // 封面基准尺寸挡非法值（drawCoverFlow 会用 CoverH 作除数、用 CoverW/H 算比例）。
+    if (gCoverflowCoverW < 1)
+        gCoverflowCoverW = COVERFLOW_COVER_W;
+    if (gCoverflowCoverH < 1)
+        gCoverflowCoverH = COVERFLOW_COVER_H;
 
     // before loading the element definitions, we have to have the fonts prepared
     // for that, we load the fonts and a translation table
