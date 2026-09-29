@@ -1069,6 +1069,10 @@ static clock_t animationStartTime = 0;
 // 用更大的两侧封面占满拉宽后的屏幕（默认 -30 → 非中心宽 110，介于 4:3 的 70 与中心 140 之间）。
 // cfg 可用 coverflow_widescreen_noncenter_scale 覆盖。4:3 下不使用此值（仍用 noncenter_scale）。
 #define COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE -30
+// 相邻封面【中心距】相对封面宽度的额外百分比：coverDistance = coverWidth × (1 + 此值/100)。
+// 即封面之间的间隙 = 封面宽的“此百分比”。封面越大、间距越大（尺寸兼具控制间隔的功能）。
+// 默认 50（间隙=封面宽一半），与旧“填满屏幕”模型在默认 4:3 下的观感一致。cfg 可覆盖。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 50
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1082,6 +1086,7 @@ static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
 static int gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE; // 宽屏专用非中心增减（放大填屏）
+static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
@@ -1260,20 +1265,20 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int coverWidth = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽，供布局排布）
     int coverYOffset = 0;                             // 保留以兼容下方绘制调用的 Y 组合（当前恒 0）
 
-    int totalCoversWidth = coverCount * coverWidth;
-    int totalRemainingSpace = screenWidth - totalCoversWidth;
-    int coverSpacing = totalRemainingSpace / (coverCount + 1);
-    if (coverSpacing < 0)
-        coverSpacing = 0;
-
-    // 宽屏(16:9)：只把【横向尺寸】（封面宽度 + 间距）按宽屏因子压窄，高度保持不变。
-    // 这样在 16:9 电视把 4:3 画面横向拉伸回来后，封面比例与大小都正确。4:3 下恒等。
-    if (gWideScreen) {
+    // 宽屏(16:9)：把封面宽按宽屏因子横向压缩，使 16:9 电视把 4:3 画面横向拉伸回来后比例正确。
+    // 4:3 下 rmWideScale 恒等。压缩要在算中心距之前，这样中心距也随之压缩、保持横向观感一致。
+    if (gWideScreen)
         coverWidth = rmWideScale(coverWidth);
-        coverSpacing = rmWideScale(coverSpacing);
-    }
 
-    int coverDistance = coverWidth + coverSpacing;
+    // 相邻封面【中心距】由封面宽度驱动（非“填满屏幕”反推）：coverDistance = coverWidth × (1+间距%)。
+    // 封面越大，彼此推得越开——非中心封面大小因此兼具控制间隔的功能。间距% 由 cfg 可调，默认 50
+    // （间隙=封面宽一半），复现旧填满模型在默认 4:3 下的观感。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
+    int spacingPct = gCoverflowSpacingPercent;
+    if (spacingPct < 0)
+        spacingPct = 0;
+    int coverDistance = coverWidth + (coverWidth * spacingPct) / 100;
+    if (coverDistance < 1)
+        coverDistance = 1;
     int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
     int basePosX = (screenWidth - totalGroupWidth) / 2 + (coverWidth >> 1) + (coverWidth * gTheme->coverflowCoverOffset / 256);
 
@@ -1968,6 +1973,7 @@ static void thmLoad(const char *themePath)
     gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
     gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
     gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE;
+    gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
@@ -1979,6 +1985,7 @@ static void thmLoad(const char *themePath)
     configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
     configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
     configGetInt(themeConfig, "coverflow_widescreen_noncenter_scale", &gCoverflowWideNonCenterScale);
+    configGetInt(themeConfig, "coverflow_cover_spacing_percent", &gCoverflowSpacingPercent);
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
