@@ -116,28 +116,8 @@ extern void *cf_hdd_png;
 extern void *cf_eth_png;
 extern void *cf_app_png;
 
-// Not related to screen size, just to limit at some point.
-// 注意：这只是一个"够大就行"的软上限，本身【不等于】GS 显存池的真实大小。
-// gsKit 的显存池 = 4MiB − 帧缓冲/Z缓冲占用(gsGlobal->CurrentPointer)，会随分辨率
-// 增大而急剧缩水（PAL/576P/720P/1080i 下都小于此常量）。若某张纹理大于真实池，
-// gsKit 的 _blockAlloc 因没有失败退出分支会死循环 → 主机硬死机（见 OPL issue #1776）。
-// 因此在视频模式确定后，用 texCheckBudget() 把 maxSize 夹到真实池以内，让放不下的
-// 纹理走下面 texSizeValidate() 已有的拒绝路径(显示占位图)，而不是把主机挂死。
-#define TEX_MAXSIZE_DEFAULT (720 * 512 * 4)
-static int maxSize = TEX_MAXSIZE_DEFAULT;
-
-// 视频模式/帧缓冲确定后调用，poolBytes = __VRAM_SIZE − gsGlobal->CurrentPointer。
-// 把单张纹理上限夹到"真实池 − 一个 16x16 CT32 CLUT(最坏情况会和纹理一起占一个块)"以内。
-// 每次都从默认上限重新夹取(而非在上次结果上继续收紧)，这样从小池模式(如720p)切回
-// 大池模式(如NTSC)时，maxSize 能正确回到该模式应有的较大值，而不会被永久钉在低位。
-void texCheckBudget(unsigned int poolBytes)
-{
-    unsigned int clut = gsKit_texture_size(16, 16, GS_PSM_CT32);
-    if (poolBytes <= clut)
-        return; // 池子异常小，保持默认上限，避免把 maxSize 夹成 0/负数
-    unsigned int budget = poolBytes - clut;
-    maxSize = (budget < (unsigned int)TEX_MAXSIZE_DEFAULT) ? (int)budget : TEX_MAXSIZE_DEFAULT;
-}
+// Not related to screen size, just to limit at some point
+static int maxSize = 720 * 512 * 4;
 
 // 尝试添加open文件时的临界区
 static s32 fileLockId;
