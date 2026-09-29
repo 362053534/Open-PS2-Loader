@@ -1438,6 +1438,13 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 绘制完封面立即恢复默认裁剪框，避免影响后续/其它绘制。
     rmSetScissorDisplay();
 
+    // 物理显示分辨率（native）：OPL 所有元素都在 640×480【虚拟】坐标里排版，PS2 再把它缩放到
+    // 实际视频模式的扫描线数（NTSC 640×448 / PAL 640×512 / 仅 480p·VGA 才是 640×480）。因此一个
+    // 排版高 200 的封面，在 NTSC 上实际只有 200×448/480 ≈ 187 物理行——这不是换算 bug（case÷frac
+    // 再×frac 精确抵消），而是虚拟→物理这一步固有的缩放。据此为每张封面选过滤方式（见循环内）。
+    int nativeW = 640, nativeH = 480;
+    rmGetScreenExtentsNative(&nativeW, &nativeH);
+
     int oi;
     for (oi = 0; oi < drawCount; oi++) {
         i = drawOrder[oi];
@@ -1503,10 +1510,21 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
         }
 
-        // 封面主图统一用 NEAREST（最近邻）过滤：Coverflow 封面多为点对点/整数比缩放，
-        // 最近邻比双线性更锐利、无边缘插值糊边。仅作用于 coverflow 封面主图，不动 case/倒影。
-        if (covers[i].texture)
-            covers[i].texture->Filter = GS_FILTER_NEAREST;
+        // 封面主图过滤方式【按实际缩放比自适应】——这是"点对点却仍丢横线"的真正修法：
+        //   · 本封面在【物理屏幕】上的目标像素尺寸 = 虚拟尺寸 × native/虚拟(640×480)（宽再含宽屏压缩）。
+        //   · 若目标 ≥ 纹理原生尺寸（放大或 1:1）→ NEAREST：点对点锐利，放大只会复制像素、绝不丢行。
+        //   · 若目标 < 纹理原生尺寸（缩小，如 NTSC 下 200→187）→ LINEAR：平滑缩小，避免最近邻把
+        //     某几行整行丢弃（那正是"有时明显少一条横线"的来源）。只在【必须缩小】时才略微变软。
+        // 仅作用于 coverflow 封面主图，不动 case 外壳/倒影。
+        if (covers[i].texture) {
+            float physInlayH = inlayH * (float)nativeH / 480.0f;
+            float physInlayW = inlayW * (float)nativeW / 640.0f;
+            if (gWideScreen)
+                physInlayW = rmWideScaleF(physInlayW);
+            int minifying = ((float)covers[i].texture->Height > physInlayH + 0.5f) ||
+                            ((float)covers[i].texture->Width > physInlayW + 0.5f);
+            covers[i].texture->Filter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+        }
 
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
