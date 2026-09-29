@@ -1566,13 +1566,13 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
         }
 
-        // 封面主图过滤方式【按物理绘制尺寸 vs 封面源图真实分辨率自适应】——防丢线且尽量锐利：
-        //   · 绘制尺寸【小于】源图（缩小/downscale）→ LINEAR：平滑缩小，避免最近邻把整行/整列
-        //     纹素直接丢弃（就是"丢线/丢像素"的来源，源图越大于显示越严重）。
-        //   · 绘制尺寸【≥】源图（1:1 或放大）→ NEAREST：点对点锐利，放大只复制像素、绝不丢行。
-        //   基准必须是【源图真实像素分辨率】(covers[i].texture->Width/Height)，不是硬编码 140×200——
-        //   否则 art 文件大于 140×200 时会误判为“没缩小”而选 NEAREST、把大图点采样丢线（见下）。
-        //   比较用【物理绘制尺寸】：4:3/宽屏封面横向压缩已并入 physInlayW，宽度物理更小→自动 LINEAR。
+        // 封面主图过滤方式【按封面大小 vs 原生基准分辨率自适应】——防丢线且尽量锐利：
+        //   基准原生分辨率 = 游戏 140×200 / APPS 140×140（即 baseCoverW×baseCoverH）。
+        //   · 封面【小于】原生（缩小，如非中心 104<140，或几何模式下 NTSC 200→187）→ LINEAR：
+        //     平滑缩小，避免最近邻把整行/整列丢弃（就是"丢线"的来源）。
+        //   · 封面【≥】原生（1:1 或放大）→ NEAREST：点对点锐利，放大只复制像素、绝不丢行。
+        //   比较用【物理绘制尺寸】vs 基准分辨率：4:3 下即 inlay vs 140×200；宽屏封面被横向压缩，
+        //   宽度物理上确实 < 原生 → 自动走 LINEAR，防竖线丢失。
         //   case 外壳与封面【一起同步】用同一过滤方式：封面走 NEAREST 时外壳也 NEAREST，避免锐利封面
         //   套在被线性糊过的外壳里、观感割裂（外壳与封面一同缩放，故用同一判定）。仅动封面主图+case。
 #if COVERFLOW_NATIVE_PIXEL_COVERS
@@ -1587,16 +1587,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             physInlayW = rmWideScaleF(physInlayW);
 #endif
-        // 【是否在缩小】必须按封面【源图的真实像素分辨率】判定，不能拿硬编码的 140×200 当基准。
-        // 源图由 texLoad/texJpgLoad 按文件原始尺寸解码、从不缩放：若 art 文件大于 140×200
-        // （HD art 包常见，如 256×364/512×730），旧代码用 140×200 比目标尺寸会误判“没缩小”而选
-        // NEAREST，把大图【点采样】降到 ~140px，整行整列纹素被直接丢弃 = 丢线/丢像素（纯封面亦然）。
-        // 正确判定：目标绘制尺寸 < 源图尺寸 → 缩小(downscale) → LINEAR 防丢线；≥源图（1:1 或放大）
-        //          → NEAREST 点对点锐利。任一维在缩小即走 LINEAR（OR），保守防丢。
-        // 缺图回退到占位贴图时，texture->Width/Height 即占位图尺寸，同样成立。
-        float srcW = (covers[i].texture && covers[i].texture->Width > 0) ? (float)covers[i].texture->Width : (float)baseCoverW;
-        float srcH = (covers[i].texture && covers[i].texture->Height > 0) ? (float)covers[i].texture->Height : (float)baseCoverH;
-        int minifying = (srcH > physInlayH + 0.5f) || (srcW > physInlayW + 0.5f);
+        int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
+                        ((float)baseCoverW > physInlayW + 0.5f);
         short coverFilter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
         if (covers[i].texture)
             covers[i].texture->Filter = coverFilter;         // 封面主图
