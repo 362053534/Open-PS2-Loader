@@ -1064,7 +1064,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -28 // 非中心封面尺寸【唯一旋钮】：相对 140 基准的像素增减（-28=非中心宽112；0=与中心140等大；正值更大）
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -26 // 非中心封面尺寸【唯一旋钮】：相对 140 基准的像素增减（-26=非中心宽114；0=与中心140等大；正值更大）
 // 宽屏(16:9)专用的【封面间距】百分比。宽屏【不再改变非中心封面的大小】（尺寸与 4:3 完全一致），
 // 改为在宽屏下把封面间距拉大、把封面铺开到拉宽后的屏幕。默认 100（间隙=非中心封面基准宽），
 // 4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
@@ -1077,6 +1077,9 @@ static clock_t animationStartTime = 0;
 // 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 45 = 整个封面模块（PS2 与 APPS）下移 45px。
 #define COVERFLOW_BASELINE_YOFFSET 45
+// APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
+// 正值下移、负值上移。当前 -20 = APPS 封面模块在基线之上再上移 20px。
+#define COVERFLOW_APPS_YOFFSET -20
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1231,7 +1234,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // case 外壳按 overlay 内框占比逆向适配该基准。
     int baseCoverW = gCoverflowCoverW;
     int baseCoverH = gCoverflowCoverH;
-    if (sourceList && sourceList->mode == APP_MODE) {
+    int isApps = (sourceList && sourceList->mode == APP_MODE);
+    if (isApps) {
         baseCoverW = gCoverflowAppsCoverW;
         baseCoverH = gCoverflowAppsCoverH;
     }
@@ -1271,6 +1275,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 非中心 case 绘制宽 = 基准宽（非中心大小由【唯一旋钮 noncenter_scale】决定；不再有单独的放大倍率）。
     int coverWidth = coverWidthBase;                      // 供布局/中心距/居中
     int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
+    if (isApps)
+        coverYOffset += COVERFLOW_APPS_YOFFSET;           // APPS 页签在基线之上再叠加专用偏移（当前 -20=上移20px）
 
     // 间隙（间距）——【独立参数】：间隙 = 非中心基准宽 × 间距%（与放大无关）。宽屏用专用的更大
     // 间距% 把封面拉开、铺满拉宽后的屏幕（宽屏不改封面大小）；4:3 用常规间距%。
