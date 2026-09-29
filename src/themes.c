@@ -621,12 +621,6 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
-    // 【诊断-隔离】暂时不画背景元素（当前所选游戏的背景美术图）。用于验证封面四周的“黄色
-    // 光晕”其实是这张随游戏变化的背景美术(settings_bg / BG art)，而非封面绘制产生的外溢。
-    // 若跳过后光晕消失 → 元凶就是背景美术图。诊断结束后会还原。
-    if (elem->type == ELEM_TYPE_BACKGROUND)
-        return;
-
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
     if (item) {
         GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);

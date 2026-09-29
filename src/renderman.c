@@ -597,18 +597,21 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     const float EDGE_FILL = 0.5f;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
-    // 【诊断-隔离】只画“裸封面”：封面主图(inlay)用 sprite 绘制，且【暂时跳过 case 外壳】，
-    // ReflectFrac 里也会跳过倒影。目的：确认黄色外溢光晕到底来自封面纹理这一次绘制本身，
-    // 还是来自 case/倒影。若裸封面仍有光晕 → 是缩放/浮点定位/纹理采样在模拟器里的边缘外溢；
-    // 若光晕消失 → 元凶在 case 或倒影。仅本 Coverflow Frac 路径。诊断结束后会还原。
-    gsKit_prim_sprite_texture(gsGlobal, inlay,
-                              quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
-                              0.0f, 0.0f,
-                              quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
-                              inlay->Width, inlay->Height, order, color);
+    gsKit_prim_quad_texture(gsGlobal, inlay,
+                            quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
+                            0.0f, 0.0f,
+                            quad.ul.x + urx + EDGE_FILL + fRenderXOff, quad.ul.y + ury + fRenderYOff,
+                            inlay->Width, 0.0f,
+                            quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + EDGE_FILL + fRenderYOff,
+                            0.0f, inlay->Height,
+                            quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
+                            inlay->Width, inlay->Height, order, color);
     order++;
 
-    // 【诊断-隔离】暂时跳过 case 外壳绘制（原为 rmDrawQuad(&quad)）。
+    // case 外壳同样把右边、底边各扩 0.5px，与 inlay 一致补齐最右列/最底行。
+    quad.br.x += EDGE_FILL;
+    quad.br.y += EDGE_FILL;
+    rmDrawQuad(&quad);
 }
 
 // rmDrawOverlayPixmapFrac 的倒影版：主图走上面的 Frac 路径，另在下方逐行绘制渐隐倒影。
@@ -619,9 +622,6 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
 {
     rmDrawOverlayPixmapFrac(overlay, x, y, aligned, w, h, scaled, color, inlay, baseW, baseH,
                             ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry);
-
-    // 【诊断-隔离】暂时跳过倒影绘制，只留裸封面，便于判断光晕来源。诊断结束后会还原。
-    return;
 
     rm_quad_t quad;
     rmSetupQuadF(overlay, x, y, aligned, w, h, scaled, color, &quad);
