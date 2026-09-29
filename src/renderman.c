@@ -626,11 +626,27 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     float rBrX = RM_PXROUND(quad.br.x + fRenderXOff);
     float rBrY = RM_PXROUND(quad.br.y + fRenderYOff);
 
-    // inlay 四角：以取整后的 case 左上为锚点，各角坐标同样取整（保留 overlay 顶点带来的可能斜切）。
-    float iUlX = RM_PXROUND(quad.ul.x + ulx + fRenderXOff), iUlY = RM_PXROUND(quad.ul.y + uly + fRenderYOff);
-    float iUrX = RM_PXROUND(quad.ul.x + urx + fRenderXOff), iUrY = RM_PXROUND(quad.ul.y + ury + fRenderYOff);
-    float iBlX = RM_PXROUND(quad.ul.x + blx + fRenderXOff), iBlY = RM_PXROUND(quad.ul.y + bly + fRenderYOff);
-    float iBrX = RM_PXROUND(quad.ul.x + brx + fRenderXOff), iBrY = RM_PXROUND(quad.ul.y + bry + fRenderYOff);
+    // ── inlay 整数化：锁定【整数尺寸】，而非把四角各自独立取整（防中心封面丢边）──
+    // inlay 的浮点宽/高(=case 尺寸×内框占比)一般不是整数。旧版把上下(或左右)两角【各自独立】
+    // 四舍五入，得到的像素行数 = round(下边)-round(上边)，会随 case 在屏幕上的亚像素位置
+    // （即主题里封面的坐标）在 199/200/201 之间跳。当 inlay 尺寸≈纹理尺寸（中心封面 1:1）时，
+    // 200 纹素被映到 199/201 像素 → GS 采样丢/复制一条边，且丢哪条边随坐标而变（内置主题丢底边、
+    // 第三方主题因坐标不同丢顶边或右边）——正是所报“中心封面也丢边、丢哪条随主题坐标”的现象。
+    // 修法：左上角取整定位；宽、高各自取整成【整数像素尺寸】；远角 = 近角 + 整数尺寸。于是 1:1 时
+    // 宽高精确等于纹理尺寸、纹素与像素一一对应，任何位置都不丢边；缩放时尺寸仍随 inlay 真实浮点
+    // 尺寸连续取整、位置随 case，二者保持锁定不蠕动。（overlay 顶点为矩形，取两角均值即其边。）
+    float inLeftF   = quad.ul.x + (ulx + blx) * 0.5f + fRenderXOff; // 内框左边
+    float inRightF  = quad.ul.x + (urx + brx) * 0.5f + fRenderXOff; // 内框右边
+    float inTopF    = quad.ul.y + (uly + ury) * 0.5f + fRenderYOff; // 内框上边
+    float inBottomF = quad.ul.y + (bly + bry) * 0.5f + fRenderYOff; // 内框下边
+    float iLeft = RM_PXROUND(inLeftF);
+    float iTop  = RM_PXROUND(inTopF);
+    float iW    = RM_PXROUND(inRightF - inLeftF);  // 内框宽 → 整数像素
+    float iH    = RM_PXROUND(inBottomF - inTopF);  // 内框高 → 整数像素
+    float iUlX = iLeft,      iUlY = iTop;
+    float iUrX = iLeft + iW, iUrY = iTop;
+    float iBlX = iLeft,      iBlY = iTop + iH;
+    float iBrX = iLeft + iW, iBrY = iTop + iH;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
     gsKit_prim_quad_texture(gsGlobal, inlay,
@@ -685,11 +701,16 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
     // （旧版 +0.5 分数起点）会错开约 1px，接缝处忽而留背景缝、忽而叠暗行——即"丢线"。
     // 非中心封面因尺寸小、底边分数部分不同，最容易暴露。这里改为整数对齐、去掉 +0.5 EDGE_FILL。
     float baseY = rmPxSnap(quad.br.y + fRenderYOff); // == 主图 case 底边所在整数像素
-    // inlay / overlay 的横向边界也取整，与主图的 X 取整一致（防竖直接缝错位）。
-    float iUlX = rmPxSnap(quad.ul.x + ulx + fRenderXOff);
-    float iUrX = rmPxSnap(quad.ul.x + urx + fRenderXOff);
-    float iBlX = rmPxSnap(quad.ul.x + blx + fRenderXOff);
-    float iBrX = rmPxSnap(quad.ul.x + brx + fRenderXOff);
+    // inlay 横向边界与主图【用同一套锁定宽度】：左边取整定位、宽度取整成整数，右边=左边+整数宽，
+    // 使倒影与主图左右范围完全一致、不因各角独立取整而相对错开（与主图 rmDrawOverlayPixmapFrac 同法）。
+    float inLeftF  = quad.ul.x + (ulx + blx) * 0.5f + fRenderXOff;
+    float inRightF = quad.ul.x + (urx + brx) * 0.5f + fRenderXOff;
+    float iLeftX = rmPxSnap(inLeftF);
+    float iWidthX = rmPxSnap(inRightF - inLeftF);
+    float iUlX = iLeftX;
+    float iUrX = iLeftX + iWidthX;
+    float iBlX = iLeftX;
+    float iBrX = iLeftX + iWidthX;
     float ovLX = rmPxSnap(quad.ul.x + fRenderXOff);
     float ovRX = rmPxSnap(quad.br.x + fRenderXOff);
 
