@@ -10,6 +10,7 @@
 #include "include/opl.h"
 #include "include/renderman.h"
 #include "include/ioman.h"
+#include "include/textures.h"
 
 // Allocateable space in vram, as indicated in GsKit's code
 #define __VRAM_SIZE 4194304
@@ -225,6 +226,12 @@ int rmSetMode(int force)
             gsKit_init_screen(gsGlobal);
             gsKit_mode_switch(gsGlobal, GS_ONESHOT);
         }
+
+        // 帧缓冲已分配，CurrentPointer 现在有效：把单张纹理上限夹到真实显存池以内，
+        // 防止大于池子的纹理触发 gsKit _blockAlloc 死循环把主机挂死(OPL issue #1776)。
+        // 高分辨率/PAL 下池子只剩几百 KB，这一步会让放不下的大封面/背景改走占位图，
+        // 而不是死机。coverflow 同屏多封面在小池模式下也因此不会再把主机撑爆卡死。
+        texCheckBudget(__VRAM_SIZE - gsGlobal->CurrentPointer);
 
         gsKit_set_test(gsGlobal, GS_ZTEST_OFF);
         gsKit_set_primalpha(gsGlobal, gDefaultAlpha, 0);
