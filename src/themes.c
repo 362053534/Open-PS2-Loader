@@ -1056,7 +1056,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_MAX 15            // 同屏封面数的硬上限（covers[]/drawOrder[] 数组大小，防越界）
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值
 // 封面主图基准尺寸：PS2 封面标准分辨率 140×200（cfg 可用 coverflow_cover_width/height 覆盖）。
-// 中心/非中心封面各自 = 基准 ± 各自的 scale（等比，加到高度、宽按 140:200 跟随）。
+// 中心/非中心封面各自 = 基准 ± 各自的 scale（等比，以横向宽度为基准：加到宽度、高按基准比例跟随）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 200
 // APPS 页签封面主图基准尺寸：应用封面通常为正方形，默认 140×140（cfg 可用
@@ -1244,10 +1244,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     }
 
     // 非中心封面（静止态）尺寸 → 反推非中心 case 尺寸，供布局排布使用。
-    float nonInlayH = (float)baseCoverH + (float)gCoverflowNonCenterScale;
-    if (nonInlayH < 1.0f)
-        nonInlayH = 1.0f;
-    float nonInlayW = (float)baseCoverW * nonInlayH / (float)baseCoverH;
+    // 缩放【以横向宽度为基准】：scale 加到宽度，高度按基准比例跟随。这样不同页签只要
+    // 基准宽相同(都 140)，同一 scale 缩放后宽度就一致（游戏/apps 横向观感统一）。
+    float nonInlayW = (float)baseCoverW + (float)gCoverflowNonCenterScale;
+    if (nonInlayW < 1.0f)
+        nonInlayW = 1.0f;
+    float nonInlayH = (float)baseCoverH * nonInlayW / (float)baseCoverW;
     int coverWidth = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽，供布局排布）
     int coverYOffset = 0;                             // 保留以兼容下方绘制调用的 Y 组合（当前恒 0）
 
@@ -1424,12 +1426,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         //   centerFactor=1 → 中心 scale；=0 → 非中心 scale；动画中间平滑取值。
         float coverScale = (float)gCoverflowNonCenterScale +
                            (float)(gCoverflowCenterScale - gCoverflowNonCenterScale) * centerFactor;
-        // 封面主图目标尺寸 = 基准 140×200 + coverScale（等比：加到高度、宽按 140:200 跟随），
-        // 中心 scale=0 时即原生 140×200、点对点无失真。
-        float inlayH = (float)baseCoverH + coverScale;
-        if (inlayH < 1.0f)
-            inlayH = 1.0f;
-        float inlayW = (float)baseCoverW * inlayH / (float)baseCoverH;
+        // 封面主图目标尺寸 = 基准 + coverScale（等比，【以横向宽度为基准】：scale 加到宽度、
+        // 高度按基准比例跟随），中心 scale=0 时即原生基准尺寸、点对点无失真。
+        float inlayW = (float)baseCoverW + coverScale;
+        if (inlayW < 1.0f)
+            inlayW = 1.0f;
+        float inlayH = (float)baseCoverH * inlayW / (float)baseCoverW;
         // 反推 case 尺寸：内框占比 fracW/fracH → case = inlay ÷ 占比，使内框正好套住封面。
         // 浮点旁路：宽/高全程 float 连续（交给 coverflowDrawTexture→rmSetupQuadF），放大动画
         // 无整数截断蠕动。宽屏只对 case 宽做浮点横向压缩（高度不压，比例正确）。
