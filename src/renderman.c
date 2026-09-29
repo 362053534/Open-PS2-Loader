@@ -596,23 +596,29 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     // 不随缩放变化，不会重新引入蠕动。顶边/左边不动，避免整体偏移。
     const float EDGE_FILL = 0.5f;
 
-    // 【诊断-原生】把封面主图按【纹理原生尺寸、1:1 无缩放、整数像素对齐】绘制(NEAREST)，
-    // 并跳过 case。目的：彻底去掉 coverflow 的缩放。若光晕消失 → 是 OPL 缩放采样造成(可修)；
-    // 若仍在 → 光晕是封面图自身内容/边缘就有(OPL 层面无从消除)。诊断结束后会还原。
+    // 【诊断-整数缩放】按 coverflow 的缩放尺寸绘制封面，但把【位置和尺寸都四舍五入到整数
+    // 像素】、不加 EDGE_FILL、用 sprite/NEAREST。并跳过 case。目的：区分光晕来自
+    // “亚像素分数坐标/EDGE_FILL”，还是“非整数缩放比例本身(缩放重采样)”。
+    // 若光晕消失 → 是分数坐标/EDGE_FILL 造成(可用整数对齐修复)；
+    // 若仍在 → 是缩放重采样本身(需换采样/预缩放)。诊断结束后会还原。
     (void)urx;
     (void)ury;
     (void)blx;
     (void)bly;
     (void)EDGE_FILL;
     {
-        float nx = quad.ul.x + ulx + fRenderXOff;
-        float ny = quad.ul.y + uly + fRenderYOff;
-        nx = (float)((int)(nx + 0.5f)); // 整数像素对齐，避免亚像素采样
-        ny = (float)((int)(ny + 0.5f));
+        int ix1 = (int)(quad.ul.x + ulx + fRenderXOff + 0.5f);
+        int iy1 = (int)(quad.ul.y + uly + fRenderYOff + 0.5f);
+        int iw = (int)((brx - ulx) + 0.5f);
+        int ih = (int)((bry - uly) + 0.5f);
+        if (iw < 1)
+            iw = 1;
+        if (ih < 1)
+            ih = 1;
         gsKit_TexManager_bind(gsGlobal, inlay);
         gsKit_prim_sprite_texture(gsGlobal, inlay,
-                                  nx, ny, 0.0f, 0.0f,
-                                  nx + (float)inlay->Width, ny + (float)inlay->Height,
+                                  (float)ix1, (float)iy1, 0.0f, 0.0f,
+                                  (float)(ix1 + iw), (float)(iy1 + ih),
                                   (float)inlay->Width, (float)inlay->Height, order, color);
         order++;
     }
@@ -645,7 +651,7 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
     rmDrawOverlayPixmapFrac(overlay, x, y, aligned, w, h, scaled, color, inlay, baseW, baseH,
                             ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry);
 
-    // 【诊断-原生】跳过倒影，只留原生尺寸封面。诊断结束后会还原。
+    // 【诊断-整数缩放】跳过倒影。诊断结束后会还原。
     return;
 
     rm_quad_t quad;

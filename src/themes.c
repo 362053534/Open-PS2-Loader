@@ -621,7 +621,7 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
-    // 【诊断-原生】跳过背景，纯黑底，便于观察原生尺寸封面是否仍有光晕。诊断结束后会还原。
+    // 【诊断-整数缩放】跳过背景，纯黑底。诊断结束后会还原。
     if (elem->type == ELEM_TYPE_BACKGROUND)
         return;
 
