@@ -569,19 +569,6 @@ static inline float rmPxSnap(float v)
     return (float)((int)(v + (v >= 0.0f ? 0.5f : -0.5f)));
 }
 
-// 向【外】取整（floor/ceil，正确处理负坐标）。用于把 inlay 四角朝外扩到整数像素，使其总能
-// 完整盖住 case 透明窗口、不在窗口边缘露出背景（丢线）。溢出的一圈由置顶的不透明 case 边框裁掉。
-static inline float rmPxFloor(float v)
-{
-    int i = (int)v;
-    return (float)((v < (float)i) ? i - 1 : i);
-}
-static inline float rmPxCeil(float v)
-{
-    int i = (int)v;
-    return (float)((v > (float)i) ? i + 1 : i);
-}
-
 // Coverflow 专用：外壳(overlay)按 w/h 绘制；内嵌封面(inlay)四角以 case quad 的
 // 【实际绘制像素尺寸】caseW/caseH 为基准，用浮点比例(顶点/baseW、顶点/baseH)定位。
 // 这样 inlay 与 case 内框完全锁定、按同一 caseW/caseH 同步缩放——中心封面放大或滑动
@@ -595,8 +582,15 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     rm_quad_t quad;
     rmSetupQuadF(overlay, x, y, aligned, w, h, scaled, color, &quad);
 
+    float caseW = quad.br.x - quad.ul.x;
+    float caseH = quad.br.y - quad.ul.y;
     float fbw = (baseW > 0) ? (float)baseW : 1.0f;
     float fbh = (baseH > 0) ? (float)baseH : 1.0f;
+
+    float ulx = caseW * ((float)ovUlx / fbw), uly = caseH * ((float)ovUly / fbh);
+    float urx = caseW * ((float)ovUrx / fbw), ury = caseH * ((float)ovUry / fbh);
+    float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
+    float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
 
     if ((inlay->PSM == GS_PSM_CT32) || (inlay->Clut && inlay->ClutPSM == GS_PSM_CT32))
         gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
@@ -610,24 +604,19 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     // 诊断链已证实：把最终绘制的位置与尺寸四舍五入到整数像素、并去掉 EDGE_FILL，泛光完全消失
     // （原生 1:1 无泛光、整数缩放亦无泛光；仅分数坐标/EDGE_FILL 才泛光）。
     // 关键：只在“最终屏幕坐标”这一步取整，layout/缩放计算仍保持浮点，不会重新引入宽屏蠕动。
+    // inlay 与 case 使用同一套取整后的 case 顶点推导，保证二者始终对齐锁定。
 #define RM_PXROUND(v) ((float)((int)((v) + ((v) >= 0.0f ? 0.5f : -0.5f))))
     // 先把 case 外框的左上/右下取整（fRender*Off 视为整数偏移），得到整数化的 case 矩形。
     float rUlX = RM_PXROUND(quad.ul.x + fRenderXOff);
     float rUlY = RM_PXROUND(quad.ul.y + fRenderYOff);
     float rBrX = RM_PXROUND(quad.br.x + fRenderXOff);
     float rBrY = RM_PXROUND(quad.br.y + fRenderYOff);
-    float rCaseW = rBrX - rUlX;
-    float rCaseH = rBrY - rUlY;
 
-    // inlay（封面主图）四角【锚定在取整后的 case 矩形】上，用与 case 纹理窗口【完全相同】的比例
-    // (顶点/baseW,baseH) 定位——这样 inlay 边界与 case 透明窗口由【同一个】取整矩形推导，二者精确
-    // 对齐，不再各自取整错开 1px。再向【外】取整（左/上 floor、右/下 ceil）使 inlay 略大于窗口、
-    // 总能完整盖住窗口——彻底消除窗口边缘（尤其底边贴倒影处）露出背景的“丢线”。溢出一圈被后画
-    // （置顶）的不透明 case 边框裁掉，不外露。ovUlx=0 / ovBry≈baseH 时结果恰好落在 case 边、不外溢。
-    float iUlX = rmPxFloor(rUlX + rCaseW * ((float)ovUlx / fbw)), iUlY = rmPxFloor(rUlY + rCaseH * ((float)ovUly / fbh));
-    float iUrX = rmPxCeil(rUlX + rCaseW * ((float)ovUrx / fbw)), iUrY = rmPxFloor(rUlY + rCaseH * ((float)ovUry / fbh));
-    float iBlX = rmPxFloor(rUlX + rCaseW * ((float)ovBlx / fbw)), iBlY = rmPxCeil(rUlY + rCaseH * ((float)ovBly / fbh));
-    float iBrX = rmPxCeil(rUlX + rCaseW * ((float)ovBrx / fbw)), iBrY = rmPxCeil(rUlY + rCaseH * ((float)ovBry / fbh));
+    // inlay 四角：以取整后的 case 左上为锚点，各角坐标同样取整（保留 overlay 顶点带来的可能斜切）。
+    float iUlX = RM_PXROUND(quad.ul.x + ulx + fRenderXOff), iUlY = RM_PXROUND(quad.ul.y + uly + fRenderYOff);
+    float iUrX = RM_PXROUND(quad.ul.x + urx + fRenderXOff), iUrY = RM_PXROUND(quad.ul.y + ury + fRenderYOff);
+    float iBlX = RM_PXROUND(quad.ul.x + blx + fRenderXOff), iBlY = RM_PXROUND(quad.ul.y + bly + fRenderYOff);
+    float iBrX = RM_PXROUND(quad.ul.x + brx + fRenderXOff), iBrY = RM_PXROUND(quad.ul.y + bry + fRenderYOff);
 
     gsKit_TexManager_bind(gsGlobal, inlay);
     gsKit_prim_quad_texture(gsGlobal, inlay,
