@@ -596,22 +596,6 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     // 不随缩放变化，不会重新引入蠕动。顶边/左边不动，避免整体偏移。
     const float EDGE_FILL = 0.5f;
 
-    // 【诊断-终极】用一个纯色实心矩形(无纹理)代替封面主图，位置/尺寸与封面一致；并跳过 case。
-    // 目的：纯色矩形是数学上完美的实心矩形，GS 只会在矩形内写像素。若它在纯黑背景上四周
-    // 仍出现光晕 → 光晕 100% 是 OPL 绘制之后由显示/模拟器管线加上去的，OPL 无法处理；
-    // 若纯色矩形【没有】光晕 → 说明与封面纹理采样有关。诊断结束后会还原。
-    (void)urx;
-    (void)ury;
-    (void)blx;
-    (void)bly;
-    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
-    gsKit_prim_sprite(gsGlobal,
-                      quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
-                      quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
-                      order, GS_SETREG_RGBA(0xFF, 0xD0, 0x00, 0x80));
-    order++;
-    return;
-
     gsKit_TexManager_bind(gsGlobal, inlay);
     gsKit_prim_quad_texture(gsGlobal, inlay,
                             quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
@@ -623,6 +607,27 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
                             quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
                             inlay->Width, inlay->Height, order, color);
     order++;
+
+    // 【诊断-边界】在封面主图【真实矩形边界】上画 2px 洋红色描边(无纹理实心)，并跳过 case。
+    // 让你直观看到 sprite 的真实边缘在哪：若“光晕”落在洋红框【以内】→ 就是封面纹理自身
+    // 边缘的内容/采样(可在 OPL 里想办法)；若落在洋红框【以外】→ 说明另有绘制/几何被我误判。
+    {
+        const float lx = quad.ul.x + ulx + fRenderXOff;
+        const float ty = quad.ul.y + uly + fRenderYOff;
+        const float rx = quad.ul.x + brx + EDGE_FILL + fRenderXOff;
+        const float by = quad.ul.y + bry + EDGE_FILL + fRenderYOff;
+        const u64 mag = GS_SETREG_RGBA(0xFF, 0x00, 0xFF, 0x80);
+        gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+        gsKit_prim_sprite(gsGlobal, lx, ty, rx, ty + 2.0f, order, mag);
+        order++; // 上边
+        gsKit_prim_sprite(gsGlobal, lx, by - 2.0f, rx, by, order, mag);
+        order++; // 下边
+        gsKit_prim_sprite(gsGlobal, lx, ty, lx + 2.0f, by, order, mag);
+        order++; // 左边
+        gsKit_prim_sprite(gsGlobal, rx - 2.0f, ty, rx, by, order, mag);
+        order++; // 右边
+    }
+    return;
 
     // case 外壳同样把右边、底边各扩 0.5px，与 inlay 一致补齐最右列/最底行。
     quad.br.x += EDGE_FILL;
@@ -639,7 +644,7 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
     rmDrawOverlayPixmapFrac(overlay, x, y, aligned, w, h, scaled, color, inlay, baseW, baseH,
                             ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry);
 
-    // 【诊断-终极】跳过倒影，只留纯色矩形，便于观察光晕。诊断结束后会还原。
+    // 【诊断-边界】跳过倒影，只留封面+洋红边界框。诊断结束后会还原。
     return;
 
     rm_quad_t quad;
