@@ -1072,14 +1072,15 @@ static clock_t animationStartTime = 0;
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定、与 enlarge 无关：放大封面时中心距随绘制宽同步增大、间隙保持不变（不再叠压）。
-// 默认 50（间隙 = 非中心封面基准宽的一半）。cfg 可覆盖。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 50
-// 非中心封面【绘制尺寸】相对其基准尺寸的放大百分比：100=不放大，130=放大30%（默认）。
+// 默认 13（间隙 ≈ 非中心封面基准宽的 1/8；基准宽约 80px 时间隙约 10px）。cfg 可覆盖。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 13
+// 非中心封面【绘制尺寸】相对其基准尺寸的放大百分比：100=不放大，120=放大20%（默认）。
 // 与间距【完全解耦】：中心距 = 绘制宽 + 间隙，放大只增大绘制宽（及随之的中心距），间隙不变。
 // 中心封面不受影响（放大只作用于非中心封面）。cfg 可覆盖。
-#define COVERFLOW_DEFAULT_NONCENTER_ENLARGE 130
+#define COVERFLOW_DEFAULT_NONCENTER_ENLARGE 120
 // 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-#define COVERFLOW_BASELINE_YOFFSET 50
+// 正值下移、负值上移。当前 30 = 相对最初 50 上移 20px。
+#define COVERFLOW_BASELINE_YOFFSET 30
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
