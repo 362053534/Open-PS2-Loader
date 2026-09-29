@@ -1081,6 +1081,13 @@ static clock_t animationStartTime = 0;
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
 // 正值下移、负值上移。当前 -20 = APPS 封面模块在基线之上再上移 20px。
 #define COVERFLOW_APPS_YOFFSET -20
+// 封面主图【物理像素 1:1】绘制开关：
+//   1 = 抵消 640×480 虚拟坐标 → 物理扫描线(NTSC 448 / PAL 512) 的缩放，让排版的 200 高【真正占用
+//       200 条物理行】（而不是 NTSC 下被压到 ~187 行）。此时每个纹素≈1 物理像素，自适应过滤取 NEAREST，
+//       封面点对点、最锐、绝不丢行；各视频模式下封面物理行数一致（都是 200）。
+//   代价：偏离"方形像素几何"——4:3 下 448 封面会略高、512 略矮（约 ±6~7% 高度），因为固定占 200 物理行
+//       而非各模式各自的等比高度。想要几何绝对精确（缩小时走线性、略软）就设 0。
+#define COVERFLOW_NATIVE_PIXEL_COVERS 1
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1486,6 +1493,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
+#if COVERFLOW_NATIVE_PIXEL_COVERS
+        // 物理像素 1:1：rmSetupQuadF 稍后会把尺寸 × nativeW/640、× nativeH/480（虚拟→物理）。
+        // 这里预乘其倒数(640/nativeW、480/nativeH)把那一步【精确抵消】，于是排版的宽/高数值最终
+        // 就等于实际物理像素数——例如 200 高在 NTSC(448) 上不再被压到 ~187，而是真正画满 200 条扫描线。
+        // case 与 inlay 用同一 currentCover*，二者一起放大、始终对齐。宽屏横向压缩已含在 nativeW 里。
+        currentCoverWidth *= 640.0f / (float)nativeW;
+        currentCoverHeight *= 480.0f / (float)nativeH;
+#endif
+
         // 非中心封面相对中心封面额外偏移 COVERFLOW_NONCENTER_YOFFSET 像素（正=下移、负=上移），
         // 中心封面不动；偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
         // 四舍五入对正负都取整（+0.5 会把负值截断错 1px），保证整数对齐、避免动画抖动。
@@ -1517,10 +1533,19 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         //     某几行整行丢弃（那正是"有时明显少一条横线"的来源）。只在【必须缩小】时才略微变软。
         // 仅作用于 coverflow 封面主图，不动 case 外壳/倒影。
         if (covers[i].texture) {
+#if COVERFLOW_NATIVE_PIXEL_COVERS
+            // 物理像素 1:1 模式：封面已按排版数值直接占物理像素，故物理尺寸就是 inlayW/inlayH
+            // （宽屏横向压缩仍在）。此时中心封面(200)≈纹理原生 → 判为非缩小 → 走 NEAREST 点对点。
+            float physInlayH = inlayH;
+            float physInlayW = inlayW;
+            if (gWideScreen)
+                physInlayW = rmWideScaleF(physInlayW);
+#else
             float physInlayH = inlayH * (float)nativeH / 480.0f;
             float physInlayW = inlayW * (float)nativeW / 640.0f;
             if (gWideScreen)
                 physInlayW = rmWideScaleF(physInlayW);
+#endif
             int minifying = ((float)covers[i].texture->Height > physInlayH + 0.5f) ||
                             ((float)covers[i].texture->Width > physInlayW + 0.5f);
             covers[i].texture->Filter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
