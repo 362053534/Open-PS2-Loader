@@ -1077,14 +1077,14 @@ static clock_t animationStartTime = 0;
 // 非中心封面【绘制尺寸】相对其基准尺寸的放大百分比：100=不放大，120=放大20%（默认）。
 // 与间距【完全解耦】：中心距 = 绘制宽 + 间隙，放大只增大绘制宽（及随之的中心距），间隙不变。
 // 中心封面不受影响（放大只作用于非中心封面）。cfg 可覆盖。
-#define COVERFLOW_DEFAULT_NONCENTER_ENLARGE 120
+#define COVERFLOW_DEFAULT_NONCENTER_ENLARGE 130
 // 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-// 正值下移、负值上移。当前 30 = 相对最初 50 上移 20px。
-#define COVERFLOW_BASELINE_YOFFSET 30
+// 正值下移、负值上移。当前 50 = 整个封面模块（PS2 与 APPS）下移 50px。
+#define COVERFLOW_BASELINE_YOFFSET 50
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET 22 // 非中心封面相对中心封面额外下移的像素数
+#define COVERFLOW_NONCENTER_YOFFSET -8 // 非中心封面相对中心封面的垂直偏移（正=下移、负=上移；当前 -8=上移8px）
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
@@ -1483,9 +1483,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
-        // 非中心封面整体下移 COVERFLOW_NONCENTER_YOFFSET 像素，中心封面不动；
-        // 偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
-        int centerYOffset = (int)(COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor) + 0.5f);
+        // 非中心封面相对中心封面额外偏移 COVERFLOW_NONCENTER_YOFFSET 像素（正=下移、负=上移），
+        // 中心封面不动；偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
+        // 四舍五入对正负都取整（+0.5 会把负值截断错 1px），保证整数对齐、避免动画抖动。
+        float nonCenterY = COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor);
+        int centerYOffset = (int)(nonCenterY >= 0.0f ? nonCenterY + 0.5f : nonCenterY - 0.5f);
 
         // 纹理已在上面的【中心向外扩散】加载遍里请求并填好 covers[i].texture，
         // 这里直接取用，不再重复请求（避免打乱加载优先级）。
