@@ -1462,6 +1462,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
         }
 
+        // 【诊断】把封面主图纹理改用 NEAREST（无双线性插值），排查边缘光晕/颜色外溢是否
+        // 由 LINEAR 过滤在纹理边缘插值/环绕造成。仅作用于 coverflow 封面主图，不动 case/其它。
+        if (covers[i].texture)
+            covers[i].texture->Filter = GS_FILTER_NEAREST;
+
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
                              currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
