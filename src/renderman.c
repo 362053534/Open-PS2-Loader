@@ -575,11 +575,20 @@ void rmDrawPixmapFrac(GSTEXTURE *txt, float x, float y, short aligned, float w, 
 {
     rm_quad_t quad;
     rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
-    // rmDrawQuad 内部会再加 fRender*Off，故这里取整后回减一次，使最终落在整数像素上（与主图一致）。
-    quad.ul.x = rmPxSnap(quad.ul.x + fRenderXOff) - fRenderXOff;
-    quad.ul.y = rmPxSnap(quad.ul.y + fRenderYOff) - fRenderYOff;
-    quad.br.x = rmPxSnap(quad.br.x + fRenderXOff) - fRenderXOff;
-    quad.br.y = rmPxSnap(quad.br.y + fRenderYOff) - fRenderYOff;
+    // 锁定【整数尺寸】而非把左上/右下两角各自独立取整（防 1:1 时丢边）：
+    // 绘制宽/高 w/h 经缩放与虚拟→物理换算后一般不是精确整数（如中心封面在有过扫描的 VGA 下
+    // ≈139.9999/140.0001）。若两角各自 round，则像素宽 = round(右下)-round(左上) 会随封面在屏幕上
+    // 的亚像素位置（即主题里的坐标）在 N-1/N/N+1 间跳；1:1 时 N 纹素被映到 N±1 像素 → GS 丢/复制
+    // 一条边，且丢哪条随坐标变（VGA 640x480 点对点下亦然）。改为：左上角取整定位，宽/高各自取整成
+    // 整数像素，右下 = 左上 + 整数尺寸 → 1:1 时精确等于纹理尺寸、纹素与像素一一对应，任何位置不丢边。
+    float ulX = rmPxSnap(quad.ul.x + fRenderXOff);
+    float ulY = rmPxSnap(quad.ul.y + fRenderYOff);
+    float iW = rmPxSnap(quad.br.x - quad.ul.x);
+    float iH = rmPxSnap(quad.br.y - quad.ul.y);
+    quad.ul.x = ulX - fRenderXOff;
+    quad.ul.y = ulY - fRenderYOff;
+    quad.br.x = (ulX + iW) - fRenderXOff;
+    quad.br.y = (ulY + iH) - fRenderYOff;
     rmDrawQuad(&quad);
 }
 
