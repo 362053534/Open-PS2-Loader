@@ -1591,7 +1591,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 #endif
         int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
                         ((float)baseCoverW > physInlayW + 0.5f);
-        short coverFilter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+        // APPS 封面无论当前尺寸是否达到原生大小，都固定使用线性过滤；游戏封面继续按
+        // 物理绘制尺寸自适应。case 外壳沿用同一过滤方式，避免 APPS 封面与外壳观感不一致。
+        short coverFilter = isApps ? GS_FILTER_LINEAR : (minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST);
         if (covers[i].texture)
             covers[i].texture->Filter = coverFilter;         // 封面主图
         if (img->overlayTexture)
