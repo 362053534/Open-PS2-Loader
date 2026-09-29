@@ -80,6 +80,18 @@ static int iDisplayYOff;
 static float fRenderXOff = 0.0f;
 static float fRenderYOff = 0.0f;
 
+// Coverflow 封面(inlay/case)绘制的像素对齐开关：
+//   1 = 静止时把最终屏幕坐标取整到整数像素（消除缩放封面的边缘泛光/黄色光晕）；
+//   0 = 翻页/缩放动画进行中放行分数坐标（保持滑动与缩放平滑，避免整数量化的台阶感）。
+// 默认 1（取整）。由 coverflow 绘制路径每帧按“是否在动画中”设置；动画结束后的静止帧
+// 会以整数对齐绘制，故最终停下来时封面始终是干净无泛光的。
+static int gOverlayFracIntegerAlign = 1;
+
+void rmSetOverlayPixmapIntegerAlign(int enabled)
+{
+    gOverlayFracIntegerAlign = enabled ? 1 : 0;
+}
+
 const u64 gColWhite = GS_SETREG_RGBA(0xFF, 0xFF, 0xFF, 0x80);  // Alpha 0x80 -> solid white
 const u64 gColBlack = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);  // Alpha 0x80 -> solid black
 const u64 gColDarker = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x60); // Alpha 0x60 -> transparent overlay color
@@ -597,43 +609,68 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
-    // ── 泛光根治：整数像素对齐 ──
+    // ── 泛光根治：整数像素对齐（仅静止时）──
     // 浮点缩放会把 inlay/case 的四条边落在非整数（亚像素）屏幕坐标上，GS 的双线性/扫描线
     // 采样在这些分数边界处向外“借”一圈纹素，缩放中心封面时表现为向背景溢出的黄色光晕；
     // 旧的 EDGE_FILL=0.5 半像素填充只是想补底部缺行，反而进一步放大了这层亚像素泛光。
-    // 诊断链已证实：把最终绘制的位置与尺寸四舍五入到整数像素、并去掉 EDGE_FILL，泛光完全消失
-    // （原生 1:1 无泛光、整数缩放亦无泛光；仅分数坐标/EDGE_FILL 才泛光）。
-    // 关键：只在“最终屏幕坐标”这一步取整，layout/缩放计算仍保持浮点，不会重新引入宽屏蠕动。
-    // inlay 与 case 使用同一套取整后的 case 顶点推导，保证二者始终对齐锁定。
+    // 诊断链已证实：把最终绘制的位置与尺寸四舍五入到整数像素、并去掉 EDGE_FILL，泛光完全消失。
+    //
+    // 但整数取整在【翻页/缩放动画】中会让封面按整像素跳变，产生台阶/抖动感。因此这里按
+    // gOverlayFracIntegerAlign 分流：
+    //   - 静止时(=1)：四角取整、去 EDGE_FILL —— 消除泛光，停下来的画面干净；
+    //   - 动画中(=0)：放行分数坐标 + EDGE_FILL —— 保持滑动/缩放平滑，此时的轻微泛光只在
+    //     运动的瞬态出现、不驻留，肉眼几乎无感，动画一结束的静止帧又回到整数对齐无泛光。
+    // 关键：无论哪条路径，layout/缩放计算都保持浮点，不会重新引入宽屏蠕动。
+    if (gOverlayFracIntegerAlign) {
 #define RM_PXROUND(v) ((float)((int)((v) + ((v) >= 0.0f ? 0.5f : -0.5f))))
-    // 先把 case 外框的左上/右下取整（fRender*Off 视为整数偏移），得到整数化的 case 矩形。
-    float rUlX = RM_PXROUND(quad.ul.x + fRenderXOff);
-    float rUlY = RM_PXROUND(quad.ul.y + fRenderYOff);
-    float rBrX = RM_PXROUND(quad.br.x + fRenderXOff);
-    float rBrY = RM_PXROUND(quad.br.y + fRenderYOff);
+        // 先把 case 外框的左上/右下取整（fRender*Off 视为整数偏移），得到整数化的 case 矩形。
+        float rUlX = RM_PXROUND(quad.ul.x + fRenderXOff);
+        float rUlY = RM_PXROUND(quad.ul.y + fRenderYOff);
+        float rBrX = RM_PXROUND(quad.br.x + fRenderXOff);
+        float rBrY = RM_PXROUND(quad.br.y + fRenderYOff);
 
-    // inlay 四角：以取整后的 case 左上为锚点，各角坐标同样取整（保留 overlay 顶点带来的可能斜切）。
-    float iUlX = RM_PXROUND(quad.ul.x + ulx + fRenderXOff), iUlY = RM_PXROUND(quad.ul.y + uly + fRenderYOff);
-    float iUrX = RM_PXROUND(quad.ul.x + urx + fRenderXOff), iUrY = RM_PXROUND(quad.ul.y + ury + fRenderYOff);
-    float iBlX = RM_PXROUND(quad.ul.x + blx + fRenderXOff), iBlY = RM_PXROUND(quad.ul.y + bly + fRenderYOff);
-    float iBrX = RM_PXROUND(quad.ul.x + brx + fRenderXOff), iBrY = RM_PXROUND(quad.ul.y + bry + fRenderYOff);
+        // inlay 四角：以取整后的 case 左上为锚点，各角坐标同样取整（保留 overlay 顶点可能的斜切）。
+        float iUlX = RM_PXROUND(quad.ul.x + ulx + fRenderXOff), iUlY = RM_PXROUND(quad.ul.y + uly + fRenderYOff);
+        float iUrX = RM_PXROUND(quad.ul.x + urx + fRenderXOff), iUrY = RM_PXROUND(quad.ul.y + ury + fRenderYOff);
+        float iBlX = RM_PXROUND(quad.ul.x + blx + fRenderXOff), iBlY = RM_PXROUND(quad.ul.y + bly + fRenderYOff);
+        float iBrX = RM_PXROUND(quad.ul.x + brx + fRenderXOff), iBrY = RM_PXROUND(quad.ul.y + bry + fRenderYOff);
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
-    gsKit_prim_quad_texture(gsGlobal, inlay,
-                            iUlX, iUlY, 0.0f, 0.0f,
-                            iUrX, iUrY, inlay->Width, 0.0f,
-                            iBlX, iBlY, 0.0f, inlay->Height,
-                            iBrX, iBrY, inlay->Width, inlay->Height, order, color);
-    order++;
+        gsKit_TexManager_bind(gsGlobal, inlay);
+        gsKit_prim_quad_texture(gsGlobal, inlay,
+                                iUlX, iUlY, 0.0f, 0.0f,
+                                iUrX, iUrY, inlay->Width, 0.0f,
+                                iBlX, iBlY, 0.0f, inlay->Height,
+                                iBrX, iBrY, inlay->Width, inlay->Height, order, color);
+        order++;
 
-    // case 外壳用整数化后的矩形绘制（去掉 EDGE_FILL）。rmDrawQuad 内部会再加 fRender*Off，
-    // 故这里回减一次，使叠加后落在我们已取整的整数像素上。
-    quad.ul.x = rUlX - fRenderXOff;
-    quad.ul.y = rUlY - fRenderYOff;
-    quad.br.x = rBrX - fRenderXOff;
-    quad.br.y = rBrY - fRenderYOff;
-    rmDrawQuad(&quad);
+        // case 外壳用整数化后的矩形绘制（去掉 EDGE_FILL）。rmDrawQuad 内部会再加 fRender*Off，
+        // 故这里回减一次，使叠加后落在我们已取整的整数像素上。
+        quad.ul.x = rUlX - fRenderXOff;
+        quad.ul.y = rUlY - fRenderYOff;
+        quad.br.x = rBrX - fRenderXOff;
+        quad.br.y = rBrY - fRenderYOff;
+        rmDrawQuad(&quad);
 #undef RM_PXROUND
+    } else {
+        // 动画中：分数坐标 + 0.5px EDGE_FILL（顶/左不动，底/右外扩，补最底行/最右列）。
+        const float EDGE_FILL = 0.5f;
+
+        gsKit_TexManager_bind(gsGlobal, inlay);
+        gsKit_prim_quad_texture(gsGlobal, inlay,
+                                quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
+                                0.0f, 0.0f,
+                                quad.ul.x + urx + EDGE_FILL + fRenderXOff, quad.ul.y + ury + fRenderYOff,
+                                inlay->Width, 0.0f,
+                                quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + EDGE_FILL + fRenderYOff,
+                                0.0f, inlay->Height,
+                                quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
+                                inlay->Width, inlay->Height, order, color);
+        order++;
+
+        quad.br.x += EDGE_FILL;
+        quad.br.y += EDGE_FILL;
+        rmDrawQuad(&quad);
+    }
 }
 
 // rmDrawOverlayPixmapFrac 的倒影版：主图走上面的 Frac 路径，另在下方逐行绘制渐隐倒影。
