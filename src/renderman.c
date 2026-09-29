@@ -562,6 +562,13 @@ static void rmSetupQuadF(GSTEXTURE *txt, float x, float y, short aligned, float 
     }
 }
 
+// 像素对齐：把浮点屏幕坐标四舍五入到整数像素（对正负都取整，+/-0.5 避免负值截断错 1px）。
+// 主图与倒影共用同一套取整，保证二者边界落在同一整数像素、接缝严丝合缝、不丢线。
+static inline float rmPxSnap(float v)
+{
+    return (float)((int)(v + (v >= 0.0f ? 0.5f : -0.5f)));
+}
+
 // Coverflow 专用：外壳(overlay)按 w/h 绘制；内嵌封面(inlay)四角以 case quad 的
 // 【实际绘制像素尺寸】caseW/caseH 为基准，用浮点比例(顶点/baseW、顶点/baseH)定位。
 // 这样 inlay 与 case 内框完全锁定、按同一 caseW/caseH 同步缩放——中心封面放大或滑动
@@ -654,12 +661,23 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
     float totalHeight = quad.br.y - quad.ul.y;
     float alphaStart = 0x20;
     float alphaEnd = 0x00;
-    // 主图底边在 rmDrawOverlayPixmapFrac 里已向下扩了 0.5px 补底行；倒影从同样的 +0.5 处
-    // 起画，与主图严丝合缝、不覆盖补出来的最底一行。
-    const float EDGE_FILL = 0.5f;
 
     if (totalHeight <= 0.0f)
         return;
+
+    // ── 与主图接缝对齐（防丢线）──
+    // 主图在 rmDrawOverlayPixmapFrac 里把 case 底边取整到 rmPxSnap(quad.br.y+fRenderYOff)。
+    // 倒影必须从【同一个】整数像素开始、且每行落在整数像素上，否则主图（整数底边）与倒影
+    // （旧版 +0.5 分数起点）会错开约 1px，接缝处忽而留背景缝、忽而叠暗行——即"丢线"。
+    // 非中心封面因尺寸小、底边分数部分不同，最容易暴露。这里改为整数对齐、去掉 +0.5 EDGE_FILL。
+    float baseY = rmPxSnap(quad.br.y + fRenderYOff); // == 主图 case 底边所在整数像素
+    // inlay / overlay 的横向边界也取整，与主图的 X 取整一致（防竖直接缝错位）。
+    float iUlX = rmPxSnap(quad.ul.x + ulx + fRenderXOff);
+    float iUrX = rmPxSnap(quad.ul.x + urx + fRenderXOff);
+    float iBlX = rmPxSnap(quad.ul.x + blx + fRenderXOff);
+    float iBrX = rmPxSnap(quad.ul.x + brx + fRenderXOff);
+    float ovLX = rmPxSnap(quad.ul.x + fRenderXOff);
+    float ovRX = rmPxSnap(quad.br.x + fRenderXOff);
 
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
 
@@ -672,8 +690,9 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
 
         u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
 
-        float screenTop = quad.br.y + EDGE_FILL + fRenderYOff + row;
-        float screenBottom = quad.br.y + EDGE_FILL + fRenderYOff + row + rowHeight;
+        // baseY 为整数、rowHeight=1 → 每行的上下边都落在整数像素，第一行紧贴主图底边、无缝无叠。
+        float screenTop = baseY + row;
+        float screenBottom = baseY + row + rowHeight;
 
         // Inlay（实际封面图）行。
         float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
@@ -681,13 +700,13 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
 
         gsKit_TexManager_bind(gsGlobal, inlay);
         gsKit_prim_quad_texture(gsGlobal, inlay,
-                                quad.ul.x + ulx + fRenderXOff, screenTop,
+                                iUlX, screenTop,
                                 0.0f, texTop,
-                                quad.ul.x + urx + fRenderXOff, screenTop,
+                                iUrX, screenTop,
                                 inlay->Width, texTop,
-                                quad.ul.x + blx + fRenderXOff, screenBottom,
+                                iBlX, screenBottom,
                                 0.0f, texBottom,
-                                quad.ul.x + brx + fRenderXOff, screenBottom,
+                                iBrX, screenBottom,
                                 inlay->Width, texBottom,
                                 order, reflectionColor);
         order++;
@@ -698,9 +717,9 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
 
         gsKit_TexManager_bind(gsGlobal, overlay);
         gsKit_prim_sprite_texture(gsGlobal, overlay,
-                                  quad.ul.x + fRenderXOff, screenTop,
+                                  ovLX, screenTop,
                                   quad.ul.u, texTop,
-                                  quad.br.x + fRenderXOff, screenBottom,
+                                  ovRX, screenBottom,
                                   quad.br.u, texBottom,
                                   order, reflectionColor);
         order++;
