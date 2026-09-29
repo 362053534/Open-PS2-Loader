@@ -16,7 +16,6 @@
 #include "pops_legacy_id_map.h"
 
 #include <dirent.h>
-#include <errno.h> // 诊断日志需要 errno
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -586,16 +585,10 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     DIR *isoDir;
     snprintf(isoPath, sizeof(isoPath), "%sCD", prefix);
     if ((isoDir = opendir(isoPath)) == NULL) {
-        int cdErrno = errno; // 诊断：CD 目录打不开时的 errno
         snprintf(isoPath, sizeof(isoPath), "%sDVD", prefix);
-        if ((isoDir = opendir(isoPath)) == NULL) {
-            // 【诊断日志】CD/DVD 目录都打不开 → 直接当作"该设备无游戏"返回 0。
-            // 注意：这里【无法区分】"目录真的不存在"和"SMB 会话已死导致 opendir 失败"——
-            // 若是后者，会静默返回 0、gNetworkStartup 不置错、既不报错也不触发重连，
-            // 表现为服务器正常但 OPL 列表变空、怎么刷新都回不来。请重点观察此行的 errno。
-            LOG("SUPPORTBASE sbReadList: opendir CD/DVD BOTH failed prefix=%s errnoCD=%d errnoDVD=%d -> return 0 games (dead-session vs missing-folder indistinguishable here)\n", prefix, cdErrno, errno);
+        if ((isoDir = opendir(isoPath)) == NULL)
             return 0;
-        } else
+        else
             closedir(isoDir);
     } else
         closedir(isoDir);

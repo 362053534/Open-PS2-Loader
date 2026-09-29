@@ -136,37 +136,10 @@ static void ioProcessRequest(struct io_request_t *req)
 
 static void ioWorkerThread(void *arg)
 {
-    // 【卡死根治·最终方案：轮询，不依赖任何唤醒信号】
-    // 背景：本 fork 先后用过 SleepThread()/WakeupThread() 与计数信号量两种“事件唤醒”
-    // 方案，实机日志均出现同一死结——队列里有请求(ioQueuedART>0)、worker 却空闲
-    // (ioActive=-1)且永不取，说明唤醒在“渲染线程一帧内批量入队、worker 恰处于清空
-    // 队列后尚未进入等待”的窗口被丢失。为彻底杜绝，worker 改为主动轮询队列：有请求
-    // 就处理，队列空则短暂休眠 2ms 再查。丢唤醒在此结构下不可能发生。2ms 空闲轮询对
-    // 后台 art 加载的延迟可忽略，CPU 占用也极低。
-    //
-    // 【本次诊断】上一轮实机日志显示队列非空(ioQueuedART=3)而 worker 空闲(ioActive=-1)长达
-    // 10 秒——这在轮询结构下逻辑上不可能。为判定“究竟跑的是不是轮询固件、worker 循环有没有
-    // 在转”，加一个启动横幅 + 心跳日志：
-    //   - 启动横幅只打印一次，证明本 ELF 确为轮询版；
-    //   - 心跳每 500 次循环打印一次(空闲时约 1 秒一次)，附带累计取件数与当前队列长度。
-    //     若卡死期间心跳照常增长而队列不降 → worker 在转但取不到件(需深挖)；
-    //     若卡死期间心跳停滞 → worker 根本没被调度/是旧固件。
-    LOG("IOMAN: polling worker START (build=poll-diag)\n");
-    unsigned int iterCount = 0;
-    unsigned int poppedCount = 0;
+    // 轮询式 IO worker：不依赖任何唤醒信号，避免“渲染线程一帧内批量入队、worker 恰处于
+    // 清空队列后尚未进入等待”的窗口丢唤醒导致请求永久积压。有请求就处理，队列空则休眠
+    // 2ms 再查——空闲轮询对后台 art 加载延迟可忽略，CPU 占用也极低。
     while (!gIOTerminate) {
-        // 心跳：每 500 次循环打印一次当前状态(队列遍历需在锁内以防与入队竞争)
-        if ((iterCount % 500) == 0) {
-            int pend = 0;
-            WaitSema(gEndSemaId);
-            struct io_request_t *p = gReqList;
-            while (p) { pend++; p = p->next; }
-            SignalSema(gEndSemaId);
-            LOG("IOMAN: worker heartbeat iter=%u popped=%u pending=%d active=%d\n",
-                iterCount, poppedCount, pend, gActiveRequestType);
-        }
-        iterCount++;
-
         // 队列取头节点(整段在队列锁内完成)
         WaitSema(gEndSemaId);
         struct io_request_t *req = gReqList;
@@ -188,7 +161,6 @@ static void ioWorkerThread(void *arg)
             continue;
         }
 
-        poppedCount++;
         ioProcessRequest(req);
 
         WaitSema(gEndSemaId);
@@ -410,31 +382,6 @@ int ioGetPendingRequestCount(void)
 int ioHasPendingRequests(void)
 {
     return isIOPending;
-}
-
-// 【诊断用】返回指定类型仍排在队列(gReqList)里、尚未开始处理的请求数量。
-// 注意：不含“正在处理中”的那一个(见 ioGetActiveRequestType)。
-int ioGetPendingRequestCountByType(int type)
-{
-    int count = 0;
-
-    WaitSema(gEndSemaId);
-    struct io_request_t *req = gReqList;
-    while (req) {
-        if (req->type == type)
-            count++;
-        req = req->next;
-    }
-    SignalSema(gEndSemaId);
-    return count;
-}
-
-// 【诊断用】返回 io worker 线程“当前正在处理”的请求类型；空闲时为 -1。
-// 若该值长时间恒等于某类型(如 IO_CACHE_LOAD_ART)且不变，说明 worker 卡在该请求的
-// 处理函数里(例如 itemGetImage 的 SMB open/read 迟迟不返回)，后续请求全部积压。
-int ioGetActiveRequestType(void)
-{
-    return gActiveRequestType;
 }
 
 #ifdef __EESIO_DEBUG

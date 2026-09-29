@@ -4,7 +4,6 @@
 #include "include/ioman.h"
 #include <png.h>
 #include <libjpg_ps2_addons.h>
-#include <errno.h> // 诊断日志需要 errno
 //#include <timer.h>
 //#include "include/pad.h"
 
@@ -504,49 +503,29 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
     void *pFileBuffer = NULL;
     if (filePath) {
         WaitSema(fileLockId);
-        // 【诊断日志·卡死排查】open 前打"进入"标记。fileLockId 是全局唯一的 art I/O 锁，
-        // 整段 open+lseek+read+close 都持有它。若某条 art 只打印了 ">>> open ENTER" 却
-        // 再也没有对应的 "<<< open OK"（且其后日志戛然而止），说明这次 SMB open 卡死没返回、
-        // 全局锁被永久占住，后续所有封面都会堵在 WaitSema(fileLockId) 上 → 全盘停载。
-        LOG("texLoadAll: >>> open ENTER path=%s\n", filePath);
         int fd = open(filePath, O_RDONLY);
         if (fd < 0) {
-            // 【诊断日志】open 失败。注意：本层【无法区分】"文件不存在"和"SMB 会话已死"——
-            // 两者都只返回负 fd。若某一时刻起所有 art 的 open 都开始失败、errno 变成连接类错误，
-            // 就说明 SMB 会话在此时掉了（而不是缺图）。请重点观察这里的 fd/errno。
-            LOG("texLoadAll: open FAILED fd=%d errno=%d path=%s\n", fd, errno, filePath);
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
-        // 【诊断日志·卡死排查】open 已返回（有对应的 ENTER 才算走通）。
-        LOG("texLoadAll: <<< open OK fd=%d path=%s\n", fd, filePath);
 
         int fileSize = lseek(fd, 0, SEEK_END);
         lseek(fd, 0, SEEK_SET);
-        if (fileSize < 0)
-            LOG("texLoadAll: lseek returned %d errno=%d path=%s\n", fileSize, errno, filePath);
 
         pFileBuffer = malloc(fileSize);
         if (pFileBuffer == NULL) {
-            LOG("texLoadAll: malloc(%d) failed path=%s\n", fileSize, filePath);
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE; // There's no out of memory error...
         }
 
-        // 【诊断日志·卡死排查】read 前打"进入"标记。SMB read 无接收超时，网络打嗝时可永久阻塞。
-        // 若某条 art 打印了 ">>> read ENTER" 却没有对应的 "<<< read OK"、且其后日志停住，
-        // 就证实卡点在 read（而非 open），并钉死到具体文件——这正是根因(smbman 缺 SO_RCVTIMEO)的实机证据。
-        LOG("texLoadAll: >>> read ENTER size=%d path=%s\n", fileSize, filePath);
         if (read(fd, pFileBuffer, fileSize) != fileSize) {
-            LOG("texLoadAll: read FAILED size=%d errno=%d path=%s\n", fileSize, errno, filePath);
+            LOG("texLoadAll: failed to read file %s\n", filePath);
             free(pFileBuffer);
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
-        // 【诊断日志·卡死排查】read 已返回。
-        LOG("texLoadAll: <<< read OK size=%d path=%s\n", fileSize, filePath);
         PngFileBufferPtr = pFileBuffer;
         close(fd);
         SignalSema(fileLockId);
