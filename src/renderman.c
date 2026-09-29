@@ -590,56 +590,43 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
-    // fill convention（半像素填充）：浮点缩放后 case/inlay 的底边、右边落在非整数坐标，
-    // GS 扫描线采样会丢掉最底一行/最右一列像素（放大后底部“缺一行”的成因）。把底边(y)与
-    // 右边(x)各向外扩 EDGE_FILL=0.5px，使该行/列的采样点落进图元内、补齐边缘。0.5 是常量、
-    // 不随缩放变化，不会重新引入蠕动。顶边/左边不动，避免整体偏移。
-    const float EDGE_FILL = 0.5f;
+    // ── 泛光根治：整数像素对齐 ──
+    // 浮点缩放会把 inlay/case 的四条边落在非整数（亚像素）屏幕坐标上，GS 的双线性/扫描线
+    // 采样在这些分数边界处向外“借”一圈纹素，缩放中心封面时表现为向背景溢出的黄色光晕；
+    // 旧的 EDGE_FILL=0.5 半像素填充只是想补底部缺行，反而进一步放大了这层亚像素泛光。
+    // 诊断链已证实：把最终绘制的位置与尺寸四舍五入到整数像素、并去掉 EDGE_FILL，泛光完全消失
+    // （原生 1:1 无泛光、整数缩放亦无泛光；仅分数坐标/EDGE_FILL 才泛光）。
+    // 关键：只在“最终屏幕坐标”这一步取整，layout/缩放计算仍保持浮点，不会重新引入宽屏蠕动。
+    // inlay 与 case 使用同一套取整后的 case 顶点推导，保证二者始终对齐锁定。
+#define RM_PXROUND(v) ((float)((int)((v) + ((v) >= 0.0f ? 0.5f : -0.5f))))
+    // 先把 case 外框的左上/右下取整（fRender*Off 视为整数偏移），得到整数化的 case 矩形。
+    float rUlX = RM_PXROUND(quad.ul.x + fRenderXOff);
+    float rUlY = RM_PXROUND(quad.ul.y + fRenderYOff);
+    float rBrX = RM_PXROUND(quad.br.x + fRenderXOff);
+    float rBrY = RM_PXROUND(quad.br.y + fRenderYOff);
 
-    // 【诊断-整数缩放】按 coverflow 的缩放尺寸绘制封面，但把【位置和尺寸都四舍五入到整数
-    // 像素】、不加 EDGE_FILL、用 sprite/NEAREST。并跳过 case。目的：区分光晕来自
-    // “亚像素分数坐标/EDGE_FILL”，还是“非整数缩放比例本身(缩放重采样)”。
-    // 若光晕消失 → 是分数坐标/EDGE_FILL 造成(可用整数对齐修复)；
-    // 若仍在 → 是缩放重采样本身(需换采样/预缩放)。诊断结束后会还原。
-    (void)urx;
-    (void)ury;
-    (void)blx;
-    (void)bly;
-    (void)EDGE_FILL;
-    {
-        int ix1 = (int)(quad.ul.x + ulx + fRenderXOff + 0.5f);
-        int iy1 = (int)(quad.ul.y + uly + fRenderYOff + 0.5f);
-        int iw = (int)((brx - ulx) + 0.5f);
-        int ih = (int)((bry - uly) + 0.5f);
-        if (iw < 1)
-            iw = 1;
-        if (ih < 1)
-            ih = 1;
-        gsKit_TexManager_bind(gsGlobal, inlay);
-        gsKit_prim_sprite_texture(gsGlobal, inlay,
-                                  (float)ix1, (float)iy1, 0.0f, 0.0f,
-                                  (float)(ix1 + iw), (float)(iy1 + ih),
-                                  (float)inlay->Width, (float)inlay->Height, order, color);
-        order++;
-    }
-    return;
+    // inlay 四角：以取整后的 case 左上为锚点，各角坐标同样取整（保留 overlay 顶点带来的可能斜切）。
+    float iUlX = RM_PXROUND(quad.ul.x + ulx + fRenderXOff), iUlY = RM_PXROUND(quad.ul.y + uly + fRenderYOff);
+    float iUrX = RM_PXROUND(quad.ul.x + urx + fRenderXOff), iUrY = RM_PXROUND(quad.ul.y + ury + fRenderYOff);
+    float iBlX = RM_PXROUND(quad.ul.x + blx + fRenderXOff), iBlY = RM_PXROUND(quad.ul.y + bly + fRenderYOff);
+    float iBrX = RM_PXROUND(quad.ul.x + brx + fRenderXOff), iBrY = RM_PXROUND(quad.ul.y + bry + fRenderYOff);
 
     gsKit_TexManager_bind(gsGlobal, inlay);
     gsKit_prim_quad_texture(gsGlobal, inlay,
-                            quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
-                            0.0f, 0.0f,
-                            quad.ul.x + urx + EDGE_FILL + fRenderXOff, quad.ul.y + ury + fRenderYOff,
-                            inlay->Width, 0.0f,
-                            quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + EDGE_FILL + fRenderYOff,
-                            0.0f, inlay->Height,
-                            quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
-                            inlay->Width, inlay->Height, order, color);
+                            iUlX, iUlY, 0.0f, 0.0f,
+                            iUrX, iUrY, inlay->Width, 0.0f,
+                            iBlX, iBlY, 0.0f, inlay->Height,
+                            iBrX, iBrY, inlay->Width, inlay->Height, order, color);
     order++;
 
-    // case 外壳同样把右边、底边各扩 0.5px，与 inlay 一致补齐最右列/最底行。
-    quad.br.x += EDGE_FILL;
-    quad.br.y += EDGE_FILL;
+    // case 外壳用整数化后的矩形绘制（去掉 EDGE_FILL）。rmDrawQuad 内部会再加 fRender*Off，
+    // 故这里回减一次，使叠加后落在我们已取整的整数像素上。
+    quad.ul.x = rUlX - fRenderXOff;
+    quad.ul.y = rUlY - fRenderYOff;
+    quad.br.x = rBrX - fRenderXOff;
+    quad.br.y = rBrY - fRenderYOff;
     rmDrawQuad(&quad);
+#undef RM_PXROUND
 }
 
 // rmDrawOverlayPixmapFrac 的倒影版：主图走上面的 Frac 路径，另在下方逐行绘制渐隐倒影。
@@ -650,9 +637,6 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
 {
     rmDrawOverlayPixmapFrac(overlay, x, y, aligned, w, h, scaled, color, inlay, baseW, baseH,
                             ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry);
-
-    // 【诊断-整数缩放】跳过倒影。诊断结束后会还原。
-    return;
 
     rm_quad_t quad;
     rmSetupQuadF(overlay, x, y, aligned, w, h, scaled, color, &quad);
