@@ -656,23 +656,25 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     float rBrX = RM_PXROUND(quad.br.x + fRenderXOff);
     float rBrY = RM_PXROUND(quad.br.y + fRenderYOff);
 
-    // ── inlay 整数化：锁定【整数尺寸】，而非把四角各自独立取整（防中心封面丢边）──
-    // inlay 的浮点宽/高(=case 尺寸×内框占比)一般不是整数。旧版把上下(或左右)两角【各自独立】
-    // 四舍五入，得到的像素行数 = round(下边)-round(上边)，会随 case 在屏幕上的亚像素位置
-    // （即主题里封面的坐标）在 199/200/201 之间跳。当 inlay 尺寸≈纹理尺寸（中心封面 1:1）时，
-    // 200 纹素被映到 199/201 像素 → GS 采样丢/复制一条边，且丢哪条边随坐标而变（内置主题丢底边、
-    // 第三方主题因坐标不同丢顶边或右边）——正是所报“中心封面也丢边、丢哪条随主题坐标”的现象。
-    // 修法：左上角取整定位；宽、高各自取整成【整数像素尺寸】；远角 = 近角 + 整数尺寸。于是 1:1 时
-    // 宽高精确等于纹理尺寸、纹素与像素一一对应，任何位置都不丢边；缩放时尺寸仍随 inlay 真实浮点
-    // 尺寸连续取整、位置随 case，二者保持锁定不蠕动。（overlay 顶点为矩形，取两角均值即其边。）
-    float inLeftF   = quad.ul.x + (ulx + blx) * 0.5f + fRenderXOff; // 内框左边
-    float inRightF  = quad.ul.x + (urx + brx) * 0.5f + fRenderXOff; // 内框右边
-    float inTopF    = quad.ul.y + (uly + ury) * 0.5f + fRenderYOff; // 内框上边
-    float inBottomF = quad.ul.y + (bly + bry) * 0.5f + fRenderYOff; // 内框下边
-    float iLeft = RM_PXROUND(inLeftF);
-    float iTop  = RM_PXROUND(inTopF);
-    float iW    = RM_PXROUND(inRightF - inLeftF);  // 内框宽 → 整数像素
-    float iH    = RM_PXROUND(inBottomF - inTopF);  // 内框高 → 整数像素
+    // ── inlay 整数化：锁定【整数尺寸】+ 位置锚定到已取整的 case 角（防丢边、防随主题抖动）──
+    // 两类丢边都在这里根治：
+    // (1) 尺寸抖动：inlay 浮点宽/高一般非整数，旧版把上下(或左右)两角各自 round，像素尺寸
+    //     = round(远边)-round(近边) 会随 case 亚像素位置在 N-1/N/N+1 间跳；1:1(中心封面)时把 N 纹素
+    //     映到 N±1 像素 → 丢/复制一条纹理边。对策：宽、高各自取整成【整数尺寸】(与位置无关)，
+    //     远角 = 近角 + 整数尺寸 → 1:1 精确等于纹理尺寸、不丢边。
+    // (2) 边距抖动：若把“位置+内框偏移”合起来再取整(round(quad.ul.x+偏移))，封面相对 case 的边距
+    //     = round(A+偏移)-round(A) 会随 case 位置 A 的小数部分在 N/N+1 间跳 → 非中心封面在不同主题下
+    //     时而被 case 边框压住一条边、时而露 1px 缝(“丢边随主题不同”)。对策：case 左上角先取整(rUlX/rUlY)，
+    //     内框偏移【单独取整】后再相加 → 封面相对 case 的边距恒定、与位置无关，各主题表现一致。
+    // (overlay 顶点为矩形，取两对角均值即其上下左右边相对 case 左上的偏移。)
+    float offL = (ulx + blx) * 0.5f; // 内框左边相对 case 左上的偏移
+    float offR = (urx + brx) * 0.5f; // 内框右边
+    float offT = (uly + ury) * 0.5f; // 内框上边
+    float offB = (bly + bry) * 0.5f; // 内框下边
+    float iLeft = rUlX + RM_PXROUND(offL);
+    float iTop  = rUlY + RM_PXROUND(offT);
+    float iW    = RM_PXROUND(offR - offL); // 内框宽 → 整数像素(与位置无关)
+    float iH    = RM_PXROUND(offB - offT); // 内框高 → 整数像素(与位置无关)
     float iUlX = iLeft,      iUlY = iTop;
     float iUrX = iLeft + iW, iUrY = iTop;
     float iBlX = iLeft,      iBlY = iTop + iH;
@@ -731,12 +733,13 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
     // （旧版 +0.5 分数起点）会错开约 1px，接缝处忽而留背景缝、忽而叠暗行——即"丢线"。
     // 非中心封面因尺寸小、底边分数部分不同，最容易暴露。这里改为整数对齐、去掉 +0.5 EDGE_FILL。
     float baseY = rmPxSnap(quad.br.y + fRenderYOff); // == 主图 case 底边所在整数像素
-    // inlay 横向边界与主图【用同一套锁定宽度】：左边取整定位、宽度取整成整数，右边=左边+整数宽，
-    // 使倒影与主图左右范围完全一致、不因各角独立取整而相对错开（与主图 rmDrawOverlayPixmapFrac 同法）。
-    float inLeftF  = quad.ul.x + (ulx + blx) * 0.5f + fRenderXOff;
-    float inRightF = quad.ul.x + (urx + brx) * 0.5f + fRenderXOff;
-    float iLeftX = rmPxSnap(inLeftF);
-    float iWidthX = rmPxSnap(inRightF - inLeftF);
+    // inlay 横向与主图【完全同法】：case 左上先取整，内框偏移单独取整后相加得左边，宽度取整成整数，
+    // 右边=左边+整数宽。这样倒影与主图左右范围逐像素一致、且相对 case 的边距与位置无关，不随主题抖动。
+    float rUlX = rmPxSnap(quad.ul.x + fRenderXOff);
+    float offL = (ulx + blx) * 0.5f;
+    float offR = (urx + brx) * 0.5f;
+    float iLeftX = rUlX + rmPxSnap(offL);
+    float iWidthX = rmPxSnap(offR - offL);
     float iUlX = iLeftX;
     float iUrX = iLeftX + iWidthX;
     float iBlX = iLeftX;
