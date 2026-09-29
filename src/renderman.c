@@ -585,10 +585,20 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
     float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
 
-    if ((inlay->PSM == GS_PSM_CT32) || (inlay->Clut && inlay->ClutPSM == GS_PSM_CT32))
-        gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-    else
-        gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+    // 【泛光修复】Coverflow 封面(inlay)与外壳(case)改为“阈值 alpha 测试 + 不透明绘制”。
+    // 泛光成因：封面/外壳边缘的半透明像素(抗锯齿软边、外壳窗口薄膜)经 alpha 混合，把边缘
+    // 颜色按其 alpha 比例混到深色背景上，向外形成同边缘色的柔和大光晕(broad halo)。
+    // 处理：关闭 alpha 混合(PrimAlphaEnable OFF)，并把 alpha 测试从“仅丢 alpha==0”改为
+    // “丢弃 alpha<=阈值”(ATST=GREATER, AREF=0x3F)——低 alpha 软边/薄膜被直接丢弃，通过测试
+    // 的像素以不透明方式绘制。于是边缘变利落、不再向背景外扩混色，泛光消除。dim 变暗走顶点
+    // 颜色调制(与混合无关)，不受影响。仅作用于本 Coverflow Frac 路径，绘制后立即恢复全局
+    // alpha 测试，绝不影响整数版 rmDrawQuad/rmDrawPixmap 等其它绘制路径。
+    const int savedATST = gsGlobal->Test->ATST;
+    const int savedAREF = gsGlobal->Test->AREF;
+    gsGlobal->Test->ATST = 6;      // GREATER：alpha > AREF 才通过
+    gsGlobal->Test->AREF = 0x3F;   // 丢弃软边/薄膜等低 alpha 像素（不透明约为 0x7F）
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+    gsKit_set_test(gsGlobal, GS_ATEST_ON);
 
     // fill convention（半像素填充）：浮点缩放后 case/inlay 的底边、右边落在非整数坐标，
     // GS 扫描线采样会丢掉最底一行/最右一列像素（放大后底部“缺一行”的成因）。把底边(y)与
@@ -611,7 +621,20 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     // case 外壳同样把右边、底边各扩 0.5px，与 inlay 一致补齐最右列/最底行。
     quad.br.x += EDGE_FILL;
     quad.br.y += EDGE_FILL;
-    rmDrawQuad(&quad);
+    // 直接以当前(阈值测试 + 不透明)状态绘制外壳，不走 rmDrawQuad——后者会对 CT32 重新开启
+    // alpha 混合，反而在外壳外边缘引回泛光。
+    gsKit_TexManager_bind(gsGlobal, quad.txt);
+    gsKit_prim_sprite_texture(gsGlobal, quad.txt,
+                              quad.ul.x + fRenderXOff, quad.ul.y + fRenderYOff,
+                              quad.ul.u, quad.ul.v,
+                              quad.br.x + fRenderXOff, quad.br.y + fRenderYOff,
+                              quad.br.u, quad.br.v, order, quad.color);
+    order++;
+
+    // 恢复全局 alpha 测试，避免影响后续/其它绘制路径。
+    gsGlobal->Test->ATST = savedATST;
+    gsGlobal->Test->AREF = savedAREF;
+    gsKit_set_test(gsGlobal, GS_ATEST_ON);
 }
 
 // rmDrawOverlayPixmapFrac 的倒影版：主图走上面的 Frac 路径，另在下方逐行绘制渐隐倒影。
