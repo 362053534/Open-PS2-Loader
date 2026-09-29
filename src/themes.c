@@ -1600,18 +1600,24 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // = case 尺寸 × 内框占比(fracW/H)，与正常路径里 inlay 的实际占屏尺寸一致，居中在同一位置。
         // 用来在【无 case】的隔离条件下，单看缩小封面的丢边是否受倒影影响。
         if (covers[i].texture) {
+            // 诊断分支也使用同一“底部锚点”，避免与正式 case 路径的定位方式不一致。
             if (elem->reflection)
-                rmDrawPixmapFracReflect(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
-                                        currentCoverWidth * fracW, currentCoverHeight * fracH, SCALING_NONE, coverColor);
+                rmDrawPixmapFracReflect(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset,
+                                        (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth * fracW,
+                                        currentCoverHeight * fracH, SCALING_NONE, coverColor);
             else
-                rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
-                                 currentCoverWidth * fracW, currentCoverHeight * fracH, SCALING_NONE, coverColor);
+                rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset,
+                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth * fracW,
+                                 currentCoverHeight * fracH, SCALING_NONE, coverColor);
         }
 #else
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
-        coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
-                             currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
-                             elem->width, elem->height);
+        // y 仍来自 Coverflow 元素的 cfg y（加上既有的模块基线偏移），但改为把它作为
+        // 封面模块的【底部锚点】；因此中心封面放大/非中心缩小只向上展开，底部位置不随尺寸改变。
+        // 不改动封面尺寸、物理像素模式或过滤方式，保留 448/480/512 的原有尺寸差异。
+        coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset,
+                             (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
+                             elem->reflection, elem->width, elem->height);
 #endif
     }
 
