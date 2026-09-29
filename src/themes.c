@@ -1563,16 +1563,16 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
         }
 
-        // 封面主图过滤方式【按实际缩放比自适应】——这是"点对点却仍丢横线"的真正修法：
-        //   · 本封面在【物理屏幕】上的目标像素尺寸 = 虚拟尺寸 × native/虚拟(640×480)（宽再含宽屏压缩）。
-        //   · 若目标 ≥ 纹理原生尺寸（放大或 1:1）→ NEAREST：点对点锐利，放大只会复制像素、绝不丢行。
-        //   · 若目标 < 纹理原生尺寸（缩小，如 NTSC 下 200→187）→ LINEAR：平滑缩小，避免最近邻把
-        //     某几行整行丢弃（那正是"有时明显少一条横线"的来源）。只在【必须缩小】时才略微变软。
-        // 仅作用于 coverflow 封面主图，不动 case 外壳/倒影。
+        // 封面主图过滤方式【按封面大小 vs 原生基准分辨率自适应】——防丢线且尽量锐利：
+        //   基准原生分辨率 = 游戏 140×200 / APPS 140×140（即 baseCoverW×baseCoverH）。
+        //   · 封面【小于】原生（缩小，如非中心 104<140，或几何模式下 NTSC 200→187）→ LINEAR：
+        //     平滑缩小，避免最近邻把整行/整列丢弃（就是"丢线"的来源）。
+        //   · 封面【≥】原生（1:1 或放大）→ NEAREST：点对点锐利，放大只复制像素、绝不丢行。
+        //   比较用【物理绘制尺寸】vs 基准分辨率：4:3 下即 inlay vs 140×200；宽屏封面被横向压缩，
+        //   宽度物理上确实 < 原生 → 自动走 LINEAR，防竖线丢失。仅作用于封面主图，不动 case/倒影。
         if (covers[i].texture) {
 #if COVERFLOW_NATIVE_PIXEL_COVERS
-            // 物理像素 1:1 模式：封面已按排版数值直接占物理像素，故物理尺寸就是 inlayW/inlayH
-            // （宽屏横向压缩仍在）。此时中心封面(200)≈纹理原生 → 判为非缩小 → 走 NEAREST 点对点。
+            // 物理像素 1:1 模式：封面按排版数值直接占物理像素，故物理尺寸就是 inlayW/inlayH（宽屏含横向压缩）。
             float physInlayH = inlayH;
             float physInlayW = inlayW;
             if (gWideScreen)
@@ -1583,8 +1583,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             if (gWideScreen)
                 physInlayW = rmWideScaleF(physInlayW);
 #endif
-            int minifying = ((float)covers[i].texture->Height > physInlayH + 0.5f) ||
-                            ((float)covers[i].texture->Width > physInlayW + 0.5f);
+            int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
+                            ((float)baseCoverW > physInlayW + 0.5f);
             covers[i].texture->Filter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
         }
 
