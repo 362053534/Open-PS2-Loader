@@ -1064,17 +1064,17 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -32 // 非中心封面尺寸【唯一旋钮】：相对 140 基准的像素增减（-32=非中心宽108；0=与中心140等大；正值更大）
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 非中心封面尺寸【唯一旋钮】：相对 140 基准的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）
 // 宽屏(16:9)专用的【封面间距】百分比。宽屏【不再改变非中心封面的大小】（尺寸与 4:3 完全一致），
 // 改为在宽屏下把封面间距略微拉大一点。语义同下面的间距%：间隙 = 非中心封面基准宽 × 此值/100。
 // 当前 10（间隙 ≈ 非中心基准宽的 10%；基准宽约 80px 时间隙约 8px，比 4:3 的 3% 稍大，之前 100 太大了）。
 // 4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
-#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 10
+#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 30
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
 // 当前 3（间隙 ≈ 非中心基准宽的 3%；基准宽约 80px 时间隙约 2~3px，比上次 13% 再按同比例缩小一档）。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 3
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 8
 // 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 45 = 整个封面模块（PS2 与 APPS）下移 45px。
 #define COVERFLOW_BASELINE_YOFFSET 45
