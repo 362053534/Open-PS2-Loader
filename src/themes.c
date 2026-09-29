@@ -1059,10 +1059,10 @@ static clock_t animationStartTime = 0;
 // 中心/非中心封面各自 = 基准 ± 各自的 scale（等比，加到高度、宽按 140:200 跟随）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 200
-// APPS 页签封面主图基准尺寸：应用封面通常为正方形，默认 200×200（cfg 可用
+// APPS 页签封面主图基准尺寸：应用封面通常为正方形，默认 140×140（cfg 可用
 // coverflow_apps_cover_width/height 覆盖），用来反推 apps 的 case(cf_apps_case)。
-#define COVERFLOW_APPS_COVER_W 200
-#define COVERFLOW_APPS_COVER_H 200
+#define COVERFLOW_APPS_COVER_W 140
+#define COVERFLOW_APPS_COVER_H 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -70 // 非中心封面相对 140×200 的增减（默认缩小）
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
@@ -1932,8 +1932,8 @@ static void thmLoad(const char *themePath)
     //   coverflow_count            —— 同屏封面数（夹取到 1..COVERFLOW_MAX）
     //   coverflow_cover_width       —— 游戏封面主图基准宽（默认 140，PS2 标准封面）
     //   coverflow_cover_height      —— 游戏封面主图基准高（默认 200）
-    //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（默认 200，正方形）
-    //   coverflow_apps_cover_height —— APPS 封面主图基准高（默认 200，正方形）
+    //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（默认 140，正方形）
+    //   coverflow_apps_cover_height —— APPS 封面主图基准高（默认 140，正方形）
     //   coverflow_center_scale     —— 中心封面相对基准的等比增减像素（0=原生点对点、无失真）
     //   coverflow_noncenter_scale  —— 非中心封面相对基准的等比增减像素（负值=缩小）
     //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
