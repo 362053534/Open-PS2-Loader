@@ -1065,6 +1065,10 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_COVER_H 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -70 // 非中心封面相对 140×200 的增减（默认缩小）
+// 宽屏(16:9)专用的非中心封面增减。宽屏不再自动 +2 封面，而是把非中心封面放大到此值，
+// 用更大的两侧封面占满拉宽后的屏幕（默认 -30 → 非中心宽 110，介于 4:3 的 70 与中心 140 之间）。
+// cfg 可用 coverflow_widescreen_noncenter_scale 覆盖。4:3 下不使用此值（仍用 noncenter_scale）。
+#define COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE -30
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1077,6 +1081,7 @@ static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图
 static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（cfg 可覆盖）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
+static int gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE; // 宽屏专用非中心增减（放大填屏）
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
@@ -1131,14 +1136,12 @@ int thmCoverflowAnimEnabled(void)
     return gCoverflowAnimSpeed > 0;
 }
 
-// 当前实际同屏显示的封面数：= coverflow_count，且【宽屏时自动 +2】（两侧各多显示一张，
-// 例如默认 7 张 → 宽屏 9 张），最终夹取到 1..COVERFLOW_MAX。绘制 / 翻页跳转 / 缓存槽位
-// 都以此为准，保证三者一致（宽屏多出的封面也有对应缓存槽，边缘不缺图）。
+// 当前实际同屏显示的封面数：= coverflow_count，夹取到 1..COVERFLOW_MAX。绘制 / 翻页跳转 /
+// 缓存槽位都以此为准，保证三者一致。宽屏【不再自动 +2】：改为放大非中心封面来占满拉宽的屏幕
+// （见 drawCoverFlow 里的 gCoverflowWideNonCenterScale），封面数在 4:3 与宽屏下保持一致。
 static int getCoverflowDisplayCount(void)
 {
     int n = gCoverflowCount;
-    if (gWideScreen)
-        n += 2;
     if (n < 1)
         n = 1;
     if (n > COVERFLOW_MAX)
@@ -1147,7 +1150,7 @@ static int getCoverflowDisplayCount(void)
 }
 
 // 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
-// 该值 = 当前同屏显示的封面数（getCoverflowDisplayCount，含宽屏 +2，夹取到 1..COVERFLOW_MAX，
+// 该值 = 当前同屏显示的封面数（getCoverflowDisplayCount，夹取到 1..COVERFLOW_MAX，
 // 与 drawCoverFlow 实际显示的封面数保持一致）。未启用 Coverflow 主题时返回 0，调用方据此
 // 回退到列表主题的原有整页步长（displayedItems）。
 int thmGetCoverflowJumpCount(void)
@@ -1243,10 +1246,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             fracH = (float)ih / (float)elem->height;
     }
 
+    // 非中心封面的等比增减：宽屏用专用的更大值（gCoverflowWideNonCenterScale）把两侧封面放大、
+    // 占满拉宽后的屏幕；4:3 下用常规 gCoverflowNonCenterScale。中心封面仍用 gCoverflowCenterScale。
+    int effNonCenterScale = gWideScreen ? gCoverflowWideNonCenterScale : gCoverflowNonCenterScale;
+
     // 非中心封面（静止态）尺寸 → 反推非中心 case 尺寸，供布局排布使用。
     // 缩放【以横向宽度为基准】：scale 加到宽度，高度按基准比例跟随。这样不同页签只要
     // 基准宽相同(都 140)，同一 scale 缩放后宽度就一致（游戏/apps 横向观感统一）。
-    float nonInlayW = (float)baseCoverW + (float)gCoverflowNonCenterScale;
+    float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (nonInlayW < 1.0f)
         nonInlayW = 1.0f;
     float nonInlayH = (float)baseCoverH * nonInlayW / (float)baseCoverW;
@@ -1400,6 +1407,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         drawOrder[drawCount++] = i;
     drawOrder[drawCount++] = centerIndex;
 
+    // 把 GS 裁剪框收紧到可见显示区域：滑动动画中两侧封面会移出屏幕、进入左右黑边甚至帧缓冲外，
+    // 实机上造成图像残留/串色。收紧 scissor 后超出可见区的封面像素被 GS 硬件裁掉，从根本上杜绝残留。
+    // 绘制完封面立即恢复默认裁剪框，避免影响后续/其它绘制。
+    rmSetScissorDisplay();
+
     int oi;
     for (oi = 0; oi < drawCount; oi++) {
         i = drawOrder[oi];
@@ -1423,9 +1435,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             centerFactor = 0.0f;
 
         // 本封面的等比 scale：非中心 ↔ 中心 随 centerFactor 插值（浮点连续，供动画平滑过渡）。
-        //   centerFactor=1 → 中心 scale；=0 → 非中心 scale；动画中间平滑取值。
-        float coverScale = (float)gCoverflowNonCenterScale +
-                           (float)(gCoverflowCenterScale - gCoverflowNonCenterScale) * centerFactor;
+        //   centerFactor=1 → 中心 scale；=0 → 非中心 scale（宽屏用放大后的 effNonCenterScale）；
+        //   动画中间平滑取值。
+        float coverScale = (float)effNonCenterScale +
+                           (float)(gCoverflowCenterScale - effNonCenterScale) * centerFactor;
         // 封面主图目标尺寸 = 基准 + coverScale（等比，【以横向宽度为基准】：scale 加到宽度、
         // 高度按基准比例跟随），中心 scale=0 时即原生基准尺寸、点对点无失真。
         float inlayW = (float)baseCoverW + coverScale;
@@ -1472,6 +1485,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                              currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
                              elem->width, elem->height);
     }
+
+    // 封面绘制完毕，恢复默认裁剪框（整个帧缓冲），不影响后续/其它绘制路径。
+    rmResetScissor();
 
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
     // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
@@ -1676,10 +1692,8 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 // 左右预取封面都放得下、预取真正生效。gCoverflowCount / gCoverflowPreload 已在
                 // 上面的主题级解析里按“优先读主题、缺失用默认”确定。预取数不设上限，故槽位数也
                 // 可能很大（主题填过大导致内存不足属用户行为，不额外处理）。
-                // 额外 +2：宽屏时同屏封面会自动 +2（getCoverflowDisplayCount）。缓存在主题解析时
-                // 一次性分配、之后不随宽屏开关重建，故【无条件预留】这 2 个槽位，保证运行中打开
-                // 宽屏后多出的两张边缘封面也有缓存槽、不缺图。
-                int coverflowCacheSlots = gCoverflowCount + 2 + 2 * gCoverflowPreload + 1;
+                // 注：宽屏不再自动 +2 封面（改为放大非中心封面填屏），故此处不再额外预留 2 槽。
+                int coverflowCacheSlots = gCoverflowCount + 2 * gCoverflowPreload + 1;
                 initCoverflow(themePath, themeConfig, theme, elem, name, coverflowCacheSlots, NULL, NULL);
                 theme->coverflow = elem;
             }
@@ -1953,6 +1967,7 @@ static void thmLoad(const char *themePath)
     gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
     gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
     gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
+    gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
@@ -1963,6 +1978,7 @@ static void thmLoad(const char *themePath)
     configGetInt(themeConfig, "coverflow_apps_cover_height", &gCoverflowAppsCoverH);
     configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
     configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
+    configGetInt(themeConfig, "coverflow_widescreen_noncenter_scale", &gCoverflowWideNonCenterScale);
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);

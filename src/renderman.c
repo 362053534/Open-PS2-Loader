@@ -829,6 +829,31 @@ void rmSetOverscan(int overscan)
         fRenderYOff += 0.25f;
 }
 
+// 把 GS 裁剪框(scissor)收紧到【可见显示区域】= 过扫补偿后的矩形
+// [iDisplayXOff, iDisplayXOff+iDisplayWidth) × [iDisplayYOff, iDisplayYOff+iDisplayHeight)。
+// 之后排入的所有图元都会被 GS 硬件裁到此框内，超出部分不写入帧缓冲。
+// 用于 Coverflow：滑动动画中两侧封面会移出可见区、进入左右黑边甚至帧缓冲外，
+// 在实机上造成图像残留/串色；收紧 scissor 后这些像素被硬件裁掉，从根本上杜绝残留。
+// scissor 坐标为帧缓冲像素坐标(含端点)，与图元坐标同系（XYOFFSET 已把图元 0 对到帧缓冲 0）。
+void rmSetScissorDisplay(void)
+{
+    int x0 = iDisplayXOff;
+    int y0 = iDisplayYOff;
+    int x1 = iDisplayXOff + iDisplayWidth - 1;
+    int y1 = iDisplayYOff + iDisplayHeight - 1;
+    if (x1 < x0)
+        x1 = x0;
+    if (y1 < y0)
+        y1 = y0;
+    gsKit_set_scissor(gsGlobal, GS_SETREG_SCISSOR(x0, x1, y0, y1));
+}
+
+// 恢复默认 scissor（整个帧缓冲）。与 rmSetScissorDisplay 成对使用。
+void rmResetScissor(void)
+{
+    gsKit_set_scissor(gsGlobal, GS_SCISSOR_RESET);
+}
+
 unsigned char rmGetHsync(void)
 {
     return rm_mode_table[vmode].hsync;
