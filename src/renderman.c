@@ -590,6 +590,19 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
+    // 【泛光候选】只对封面主图(inlay)提高 alpha 测试阈值——不动混合、不动 case。
+    // 假说：封面四周若有抗锯齿软边(半透明像素)，在深色背景上会被 alpha 混合把边缘色按其
+    // alpha 比例混出，向外形成柔光晕。做法：封面主体不透明(alpha≈0x7F)照常混合绘制；把
+    // alpha 测试从“仅丢 alpha==0”改成“丢弃 alpha<=阈值(0x40)”，直接丢掉半透明软边像素，使其
+    // 不再外混。PrimAlphaEnable 保持不变(仍混合)，故【不会】像之前那样把外壳玻璃膜画成实心白。
+    // 仅作用于本次 inlay 绘制，紧接着恢复全局 alpha 测试，case 外壳/倒影完全不受影响。
+    // 若封面本身完全不透明(无软边)，则所有像素都 >阈值、此改动为无操作(不改变观感)。
+    const int savedATST = gsGlobal->Test->ATST;
+    const int savedAREF = gsGlobal->Test->AREF;
+    gsGlobal->Test->ATST = 6;    // GREATER：alpha > AREF 才通过
+    gsGlobal->Test->AREF = 0x40; // 丢弃半透明软边(不透明约 0x7F)
+    gsKit_set_test(gsGlobal, GS_ATEST_ON);
+
     // fill convention（半像素填充）：浮点缩放后 case/inlay 的底边、右边落在非整数坐标，
     // GS 扫描线采样会丢掉最底一行/最右一列像素（放大后底部“缺一行”的成因）。把底边(y)与
     // 右边(x)各向外扩 EDGE_FILL=0.5px，使该行/列的采样点落进图元内、补齐边缘。0.5 是常量、
@@ -607,6 +620,11 @@ void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned
                             quad.ul.x + brx + EDGE_FILL + fRenderXOff, quad.ul.y + bry + EDGE_FILL + fRenderYOff,
                             inlay->Width, inlay->Height, order, color);
     order++;
+
+    // 恢复全局 alpha 测试，确保后续 case 外壳及其它绘制路径完全不受影响。
+    gsGlobal->Test->ATST = savedATST;
+    gsGlobal->Test->AREF = savedAREF;
+    gsKit_set_test(gsGlobal, GS_ATEST_ON);
 
     // case 外壳同样把右边、底边各扩 0.5px，与 inlay 一致补齐最右列/最底行。
     quad.br.x += EDGE_FILL;
