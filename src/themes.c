@@ -1569,24 +1569,28 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         //     平滑缩小，避免最近邻把整行/整列丢弃（就是"丢线"的来源）。
         //   · 封面【≥】原生（1:1 或放大）→ NEAREST：点对点锐利，放大只复制像素、绝不丢行。
         //   比较用【物理绘制尺寸】vs 基准分辨率：4:3 下即 inlay vs 140×200；宽屏封面被横向压缩，
-        //   宽度物理上确实 < 原生 → 自动走 LINEAR，防竖线丢失。仅作用于封面主图，不动 case/倒影。
-        if (covers[i].texture) {
+        //   宽度物理上确实 < 原生 → 自动走 LINEAR，防竖线丢失。
+        //   case 外壳与封面【一起同步】用同一过滤方式：封面走 NEAREST 时外壳也 NEAREST，避免锐利封面
+        //   套在被线性糊过的外壳里、观感割裂（外壳与封面一同缩放，故用同一判定）。仅动封面主图+case。
 #if COVERFLOW_NATIVE_PIXEL_COVERS
-            // 物理像素 1:1 模式：封面按排版数值直接占物理像素，故物理尺寸就是 inlayW/inlayH（宽屏含横向压缩）。
-            float physInlayH = inlayH;
-            float physInlayW = inlayW;
-            if (gWideScreen)
-                physInlayW = rmWideScaleF(physInlayW);
+        // 物理像素 1:1 模式：封面按排版数值直接占物理像素，故物理尺寸就是 inlayW/inlayH（宽屏含横向压缩）。
+        float physInlayH = inlayH;
+        float physInlayW = inlayW;
+        if (gWideScreen)
+            physInlayW = rmWideScaleF(physInlayW);
 #else
-            float physInlayH = inlayH * (float)nativeH / 480.0f;
-            float physInlayW = inlayW * (float)nativeW / 640.0f;
-            if (gWideScreen)
-                physInlayW = rmWideScaleF(physInlayW);
+        float physInlayH = inlayH * (float)nativeH / 480.0f;
+        float physInlayW = inlayW * (float)nativeW / 640.0f;
+        if (gWideScreen)
+            physInlayW = rmWideScaleF(physInlayW);
 #endif
-            int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
-                            ((float)baseCoverW > physInlayW + 0.5f);
-            covers[i].texture->Filter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
-        }
+        int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
+                        ((float)baseCoverW > physInlayW + 0.5f);
+        short coverFilter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+        if (covers[i].texture)
+            covers[i].texture->Filter = coverFilter;         // 封面主图
+        if (img->overlayTexture)
+            img->overlayTexture->source.Filter = coverFilter; // case 外壳跟随封面
 
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
