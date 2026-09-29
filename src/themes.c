@@ -1073,6 +1073,10 @@ static clock_t animationStartTime = 0;
 // 即封面之间的间隙 = 封面宽的“此百分比”。封面越大、间距越大（尺寸兼具控制间隔的功能）。
 // 默认 50（间隙=封面宽一半），与旧“填满屏幕”模型在默认 4:3 下的观感一致。cfg 可覆盖。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 50
+// 非中心封面【绘制尺寸】相对其布局尺寸的放大百分比：100=不放大(画出=布局)，130=放大30%。
+// 布局/间距仍按未放大的尺寸计算，故放大封面【不改变现有间距】；只把画出来的非中心封面放大。
+// 放大后非中心封面会略微盖住相邻封面(经典 coverflow 叠压观感)。cfg 可覆盖。
+#define COVERFLOW_DEFAULT_NONCENTER_ENLARGE 130
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1087,6 +1091,7 @@ static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中�
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
 static int gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE; // 宽屏专用非中心增减（放大填屏）
 static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
+static int gCoverflowNonCenterEnlarge = COVERFLOW_DEFAULT_NONCENTER_ENLARGE; // 非中心封面绘制尺寸放大百分比(不改间距)
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
@@ -1439,11 +1444,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         else
             centerFactor = 0.0f;
 
+        // 非中心封面【绘制尺寸】在布局尺寸基础上再放大 gCoverflowNonCenterEnlarge%（默认 +30%）。
+        // 注意：布局与间距（上面的 coverWidth/coverDistance）仍按【未放大】的 effNonCenterScale
+        // 计算，所以放大封面【不改变现有间距】；这里只放大画出来的非中心封面本身。
+        float nonCenterDrawScale = (float)(baseCoverW + effNonCenterScale) * (float)gCoverflowNonCenterEnlarge / 100.0f - (float)baseCoverW;
+
         // 本封面的等比 scale：非中心 ↔ 中心 随 centerFactor 插值（浮点连续，供动画平滑过渡）。
-        //   centerFactor=1 → 中心 scale；=0 → 非中心 scale（宽屏用放大后的 effNonCenterScale）；
-        //   动画中间平滑取值。
-        float coverScale = (float)effNonCenterScale +
-                           (float)(gCoverflowCenterScale - effNonCenterScale) * centerFactor;
+        //   centerFactor=1 → 中心 scale；=0 → 放大后的非中心 draw scale；动画中间平滑取值。
+        float coverScale = nonCenterDrawScale +
+                           (float)(gCoverflowCenterScale - nonCenterDrawScale) * centerFactor;
         // 封面主图目标尺寸 = 基准 + coverScale（等比，【以横向宽度为基准】：scale 加到宽度、
         // 高度按基准比例跟随），中心 scale=0 时即原生基准尺寸、点对点无失真。
         float inlayW = (float)baseCoverW + coverScale;
@@ -1974,6 +1983,7 @@ static void thmLoad(const char *themePath)
     gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
     gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE;
     gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT;
+    gCoverflowNonCenterEnlarge = COVERFLOW_DEFAULT_NONCENTER_ENLARGE;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
@@ -1986,6 +1996,7 @@ static void thmLoad(const char *themePath)
     configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
     configGetInt(themeConfig, "coverflow_widescreen_noncenter_scale", &gCoverflowWideNonCenterScale);
     configGetInt(themeConfig, "coverflow_cover_spacing_percent", &gCoverflowSpacingPercent);
+    configGetInt(themeConfig, "coverflow_noncenter_enlarge_percent", &gCoverflowNonCenterEnlarge);
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
