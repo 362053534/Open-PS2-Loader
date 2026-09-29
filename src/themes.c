@@ -1065,18 +1065,21 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_COVER_H 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -70 // 非中心封面相对 140×200 的增减（默认缩小）
-// 宽屏(16:9)专用的非中心封面增减。宽屏不再自动 +2 封面，而是把非中心封面放大到此值，
-// 用更大的两侧封面占满拉宽后的屏幕（默认 -30 → 非中心宽 110，介于 4:3 的 70 与中心 140 之间）。
-// cfg 可用 coverflow_widescreen_noncenter_scale 覆盖。4:3 下不使用此值（仍用 noncenter_scale）。
-#define COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE -30
-// 相邻封面【中心距】相对封面宽度的额外百分比：coverDistance = coverWidth × (1 + 此值/100)。
-// 即封面之间的间隙 = 封面宽的“此百分比”。封面越大、间距越大（尺寸兼具控制间隔的功能）。
-// 默认 50（间隙=封面宽一半），与旧“填满屏幕”模型在默认 4:3 下的观感一致。cfg 可覆盖。
+// 宽屏(16:9)专用的【封面间距】百分比。宽屏【不再改变非中心封面的大小】（尺寸与 4:3 完全一致），
+// 改为在宽屏下把封面间距拉大、把封面铺开到拉宽后的屏幕。默认 100（间隙=非中心封面基准宽），
+// 4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
+#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 100
+// 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
+//   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
+// 间隙只由本参数决定、与 enlarge 无关：放大封面时中心距随绘制宽同步增大、间隙保持不变（不再叠压）。
+// 默认 50（间隙 = 非中心封面基准宽的一半）。cfg 可覆盖。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 50
-// 非中心封面【绘制尺寸】相对其布局尺寸的放大百分比：100=不放大(画出=布局)，130=放大30%。
-// 布局/间距仍按未放大的尺寸计算，故放大封面【不改变现有间距】；只把画出来的非中心封面放大。
-// 放大后非中心封面会略微盖住相邻封面(经典 coverflow 叠压观感)。cfg 可覆盖。
+// 非中心封面【绘制尺寸】相对其基准尺寸的放大百分比：100=不放大，130=放大30%（默认）。
+// 与间距【完全解耦】：中心距 = 绘制宽 + 间隙，放大只增大绘制宽（及随之的中心距），间隙不变。
+// 中心封面不受影响（放大只作用于非中心封面）。cfg 可覆盖。
 #define COVERFLOW_DEFAULT_NONCENTER_ENLARGE 130
+// 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
+#define COVERFLOW_BASELINE_YOFFSET 50
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1089,7 +1092,7 @@ static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图
 static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（cfg 可覆盖）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
-static int gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE; // 宽屏专用非中心增减（放大填屏）
+static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT; // 宽屏专用封面间距%（宽屏靠拉开间距铺屏，不改封面大小）
 static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
 static int gCoverflowNonCenterEnlarge = COVERFLOW_DEFAULT_NONCENTER_ENLARGE; // 非中心封面绘制尺寸放大百分比(不改间距)
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
@@ -1147,8 +1150,9 @@ int thmCoverflowAnimEnabled(void)
 }
 
 // 当前实际同屏显示的封面数：= coverflow_count，夹取到 1..COVERFLOW_MAX。绘制 / 翻页跳转 /
-// 缓存槽位都以此为准，保证三者一致。宽屏【不再自动 +2】：改为放大非中心封面来占满拉宽的屏幕
-// （见 drawCoverFlow 里的 gCoverflowWideNonCenterScale），封面数在 4:3 与宽屏下保持一致。
+// 缓存槽位都以此为准，保证三者一致。宽屏【不再自动 +2】、也【不改变封面大小】：改为在宽屏下
+// 拉大封面间距来铺满拉宽的屏幕（见 drawCoverFlow 里的 gCoverflowWideSpacingPercent），封面数在
+// 4:3 与宽屏下保持一致。
 static int getCoverflowDisplayCount(void)
 {
     int n = gCoverflowCount;
@@ -1256,32 +1260,43 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             fracH = (float)ih / (float)elem->height;
     }
 
-    // 非中心封面的等比增减：宽屏用专用的更大值（gCoverflowWideNonCenterScale）把两侧封面放大、
-    // 占满拉宽后的屏幕；4:3 下用常规 gCoverflowNonCenterScale。中心封面仍用 gCoverflowCenterScale。
-    int effNonCenterScale = gWideScreen ? gCoverflowWideNonCenterScale : gCoverflowNonCenterScale;
+    // 非中心封面的等比增减：4:3 与宽屏【同一个值】——宽屏【不再改变封面大小】，只拉大间距（见下）。
+    // 中心封面仍用 gCoverflowCenterScale。
+    int effNonCenterScale = gCoverflowNonCenterScale;
 
-    // 非中心封面（静止态）尺寸 → 反推非中心 case 尺寸，供布局排布使用。
-    // 缩放【以横向宽度为基准】：scale 加到宽度，高度按基准比例跟随。这样不同页签只要
-    // 基准宽相同(都 140)，同一 scale 缩放后宽度就一致（游戏/apps 横向观感统一）。
+    // 非中心封面【基准】case 宽（未放大）：由非中心封面基准尺寸反推。缩放【以横向宽度为基准】。
+    // 这是“间隙”的参照宽度——间隙 = 基准宽 × 间距%，与 enlarge 放大【无关】，保证放大不动间距。
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (nonInlayW < 1.0f)
         nonInlayW = 1.0f;
-    float nonInlayH = (float)baseCoverH * nonInlayW / (float)baseCoverW;
-    int coverWidth = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽，供布局排布）
-    int coverYOffset = 0;                             // 保留以兼容下方绘制调用的 Y 组合（当前恒 0）
+    int coverWidthBase = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 基准宽（4:3 逻辑宽，未放大）
 
-    // 宽屏(16:9)：把封面宽按宽屏因子横向压缩，使 16:9 电视把 4:3 画面横向拉伸回来后比例正确。
-    // 4:3 下 rmWideScale 恒等。压缩要在算中心距之前，这样中心距也随之压缩、保持横向观感一致。
-    if (gWideScreen)
-        coverWidth = rmWideScale(coverWidth);
+    // 非中心封面【绘制】case 宽 = 基准宽 × 放大%（enlarge，默认 130=+30%）。中心距按【绘制宽】排布，
+    // 故放大封面时中心距同步增大、间隙保持不变（放大与间距完全解耦，封面不再叠压）。
+    int enlargePct = gCoverflowNonCenterEnlarge;
+    if (enlargePct < 1)
+        enlargePct = 1;
+    int coverWidth = (coverWidthBase * enlargePct) / 100; // 非中心 case 绘制宽（供布局/中心距/居中）
+    int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
 
-    // 相邻封面【中心距】由封面宽度驱动（非“填满屏幕”反推）：coverDistance = coverWidth × (1+间距%)。
-    // 封面越大，彼此推得越开——非中心封面大小因此兼具控制间隔的功能。间距% 由 cfg 可调，默认 50
-    // （间隙=封面宽一半），复现旧填满模型在默认 4:3 下的观感。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
-    int spacingPct = gCoverflowSpacingPercent;
+    // 间隙（间距）——【独立参数】：间隙 = 非中心基准宽 × 间距%（与放大无关）。宽屏用专用的更大
+    // 间距% 把封面拉开、铺满拉宽后的屏幕（宽屏不改封面大小）；4:3 用常规间距%。
+    int spacingPct = gWideScreen ? gCoverflowWideSpacingPercent : gCoverflowSpacingPercent;
     if (spacingPct < 0)
         spacingPct = 0;
-    int coverDistance = coverWidth + (coverWidth * spacingPct) / 100;
+    int gap = (coverWidthBase * spacingPct) / 100;
+
+    // 宽屏(16:9)：把封面宽与间距一并按宽屏因子横向压缩，使 16:9 电视把 4:3 画面横向拉伸回来后
+    // 比例正确。4:3 下 rmWideScale 恒等。压缩在算中心距之前，保持横向观感一致。
+    if (gWideScreen) {
+        coverWidth = rmWideScale(coverWidth);
+        gap = rmWideScale(gap);
+    }
+
+    // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
+    //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
+    //   调间距%  → gap 增大/减小，封面大小不变。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
+    int coverDistance = coverWidth + gap;
     if (coverDistance < 1)
         coverDistance = 1;
     int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
@@ -1444,9 +1459,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         else
             centerFactor = 0.0f;
 
-        // 非中心封面【绘制尺寸】在布局尺寸基础上再放大 gCoverflowNonCenterEnlarge%（默认 +30%）。
-        // 注意：布局与间距（上面的 coverWidth/coverDistance）仍按【未放大】的 effNonCenterScale
-        // 计算，所以放大封面【不改变现有间距】；这里只放大画出来的非中心封面本身。
+        // 非中心封面【绘制尺寸】= 基准尺寸 × gCoverflowNonCenterEnlarge%（默认 +30%）。这与上面
+        // 布局用的绘制宽 coverWidth 完全一致（coverWidth = 基准宽 × 同一 enlarge%），所以放大后的
+        // 封面正好填满自己的布局槽、彼此之间保持 gap 间隙，不叠压。间隙由间距% 独立决定、与此放大无关。
         float nonCenterDrawScale = (float)(baseCoverW + effNonCenterScale) * (float)gCoverflowNonCenterEnlarge / 100.0f - (float)baseCoverW;
 
         // 本封面的等比 scale：非中心 ↔ 中心 随 centerFactor 插值（浮点连续，供动画平滑过渡）。
@@ -1981,7 +1996,7 @@ static void thmLoad(const char *themePath)
     gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
     gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
     gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
-    gCoverflowWideNonCenterScale = COVERFLOW_DEFAULT_WIDE_NONCENTER_SCALE;
+    gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT;
     gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT;
     gCoverflowNonCenterEnlarge = COVERFLOW_DEFAULT_NONCENTER_ENLARGE;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
@@ -1994,7 +2009,7 @@ static void thmLoad(const char *themePath)
     configGetInt(themeConfig, "coverflow_apps_cover_height", &gCoverflowAppsCoverH);
     configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
     configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
-    configGetInt(themeConfig, "coverflow_widescreen_noncenter_scale", &gCoverflowWideNonCenterScale);
+    configGetInt(themeConfig, "coverflow_widescreen_spacing_percent", &gCoverflowWideSpacingPercent);
     configGetInt(themeConfig, "coverflow_cover_spacing_percent", &gCoverflowSpacingPercent);
     configGetInt(themeConfig, "coverflow_noncenter_enlarge_percent", &gCoverflowNonCenterEnlarge);
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
