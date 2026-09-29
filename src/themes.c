@@ -1084,7 +1084,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET -8 // 非中心封面相对中心封面的垂直偏移（正=下移、负=上移；当前 -8=上移8px）
+#define COVERFLOW_NONCENTER_YOFFSET -3 // 非中心封面相对中心封面的垂直偏移（正=下移、负=上移；当前 -3=上移3px）
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
@@ -1178,7 +1178,7 @@ int thmGetCoverflowJumpCount(void)
 
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
-static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float x, float y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
 {
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
@@ -1188,10 +1188,11 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         // 也不可用），则不能带 inlay 调用，否则会崩溃。此时【仍然单独把 case 外壳画出来】，
         // 避免整块 case 模块直接消失（修复"缺图时整个 case 都不显示"的问题）。
         if (!texture || !texture->Mem) {
+            // 无 Frac 版：把浮点 x/y 四舍五入到整数（此分支只在缺图兜底画外壳时走）。
             if (reflection)
-                rmDrawPixmapReflect(&ov->source, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+                rmDrawPixmapReflect(&ov->source, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
             else
-                rmDrawPixmap(&ov->source, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+                rmDrawPixmap(&ov->source, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
             return;
         }
 
@@ -1212,13 +1213,13 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
                                     ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
                                     ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
     } else {
-        // 无外壳（纯封面）主题：没有可用贴图就直接跳过。
+        // 无外壳（纯封面）主题：没有可用贴图就直接跳过。这里没有 Frac 版，x/y 四舍五入到整数。
         if (!texture || !texture->Mem)
             return;
         if (reflection)
-            rmDrawPixmapReflect(texture, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+            rmDrawPixmapReflect(texture, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
         else
-            rmDrawPixmap(texture, x, y, aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+            rmDrawPixmap(texture, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
     }
 }
 
@@ -1307,14 +1308,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     {
         submenu_list_t *game;
         GSTEXTURE *texture;
-        int renderPosX; // 预计算好的横向绘制坐标（供按层级顺序绘制时取用）
+        float renderPosX; // 预计算好的横向绘制坐标（浮点：滑动动画不做整数量化，运动更顺滑）
     } covers[COVERFLOW_MAX];
 
     int ci;
     for (ci = 0; ci < coverCount; ci++) {
         covers[ci].game = NULL;
         covers[ci].texture = NULL;
-        covers[ci].renderPosX = 0;
+        covers[ci].renderPosX = 0.0f;
     }
     covers[centerIndex].game = item;
 
@@ -1385,7 +1386,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
     }
 
-    int posX = basePosX + (int)animOffset;
+    // 浮点旁路：横向位置全程 float（不再 (int)animOffset 量化），滑动动画逐帧位移连续、更顺滑。
+    float posX = (float)basePosX + animOffset;
     int leavingIndex = (animationDirection > 0) ? (centerIndex + 1) : (centerIndex - 1);
 
     // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
@@ -1445,7 +1447,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (covers[i].game == NULL)
             continue;
 
-        int renderPosX = covers[i].renderPosX;
+        float renderPosX = covers[i].renderPosX;
 
         // 统一的"居中程度"因子（与滑动动画同步）：1 = 完全处于中心，0 = 完全非中心。
         //   中心封面：动画中随 eased 由 0→1，定格为 1；
@@ -1486,8 +1488,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 非中心封面相对中心封面额外偏移 COVERFLOW_NONCENTER_YOFFSET 像素（正=下移、负=上移），
         // 中心封面不动；偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
         // 四舍五入对正负都取整（+0.5 会把负值截断错 1px），保证整数对齐、避免动画抖动。
-        float nonCenterY = COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor);
-        int centerYOffset = (int)(nonCenterY >= 0.0f ? nonCenterY + 0.5f : nonCenterY - 0.5f);
+        // 浮点旁路：垂直偏移也保持 float（不取整），非中心↔中心的垂直过渡与放大动画同样顺滑。
+        float centerYOffset = COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor);
 
         // 纹理已在上面的【中心向外扩散】加载遍里请求并填好 covers[i].texture，
         // 这里直接取用，不再重复请求（避免打乱加载优先级）。
