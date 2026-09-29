@@ -1091,9 +1091,6 @@ static clock_t animationStartTime = 0;
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
 //   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
 #define COVERFLOW_DIAG_PLAIN_COVER 1
-// 【诊断开关】1 = 强制封面主图+case 全程用 NEAREST（关闭"缩小时走线性"）。用来对比：若关掉线性后
-//   缩小的封面观感与开启时【没有区别】，说明之前线性根本没生效；有区别则说明线性确实起作用了。
-#define COVERFLOW_DIAG_FORCE_NEAREST 1
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1593,9 +1590,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
                         ((float)baseCoverW > physInlayW + 0.5f);
         short coverFilter = minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
-#if COVERFLOW_DIAG_FORCE_NEAREST
-        coverFilter = GS_FILTER_NEAREST; // 诊断：强制全程最近邻（关闭缩小时的线性），用于对比
-#endif
         if (covers[i].texture)
             covers[i].texture->Filter = coverFilter;         // 封面主图
         if (img->overlayTexture)
