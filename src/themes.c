@@ -1300,6 +1300,19 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         gap = rmWideScale(gap);
     }
 
+    // 中心封面的 case 宽（用于【间距补偿】）：中心封面用 center_scale、非中心用 noncenter_scale，
+    // 二者宽度不同。中心距若只按非中心宽排布，则中心封面（更宽）两侧的可见间隙会比非中心之间的更窄，
+    // 看起来"间距不统一"。这里按与 coverWidth 完全一致的方式反推中心 case 宽（同样走宽屏压缩），
+    // 下面用它把间距补偿成【任意相邻封面之间的可见间隙都相等】。
+    float centerInlayWF = (float)baseCoverW + (float)gCoverflowCenterScale;
+    if (centerInlayWF < 1.0f)
+        centerInlayWF = 1.0f;
+    int centerCoverWidth = (int)(centerInlayWF / fracW + 0.5f);
+    if (gWideScreen)
+        centerCoverWidth = rmWideScale(centerCoverWidth);
+    // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量（可正可负）。
+    float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
+
     // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
     //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
     //   调间距%  → gap 增大/减小，封面大小不变。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
@@ -1395,11 +1408,35 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float posX = (float)basePosX + animOffset;
     int leavingIndex = (animationDirection > 0) ? (centerIndex + 1) : (centerIndex - 1);
 
-    // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
+    // 每个封面的"居中程度"cf（与下面绘制循环里的 centerFactor 完全一致）：静止时仅中心=1；
+    // 动画中 centerIndex 由 0→eased、leavingIndex 由 1→0，其余恒 0（总和恒为 1）。
+    // 每张封面的实际绘制宽 = 非中心宽 + (中心宽-非中心宽)×cf，即比非中心多出 2×centerExtraHalf×cf。
     int i;
+    float cf[COVERFLOW_MAX];
+    float totalCf = 0.0f;
     for (i = 0; i < coverCount; i++) {
-        covers[i].renderPosX = posX;
-        posX += coverDistance;
+        float f;
+        if (i == centerIndex)
+            f = isAnimating ? eased : 1.0f;
+        else if (isAnimating && i == leavingIndex)
+            f = 1.0f - eased;
+        else
+            f = 0.0f;
+        cf[i] = f;
+        totalCf += f;
+    }
+
+    // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
+    // 基础位置按均匀中心距 coverDistance 排布，再叠加【间距补偿】：把每张封面多出的宽度
+    // (2×centerExtraHalf×cf) 对称摊到两侧——某封面右侧的所有封面右移其半宽、左侧的所有封面左移其半宽。
+    // 于是任意相邻封面之间的可见间隙都恰好=gap（含中心封面两侧），中心封面本身位置不变；
+    // 补偿量由连续的 cf 驱动，滑动动画中平滑变化、收尾无跳变。
+    float cumLeft = 0.0f; // Σ 当前封面【左侧】所有封面的 cf
+    for (i = 0; i < coverCount; i++) {
+        float cumRight = totalCf - cumLeft - cf[i]; // Σ 右侧所有封面的 cf
+        covers[i].renderPosX = posX + centerExtraHalf * (cumLeft - cumRight);
+        posX += (float)coverDistance;
+        cumLeft += cf[i];
     }
 
     // 纹理【加载/请求顺序】：从中心向两侧扩散，中心封面最先入加载队列。
