@@ -569,6 +569,20 @@ static inline float rmPxSnap(float v)
     return (float)((int)(v + (v >= 0.0f ? 0.5f : -0.5f)));
 }
 
+// 【诊断/纯封面】浮点版 rmDrawPixmap：只画一张贴图（无 overlay 外壳、无倒影），x/y/w/h 走浮点，
+// 最终四角与封面主图路径一样【整数像素对齐】（避免亚像素泛光）。供关闭 case+倒影、单看封面缩放用。
+void rmDrawPixmapFrac(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color)
+{
+    rm_quad_t quad;
+    rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
+    // rmDrawQuad 内部会再加 fRender*Off，故这里取整后回减一次，使最终落在整数像素上（与主图一致）。
+    quad.ul.x = rmPxSnap(quad.ul.x + fRenderXOff) - fRenderXOff;
+    quad.ul.y = rmPxSnap(quad.ul.y + fRenderYOff) - fRenderYOff;
+    quad.br.x = rmPxSnap(quad.br.x + fRenderXOff) - fRenderXOff;
+    quad.br.y = rmPxSnap(quad.br.y + fRenderYOff) - fRenderYOff;
+    rmDrawQuad(&quad);
+}
+
 // Coverflow 专用：外壳(overlay)按 w/h 绘制；内嵌封面(inlay)四角以 case quad 的
 // 【实际绘制像素尺寸】caseW/caseH 为基准，用浮点比例(顶点/baseW、顶点/baseH)定位。
 // 这样 inlay 与 case 内框完全锁定、按同一 caseW/caseH 同步缩放——中心封面放大或滑动

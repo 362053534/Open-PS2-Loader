@@ -1088,6 +1088,9 @@ static clock_t animationStartTime = 0;
 //   代价：偏离"方形像素几何"——4:3 下 448 封面会略高、512 略矮（约 ±6~7% 高度），因为固定占 200 物理行
 //       而非各模式各自的等比高度。想要几何绝对精确（缩小时走线性、略软）就设 0。
 #define COVERFLOW_NATIVE_PIXEL_COVERS 1
+// 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
+//   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
+#define COVERFLOW_DIAG_PLAIN_COVER 1
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
@@ -1592,10 +1595,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (img->overlayTexture)
             img->overlayTexture->source.Filter = coverFilter; // case 外壳跟随封面
 
+#if COVERFLOW_DIAG_PLAIN_COVER
+        // 诊断：只画纯封面图（无 case、无倒影）。尺寸取封面主图本身 = case 尺寸 × 内框占比(fracW/H)，
+        // 与正常路径里 inlay 的实际占屏尺寸一致，居中在同一位置。用来单看封面缩放是否变形。
+        if (covers[i].texture)
+            rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
+                             currentCoverWidth * fracW, currentCoverHeight * fracH, SCALING_NONE, coverColor);
+#else
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
                              currentCoverWidth, currentCoverHeight, coverColor, elem->reflection,
                              elem->width, elem->height);
+#endif
     }
 
     // 封面绘制完毕，恢复默认裁剪框（整个帧缓冲），不影响后续/其它绘制路径。
