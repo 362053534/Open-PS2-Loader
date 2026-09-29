@@ -1075,12 +1075,13 @@ static clock_t animationStartTime = 0;
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
 // 当前 3（间隙 ≈ 非中心基准宽的 3%；基准宽约 80px 时间隙约 2~3px，比上次 13% 再按同比例缩小一档）。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 8
-// 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-// 正值下移、负值上移。当前 45 = 整个封面模块（PS2 与 APPS）下移 45px。
-#define COVERFLOW_BASELINE_YOFFSET 45
+// 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
+// 正值下移、负值上移。当前 151 = 以 480 逻辑坐标为基准，把改用底部锚点后的位置
+// 下移约 106，恢复内置游戏 case 在改锚点前的大致位置。
+#define COVERFLOW_BASELINE_YOFFSET 151
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
-// 正值下移、负值上移。当前 -20 = APPS 封面模块在基线之上再上移 20px。
-#define COVERFLOW_APPS_YOFFSET -20
+// 正值下移、负值上移。当前 -52 = 抵消 APPS case 比游戏 case 少约 32 的半高补偿。
+#define COVERFLOW_APPS_YOFFSET -52
 // 封面主图【物理像素 1:1】绘制开关：
 //   1 = 抵消 640×480 虚拟坐标 → 物理扫描线(NTSC 448 / PAL 512) 的缩放，让排版的 200 高【真正占用
 //       200 条物理行】（而不是 NTSC 下被压到 ~187 行）。此时每个纹素≈1 物理像素，自适应过滤取 NEAREST，
@@ -1287,7 +1288,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int coverWidth = coverWidthBase;                      // 供布局/中心距/居中
     int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
     if (isApps)
-        coverYOffset += COVERFLOW_APPS_YOFFSET;           // APPS 页签在基线之上再叠加专用偏移（当前 -20=上移20px）
+        coverYOffset += COVERFLOW_APPS_YOFFSET;           // APPS 页签叠加专用偏移（当前 -52，适配 APPS case 的较小高度）
 
     // 间隙（间距）——【独立参数】：间隙 = 非中心基准宽 × 间距%（与放大无关）。宽屏用专用的更大
     // 间距% 把封面拉开、铺满拉宽后的屏幕（宽屏不改封面大小）；4:3 用常规间距%。
