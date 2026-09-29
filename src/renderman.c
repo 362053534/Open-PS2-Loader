@@ -592,6 +592,27 @@ void rmDrawPixmapFrac(GSTEXTURE *txt, float x, float y, short aligned, float w, 
     rmDrawQuad(&quad);
 }
 
+// 【诊断/纯封面+倒影】rmDrawPixmapFrac 的倒影版：主图走同样的整数尺寸锁定路径，随后在其下方
+// 逐行绘制渐隐倒影（仍无 case 外壳）。倒影从主图整数底边(quad.br.y)起、每行 1px，接缝整数对齐。
+// 供关闭 case、单看“封面+倒影”时缩小封面丢边是否受倒影影响用。
+void rmDrawPixmapFracReflect(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color)
+{
+    rm_quad_t quad;
+    rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
+    // 与 rmDrawPixmapFrac 完全相同的整数尺寸锁定（防 1:1 丢边）。
+    float ulX = rmPxSnap(quad.ul.x + fRenderXOff);
+    float ulY = rmPxSnap(quad.ul.y + fRenderYOff);
+    float iW = rmPxSnap(quad.br.x - quad.ul.x);
+    float iH = rmPxSnap(quad.br.y - quad.ul.y);
+    quad.ul.x = ulX - fRenderXOff;
+    quad.ul.y = ulY - fRenderYOff;
+    quad.br.x = (ulX + iW) - fRenderXOff;
+    quad.br.y = (ulY + iH) - fRenderYOff;
+    rmDrawQuad(&quad);
+    // 倒影：复用公共逐行渐隐实现，从主图整数底边起、逐行落在整数像素、接缝无缝。
+    rmDrawReflectionRows(txt, &quad, color);
+}
+
 // Coverflow 专用：外壳(overlay)按 w/h 绘制；内嵌封面(inlay)四角以 case quad 的
 // 【实际绘制像素尺寸】caseW/caseH 为基准，用浮点比例(顶点/baseW、顶点/baseH)定位。
 // 这样 inlay 与 case 内框完全锁定、按同一 caseW/caseH 同步缩放——中心封面放大或滑动

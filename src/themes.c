@@ -1596,11 +1596,17 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             img->overlayTexture->source.Filter = coverFilter; // case 外壳跟随封面
 
 #if COVERFLOW_DIAG_PLAIN_COVER
-        // 诊断：只画纯封面图（无 case、无倒影）。尺寸取封面主图本身 = case 尺寸 × 内框占比(fracW/H)，
-        // 与正常路径里 inlay 的实际占屏尺寸一致，居中在同一位置。用来单看封面缩放是否变形。
-        if (covers[i].texture)
-            rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
-                             currentCoverWidth * fracW, currentCoverHeight * fracH, SCALING_NONE, coverColor);
+        // 诊断：画纯封面图（无 case）；带倒影（跟随主题的 elem->reflection）。尺寸取封面主图本身
+        // = case 尺寸 × 内框占比(fracW/H)，与正常路径里 inlay 的实际占屏尺寸一致，居中在同一位置。
+        // 用来在【无 case】的隔离条件下，单看缩小封面的丢边是否受倒影影响。
+        if (covers[i].texture) {
+            if (elem->reflection)
+                rmDrawPixmapFracReflect(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
+                                        currentCoverWidth * fracW, currentCoverHeight * fracH, SCALING_NONE, coverColor);
+            else
+                rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,
+                                 currentCoverWidth * fracW, currentCoverHeight * fracH, SCALING_NONE, coverColor);
+        }
 #else
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset, ALIGN_CENTER,

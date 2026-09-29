@@ -94,6 +94,7 @@ void rmDrawQuad(rm_quad_t *q);
 void rmDrawPixmap(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, short scaled, u64 color);
 /** 诊断/纯封面用：浮点坐标版 rmDrawPixmap，只画一张贴图（无 overlay、无倒影），四角整数像素对齐。 */
 void rmDrawPixmapFrac(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color);
+void rmDrawPixmapFracReflect(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color);
 
 void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
                          GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry);
