@@ -1071,16 +1071,16 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 100
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
-// 间隙只由本参数决定、与 enlarge 无关：放大封面时中心距随绘制宽同步增大、间隙保持不变（不再叠压）。
-// 默认 13（间隙 ≈ 非中心封面基准宽的 1/8；基准宽约 80px 时间隙约 10px）。cfg 可覆盖。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 13
+// 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
+// 当前 3（间隙 ≈ 非中心基准宽的 3%；基准宽约 80px 时间隙约 2~3px，比上次 13% 再按同比例缩小一档）。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 3
 // 整个 Coverflow 封面模块的【基线下移】像素数：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-// 正值下移、负值上移。当前 50 = 整个封面模块（PS2 与 APPS）下移 50px。
-#define COVERFLOW_BASELINE_YOFFSET 50
+// 正值下移、负值上移。当前 45 = 整个封面模块（PS2 与 APPS）下移 45px。
+#define COVERFLOW_BASELINE_YOFFSET 45
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET -3 // 非中心封面相对中心封面的垂直偏移（正=下移、负=上移；当前 -3=上移3px）
+#define COVERFLOW_NONCENTER_YOFFSET 2 // 非中心封面相对中心封面的垂直偏移（正=下移、负=上移；当前 +2=下移2px）
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
