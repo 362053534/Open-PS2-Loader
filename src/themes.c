@@ -1059,6 +1059,10 @@ static clock_t animationStartTime = 0;
 // 中心/非中心封面各自 = 基准 ± 各自的 scale（等比，加到高度、宽按 140:200 跟随）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 200
+// APPS 页签封面主图基准尺寸：应用封面通常为正方形，默认 200×200（cfg 可用
+// coverflow_apps_cover_width/height 覆盖），用来反推 apps 的 case(cf_apps_case)。
+#define COVERFLOW_APPS_COVER_W 200
+#define COVERFLOW_APPS_COVER_H 200
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -70 // 非中心封面相对 140×200 的增减（默认缩小）
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
@@ -1067,8 +1071,10 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_NONCENTER_YOFFSET 22 // 非中心封面相对中心封面额外下移的像素数
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
-static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 封面主图基准宽（cfg 可覆盖）
-static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 封面主图基准高（cfg 可覆盖）
+static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
+static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（cfg 可覆盖）
+static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图基准宽（cfg 可覆盖）
+static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（cfg 可覆盖）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
@@ -1206,6 +1212,16 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 
+    // 封面主图基准尺寸：APPS 页签用正方形基准(默认 200×200)，其它(游戏)用 140×200。
+    // 这里选定的 baseCoverW/H 会贯穿本函数的布局(Block A)与逐封面绘制(Block B)，
+    // case 外壳按 overlay 内框占比逆向适配该基准。
+    int baseCoverW = gCoverflowCoverW;
+    int baseCoverH = gCoverflowCoverH;
+    if (sourceList && sourceList->mode == APP_MODE) {
+        baseCoverW = gCoverflowAppsCoverW;
+        baseCoverH = gCoverflowAppsCoverH;
+    }
+
     // 同屏封面数：宽屏自动 +2（见 getCoverflowDisplayCount），已夹取到 1..COVERFLOW_MAX，
     // 不会越界 covers[]/drawOrder[]（数组大小 = COVERFLOW_MAX）。
     int coverCount = getCoverflowDisplayCount();
@@ -1228,10 +1244,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     }
 
     // 非中心封面（静止态）尺寸 → 反推非中心 case 尺寸，供布局排布使用。
-    float nonInlayH = (float)gCoverflowCoverH + (float)gCoverflowNonCenterScale;
+    float nonInlayH = (float)baseCoverH + (float)gCoverflowNonCenterScale;
     if (nonInlayH < 1.0f)
         nonInlayH = 1.0f;
-    float nonInlayW = (float)gCoverflowCoverW * nonInlayH / (float)gCoverflowCoverH;
+    float nonInlayW = (float)baseCoverW * nonInlayH / (float)baseCoverH;
     int coverWidth = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽，供布局排布）
     int coverYOffset = 0;                             // 保留以兼容下方绘制调用的 Y 组合（当前恒 0）
 
@@ -1410,10 +1426,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                            (float)(gCoverflowCenterScale - gCoverflowNonCenterScale) * centerFactor;
         // 封面主图目标尺寸 = 基准 140×200 + coverScale（等比：加到高度、宽按 140:200 跟随），
         // 中心 scale=0 时即原生 140×200、点对点无失真。
-        float inlayH = (float)gCoverflowCoverH + coverScale;
+        float inlayH = (float)baseCoverH + coverScale;
         if (inlayH < 1.0f)
             inlayH = 1.0f;
-        float inlayW = (float)gCoverflowCoverW * inlayH / (float)gCoverflowCoverH;
+        float inlayW = (float)baseCoverW * inlayH / (float)baseCoverH;
         // 反推 case 尺寸：内框占比 fracW/fracH → case = inlay ÷ 占比，使内框正好套住封面。
         // 浮点旁路：宽/高全程 float 连续（交给 coverflowDrawTexture→rmSetupQuadF），放大动画
         // 无整数截断蠕动。宽屏只对 case 宽做浮点横向压缩（高度不压，比例正确）。
@@ -1914,8 +1930,10 @@ static void thmLoad(const char *themePath)
     // 主题时残留上一个主题的设置。本函数在元素定义解析（initCoverflow）之前运行，因此这里
     // 读到的 count/preload 在分配封面缓存时即可用。
     //   coverflow_count            —— 同屏封面数（夹取到 1..COVERFLOW_MAX）
-    //   coverflow_cover_width       —— 封面主图基准宽（默认 140，PS2 标准封面）
-    //   coverflow_cover_height      —— 封面主图基准高（默认 200）
+    //   coverflow_cover_width       —— 游戏封面主图基准宽（默认 140，PS2 标准封面）
+    //   coverflow_cover_height      —— 游戏封面主图基准高（默认 200）
+    //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（默认 200，正方形）
+    //   coverflow_apps_cover_height —— APPS 封面主图基准高（默认 200，正方形）
     //   coverflow_center_scale     —— 中心封面相对基准的等比增减像素（0=原生点对点、无失真）
     //   coverflow_noncenter_scale  —— 非中心封面相对基准的等比增减像素（负值=缩小）
     //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
@@ -1924,6 +1942,8 @@ static void thmLoad(const char *themePath)
     gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
     gCoverflowCoverW = COVERFLOW_COVER_W;
     gCoverflowCoverH = COVERFLOW_COVER_H;
+    gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;
+    gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
     gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
     gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
@@ -1932,6 +1952,8 @@ static void thmLoad(const char *themePath)
     configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
     configGetInt(themeConfig, "coverflow_cover_width", &gCoverflowCoverW);
     configGetInt(themeConfig, "coverflow_cover_height", &gCoverflowCoverH);
+    configGetInt(themeConfig, "coverflow_apps_cover_width", &gCoverflowAppsCoverW);
+    configGetInt(themeConfig, "coverflow_apps_cover_height", &gCoverflowAppsCoverH);
     configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
     configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
@@ -1946,6 +1968,10 @@ static void thmLoad(const char *themePath)
     if (gCoverflowPreload < 0)
         gCoverflowPreload = 0;
     // 封面基准尺寸挡非法值（drawCoverFlow 会用 CoverH 作除数、用 CoverW/H 算比例）。
+    if (gCoverflowAppsCoverW < 1)
+        gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;
+    if (gCoverflowAppsCoverH < 1)
+        gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
     if (gCoverflowCoverW < 1)
         gCoverflowCoverW = COVERFLOW_COVER_W;
     if (gCoverflowCoverH < 1)
