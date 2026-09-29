@@ -2003,17 +2003,10 @@ static void thmLoad(const char *themePath)
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
-    configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
-    configGetInt(themeConfig, "coverflow_cover_width", &gCoverflowCoverW);
-    configGetInt(themeConfig, "coverflow_cover_height", &gCoverflowCoverH);
-    configGetInt(themeConfig, "coverflow_apps_cover_width", &gCoverflowAppsCoverW);
-    configGetInt(themeConfig, "coverflow_apps_cover_height", &gCoverflowAppsCoverH);
-    configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale);
-    configGetInt(themeConfig, "coverflow_noncenter_scale", &gCoverflowNonCenterScale);
-    configGetInt(themeConfig, "coverflow_widescreen_spacing_percent", &gCoverflowWideSpacingPercent);
-    configGetInt(themeConfig, "coverflow_cover_spacing_percent", &gCoverflowSpacingPercent);
-    configGetInt(themeConfig, "coverflow_noncenter_enlarge_percent", &gCoverflowNonCenterEnlarge);
-    configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
+    // 【极简兼容】Coverflow 核心参数（封面大小/数量/间距/缩放/动画速度）一律由上面的内部基线
+    // (#define) 控制，主题 cfg【不再覆盖】——这样第三方主题也用统一的内部观感，只自带坐标与美术。
+    // 仅以下几项仍读取主题：非中心压暗(dim_covers)、预取数(preload)、整排水平微调(cover_offset，
+    // 在别处解析)。封面位置/坐标系与外壳美术(overlay 顶点等)由主题引擎按元素通用解析。
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
     // count 夹取到显示数组上限，防止 covers[]/drawOrder[] 越界崩溃；preload 只挡负值、不设上限
