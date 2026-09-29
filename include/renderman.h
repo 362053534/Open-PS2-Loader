@@ -121,9 +121,6 @@ void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short 
                                     GSTEXTURE *inlay, int baseW, int baseH,
                                     int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry);
 
-/** Coverflow 封面(inlay/case)像素对齐开关：1=静止取整(消除缩放泛光)，0=动画中放行分数坐标(保持平滑)。 */
-void rmSetOverlayPixmapIntegerAlign(int enabled);
-
 /** Queues a opaque rectangle to be rendered */
 void rmDrawRect(int x, int y, int w, int h, u64 color);
 

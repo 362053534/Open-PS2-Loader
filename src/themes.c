@@ -1183,11 +1183,6 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x
         // 【实际绘制尺寸】按浮点比例定位 inlay——inlay 与 case 内框完全锁定、同步缩放，
         // 中心封面放大/滑动收尾时二者【不相对蠕动】。宽屏也自动一致（caseW 已含横向压缩），
         // 故不再需要手动 sx/sy 及宽屏预缩放。
-        //
-        // 像素对齐：仅在静止时把封面/外壳取整到整数像素以消除缩放泛光；翻页/缩放动画中放行
-        // 分数坐标，保持滑动与缩放平滑（避免整数量化的台阶感）。动画结束后的静止帧会以整数
-        // 对齐重绘，故最终停下来的画面始终干净无泛光。
-        rmSetOverlayPixmapIntegerAlign(!isAnimating);
         if (reflection)
             rmDrawOverlayPixmapReflectFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
                                            baseW, baseH,
