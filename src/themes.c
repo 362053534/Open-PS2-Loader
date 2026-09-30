@@ -1096,7 +1096,8 @@ static clock_t animationStartTime = 0;
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
 //   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
 #define COVERFLOW_DIAG_PLAIN_COVER 0
-#define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
+#define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
+#define COVERFLOW_DEFAULT_PAGE_ANIM 500  // L1/R1 翻页滑动时长（毫秒，独立于普通单步动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
 #define COVERFLOW_NONCENTER_YOFFSET -27 // 游戏非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
@@ -1114,7 +1115,7 @@ static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相�
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
-// 本次滑动实际使用的时长（毫秒）。单步和 L1/R1 翻页都使用主题配置的总时长。
+// 本次滑动实际使用的时长（毫秒）。普通单步使用 gCoverflowAnimSpeed，L1/R1 翻页使用独立的页面动画时长。
 static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
 
 void thmTriggerCoverflowAnim(int direction)
@@ -1148,7 +1149,7 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
     animationIsPageScroll = 1;
     animationStartItem = startItem;
     animationStartTime = clock();
-    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
+    gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_PAGE_ANIM;
 }
 
 // 当前是否正处于 Coverflow 滑动动画中（供 menusys 判断“上一步走完没有”）。
