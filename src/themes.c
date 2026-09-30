@@ -1126,7 +1126,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
 #define COVERFLOW_DEFAULT_PAGE_ANIM 500  // L1/R1 翻页滑动时长（毫秒，独立于普通单步动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
-#define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
+#define COVERFLOW_DIM_RGB 0x66      // 非中心封面亮度为原亮度的80%（0x80=100%）
 #define COVERFLOW_NONCENTER_YOFFSET -27 // 游戏非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
 #define COVERFLOW_APPS_NONCENTER_YOFFSET -24 // APPS 非中心封面相对中心封面的垂直偏移（同一套 640×480 逻辑坐标）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
