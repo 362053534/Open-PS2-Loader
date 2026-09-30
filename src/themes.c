@@ -930,16 +930,27 @@ static void drawMenuText(struct menu_list *menu, struct submenu_list *item, conf
 static void drawBDMIndex(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     item_list_t *itemList = menu->item->userdata;
-    // Only render for bdm modes and if current mode is visible
-    if (itemList->mode >= ETH_MODE || menu->item->visible == 0)
-        return;
+    int coverflowDiag = COVERFLOW_DIAG_BDM_INDEX_ALWAYS && gTheme && gTheme->coverflow;
 
-    // Only render if multiple mass devices are connected
-    if (itemList->mode == 0 && menu->next->item->visible == 0)
-        return;
+    // 正常路径只在 BDM 模式、设备页可见且存在多个大容量设备时显示。
+    // Coverflow 诊断路径跳过这些可见性条件，确保可以直接观察 BdmIndex 的位置。
+    if (!coverflowDiag) {
+        if (itemList->mode >= ETH_MODE || menu->item->visible == 0)
+            return;
+        if (itemList->mode == 0 && menu->next->item->visible == 0)
+            return;
+    }
+
+    int indexMode = itemList->mode;
+    // 诊断时即使当前不是可用的 BDM mode，也显示 WOPL 的第一个 Index 资源。
+    if (indexMode < 0 || indexMode >= (ETH_MODE > 0 ? ETH_MODE : 5)) {
+        if (!coverflowDiag)
+            return;
+        indexMode = 0;
+    }
 
     // Coverflow 使用独立的 WOPL 风格资源；默认列表主题继续使用原来的 Index_*。
-    int indexTexId = (gTheme && gTheme->coverflow) ? (CF_INDEX_0 + itemList->mode) : (INDEX_0 + itemList->mode);
+    int indexTexId = (gTheme && gTheme->coverflow) ? (CF_INDEX_0 + indexMode) : (INDEX_0 + indexMode);
     GSTEXTURE *indexTex = thmGetTexture(indexTexId);
     if (indexTex && indexTex->Mem) {
         int x = gWideScreen ? elem->wsX : elem->posX;
@@ -1109,6 +1120,8 @@ static clock_t animationStartTime = 0;
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
 //   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
 #define COVERFLOW_DIAG_PLAIN_COVER 0
+// 诊断：Coverflow 中始终显示 BdmIndex，即使当前只有一个设备或设备页不可见，便于校准位置。
+#define COVERFLOW_DIAG_BDM_INDEX_ALWAYS 1
 #define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
 #define COVERFLOW_DEFAULT_PAGE_ANIM 500  // L1/R1 翻页滑动时长（毫秒，独立于普通单步动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
