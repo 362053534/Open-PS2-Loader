@@ -16,6 +16,12 @@
 #define MENU_POS_V     50
 #define HINT_HEIGHT    32
 #define DECORATOR_SIZE 20
+// 外部 Coverflow 缺少 MenuIcon/BdmIndex 时使用的内置 Coverflow 模块尺寸；
+// 不使用第三方 cfg 对这两个模块填写的 width/height，避免回退美术被拉伸。
+#define COVERFLOW_FALLBACK_MENUICON_WIDTH 180
+#define COVERFLOW_FALLBACK_MENUICON_HEIGHT 120
+#define COVERFLOW_FALLBACK_BDM_INDEX_WIDTH 24
+#define COVERFLOW_FALLBACK_BDM_INDEX_HEIGHT 24
 
 extern const char conf_theme_OPL_cfg;
 extern u16 size_conf_theme_OPL_cfg;
@@ -882,8 +888,17 @@ static void initBackground(const char *themePath, config_set_t *themeConfig, the
 static void drawMenuIcon(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     GSTEXTURE *menuIconTex = thmGetTexture(menu->item->icon_id);
-    if (menuIconTex && menuIconTex->Mem)
-        rmDrawPixmap(menuIconTex, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+    if (menuIconTex && menuIconTex->Mem) {
+        int width = elem->width;
+        int height = elem->height;
+        int iconId = menu->item->icon_id;
+        if (gTheme && gTheme->coverflow && iconId >= BDM_ICON && iconId <= APP_ICON &&
+            gTheme->coverflowTextureFallback[iconId]) {
+            width = COVERFLOW_FALLBACK_MENUICON_WIDTH;
+            height = COVERFLOW_FALLBACK_MENUICON_HEIGHT;
+        }
+        rmDrawPixmap(menuIconTex, elem->posX, elem->posY, elem->aligned, width, height, elem->scaled, gDefaultCol);
+    }
 }
 
 static int findMenuNext(struct menu_list *menu)
@@ -938,12 +953,19 @@ static void drawBDMIndex(struct menu_list *menu, struct submenu_list *item, conf
     if (itemList->mode == 0 && menu->next->item->visible == 0)
         return;
 
-    // Coverflow 使用独立的 WOPL 风格资源；默认列表主题继续使用原来的 Index_*。
-    int indexTexId = (gTheme && gTheme->coverflow) ? (CF_INDEX_0 + itemList->mode) : (INDEX_0 + itemList->mode);
+    // textures[INDEX_*] 已在主题加载阶段按“第三方 CF 缺图→内置 CF 资源”完成回退；
+    // 普通主题则仍然是原来的 Index_* 资源。
+    int indexTexId = INDEX_0 + itemList->mode;
     GSTEXTURE *indexTex = thmGetTexture(indexTexId);
     if (indexTex && indexTex->Mem) {
+        int width = elem->width;
+        int height = elem->height;
+        if (gTheme && gTheme->coverflow && gTheme->coverflowTextureFallback[indexTexId]) {
+            width = COVERFLOW_FALLBACK_BDM_INDEX_WIDTH;
+            height = COVERFLOW_FALLBACK_BDM_INDEX_HEIGHT;
+        }
         int x = gWideScreen ? elem->wsX : elem->posX;
-        rmDrawPixmap(indexTex, x, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+        rmDrawPixmap(indexTex, x, elem->posY, elem->aligned, width, height, elem->scaled, gDefaultCol);
     }
 }
 
@@ -1921,17 +1943,40 @@ static int thmReadEntry(int index, const char *path, const char *separator, cons
 }
 
 /* themePath must contains the leading separator (as it is dependent of the device, we can't know here) */
-static int thmLoadResource(GSTEXTURE *texture, int texId, const char *themePath, short psm, int useDefault)
+static int thmLoadResourceWithFallback(GSTEXTURE *texture, int texId, const char *themePath, short psm,
+                                        int useDefault, int fallbackTexId, int *usedFallback)
 {
     int success = -1;
+
+    if (usedFallback)
+        *usedFallback = 0;
 
     if (themePath != NULL)
         success = texDiscoverLoad(texture, themePath, texId); // only set success here
 
-    if ((success < 0) && useDefault)
-        texLoadInternal(texture, texId); // we don't mind the result of "default"
+    if ((success < 0) && useDefault) {
+        int fallbackResult = texLoadInternal(texture, fallbackTexId >= 0 ? fallbackTexId : texId);
+        if (usedFallback && fallbackTexId >= 0 && fallbackResult >= 0)
+            *usedFallback = 1;
+    }
 
     return success;
+}
+
+static int thmLoadResource(GSTEXTURE *texture, int texId, const char *themePath, short psm, int useDefault)
+{
+    return thmLoadResourceWithFallback(texture, texId, themePath, psm, useDefault, -1, NULL);
+}
+
+// 外部 Coverflow 主题缺少这些资源时，回退到内置 Coverflow 的美术，而不是
+// 回退到普通列表主题的 usb/Index_* 资源。
+static int thmGetCoverflowFallbackTexture(int texId)
+{
+    if (texId >= BDM_ICON && texId <= APP_ICON)
+        return CF_DEV_BDM + (texId - BDM_ICON);
+    if (texId >= INDEX_0 && texId <= INDEX_4)
+        return CF_INDEX_0 + (texId - INDEX_0);
+    return -1;
 }
 
 static void thmApplyTextColor(theme_element_t *elem, u64 color)
@@ -2099,10 +2144,10 @@ static void thmLoad(const char *themePath)
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
-    // 【极简兼容】Coverflow 核心参数（封面大小/数量/间距/缩放/动画速度）一律由上面的内部基线
-    // (#define) 控制，主题 cfg【不再覆盖】——这样第三方主题也用统一的内部观感，只自带坐标与美术。
-    // 仅以下几项仍读取主题：非中心压暗(dim_covers)、预取数(preload)、整排水平微调(cover_offset，
-    // 在别处解析)。封面位置/坐标系与外壳美术(overlay 顶点等)由主题引擎按元素通用解析。
+    // 动画速度必须优先使用主题 cfg；没有该键时保留上面的引擎默认值。
+    configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
+    // 其余可配置项继续按各自兼容规则读取。封面位置/坐标系与外壳美术（overlay 顶点等）
+    // 由主题引擎按元素通用解析。
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
     // count 夹取到显示数组上限，防止 covers[]/drawOrder[] 越界崩溃；preload 只挡负值、不设上限
@@ -2192,9 +2237,33 @@ static void thmLoad(const char *themePath)
     }
     newT->loadingIconCount = i;
 
-    // Customizable icons
-    for (i = BDM_ICON; i <= START_ICON; i++)
-        thmLoadResource(&newT->textures[i], i, themePath, GS_PSM_CT32, newT->useDefault);
+    // Customizable icons. 外部 Coverflow 主题缺少 MenuIcon/BdmIndex 资源时，
+    // fallbackId 改用内置 Coverflow 美术；其它主题仍回退到原来的内部资源。
+    for (i = BDM_ICON; i <= START_ICON; i++) {
+        int fallbackId = -1;
+        if (themePath && newT->coverflow)
+            fallbackId = thmGetCoverflowFallbackTexture(i);
+
+        int usedFallback = 0;
+        thmLoadResourceWithFallback(&newT->textures[i], i, themePath, GS_PSM_CT32,
+                                    newT->useDefault, fallbackId, &usedFallback);
+        if (usedFallback)
+            newT->coverflowTextureFallback[i] = 1;
+    }
+
+    // BdmIndex 使用同一套“自定义优先、第三方 CF 缺失时回退 cf_index_*”规则。
+    // 这些资源单独加载，避免覆盖普通主题原有的 Index_* 内置资源槽位。
+    for (i = INDEX_0; i <= INDEX_4; i++) {
+        int fallbackId = -1;
+        if (themePath && newT->coverflow)
+            fallbackId = thmGetCoverflowFallbackTexture(i);
+
+        int usedFallback = 0;
+        thmLoadResourceWithFallback(&newT->textures[i], i, themePath, GS_PSM_CT32,
+                                    newT->useDefault, fallbackId, &usedFallback);
+        if (usedFallback)
+            newT->coverflowTextureFallback[i] = 1;
+    }
 
     // 内置 Coverflow 主题(builtinThemeID==0, 无外部主题路径)的设备图标改用 wOPL 风格的
     // 单设备大图(带 BDM/SMB/APA/APPS 标签), 而不是原列表主题那套四合一标签条。
@@ -2218,6 +2287,10 @@ static void thmLoad(const char *themePath)
         for (k = 0; k < (int)(sizeof(cfDevIcons) / sizeof(cfDevIcons[0])); k++) {
             texFree(&newT->textures[cfDevIcons[k].slot]);
             texLoadInternal(&newT->textures[cfDevIcons[k].slot], cfDevIcons[k].cfTex);
+        }
+        for (k = 0; k < 5; k++) {
+            texFree(&newT->textures[INDEX_0 + k]);
+            texLoadInternal(&newT->textures[INDEX_0 + k], CF_INDEX_0 + k);
         }
     }
 

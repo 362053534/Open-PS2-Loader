@@ -149,6 +149,9 @@ typedef struct theme
     int coverflowCoverOffset;
 
     GSTEXTURE textures[TEXTURES_COUNT];
+    // 外部 Coverflow 主题缺少菜单图标/BDM 索引时，记录对应槽位是否用了内置 CF 回退资源。
+    // 用于忽略第三方主题给这两个模块配置的宽高，避免内置美术被拉伸。
+    unsigned char coverflowTextureFallback[TEXTURES_COUNT];
     int fonts[THM_MAX_FONTS]; //!< Storage of font handles for removal once not needed
 } theme_t;
 
