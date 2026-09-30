@@ -731,54 +731,6 @@ static inline float rmPxSnap(float v)
     return (float)((int)(v + (v >= 0.0f ? 0.5f : -0.5f)));
 }
 
-// 【诊断/纯封面】浮点版 rmDrawPixmap：只画一张贴图（无 overlay 外壳、无倒影），x/y/w/h 走浮点，
-// 最终四角与封面主图路径一样【整数像素对齐】（避免亚像素泛光）。供关闭 case+倒影、单看封面缩放用。
-void rmDrawPixmapFrac(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color)
-{
-    rm_quad_t quad;
-    rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
-    // 锁定【整数尺寸】而非把左上/右下两角各自独立取整（防 1:1 时丢边）：
-    // 绘制宽/高 w/h 经缩放与虚拟→物理换算后一般不是精确整数（如中心封面在有过扫描的 VGA 下
-    // ≈139.9999/140.0001）。若两角各自 round，则像素宽 = round(右下)-round(左上) 会随封面在屏幕上
-    // 的亚像素位置（即主题里的坐标）在 N-1/N/N+1 间跳；1:1 时 N 纹素被映到 N±1 像素 → GS 丢/复制
-    // 一条边，且丢哪条随坐标变（VGA 640x480 点对点下亦然）。改为：左上角取整定位，宽/高各自取整成
-    // 整数像素，右下 = 左上 + 整数尺寸 → 1:1 时精确等于纹理尺寸、纹素与像素一一对应，任何位置不丢边。
-    // 与普通 ItemCover 的 rmSetupQuad() 保持同一套 GS 半像素基准：
-    // 先在 render offset 之前锁定逻辑屏幕坐标，再由 rmDrawQuad() 统一加 fRender*Off。
-    // 之前在加上 -0.5 render offset 后再取整，会把 Coverflow 主图整体推到
-    // 与 ItemCover 不同的采样相位，在线性过滤下表现为明显发糊。
-    float ulX = rmPxSnap(quad.ul.x);
-    float ulY = rmPxSnap(quad.ul.y);
-    float iW = rmPxSnap(quad.br.x - quad.ul.x);
-    float iH = rmPxSnap(quad.br.y - quad.ul.y);
-    quad.ul.x = ulX;
-    quad.ul.y = ulY;
-    quad.br.x = ulX + iW;
-    quad.br.y = ulY + iH;
-    rmDrawQuad(&quad);
-}
-
-// 【诊断/纯封面+倒影】rmDrawPixmapFrac 的倒影版：主图走同样的整数尺寸锁定路径，随后在其下方
-// 逐行绘制渐隐倒影（仍无 case 外壳）。倒影从主图整数底边(quad.br.y)起、每行 1px，接缝整数对齐。
-// 供关闭 case、单看“封面+倒影”时缩小封面丢边是否受倒影影响用。
-void rmDrawPixmapFracReflect(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color)
-{
-    rm_quad_t quad;
-    rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
-    // 与 rmDrawPixmapFrac 使用同一套半像素基准和整数尺寸锁定。
-    float ulX = rmPxSnap(quad.ul.x);
-    float ulY = rmPxSnap(quad.ul.y);
-    float iW = rmPxSnap(quad.br.x - quad.ul.x);
-    float iH = rmPxSnap(quad.br.y - quad.ul.y);
-    quad.ul.x = ulX;
-    quad.ul.y = ulY;
-    quad.br.x = ulX + iW;
-    quad.br.y = ulY + iH;
-    rmDrawQuad(&quad);
-    // 倒影：复用公共逐行渐隐实现，从主图整数底边起、逐行落在整数像素、接缝无缝。
-    rmDrawReflectionRows(txt, &quad, color);
-}
-
 // Coverflow 专用的统一父子变换：case 是父级，inlay 是 case 内的 child。
 //
 // 这组数据只在 Coverflow 的浮点绘制路径中使用；普通整数版
@@ -795,7 +747,7 @@ typedef struct
     float caseHeight;
 
     // case/inlay 的整数屏幕坐标；提交到直接 quad primitive 时统一加 fRender*Off。
-    // 这样它们与普通 ItemCover / rmDrawPixmapFrac 使用同一半像素采样相位。
+    // 这样它们与普通 ItemCover 使用同一半像素采样相位。
     float caseLeft;
     float caseRight;
     // 主图四个顶点分别从 overlay 的四个内框顶点变换而来；不再用中心点

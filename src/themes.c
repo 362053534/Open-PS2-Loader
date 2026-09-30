@@ -1128,9 +1128,6 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_CENTER_YOFFSET 1
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
 // 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
-// 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
-//   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
-#define COVERFLOW_DIAG_PLAIN_COVER 0
 #define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x66      // 非中心封面亮度为原亮度的80%（0x80=100%）
@@ -1621,18 +1618,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (img->overlayTexture)
             img->overlayTexture->source.Filter = coverFilter; // case 外壳跟随封面
 
-#if COVERFLOW_DIAG_PLAIN_COVER
-        // 诊断：画纯封面图（无 case）；带倒影（跟随主题的 elem->reflection）。尺寸取封面主图本身
-        // = case 尺寸 × 内框占比(fracW/H)，与正常路径里 inlay 的实际占屏尺寸一致，居中在同一位置。
-        // 用来在【无 case】的隔离条件下，单看缩小封面的丢边是否受倒影影响。
-        if (covers[i].texture) {
-            // 诊断分支也使用同一“底部锚点”，但明确关闭 case 和倒影，
-            // 只观察封面主图本身的尺寸、采样和清晰度。
-            rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset,
-                             (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth * fracW,
-                             currentCoverHeight * fracH, SCALING_NONE, coverColor);
-        }
-#else
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         // y 仍来自 Coverflow 元素的 cfg y（加上既有的模块基线偏移），但改为把它作为
         // 封面模块的【底部锚点】；因此中心封面放大/非中心缩小只向上展开，底部位置不随尺寸改变。
@@ -1640,7 +1625,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset,
                              (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
                              elem->reflection, elem->width, elem->height);
-#endif
     }
 
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载，动画期间也不暂停。
