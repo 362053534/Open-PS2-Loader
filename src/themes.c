@@ -1051,6 +1051,7 @@ static void drawInfoHintText(struct menu_list *menu, struct submenu_list *item, 
 static int isAnimating = 0;        // 动画进行中标志
 static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上一个（向右滚动）
 static int animationSteps = 1;     // 本次动画跨过的实际格数（单步为 1）
+static int animationIsPageScroll = 0; // 仅 L1/R1 翻页动画暂停新的封面请求
 static submenu_list_t *animationStartItem = NULL; // 多格动画的起点，current 已提前指向目标项
 static clock_t animationStartTime = 0;
 
@@ -1123,6 +1124,7 @@ void thmTriggerCoverflowAnim(int direction)
     isAnimating = 1;
     animationDirection = direction;
     animationSteps = 1;
+    animationIsPageScroll = 0;
     animationStartItem = NULL; // 单步导航从目标项的相邻项开始
     animationStartTime = clock();
     gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
@@ -1141,6 +1143,7 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
     isAnimating = 1;
     animationDirection = direction;
     animationSteps = steps;
+    animationIsPageScroll = 1;
     animationStartItem = startItem;
     animationStartTime = clock();
     gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
@@ -1337,10 +1340,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float animOffset = 0.0f;
     int renderCount = coverCount;
     int renderCenterIndex = centerIndex;
-    int leavingIndex = centerIndex;
     if (isAnimating) {
         if (gCoverflowActiveAnimSpeed <= 0) {
             isAnimating = 0;
+            animationIsPageScroll = 0;
             animationStartItem = NULL;
             animationSteps = 1;
         } else {
@@ -1349,6 +1352,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             if (t >= 1.0f) {
                 // 到达目标后立即使用目标窗口，下一帧恢复可见封面和预取的正常加载。
                 isAnimating = 0;
+                animationIsPageScroll = 0;
                 animationStartTime = 0;
                 animationStartItem = NULL;
                 animationSteps = 1;
@@ -1378,9 +1382,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                 renderCenterIndex = centerIndex + steps;
         }
 
-        leavingIndex = renderCenterIndex + animationDirection * steps;
         animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
     }
+
+    // 只有 L1/R1 的多格翻页需要暂停新的封面请求；普通单步导航仍可正常加载
+    // 新出现的封面，避免把单步移动变成“动画结束后才开始加载”。
+    int pageAnimationActive = animationActive && animationIsPageScroll;
 
     struct
     {
@@ -1430,20 +1437,24 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float targetCenterX = (float)basePosX + (float)centerIndex * (float)coverDistance;
     float posX = targetCenterX + animOffset - (float)renderCenterIndex * (float)coverDistance;
 
-    // 每个封面的"居中程度"cf：静止时仅目标中心=1；动画中目标中心由 0→eased，
-    // 起点封面由 1→0，其余封面恒为 0。起点和目标可以相隔多格，中间封面仍随整排
-    // 一次性移动，不再逐格触发新的动画。
+    // 每个封面的"居中程度"cf 根据它在动画中的连续位置计算：中心落在两个槽位
+    // 之间时，两个相邻封面分别按距离插值。这样多格翻页时中间封面经过中心也会
+    // 正常放大/缩小，不会保持非中心尺寸穿过中心后再在末尾突变。
     int i;
     float cf[COVERFLOW_RENDER_MAX];
     float totalCf = 0.0f;
+    float visualCenterIndex = (float)renderCenterIndex;
+    if (animationActive)
+        visualCenterIndex -= animOffset / (float)coverDistance;
     for (i = 0; i < renderCount; i++) {
-        float f;
-        if (i == renderCenterIndex)
-            f = animationActive ? eased : 1.0f;
-        else if (animationActive && i == leavingIndex)
-            f = 1.0f - eased;
-        else
+        float slotDistance = (float)i - visualCenterIndex;
+        if (slotDistance < 0.0f)
+            slotDistance = -slotDistance;
+        float f = 1.0f - slotDistance;
+        if (f < 0.0f)
             f = 0.0f;
+        else if (f > 1.0f)
+            f = 1.0f;
         cf[i] = f;
         totalCf += f;
     }
@@ -1482,7 +1493,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         int idx = loadOrder[li];
         if (covers[idx].game == NULL)
             continue;
-        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, !animationActive);
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, !pageAnimationActive);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
@@ -1514,18 +1525,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         float renderPosX = covers[i].renderPosX;
 
-        // 统一的"居中程度"因子（与滑动动画同步）：1 = 完全处于中心，0 = 完全非中心。
-        //   中心封面：动画中随 eased 由 0→1，定格为 1；
-        //   离开中心的封面：随 eased 由 1→0；
-        //   其余非中心封面：恒为 0。
-        // 缩放 / 明暗 / 垂直偏移都据此插值，保证三者与动画完全同步、平滑过渡。
-        float centerFactor;
-        if (i == renderCenterIndex)
-            centerFactor = animationActive ? eased : 1.0f;
-        else if (animationActive && i == leavingIndex)
-            centerFactor = 1.0f - eased;
-        else
-            centerFactor = 0.0f;
+        // 统一的"居中程度"因子：与横向连续位置使用同一份 cf，确保缩放、明暗和
+        // 垂直偏移在多格翻页时同步经过每个中间封面，不在动画末尾再次吸附。
+        float centerFactor = cf[i];
 
         // 本封面的等比 scale：非中心 ↔ 中心 随 centerFactor 插值（浮点连续，供动画平滑过渡）。
         //   centerFactor=1 → 中心 scale(gCoverflowCenterScale)；=0 → 非中心 scale(effNonCenterScale=
@@ -1617,7 +1619,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
-    if (!animationActive && img->cache && gCoverflowPreload > 0) {
+    if (!pageAnimationActive && img->cache && gCoverflowPreload > 0) {
         int preloadPerSide = gCoverflowPreload;
 
         submenu_list_t *head = menu->item->submenu;
