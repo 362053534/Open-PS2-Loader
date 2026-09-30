@@ -773,6 +773,19 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
     else
         elem->posX = x;
 
+    // wOPL 兼容：Coverflow 的 BdmIndex 可用独立的宽屏 x 位置。
+    // 未配置时沿用普通 posX，因此不会改变现有主题的 4:3 行为。
+    elem->wsX = elem->posX;
+    snprintf(elemProp, sizeof(elemProp), "%s_wsX", name);
+    if (configGetStr(themeConfig, elemProp, &temp)) {
+        if (!strncmp(temp, "POS_MID", 7))
+            elem->wsX = screenWidth >> 1;
+        else {
+            int wsX = atoi(temp);
+            elem->wsX = (wsX < 0) ? (screenWidth + wsX) : wsX;
+        }
+    }
+
     snprintf(elemProp, sizeof(elemProp), "%s_y", name);
     if (configGetStr(themeConfig, elemProp, &temp)) {
         if (!strncmp(temp, "POS_MID", 7))
@@ -929,8 +942,10 @@ static void drawBDMIndex(struct menu_list *menu, struct submenu_list *item, conf
     snprintf(imgName, sizeof(imgName), "Index_%d", itemList->mode);
 
     GSTEXTURE *indexTex = thmGetTexture(texLookupInternalTexId(&imgName[0]));
-    if (indexTex && indexTex->Mem)
-        rmDrawPixmap(indexTex, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+    if (indexTex && indexTex->Mem) {
+        int x = gWideScreen ? elem->wsX : elem->posX;
+        rmDrawPixmap(indexTex, x, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+    }
 }
 
 static void drawItemsList(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
