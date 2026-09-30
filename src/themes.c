@@ -608,7 +608,7 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
 // 与 getGameImageTexture() 相同，但走 Coverflow 专用的 quiet 缓存路径，
 // 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
 // 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
-// allowRequest=0 用于 Coverflow 动画期间：只查缓存和已有请求，不新增加载请求。
+// allowRequest=0 时只查缓存和已有请求，不新增加载请求；Coverflow 当前始终允许动画期间入队。
 static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struct submenu_item *item, int allowRequest)
 {
     if (artEnabledForCache(cache)) {
@@ -1051,7 +1051,6 @@ static void drawInfoHintText(struct menu_list *menu, struct submenu_list *item, 
 static int isAnimating = 0;        // 动画进行中标志
 static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上一个（向右滚动）
 static int animationSteps = 1;     // 本次动画跨过的实际格数（单步为 1）
-static int animationIsPageScroll = 0; // 仅 L1/R1 翻页动画暂停新的封面请求
 static submenu_list_t *animationStartItem = NULL; // 多格动画的起点，current 已提前指向目标项
 static clock_t animationStartTime = 0;
 
@@ -1127,7 +1126,6 @@ void thmTriggerCoverflowAnim(int direction)
     isAnimating = 1;
     animationDirection = direction;
     animationSteps = 1;
-    animationIsPageScroll = 0;
     animationStartItem = NULL; // 单步导航从目标项的相邻项开始
     animationStartTime = clock();
     gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
@@ -1146,7 +1144,6 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
     isAnimating = 1;
     animationDirection = direction;
     animationSteps = steps;
-    animationIsPageScroll = 1;
     animationStartItem = startItem;
     animationStartTime = clock();
     gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_PAGE_ANIM;
@@ -1346,16 +1343,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (isAnimating) {
         if (gCoverflowActiveAnimSpeed <= 0) {
             isAnimating = 0;
-            animationIsPageScroll = 0;
             animationStartItem = NULL;
             animationSteps = 1;
         } else {
             clock_t elapsed = clock() - animationStartTime;
             float t = (float)elapsed / ((float)gCoverflowActiveAnimSpeed * CLOCKS_PER_SEC / 1000);
             if (t >= 1.0f) {
-                // 到达目标后立即使用目标窗口，下一帧恢复可见封面和预取的正常加载。
+                // 到达目标后立即使用目标窗口；可见封面加载和预取在动画期间也持续进行。
                 isAnimating = 0;
-                animationIsPageScroll = 0;
                 animationStartTime = 0;
                 animationStartItem = NULL;
                 animationSteps = 1;
@@ -1387,10 +1382,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
     }
-
-    // 只有 L1/R1 的多格翻页需要暂停新的封面请求；普通单步导航仍可正常加载
-    // 新出现的封面，避免把单步移动变成“动画结束后才开始加载”。
-    int pageAnimationActive = animationActive && animationIsPageScroll;
 
     struct
     {
@@ -1496,7 +1487,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         int idx = loadOrder[li];
         if (covers[idx].game == NULL)
             continue;
-        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, !pageAnimationActive);
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, 1);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
@@ -1615,8 +1606,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 #endif
     }
 
-    // 预取（prefetch）：动画结束后为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
-    // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
+    // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载，动画期间也不暂停。
+    // 这样左右滚动时这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
     //
     // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 1）。
     // 例如填 3 就是左右屏幕外各预读 3 张、共 6 张。此值【不设上限】：主题包填过大会因缓存/内存
@@ -1626,7 +1617,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
-    if (!pageAnimationActive && img->cache && gCoverflowPreload > 0) {
+    if (img->cache && gCoverflowPreload > 0) {
         int preloadPerSide = gCoverflowPreload;
 
         submenu_list_t *head = menu->item->submenu;
