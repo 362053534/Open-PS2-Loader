@@ -1144,12 +1144,20 @@ static void menuRenderElements(theme_element_t *elem)
 
     WaitSema(menuSemaId);
 
+    // Theme elements, including ordinary StaticImage assets such as the Coverflow plank,
+    // must all share the visible-display scissor. Previously this was set only inside
+    // drawCoverFlow(), which was too late for elements drawn before Coverflow.
+    rmSetScissorDisplay();
+
     while (elem) {
         if (elem->drawElem)
             elem->drawElem(selected_item, selected_item->item->current, itemConfig, elem);
 
         elem = elem->next;
     }
+
+    // Do not leak the theme scissor into other GUI drawing paths.
+    rmResetScissor();
     SignalSema(menuSemaId);
 }
 

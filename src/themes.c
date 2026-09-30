@@ -1481,10 +1481,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         drawOrder[drawCount++] = i;
     drawOrder[drawCount++] = centerIndex;
 
-    // 把 GS 裁剪框收紧到可见显示区域：滑动动画中两侧封面会移出屏幕、进入左右黑边甚至帧缓冲外，
-    // 实机上造成图像残留/串色。收紧 scissor 后超出可见区的封面像素被 GS 硬件裁掉，从根本上杜绝残留。
-    // 绘制完封面立即恢复默认裁剪框，避免影响后续/其它绘制。
-    rmSetScissorDisplay();
+    // 整个主题元素列表已经在 menuRenderElements() 中设置了可见显示区域的 scissor；
+    // Coverflow、case、封面和倒影因此与木板等普通主题素材共用同一裁切范围。
 
     // 物理显示分辨率（native）：OPL 所有元素都在 640×480【虚拟】坐标里排版，PS2 再把它缩放到
     // 实际视频模式的扫描线数（NTSC 640×448 / PAL 640×512 / 仅 480p·VGA 才是 640×480）。因此一个
@@ -1624,9 +1622,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                              elem->reflection, elem->width, elem->height);
 #endif
     }
-
-    // 封面绘制完毕，恢复默认裁剪框（整个帧缓冲），不影响后续/其它绘制路径。
-    rmResetScissor();
 
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
     // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
