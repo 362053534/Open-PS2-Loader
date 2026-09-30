@@ -423,7 +423,7 @@ static int rmSubmitGoraudQuadTexture(GSTEXTURE *txt, float x1, float y1, float u
                                    x2, y1, u2, v1,
                                    x1, y2, u1, v2,
                                    x2, y2, u2, v2,
-                                   topColor, topColor, bottomColor, bottomColor);
+                                   order, topColor, topColor, bottomColor, bottomColor);
     return 1;
 }
 
