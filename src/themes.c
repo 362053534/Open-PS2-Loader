@@ -1644,7 +1644,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 1）。
     // 例如填 3 就是左右屏幕外各预读 3 张、共 6 张。此值【不设上限】：主题包填过大会因缓存/内存
     // 过大而出问题，属用户行为，不额外处理。封面缓存槽位数在 initCoverflow 处按
-    // (同屏数 + 2*预取数 + 1) 分配，确保这些预取封面都放得下、预取真正生效。
+    // (翻页过渡窗口 2*同屏数 + 2*预取数 + 1) 分配，确保翻页期间旧/新窗口和预取封面都放得下。
     //
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
@@ -1837,12 +1837,12 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 elem->drawElem = &drawBDMIndex;
             } else if (!strcmp(elementsType[ELEM_TYPE_COVERFLOW], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_COVERFLOW, 0, 0, ALIGN_NONE, DIM_UNDEF, DIM_UNDEF, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                // 封面缓存槽位数按 (同屏数 + 两侧预取数 + 1 余量) 动态分配，确保同屏封面与
-                // 左右预取封面都放得下、预取真正生效。gCoverflowCount / gCoverflowPreload 已在
-                // 上面的主题级解析里按“优先读主题、缺失用默认”确定。预取数不设上限，故槽位数也
-                // 可能很大（主题填过大导致内存不足属用户行为，不额外处理）。
-                // 注：宽屏不再自动 +2 封面（改为放大非中心封面填屏），故此处不再额外预留 2 槽。
-                int coverflowCacheSlots = gCoverflowCount + 2 * gCoverflowPreload + 1;
+                // 封面缓存槽位数按“翻页动画过渡窗口 + 两侧预取 + 1 余量”分配。
+                // L1/R1 最多一次跨过 gCoverflowCount 格，过渡帧同时保留旧窗口和新窗口，
+                // 因此至少需要 2 * gCoverflowCount 个封面槽；否则新页入缓存时会淘汰旧页
+                // 右侧已经加载好的封面，导致动画刚开始就闪回占位图并重新排队加载。
+                // 预取数不设上限，主题填过大导致内存不足属用户行为，不额外处理。
+                int coverflowCacheSlots = 2 * gCoverflowCount + 2 * gCoverflowPreload + 1;
                 initCoverflow(themePath, themeConfig, theme, elem, name, coverflowCacheSlots, NULL, NULL);
                 theme->coverflow = elem;
             }
