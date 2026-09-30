@@ -1075,9 +1075,9 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 非中心封面尺寸【唯一旋钮】：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）
 // 宽屏(16:9)专用的【封面间距】百分比。宽屏【不再改变非中心封面的大小】（尺寸与 4:3 完全一致），
 // 改为在宽屏下把封面间距略微拉大一点。语义同下面的间距%：间隙 = 非中心封面基准宽 × 此值/100。
-// 当前 10（间隙 ≈ 非中心基准宽的 10%；基准宽约 80px 时间隙约 8px，比 4:3 的 3% 稍大，之前 100 太大了）。
+// 当前 34（间隙 ≈ 非中心基准宽的 34%；宽屏下用于拉开封面间距）。
 // 4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
-#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 30
+#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 34
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
@@ -1090,7 +1090,7 @@ static clock_t animationStartTime = 0;
 // 正值下移、负值上移。当前 -51 = 在原 -50 的基础上整体上移 1。
 #define COVERFLOW_APPS_YOFFSET -51
 // APPS 中心封面专用的垂直微调；按 centerFactor 插值，避免滑动动画中发生跳变。
-#define COVERFLOW_APPS_CENTER_YOFFSET 3
+#define COVERFLOW_APPS_CENTER_YOFFSET 1
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
 // 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
@@ -1099,7 +1099,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET -34 // 非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
+#define COVERFLOW_NONCENTER_YOFFSET -29 // 非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
