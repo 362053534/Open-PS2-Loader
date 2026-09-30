@@ -1152,11 +1152,9 @@ static void menuCheckArtCursorChanged(void)
     }
 
     if (lastArtMenu != currentMenu || lastArtCurrent != current) {
-        // L1/R1 Coverflow 翻页会一次性把 current 指向目标项。此时保留旧页面
-        // 仍在队列中的封面请求，让过渡帧继续复用它们；drawCoverFlow 会同时为
-        // 新窗口排队请求。普通光标移动仍沿用原有的取消策略。
-        if (!(gCoverflowPageScrollActive && thmCoverflowIsAnimating()))
-            cacheCancelPendingArtRequests();
+        // 无论是单步移动还是 L1/R1 翻页，都遵循原有规则取消旧的加载请求；
+        // 翻页只通过增加缓存槽位来保住已经完成加载的封面，不能牺牲请求取消机制。
+        cacheCancelPendingArtRequests();
         lastArtMenu = currentMenu;
         lastArtCurrent = current;
     }
