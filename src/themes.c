@@ -1295,10 +1295,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (item == NULL)
         return;
 
-    // Coverflow 与普通 GameImage 一样尊重“显示封面”开关；关闭时整个模块都不画，
-    // 包括 case 外壳、封面占位图和倒影，避免只隐藏主图后留下空壳。
-    if (!gEnableArtCOV)
-        return;
+    // 关闭封面图时仍保留 Coverflow 的布局计算和 ICO 绘制；只跳过封面/case 的实际提交。
+    // 由于此时没有可见封面动画，ICO 只随当前 item 的变化切换，不等待 Coverflow 动画。
+    if (!gEnableArtCOV) {
+        isAnimating = 0;
+        animationStartTime = 0;
+        animationStartItem = NULL;
+        animationSteps = 1;
+    }
 
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
@@ -1542,7 +1546,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int li;
     for (li = 0; li < loadCount; li++) {
         int idx = loadOrder[li];
-        if (covers[idx].game == NULL)
+        if (covers[idx].game == NULL || !gEnableArtCOV)
             continue;
         covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, 1);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
@@ -1719,9 +1723,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // y 仍来自 Coverflow 元素的 cfg y（加上既有的模块基线偏移），但改为把它作为
         // 封面模块的【底部锚点】；因此中心封面放大/非中心缩小只向上展开，底部位置不随尺寸改变。
         // 不改动封面尺寸、物理像素模式或过滤方式，保留 448/480/512 的原有尺寸差异。
-        coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset,
-                             (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
-                             elem->reflection, elem->width, elem->height);
+        if (gEnableArtCOV)
+            coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset,
+                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
+                                 elem->reflection, elem->width, elem->height);
     }
 
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载，动画期间也不暂停。
