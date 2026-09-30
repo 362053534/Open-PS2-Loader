@@ -807,27 +807,24 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
         rBrY = rUlY + casePixelH;
     }
 
-    // Child 的目标尺寸从【未取整的】父级尺寸派生，避免先把 case 高度取整后
-    // 再按内框比例反推时出现 199.7→199 的额外丢行。父级本身仍保持整数尺寸，
-    // child 的最终宽高也仍锁定为整数，但锁定前使用同一份浮点比例。
-    float ulx = caseW * ((float)ovUlx / fbw), uly = caseH * ((float)ovUly / fbh);
-    float urx = caseW * ((float)ovUrx / fbw), ury = caseH * ((float)ovUry / fbh);
-    float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
-    float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
-
-    // 内框尺寸锁定为整数；位置则围绕同一个浮点内框中心取整。
-    // 不能把左边距和宽度分别取整后直接相加，否则宽度变化时 child 中心会在
-    // 左右/上下之间来回偏移，表现为封面在 case 内轻微蠕动。
-    float offL = (ulx + blx) * 0.5f;
-    float offR = (urx + brx) * 0.5f;
-    float offT = (uly + ury) * 0.5f;
-    float offB = (bly + bry) * 0.5f;
-    float innerCenterX = (offL + offR) * 0.5f;
-    float innerCenterY = (offT + offB) * 0.5f;
-    float inlayWidth = rmPxSnap(offR - offL);
-    float inlayHeight = rmPxSnap(offB - offT);
-    float inlayLeft = rmPxSnap(rUlX + innerCenterX - inlayWidth * 0.5f);
-    float inlayTop = rmPxSnap(rUlY + innerCenterY - inlayHeight * 0.5f);
+    // child 必须从【已经实际绘制出来的整数 case】派生，而不能继续使用未取整的
+    // caseW/caseH。否则父级已经保持在 N 像素时，child 仍会随着 199.7→199.9
+    // 的浮点动画独立取整，导致封面在 case 内来回蠕动。
+    //
+    // 每个边距都以 case 的左上整数顶点为基准单独锁定；这样 case 的位置/尺寸
+    // 一旦不变，封面的四条边就绝不会再因为中心点或宽高的二次取整而改变。
+    float caseScaleX = casePixelW / fbw;
+    float caseScaleY = casePixelH / fbh;
+    float offL = ((float)ovUlx + (float)ovBlx) * 0.5f * caseScaleX;
+    float offR = ((float)ovUrx + (float)ovBrx) * 0.5f * caseScaleX;
+    float offT = ((float)ovUly + (float)ovUry) * 0.5f * caseScaleY;
+    float offB = ((float)ovBly + (float)ovBry) * 0.5f * caseScaleY;
+    float inlayLeft = rUlX + rmPxSnap(offL);
+    float inlayRight = rUlX + rmPxSnap(offR);
+    float inlayTop = rUlY + rmPxSnap(offT);
+    float inlayBottom = rUlY + rmPxSnap(offB);
+    float inlayWidth = inlayRight - inlayLeft;
+    float inlayHeight = inlayBottom - inlayTop;
 
     transform->caseQuad = floatCase;
     // 不要把 fRender*Off 提前抵消：rmDrawQuad() 会像普通 ItemCover 一样统一加上它。
