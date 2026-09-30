@@ -32,9 +32,6 @@ static int screenWidth;
 static int screenHeight;
 static int guiThemeID = 0;
 
-// 诊断：Coverflow 中始终显示 BdmIndex，便于校准其位置。
-#define COVERFLOW_DIAG_BDM_INDEX_ALWAYS 1
-
 static int nThemes = 0;
 static theme_file_t themes[THM_MAX_FILES];
 static const char **guiThemesNames = NULL;
@@ -933,27 +930,16 @@ static void drawMenuText(struct menu_list *menu, struct submenu_list *item, conf
 static void drawBDMIndex(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     item_list_t *itemList = menu->item->userdata;
-    int coverflowDiag = COVERFLOW_DIAG_BDM_INDEX_ALWAYS && gTheme && gTheme->coverflow;
+    // Only render for bdm modes and if current mode is visible
+    if (itemList->mode >= ETH_MODE || menu->item->visible == 0)
+        return;
 
-    // 正常路径只在 BDM 模式、设备页可见且存在多个大容量设备时显示。
-    // Coverflow 诊断路径跳过这些可见性条件，确保可以直接观察 BdmIndex 的位置。
-    if (!coverflowDiag) {
-        if (itemList->mode >= ETH_MODE || menu->item->visible == 0)
-            return;
-        if (itemList->mode == 0 && menu->next->item->visible == 0)
-            return;
-    }
-
-    int indexMode = itemList->mode;
-    // 诊断时即使当前不是可用的 BDM mode，也显示 WOPL 的第一个 Index 资源。
-    if (indexMode < 0 || indexMode >= (ETH_MODE > 0 ? ETH_MODE : 5)) {
-        if (!coverflowDiag)
-            return;
-        indexMode = 0;
-    }
+    // Only render if multiple mass devices are connected
+    if (itemList->mode == 0 && menu->next->item->visible == 0)
+        return;
 
     // Coverflow 使用独立的 WOPL 风格资源；默认列表主题继续使用原来的 Index_*。
-    int indexTexId = (gTheme && gTheme->coverflow) ? (CF_INDEX_0 + indexMode) : (INDEX_0 + indexMode);
+    int indexTexId = (gTheme && gTheme->coverflow) ? (CF_INDEX_0 + itemList->mode) : (INDEX_0 + itemList->mode);
     GSTEXTURE *indexTex = thmGetTexture(indexTexId);
     if (indexTex && indexTex->Mem) {
         int x = gWideScreen ? elem->wsX : elem->posX;
