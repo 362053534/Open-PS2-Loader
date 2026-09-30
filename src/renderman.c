@@ -801,12 +801,13 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
         rBrY = rUlY + casePixelH;
     }
 
-    // Child 的相对边距和尺寸也从已经锁定的父级尺寸派生，避免 case、封面和倒影
-    // 各自使用不同的浮点父级尺寸后，在最后一帧出现一像素的相对回弹。
-    float ulx = casePixelW * ((float)ovUlx / fbw), uly = casePixelH * ((float)ovUly / fbh);
-    float urx = casePixelW * ((float)ovUrx / fbw), ury = casePixelH * ((float)ovUry / fbh);
-    float blx = casePixelW * ((float)ovBlx / fbw), bly = casePixelH * ((float)ovBly / fbh);
-    float brx = casePixelW * ((float)ovBrx / fbw), bry = casePixelH * ((float)ovBry / fbh);
+    // Child 的目标尺寸从【未取整的】父级尺寸派生，避免先把 case 高度取整后
+    // 再按内框比例反推时出现 199.7→199 的额外丢行。父级本身仍保持整数尺寸，
+    // child 的最终宽高也仍锁定为整数，但锁定前使用同一份浮点比例。
+    float ulx = caseW * ((float)ovUlx / fbw), uly = caseH * ((float)ovUly / fbh);
+    float urx = caseW * ((float)ovUrx / fbw), ury = caseH * ((float)ovUry / fbh);
+    float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
+    float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
 
     // 内框尺寸锁定为整数；位置则围绕同一个浮点内框中心取整。
     // 不能把左边距和宽度分别取整后直接相加，否则宽度变化时 child 中心会在
