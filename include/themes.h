@@ -148,6 +148,13 @@ typedef struct theme
     theme_element_t *coverflow;
     int coverflowCoverOffset;
 
+    // Coverflow 停止移动后显示当前游戏 ICO 的专用单槽缓存；不复用封面缓存，
+    // 这样不会改变 Coverflow 封面的淘汰顺序。
+    image_cache_t *coverflowIcoCache;
+    int coverflowIcoCacheId;
+    int coverflowIcoCacheUID;
+    submenu_list_t *coverflowIcoItem;
+
     GSTEXTURE textures[TEXTURES_COUNT];
     // 外部 Coverflow 主题缺少菜单图标/BDM 索引时，记录对应槽位是否用了内置 CF 回退资源。
     // 用于忽略第三方主题给这两个模块配置的宽高，避免内置美术被拉伸。

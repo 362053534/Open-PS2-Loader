@@ -628,6 +628,19 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
+// Coverflow 停止后才请求当前游戏的 ICO；光标变化时调用方会重置专用槽位，
+// 因此这里不会把上一款游戏的光碟图带到新游戏上。
+static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item)
+{
+    if (!gTheme || !gTheme->coverflowIcoCache || !list || !item || !gEnableArtICO)
+        return NULL;
+
+    char *startup = list->itemGetStartup(list, item->item.id);
+    return cacheGetTextureQuiet(gTheme->coverflowIcoCache, list,
+                                &gTheme->coverflowIcoCacheId, &gTheme->coverflowIcoCacheUID,
+                                startup, item->item.id);
+}
+
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
@@ -1102,6 +1115,8 @@ static clock_t animationStartTime = 0;
 // 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
+#define COVERFLOW_ICO_SIZE 32
+#define COVERFLOW_ICO_GAP 10
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
@@ -1548,6 +1563,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 这里不再读取 native 分辨率做封面高度补偿或过滤判断；封面尺寸统一由 448 基线
     // 逻辑尺寸决定，渲染器只负责把整套布局按当前屏幕同比缩放。
 
+    float centerIcoLeft = 0.0f;
+    float centerIcoBottom = 0.0f;
+    int centerIcoGeometryValid = 0;
     int oi;
     for (oi = 0; oi < drawCount; oi++) {
         i = drawOrder[oi];
@@ -1590,6 +1608,13 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         float centerYOffset = nonCenterYOffset * (1.0f - centerFactor);
         if (isApps)
             centerYOffset += (float)COVERFLOW_APPS_CENTER_YOFFSET * centerFactor;
+
+        if (i == renderCenterIndex && !animationActive) {
+            // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
+            centerIcoLeft = renderPosX - (currentCoverWidth * fracW * 0.5f);
+            centerIcoBottom = elem->posY + coverYOffset + centerYOffset;
+            centerIcoGeometryValid = 1;
+        }
 
         // 纹理已在上面的【中心向外扩散】加载遍里请求并填好 covers[i].texture，
         // 这里直接取用，不再重复请求（避免打乱加载优先级）。
@@ -1672,6 +1697,26 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             pcur = next;
         }
     }
+
+    // 光标变化时立即丢弃上一款游戏的 ICO；只有封面等 ART 请求全部结束后，
+    // 才为当前停留项请求 ICO。ICO 自己的请求也会让 texLoading > 0，期间不绘制。
+    if (gTheme->coverflowIcoItem != item) {
+        gTheme->coverflowIcoItem = item;
+        gTheme->coverflowIcoCacheId = -1;
+        gTheme->coverflowIcoCacheUID = -1;
+    }
+
+    if (!animationActive && centerIcoGeometryValid && gEnableArtICO && texLoading == 0) {
+        GSTEXTURE *icoTexture = getCoverflowIcoTexture(sourceList, item);
+        if (icoTexture && icoTexture->Mem) {
+            icoTexture->Filter = GS_FILTER_LINEAR;
+            int icoRight = (int)(centerIcoLeft - COVERFLOW_ICO_GAP + 0.5f);
+            int icoBottom = (int)(centerIcoBottom + 0.5f);
+            rmDrawPixmapReflect(icoTexture, icoRight, icoBottom,
+                                ALIGN_BOTTOM | ALIGN_RIGHT, COVERFLOW_ICO_SIZE, COVERFLOW_ICO_SIZE,
+                                SCALING_NONE, gDefaultCol);
+        }
+    }
 }
 
 static void initCoverflow(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, int count, const char *texture, const char *overlay)
@@ -1680,9 +1725,15 @@ static void initCoverflow(const char *themePath, config_set_t *themeConfig, them
     elem->extended = mutableImage;
     elem->endElem = &endMutableImage;
 
-    if (mutableImage->cache)
+    if (mutableImage->cache) {
+        // ICO 单独使用一个一槽缓存，避免为了显示左侧光碟图而挤占 Coverflow 封面缓存。
+        if (!theme->coverflowIcoCache) {
+            theme->coverflowIcoCache = cacheInitCache(theme->gameCacheCount++, "ART", 1, "ICO", 1);
+            theme->coverflowIcoCacheId = -1;
+            theme->coverflowIcoCacheUID = -1;
+        }
         elem->drawElem = &drawCoverFlow;
-    else
+    } else
         LOG("THEMES Coverflow %s: NO pattern, elem disabled !!\n", name);
 }
 
@@ -1890,6 +1941,9 @@ static void thmFree(theme_t *theme)
         freeGUIElems(&theme->infoElems);
         freeGUIElems(&theme->appsMainElems);
         freeGUIElems(&theme->appsInfoElems);
+
+        if (theme->coverflowIcoCache)
+            cacheDestroyCache(theme->coverflowIcoCache);
 
         // free textures
         GSTEXTURE *texture;
