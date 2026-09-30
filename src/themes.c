@@ -938,10 +938,9 @@ static void drawBDMIndex(struct menu_list *menu, struct submenu_list *item, conf
     if (itemList->mode == 0 && menu->next->item->visible == 0)
         return;
 
-    char imgName[32];
-    snprintf(imgName, sizeof(imgName), "Index_%d", itemList->mode);
-
-    GSTEXTURE *indexTex = thmGetTexture(texLookupInternalTexId(&imgName[0]));
+    // Coverflow 使用独立的 WOPL 风格资源；默认列表主题继续使用原来的 Index_*。
+    int indexTexId = (gTheme && gTheme->coverflow) ? (CF_INDEX_0 + itemList->mode) : (INDEX_0 + itemList->mode);
+    GSTEXTURE *indexTex = thmGetTexture(indexTexId);
     if (indexTex && indexTex->Mem) {
         int x = gWideScreen ? elem->wsX : elem->posX;
         rmDrawPixmap(indexTex, x, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);

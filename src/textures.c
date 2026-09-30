@@ -28,6 +28,11 @@ extern void *Index_1_png;
 extern void *Index_2_png;
 extern void *Index_3_png;
 extern void *Index_4_png;
+extern void *cf_index_0_png;
+extern void *cf_index_1_png;
+extern void *cf_index_2_png;
+extern void *cf_index_3_png;
+extern void *cf_index_4_png;
 
 extern void *left_png;
 extern void *right_png;
@@ -186,6 +191,11 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {INDEX_2, "Index_2", &Index_2_png},
     {INDEX_3, "Index_3", &Index_3_png},
     {INDEX_4, "Index_4", &Index_4_png},
+    {CF_INDEX_0, "cf_index_0", &cf_index_0_png},
+    {CF_INDEX_1, "cf_index_1", &cf_index_1_png},
+    {CF_INDEX_2, "cf_index_2", &cf_index_2_png},
+    {CF_INDEX_3, "cf_index_3", &cf_index_3_png},
+    {CF_INDEX_4, "cf_index_4", &cf_index_4_png},
     {LEFT_ICON, "left", &left_png},
     {RIGHT_ICON, "right", &right_png},
     {CROSS_ICON, "cross", &cross_png},

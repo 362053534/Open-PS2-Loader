@@ -23,6 +23,12 @@ enum INTERNAL_TEXTURE {
     INDEX_2,
     INDEX_3,
     INDEX_4,
+    // WOPL 风格 BdmIndex 资源，仅由内置 Coverflow 使用；默认主题继续使用 INDEX_*。
+    CF_INDEX_0,
+    CF_INDEX_1,
+    CF_INDEX_2,
+    CF_INDEX_3,
+    CF_INDEX_4,
     LEFT_ICON,
     RIGHT_ICON,
     CROSS_ICON,
