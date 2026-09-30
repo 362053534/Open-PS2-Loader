@@ -1081,12 +1081,11 @@ static clock_t animationStartTime = 0;
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
-// 当前 3（间隙 ≈ 非中心基准宽的 3%；基准宽约 80px 时间隙约 2~3px，比上次 13% 再按同比例缩小一档）。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 8
+// 当前 6（间隙 ≈ 非中心基准宽的 6%；基准宽约 80px 时约 5px）。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 6
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-// 正值下移、负值上移。当前 151 = 以 480 逻辑坐标为基准，把改用底部锚点后的位置
-// 下移约 106，恢复内置游戏 case 在改锚点前的大致位置。
-#define COVERFLOW_BASELINE_YOFFSET 151
+// 正值下移、负值上移。当前 160 = 在原 151 的基础上整体下移 9，游戏和 APPS 共用。
+#define COVERFLOW_BASELINE_YOFFSET 160
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
 // 正值下移、负值上移。当前 -52 = 抵消 APPS case 比游戏 case 少约 32 的半高补偿。
 #define COVERFLOW_APPS_YOFFSET -52
@@ -1098,8 +1097,8 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET -10 // 非中心封面相对中心封面的垂直偏移（在原 +2 基础上上移12；与 cfg 的 y 使用同一套 640×480 逻辑坐标）
-#define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
+#define COVERFLOW_NONCENTER_YOFFSET -20 // 非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
+#define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
 static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（448 基线逻辑值214）
@@ -1611,7 +1610,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 预取（prefetch）：动画结束后为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
     // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
     //
-    // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 2）。
+    // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 1）。
     // 例如填 3 就是左右屏幕外各预读 3 张、共 6 张。此值【不设上限】：主题包填过大会因缓存/内存
     // 过大而出问题，属用户行为，不额外处理。封面缓存槽位数在 initCoverflow 处按
     // (同屏数 + 2*预取数 + 1) 分配，确保这些预取封面都放得下、预取真正生效。
