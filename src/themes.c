@@ -1119,8 +1119,8 @@ static clock_t animationStartTime = 0;
 // 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
-#define COVERFLOW_ICO_SIZE 64
-#define COVERFLOW_ICO_POPUP_GAP 50
+#define COVERFLOW_ICO_SIZE 128
+#define COVERFLOW_ICO_POPUP_GAP 30
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
@@ -1699,13 +1699,19 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 会把 ICO 的起始部分遮住，形成“从中心封面背后向左弹出”的层级关系。
         if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
             icoTexture->Mem && gTheme->coverflowIcoLoaded) {
-            float popupStartRight = centerIcoLeft + COVERFLOW_ICO_SIZE;
-            float popupTargetRight = centerIcoLeft - COVERFLOW_ICO_POPUP_GAP;
+            // Coverflow 的横向坐标在宽屏下已经按 4:3 逻辑坐标压缩；ICO 也必须
+            // 只压缩横向宽度、右边缘和弹出间距，保持经过电视横向拉伸后的 ICO
+            // 仍为 128×128，且最终间距仍为 30 个逻辑像素。
+            float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_SIZE);
+            float icoPopupGap = rmWideScaleF((float)COVERFLOW_ICO_POPUP_GAP);
+            float popupStartRight = centerIcoLeft + icoWidth;
+            float popupTargetRight = centerIcoLeft - icoPopupGap;
             float popupRight = popupStartRight + (popupTargetRight - popupStartRight) * icoPopupEased;
+            int icoDrawWidth = (int)(icoWidth + 0.5f);
             icoTexture->Filter = GS_FILTER_LINEAR;
             rmDrawPixmapReflect(icoTexture, (int)(popupRight + 0.5f),
                                 (int)(centerIcoBottom + 0.5f),
-                                ALIGN_BOTTOM | ALIGN_RIGHT, COVERFLOW_ICO_SIZE, COVERFLOW_ICO_SIZE,
+                                ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth, COVERFLOW_ICO_SIZE,
                                 SCALING_NONE, gDefaultCol);
         }
 
