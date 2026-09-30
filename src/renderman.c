@@ -366,6 +366,10 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
+    // 内嵌图(inlay，如 Coverflow 的封面主图)与外壳(overlay)共用同一个调制色 color。
+    // 原先此处写死 gDefaultCol，导致压暗外壳时封面主图仍是满亮度、两者不一致。
+    // 改用传入的 color 后：所有现有调用者传的都是 gDefaultCol（效果不变），
+    // 只有 Coverflow 压暗路径传入压暗色，从而封面主图与外壳一起被压暗。
     gsKit_prim_quad_texture(gsGlobal, inlay,
                             quad.ul.x + ulx + fRenderXOff, quad.ul.y + uly + fRenderYOff,
                             0.0f, 0.0f,
@@ -374,10 +378,423 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
                             quad.ul.x + blx + fRenderXOff, quad.ul.y + bly + fRenderYOff,
                             0.0f, inlay->Height,
                             quad.ul.x + brx + fRenderXOff, quad.ul.y + bry + fRenderYOff,
-                            inlay->Width, inlay->Height, order, gDefaultCol);
+                            inlay->Width, inlay->Height, order, color);
     order++;
 
     rmDrawQuad(&quad);
+}
+
+// 在由 (x,y,w,h,aligned,scaled) 描述的四边形正下方，绘制该纹理向下、
+// 渐隐的镜像倒影。拆分成若干细横行，使 alpha 随距离逐渐淡出。
+// 供各 reflect 函数共用的辅助函数。
+static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 color)
+{
+    float rowHeight = 1.0f;
+    float totalHeight = quad->br.y - quad->ul.y;
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+
+    if (totalHeight <= 0.0f)
+        return;
+
+    // 确保渐隐的各行能正常进行 alpha 混合。
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    gsKit_TexManager_bind(gsGlobal, txt);
+
+    for (float row = 0; row < totalHeight; row += rowHeight) {
+        float alpha;
+        if (row < totalHeight / 4.0f)
+            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
+        else
+            alpha = 0x00;
+
+        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
+
+        // 自底向上采样纹理，使倒影呈镜像效果。
+        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * txt->Height;
+        float texBottom = ((totalHeight - row) / totalHeight) * txt->Height;
+
+        float screenTop = quad->br.y + fRenderYOff + row;
+        float screenBottom = quad->br.y + fRenderYOff + row + rowHeight;
+
+        gsKit_prim_sprite_texture(gsGlobal, txt,
+                                  quad->ul.x + fRenderXOff, screenTop,
+                                  quad->ul.u, texTop,
+                                  quad->br.x + fRenderXOff, screenBottom,
+                                  quad->br.u, texBottom,
+                                  order, reflectionColor);
+        order++;
+    }
+}
+
+void rmDrawPixmapReflect(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, short scaled, u64 color)
+{
+    // 主图仍走原封不动的公共绘制路径。
+    rmDrawPixmap(txt, x, y, aligned, w, h, scaled, color);
+
+    // 重新计算几何，再追加渐隐倒影。
+    rm_quad_t quad;
+    rmSetupQuad(txt, x, y, aligned, w, h, scaled, color, &quad);
+    rmDrawReflectionRows(txt, &quad, color);
+}
+
+void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned, int w, int h, short scaled, u64 color,
+                                GSTEXTURE *inlay, int ulx, int uly, int urx, int ury, int blx, int bly, int brx, int bry)
+{
+    // 主图（inlay + overlay）仍走原封不动的公共绘制路径。
+    rmDrawOverlayPixmap(overlay, x, y, aligned, w, h, scaled, color, inlay, ulx, uly, urx, ury, blx, bly, brx, bry);
+
+    // 重新计算几何（以及按宽高比缩放后的 overlay 四角偏移），以便在图像下方
+    // 逐行绘制 inlay 与 overlay 的镜像。
+    rm_quad_t quad;
+    rmSetupQuad(overlay, x, y, aligned, w, h, scaled, color, &quad);
+
+    ulx = X_SCALE(ulx * iAspectWidth) >> 2;
+    urx = X_SCALE(urx * iAspectWidth) >> 2;
+    blx = X_SCALE(blx * iAspectWidth) >> 2;
+    brx = X_SCALE(brx * iAspectWidth) >> 2;
+    uly = Y_SCALE(uly);
+    ury = Y_SCALE(ury);
+    bly = Y_SCALE(bly);
+    bry = Y_SCALE(bry);
+
+    float rowHeight = 1.0f;
+    float totalHeight = quad.br.y - quad.ul.y;
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+
+    if (totalHeight <= 0.0f)
+        return;
+
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+
+    for (float row = 0; row < totalHeight; row += rowHeight) {
+        float alpha;
+        if (row < totalHeight / 4.0f)
+            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
+        else
+            alpha = 0x00;
+
+        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
+
+        float screenTop = quad.br.y + fRenderYOff + row;
+        float screenBottom = quad.br.y + fRenderYOff + row + rowHeight;
+
+        // Inlay（实际封面图）行。
+        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
+        float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, inlay);
+        gsKit_prim_quad_texture(gsGlobal, inlay,
+                                quad.ul.x + ulx + fRenderXOff, screenTop,
+                                0.0f, texTop,
+                                quad.ul.x + urx + fRenderXOff, screenTop,
+                                inlay->Width, texTop,
+                                quad.ul.x + blx + fRenderXOff, screenBottom,
+                                0.0f, texBottom,
+                                quad.ul.x + brx + fRenderXOff, screenBottom,
+                                inlay->Width, texBottom,
+                                order, reflectionColor);
+        order++;
+
+        // Overlay（盒装外壳边框）行。
+        texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
+        texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, overlay);
+        gsKit_prim_sprite_texture(gsGlobal, overlay,
+                                  quad.ul.x + fRenderXOff, screenTop,
+                                  quad.ul.u, texTop,
+                                  quad.br.x + fRenderXOff, screenBottom,
+                                  quad.br.u, texBottom,
+                                  order, reflectionColor);
+        order++;
+    }
+}
+
+// rmSetupQuad 的【浮点】版本：x/y/w/h 用 float，X_SCALE/Y_SCALE、宽屏压缩与对齐全程
+// 浮点、不做任何整数取整。仅供下方 Coverflow 浮点旁路(rmDrawOverlayPixmap*Frac)调用，
+// 使中心封面放大动画的宽/高连续变化，消除整数量化导致的宽高不同步形变蠕动（尤其宽屏）。
+// 【重要】不改动、不影响整数版 rmSetupQuad 及所有非 Coverflow 绘制路径。
+static void rmSetupQuadF(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color, rm_quad_t *q)
+{
+    if (txt) {
+        if (w == (float)DIM_UNDEF)
+            w = txt->Width;
+        if (h == (float)DIM_UNDEF)
+            h = txt->Height;
+    }
+
+    // Legacy scaling（浮点，不取整）
+    x = (x * iDisplayWidth) / 640.0f;
+    y = (y * iDisplayHeight) / 480.0f;
+    if (scaled & SCALING_RATIO)
+        w = (w * iDisplayWidth / 640.0f) * (float)iAspectWidth / 4.0f;
+    else
+        w = (w * iDisplayWidth) / 640.0f;
+    h = (h * iDisplayHeight) / 480.0f;
+
+    // Align LEFT/HCENTER/RIGHT
+    if (aligned & ALIGN_HCENTER)
+        q->ul.x = x - w / 2.0f;
+    else if (aligned & ALIGN_RIGHT)
+        q->ul.x = x - w;
+    else
+        q->ul.x = x;
+    q->br.x = q->ul.x + w;
+
+    // Align TOP/VCENTER/BOTTOM
+    if (aligned & ALIGN_VCENTER)
+        q->ul.y = y - h / 2.0f;
+    else if (aligned & ALIGN_BOTTOM)
+        q->ul.y = y - h;
+    else
+        q->ul.y = y;
+    q->br.y = q->ul.y + h;
+
+    q->color = color;
+    if (txt) {
+        q->txt = txt;
+        q->ul.u = 0;
+        q->ul.v = 0;
+        q->br.u = txt->Width;
+        q->br.v = txt->Height;
+    }
+}
+
+// 像素对齐：把浮点屏幕坐标四舍五入到整数像素（对正负都取整，+/-0.5 避免负值截断错 1px）。
+// 主图与倒影共用同一套取整，保证二者边界落在同一整数像素、接缝严丝合缝、不丢线。
+static inline float rmPxSnap(float v)
+{
+    return (float)((int)(v + (v >= 0.0f ? 0.5f : -0.5f)));
+}
+
+// 【诊断/纯封面】浮点版 rmDrawPixmap：只画一张贴图（无 overlay 外壳、无倒影），x/y/w/h 走浮点，
+// 最终四角与封面主图路径一样【整数像素对齐】（避免亚像素泛光）。供关闭 case+倒影、单看封面缩放用。
+void rmDrawPixmapFrac(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color)
+{
+    rm_quad_t quad;
+    rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
+    // 锁定【整数尺寸】而非把左上/右下两角各自独立取整（防 1:1 时丢边）：
+    // 绘制宽/高 w/h 经缩放与虚拟→物理换算后一般不是精确整数（如中心封面在有过扫描的 VGA 下
+    // ≈139.9999/140.0001）。若两角各自 round，则像素宽 = round(右下)-round(左上) 会随封面在屏幕上
+    // 的亚像素位置（即主题里的坐标）在 N-1/N/N+1 间跳；1:1 时 N 纹素被映到 N±1 像素 → GS 丢/复制
+    // 一条边，且丢哪条随坐标变（VGA 640x480 点对点下亦然）。改为：左上角取整定位，宽/高各自取整成
+    // 整数像素，右下 = 左上 + 整数尺寸 → 1:1 时精确等于纹理尺寸、纹素与像素一一对应，任何位置不丢边。
+    float ulX = rmPxSnap(quad.ul.x + fRenderXOff);
+    float ulY = rmPxSnap(quad.ul.y + fRenderYOff);
+    float iW = rmPxSnap(quad.br.x - quad.ul.x);
+    float iH = rmPxSnap(quad.br.y - quad.ul.y);
+    quad.ul.x = ulX - fRenderXOff;
+    quad.ul.y = ulY - fRenderYOff;
+    quad.br.x = (ulX + iW) - fRenderXOff;
+    quad.br.y = (ulY + iH) - fRenderYOff;
+    rmDrawQuad(&quad);
+}
+
+// 【诊断/纯封面+倒影】rmDrawPixmapFrac 的倒影版：主图走同样的整数尺寸锁定路径，随后在其下方
+// 逐行绘制渐隐倒影（仍无 case 外壳）。倒影从主图整数底边(quad.br.y)起、每行 1px，接缝整数对齐。
+// 供关闭 case、单看“封面+倒影”时缩小封面丢边是否受倒影影响用。
+void rmDrawPixmapFracReflect(GSTEXTURE *txt, float x, float y, short aligned, float w, float h, short scaled, u64 color)
+{
+    rm_quad_t quad;
+    rmSetupQuadF(txt, x, y, aligned, w, h, scaled, color, &quad);
+    // 与 rmDrawPixmapFrac 完全相同的整数尺寸锁定（防 1:1 丢边）。
+    float ulX = rmPxSnap(quad.ul.x + fRenderXOff);
+    float ulY = rmPxSnap(quad.ul.y + fRenderYOff);
+    float iW = rmPxSnap(quad.br.x - quad.ul.x);
+    float iH = rmPxSnap(quad.br.y - quad.ul.y);
+    quad.ul.x = ulX - fRenderXOff;
+    quad.ul.y = ulY - fRenderYOff;
+    quad.br.x = (ulX + iW) - fRenderXOff;
+    quad.br.y = (ulY + iH) - fRenderYOff;
+    rmDrawQuad(&quad);
+    // 倒影：复用公共逐行渐隐实现，从主图整数底边起、逐行落在整数像素、接缝无缝。
+    rmDrawReflectionRows(txt, &quad, color);
+}
+
+// Coverflow 专用的统一父子变换：case 是父级，inlay 是 case 内的 child。
+//
+// 这组数据只在 Coverflow 的浮点绘制路径中使用；普通整数版
+// rmDrawOverlayPixmap()/rmDrawPixmap() 完全不经过这里，因此不会改变非 Coverflow 主题。
+// 浮点布局、最终整数像素边界、主图和倒影都从同一份 transform 派生，避免同一帧
+// 中重复 rmSetupQuadF / 重复取整造成 case、inlay、reflection 的边界不一致。
+typedef struct
+{
+    // 已经完成最终像素取整的 case 四边形（坐标回减 fRender*Off，供 rmDrawQuad 使用）。
+    rm_quad_t caseQuad;
+
+    // 未取整的 case 高度：保持原有倒影行数和渐隐比例。
+    float caseHeight;
+
+    // case/inlay 的最终屏幕坐标（包含 fRender*Off）。
+    float caseLeft;
+    float caseRight;
+    float inlayLeft;
+    float inlayTop;
+    float inlayRight;
+    float inlayBottom;
+
+    // 倒影从 case 的整数底边开始；横向范围与主图共用上面的结果。
+    float reflectionBaseY;
+} rm_cover_transform_t;
+
+// Coverflow 专用：根据同一组父级参数构建 case、inlay 和 reflection 共用的变换。
+// baseW/baseH 是 overlay 顶点的逻辑坐标系；游戏默认 140×200，APPS 使用自己的
+// 140×140 基准。ov* 是内框在该父级坐标系中的局部位置。
+static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h,
+                                  short scaled, u64 color, int baseW, int baseH,
+                                  int ovUlx, int ovUly, int ovUrx, int ovUry,
+                                  int ovBlx, int ovBly, int ovBrx, int ovBry,
+                                  rm_cover_transform_t *transform)
+{
+    rm_quad_t floatCase;
+    rmSetupQuadF(overlay, x, y, aligned, w, h, scaled, color, &floatCase);
+
+    float caseW = floatCase.br.x - floatCase.ul.x;
+    float caseH = floatCase.br.y - floatCase.ul.y;
+    float fbw = (baseW > 0) ? (float)baseW : 1.0f;
+    float fbh = (baseH > 0) ? (float)baseH : 1.0f;
+
+    // 先在同一个浮点父级坐标系中得到 child 的局部内框四边。
+    float ulx = caseW * ((float)ovUlx / fbw), uly = caseH * ((float)ovUly / fbh);
+    float urx = caseW * ((float)ovUrx / fbw), ury = caseH * ((float)ovUry / fbh);
+    float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
+    float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
+
+    // 泛光/丢边修复的关键：只在最终屏幕坐标这一步取整，且 case 与 child 共用同一
+    // 个已经取整的父级左上角。不要恢复旧的 EDGE_FILL=0.5f。
+    float rUlX = rmPxSnap(floatCase.ul.x + fRenderXOff);
+    float rUlY = rmPxSnap(floatCase.ul.y + fRenderYOff);
+    float rBrX = rmPxSnap(floatCase.br.x + fRenderXOff);
+    float rBrY = rmPxSnap(floatCase.br.y + fRenderYOff);
+
+    // 内框边距单独取整，宽高单独锁定为整数；远角由近角+尺寸得到，避免尺寸随主题
+    // 坐标的小数部分在 N-1/N/N+1 之间抖动。
+    float offL = (ulx + blx) * 0.5f;
+    float offR = (urx + brx) * 0.5f;
+    float offT = (uly + ury) * 0.5f;
+    float offB = (bly + bry) * 0.5f;
+    float inlayLeft = rUlX + rmPxSnap(offL);
+    float inlayTop = rUlY + rmPxSnap(offT);
+    float inlayWidth = rmPxSnap(offR - offL);
+    float inlayHeight = rmPxSnap(offB - offT);
+
+    transform->caseQuad = floatCase;
+    transform->caseQuad.ul.x = rUlX - fRenderXOff;
+    transform->caseQuad.ul.y = rUlY - fRenderYOff;
+    transform->caseQuad.br.x = rBrX - fRenderXOff;
+    transform->caseQuad.br.y = rBrY - fRenderYOff;
+    transform->caseHeight = caseH;
+    transform->caseLeft = rUlX;
+    transform->caseRight = rBrX;
+    transform->inlayLeft = inlayLeft;
+    transform->inlayTop = inlayTop;
+    transform->inlayRight = inlayLeft + inlayWidth;
+    transform->inlayBottom = inlayTop + inlayHeight;
+    transform->reflectionBaseY = rmPxSnap(floatCase.br.y + fRenderYOff);
+}
+
+// 使用已经构建好的父子变换绘制主图和 case。case 与 inlay 仍是两个 GS 纹理调用，
+// 但二者不再各自重新计算位置/尺寸，而是严格共享 rm_cover_transform_t。
+static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTURE *inlay, u64 color)
+{
+    if ((inlay->PSM == GS_PSM_CT32) || (inlay->Clut && inlay->ClutPSM == GS_PSM_CT32))
+        gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    else
+        gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+
+    gsKit_TexManager_bind(gsGlobal, inlay);
+    gsKit_prim_quad_texture(gsGlobal, inlay,
+                            transform->inlayLeft, transform->inlayTop, 0.0f, 0.0f,
+                            transform->inlayRight, transform->inlayTop, inlay->Width, 0.0f,
+                            transform->inlayLeft, transform->inlayBottom, 0.0f, inlay->Height,
+                            transform->inlayRight, transform->inlayBottom, inlay->Width, inlay->Height,
+                            order, color);
+    order++;
+
+    // caseQuad 已经包含最终整数边界；rmDrawQuad 只负责提交，不再重新计算几何。
+    // 用局部副本满足旧接口的非 const 参数，不改变 transform 本身。
+    rm_quad_t caseQuad = transform->caseQuad;
+    rmDrawQuad(&caseQuad);
+}
+
+// 使用同一份 transform 绘制主图下方的镜像倒影。主图和倒影共用 case 的整数底边、
+// inlay 的左右边界以及 overlay 的左右边界；这里只重新生成每一行的纹理采样范围。
+static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GSTEXTURE *overlay,
+                                      GSTEXTURE *inlay, u64 color)
+{
+    float rowHeight = 1.0f;
+    float totalHeight = transform->caseHeight;
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+
+    if (totalHeight <= 0.0f)
+        return;
+
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+
+    for (float row = 0; row < totalHeight; row += rowHeight) {
+        float alpha;
+        if (row < totalHeight / 4.0f)
+            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
+        else
+            alpha = alphaEnd;
+
+        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF,
+                                               (color >> 8) & 0xFF, (u8)alpha, 0x00);
+        float screenTop = transform->reflectionBaseY + row;
+        float screenBottom = screenTop + rowHeight;
+        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
+        float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
+
+        gsKit_TexManager_bind(gsGlobal, inlay);
+        gsKit_prim_quad_texture(gsGlobal, inlay,
+                                transform->inlayLeft, screenTop,
+                                0.0f, texTop,
+                                transform->inlayRight, screenTop,
+                                inlay->Width, texTop,
+                                transform->inlayLeft, screenBottom,
+                                0.0f, texBottom,
+                                transform->inlayRight, screenBottom,
+                                inlay->Width, texBottom,
+                                order, reflectionColor);
+        order++;
+
+        texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
+        texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
+        gsKit_TexManager_bind(gsGlobal, overlay);
+        gsKit_prim_sprite_texture(gsGlobal, overlay,
+                                  transform->caseLeft, screenTop,
+                                  transform->caseQuad.ul.u, texTop,
+                                  transform->caseRight, screenBottom,
+                                  transform->caseQuad.br.u, texBottom,
+                                  order, reflectionColor);
+        order++;
+    }
+}
+
+// Coverflow 专用浮点 overlay 绘制。普通整数版 rmDrawOverlayPixmap() 不经过此路径。
+void rmDrawOverlayPixmapFrac(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h, short scaled, u64 color,
+                             GSTEXTURE *inlay, int baseW, int baseH,
+                             int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry)
+{
+    rm_cover_transform_t transform;
+    rmBuildCoverTransform(overlay, x, y, aligned, w, h, scaled, color, baseW, baseH,
+                          ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry, &transform);
+    rmDrawCoverTransform(&transform, inlay, color);
+}
+
+// Coverflow 专用浮点 overlay + reflection 绘制。主图、case、倒影全部复用同一份 transform。
+void rmDrawOverlayPixmapReflectFrac(GSTEXTURE *overlay, float x, float y, short aligned, float w, float h, short scaled, u64 color,
+                                    GSTEXTURE *inlay, int baseW, int baseH,
+                                    int ovUlx, int ovUly, int ovUrx, int ovUry, int ovBlx, int ovBly, int ovBrx, int ovBry)
+{
+    rm_cover_transform_t transform;
+    rmBuildCoverTransform(overlay, x, y, aligned, w, h, scaled, color, baseW, baseH,
+                          ovUlx, ovUly, ovUrx, ovUry, ovBlx, ovBly, ovBrx, ovBry, &transform);
+    rmDrawCoverTransform(&transform, inlay, color);
+    rmDrawCoverReflectionRows(&transform, overlay, inlay, color);
 }
 
 void rmDrawRect(int x, int y, int w, int h, u64 color)
@@ -426,6 +843,14 @@ void rmSetAspectRatio(enum rm_aratio dar)
 int rmWideScale(int x)
 {
     return (x * iAspectWidth) >> 2;
+}
+
+// rmWideScale 的【浮点】版本：横向宽屏压缩但不做 >>2 整数截断，结果随输入连续变化。
+// 仅供 Coverflow 浮点旁路计算中心封面放大后的连续宽度，消除整数截断造成的形变蠕动。
+// 4:3 下 iAspectWidth==4，返回原值。
+float rmWideScaleF(float x)
+{
+    return x * (float)iAspectWidth / 4.0f;
 }
 
 // Get the pixel aspect ratio (how wide or narrow are the pixels?)
@@ -485,6 +910,31 @@ void rmSetOverscan(int overscan)
 
     if (rmGetInterlacedFrameMode() == 1)
         fRenderYOff += 0.25f;
+}
+
+// 把 GS 裁剪框(scissor)收紧到【可见显示区域】= 过扫补偿后的矩形
+// [iDisplayXOff, iDisplayXOff+iDisplayWidth) × [iDisplayYOff, iDisplayYOff+iDisplayHeight)。
+// 之后排入的所有图元都会被 GS 硬件裁到此框内，超出部分不写入帧缓冲。
+// 用于 Coverflow：滑动动画中两侧封面会移出可见区、进入左右黑边甚至帧缓冲外，
+// 在实机上造成图像残留/串色；收紧 scissor 后这些像素被硬件裁掉，从根本上杜绝残留。
+// scissor 坐标为帧缓冲像素坐标(含端点)，与图元坐标同系（XYOFFSET 已把图元 0 对到帧缓冲 0）。
+void rmSetScissorDisplay(void)
+{
+    int x0 = iDisplayXOff;
+    int y0 = iDisplayYOff;
+    int x1 = iDisplayXOff + iDisplayWidth - 1;
+    int y1 = iDisplayYOff + iDisplayHeight - 1;
+    if (x1 < x0)
+        x1 = x0;
+    if (y1 < y0)
+        y1 = y0;
+    gsKit_set_scissor(gsGlobal, GS_SETREG_SCISSOR(x0, x1, y0, y1));
+}
+
+// 恢复默认 scissor（整个帧缓冲）。与 rmSetScissorDisplay 成对使用。
+void rmResetScissor(void)
+{
+    gsKit_set_scissor(gsGlobal, GS_SCISSOR_RESET);
 }
 
 unsigned char rmGetHsync(void)
