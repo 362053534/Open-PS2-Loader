@@ -1087,10 +1087,10 @@ static clock_t animationStartTime = 0;
 // 正值下移、负值上移。当前 165 = 在原 170 的基础上整体上移 5，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 165
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
-// 正值下移、负值上移。当前 -50 = 在原 -52 的基础上整体下移 2。
-#define COVERFLOW_APPS_YOFFSET -50
+// 正值下移、负值上移。当前 -51 = 在原 -50 的基础上整体上移 1。
+#define COVERFLOW_APPS_YOFFSET -51
 // APPS 中心封面专用的垂直微调；按 centerFactor 插值，避免滑动动画中发生跳变。
-#define COVERFLOW_APPS_CENTER_YOFFSET 4
+#define COVERFLOW_APPS_CENTER_YOFFSET 6
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
 // 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
