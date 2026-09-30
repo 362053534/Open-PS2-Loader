@@ -1279,6 +1279,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (item == NULL)
         return;
 
+    // Coverflow 与普通 GameImage 一样尊重“显示封面”开关；关闭时整个模块都不画，
+    // 包括 case 外壳、封面占位图和倒影，避免只隐藏主图后留下空壳。
+    if (!gEnableArtCOV)
+        return;
+
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 
