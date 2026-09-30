@@ -1119,7 +1119,7 @@ static clock_t animationStartTime = 0;
 // 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
-#define COVERFLOW_ICO_SIZE 64
+#define COVERFLOW_ICO_SIZE 128
 #define COVERFLOW_ICO_POPUP_GAP 50
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
@@ -1576,9 +1576,16 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         gTheme->coverflowIcoPopupActive = 0;
     }
 
-    // 移动动画或新的 ART 请求一出现，旧 ICO 立即失效；不等待请求结束。
-    if (isAnimating || !gEnableArtICO || texLoading > 0) {
+    // 移动动画开始时，当前 ICO 立即失效；不等待请求结束。
+    //
+    // 其它 ART（尤其是背景图）在 ICO 已经加载完成后才开始请求时，不能清掉
+    // coverflowIcoLoaded：ICO 专用 cache 仍然持有当前游戏的纹理，清掉这个状态会
+    // 让下一次 texLoading 归零时把同一张 ICO 误判成“刚加载完成”，从而重复弹出。
+    // 这类请求期间只隐藏 ICO，等请求结束后继续使用已经完成的 ICO，不重新启动动画。
+    if (isAnimating || !gEnableArtICO) {
         gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
+    } else if (texLoading > 0) {
         gTheme->coverflowIcoPopupActive = 0;
     } else {
         // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的请求放到
