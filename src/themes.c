@@ -1539,11 +1539,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         float inlayW = (float)baseCoverW + coverScale;
         if (inlayW < 1.0f)
             inlayW = 1.0f;
-        // 动画中先锁定逻辑宽度的整数像素，避免最后几帧的浮点尺寸经过
-        // rmBuildCoverTransform 再次取整时多出 1px、随后在静止帧被吸回。
-        // 静止布局仍使用原始尺寸计算，保持现有非中心封面尺寸不变。
-        if (animationActive)
-            inlayW = (float)((int)(inlayW + 0.5f));
         float inlayH = (float)baseCoverH * inlayW / (float)baseCoverW;
         // 反推 case 尺寸：内框占比 fracW/fracH → case = inlay ÷ 占比，使内框正好套住封面。
         // 浮点旁路：宽/高全程 float 连续（交给 coverflowDrawTexture→rmSetupQuadF），放大动画
