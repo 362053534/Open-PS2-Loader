@@ -15,7 +15,7 @@ typedef struct
 {
     char partition_name[APA_IDMAX + 1];
     char name[HDL_GAME_NAME_MAX + 1];
-    char startup[8 + 1 + 3 + 1];
+    char startup[32]; // Must match GENERAL_STARTUP_MAX (supportbase.h); wide enough for non-standard BOOT2 exec names.
     u8 hdl_compat_flags;
     u8 ops2l_compat_flags;
     u8 dma_type;

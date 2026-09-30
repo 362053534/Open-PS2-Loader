@@ -93,19 +93,21 @@ EECORE_OBJS = ee_core.o ioprp.o util.o \
 
 PNG_ASSETS = load0 load1 load2 load3 load4 load5 load6 load7 usb usb_bd ilk_bd \
 	m4s_bd hdd_bd hdd eth app cross triangle circle square select start left right \
-	background alphamask info cover screen ELF HDL ISO ZSO UL APPS CD DVD Aspect_s Aspect_w Aspect_w1 \
+	settings_bg alphamask info cover screen ELF HDL ISO ZSO UL APPS CD DVD Aspect_s Aspect_w Aspect_w1 \
 	Aspect_w2 Device_1 Device_2 Device_3 Device_4 Device_5 Device_6 Device_all Rating_0 \
 	Rating_1 Rating_2 Rating_3 Rating_4 Rating_5 Scan_240p Scan_240p1 Scan_480i Scan_480p \
 	Scan_480p1 Scan_480p2 Scan_480p3 Scan_480p4 Scan_480p5 Scan_576i Scan_576p Scan_720p \
 	Scan_1080i Scan_1080i2 Scan_1080p Vmode_multi Vmode_ntsc Vmode_pal logo case apps_case\
-	Index_0 Index_1 Index_2 Index_3 Index_4
+	Index_0 Index_1 Index_2 Index_3 Index_4 \
+	plank cf_case cf_apps_case \
+	cf_usb cf_usb_bd cf_ilk_bd cf_m4s_bd cf_hdd_bd cf_hdd cf_eth cf_app
 	# unused icons - up down l1 l2 l3 r1 r2 r3
 
 GFX_OBJS = $(PNG_ASSETS:%=%_png.o) poeveticanew.o icon_sys.o icon_icn.o
 
 AUDIO_OBJS =	boot.o cancel.o confirm.o cursor.o message.o transition.o bd_connect.o bd_disconnect.o
 
-MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o \
+MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o conf_theme_coverflow.o \
 		popstarter_usbd.o popstarter_usbhdfsd.o popstarter_bdmhdd.o popstarter_mx4sio.o popstarter_elf.o \
 		popstarter_smb_poweroff.o popstarter_smb_ps2dev9.o popstarter_smb_ps2ip.o \
 		popstarter_smb_ps2smap.o popstarter_smb_smbman.o popstarter_smb_smsutils.o
@@ -773,6 +775,9 @@ $(EE_ASM_DIR)icon_sys_C.c: misc/icon_C.sys | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)
 
 $(EE_ASM_DIR)conf_theme_OPL.c: misc/conf_theme_OPL.cfg | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ $(*F)_cfg
+
+$(EE_ASM_DIR)conf_theme_coverflow.c: misc/conf_theme_coverflow.cfg | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_cfg
 
 $(EE_ASM_DIR)boot.c: audio/boot.adp | $(EE_ASM_DIR)

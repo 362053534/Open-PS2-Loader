@@ -136,44 +136,38 @@ static void ioProcessRequest(struct io_request_t *req)
 
 static void ioWorkerThread(void *arg)
 {
+    // 轮询式 IO worker：不依赖任何唤醒信号，避免“渲染线程一帧内批量入队、worker 恰处于
+    // 清空队列后尚未进入等待”的窗口丢唤醒导致请求永久积压。有请求就处理，队列空则休眠
+    // 2ms 再查——空闲轮询对后台 art 加载延迟可忽略，CPU 占用也极低。
     while (!gIOTerminate) {
-        SleepThread();
-        // if term requested exit immediately from the loop
-        if (gIOTerminate)
-            break;
-
-        // do we have a request in the queue?
-        while (1) {
-            // if term requested exit immediately from the loop
-            if (gIOTerminate)
-                break;
-
-            // 队列取头节点，注意：此时队列仍然持有
-            WaitSema(gEndSemaId);
-            struct io_request_t *req = gReqList;
-            if (req) {
-                gReqList = req->next;
-                if (!gReqList)
-                    gReqEnd = NULL;
-                gActiveRequestType = req->type;
-                gActiveRequestData = req->data;
-            } else
-                gReqEnd = NULL; // 队列为空时，保险起见设NULL
-
-            if (!req) {
-                isIOPending = 0;
-                SignalSema(gEndSemaId);
-                break;
-            }
-            SignalSema(gEndSemaId);
-
-            ioProcessRequest(req);
-            WaitSema(gEndSemaId);
-            gActiveRequestType = -1;
-            gActiveRequestData = NULL;
-            SignalSema(gEndSemaId);
-            FreeIoRequest(req);
+        // 队列取头节点(整段在队列锁内完成)
+        WaitSema(gEndSemaId);
+        struct io_request_t *req = gReqList;
+        if (req) {
+            gReqList = req->next;
+            if (!gReqList)
+                gReqEnd = NULL;
+            gActiveRequestType = req->type;
+            gActiveRequestData = req->data;
+        } else {
+            gReqEnd = NULL;   // 队列为空时，保险起见设NULL
+            isIOPending = 0;
         }
+        SignalSema(gEndSemaId);
+
+        if (!req) {
+            // 队列为空：短暂休眠后再轮询，避免忙等空转，也不依赖任何唤醒信号。
+            usleep(2000); // 2ms
+            continue;
+        }
+
+        ioProcessRequest(req);
+
+        WaitSema(gEndSemaId);
+        gActiveRequestType = -1;
+        gActiveRequestData = NULL;
+        SignalSema(gEndSemaId);
+        FreeIoRequest(req);
     }
     WaitSema(gEndSemaId);
     // 提前退出时，清理所有线程，防止内存泄露
@@ -293,9 +287,7 @@ static int ioPutRequestInternal(int type, void *data, int unique)
 
     SignalSema(gEndSemaId);
 
-    // Worker thread cannot wake itself up (WakeupThread will return an error), but it will find the new request before sleeping.
-    //if (GetThreadId() != gIOThreadId)
-        WakeupThread(gIOThreadId);
+    // 无需唤醒 worker：worker 采用轮询，会在下一轮(最多 2ms 后)自动发现新入队的请求。
 
     return IO_OK;
 }
@@ -365,7 +357,7 @@ int ioRemoveRequests(int type)
 void ioEnd(void)
 {
     gIOTerminate = 1;
-    WakeupThread(gIOThreadId);
+    // 无需唤醒：worker 轮询循环每轮(最多 2ms)都会检查 gIOTerminate 并自行退出。
 
     // 等待worker线程彻底退出
     while (isIORunning)

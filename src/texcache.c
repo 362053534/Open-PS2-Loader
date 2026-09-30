@@ -56,6 +56,13 @@ typedef struct
     int cacheUID;
     char *value;
     int itemId;
+    // quiet==1 表示该请求来自 Coverflow 专用取图路径(cacheGetTextureQuiet)。
+    // Coverflow 每帧为多张封面排队，且不使用 cacheGetTexture 那套“单封面防抖”的
+    // cdFramesCount 冷却状态；而 cdFramesCount 只在常规 cacheGetTexture 内被推进/清零。
+    // 在 Coverflow 主界面上封面走的是 quiet 路径，一旦 cdFramesCount 被其它路径(如进出
+    // 详情页)置成非 0 就再没人把它清零，导致 cacheLoadImage1 永久跳过所有封面加载、
+    // 封面被反复排队又跳过(texLoading 卡住不归零)。因此 quiet 请求必须无视 cdFramesCount。
+    int quiet;
 } load_image_request_t;
 load_image_request_t req1 = {0};
 load_image_request_t req2 = {0};
@@ -142,7 +149,7 @@ void cacheCancelPendingArtRequests(void)
     ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
 }
 
-static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId)
+static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId, int quiet)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
     if (!req) {
@@ -157,6 +164,7 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->value = value;
     req->itemId = itemId;
     req->qr = 1;
+    req->quiet = quiet;
 
     pthread_mutex_lock(&texLoadingMutex);
     if (texLoading >= 0)
@@ -176,31 +184,28 @@ static void cacheLoadImage1(void *data)
     load_image_request_t *ioReq = (load_image_request_t *)data;
     // Safeguards...
     if (!ioReq->cache || !ioReq->cache->content) {
-        pthread_mutex_lock(&texLoadingMutex);
-        if (texLoading > 0)
-            texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+        cacheDecreaseLoading();
         free(ioReq);
         return;
     }
 
     item_list_t *handler = ioReq->list;
     if (!handler) {
-        pthread_mutex_lock(&texLoadingMutex);
-        if (texLoading > 0)
-            texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+        cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         free(ioReq);
         return;
     }
 
-    // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
-    if (cdFramesCount || forceSkipQr) {
-        pthread_mutex_lock(&texLoadingMutex);
-        if (texLoading > 0)
-            texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+    // 【封面/背景永久停载·彻底根治】节流只能在“入队时”决定，不能在“处理时”再决定。
+    // 入队侧 cacheGetTexture 已用 skipQr(源自 cdFramesCount)在冷却期直接 `return` 不入队；
+    // 光标移动时 menusys 又会 cacheCancelPendingArtRequests() 把过期请求从队列清掉。
+    // 因此凡是已经进到这里的请求，都是“入队时判定值得加载、且尚未被取消”的有效请求，worker
+    // 必须老实处理。此前这里还按 cdFramesCount 二次跳过，会把有效请求丢弃并让上层每帧重新排队
+    // (qr 清 0→下一帧重排→再跳过…)，导致 texLoading 卡在 >0 永不归零、封面/详情页背景永久停载
+    // (常规路径与 Coverflow quiet 路径都中招)。此处只保留 forceSkipQr(cacheEnd 真正退出时)判断。
+    if (forceSkipQr) {
+        cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         free(ioReq);
         return;
@@ -217,10 +222,7 @@ static void cacheLoadImage1(void *data)
         ioReq->cache->content[ioReq->cacheId].lastUsed = guiFrameId;
         ioReq->cache->content[ioReq->cacheId].texFound = 1;
     }
-    pthread_mutex_lock(&texLoadingMutex);
-    if (texLoading > 0)
-        texLoading--;
-    pthread_mutex_unlock(&texLoadingMutex);
+    cacheDecreaseLoading();
     ioReq->cache->content[ioReq->cacheId].qr = 0;
     ioReq->qr = 0;
     free(ioReq);
@@ -646,7 +648,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             else
                 oldestEntry->UID = *UID;
 
-            cacheQueueImageRequest(cache, *cacheId, list, value, itemId);
+            cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0); // quiet=0：常规单封面路径
         } else {
             //  加载图片
             if (!strncmp("BG", cache->suffix, 2)) {
@@ -749,37 +751,24 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 else
                     oldestEntry->UID = *UID;
 
-                //  使用pthread的多线程方法
-                pthread_mutex_lock(&texLoadingMutex);
-                if (texLoading >= 0)
-                    texLoading++;
-                else
-                    texLoading = 1;
-                pthread_mutex_unlock(&texLoadingMutex);
-                load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
-                req->cache = cache;
-                req->cacheId = *cacheId;
-                req->list = list;
-                req->value = value;
-                req->itemId = itemId;
-                req->qr = 1;
-
-                // 官方方法加载其他图片
-                ioPutRequest(IO_CACHE_LOAD_ART, req);
-
-                //// pthread方法加载其他图片
-                //pthread_t _tid;
-                //pthread_attr_t _attr;
-                //// 初始化pthread线程属性
-                //pthread_attr_init(&_attr);
-
-                //// 线程分离，如果不需要pthread_join
-                //pthread_attr_setdetachstate(&_attr, PTHREAD_CREATE_DETACHED);
-
-                //// 设置合适的栈空间，防止爆栈等错误
-                //pthread_attr_setstacksize(&_attr, 32 * 1024); // kb
-                //pthread_create(&_tid, &_attr, cacheLoadImage1, req);
-                //pthread_attr_destroy(&_attr);
+                // 【第二十八问修复：texLoading 计数泄漏导致封面永久停载】
+                // 非 BG/COV/ICO 的 art（典型是 INFO 详情页的 SCR/SCR2 截图）即使在
+                // usePthread 模式下也走官方 IO 队列(IO_CACHE_LOAD_ART)。
+                // 旧代码在此手写了一份加载逻辑：先 texLoading++，再 calloc(req)，
+                // 然后 ioPutRequest(...) 且【忽略返回值】。IO 请求池是定长的
+                // (ioman.c: MAX_IO_REQUESTS=16)，在 INFO 页快速上下浏览、同时 coverflow
+                // 预取也在抢占请求槽时，请求池会被占满，ioPutRequest 返回
+                // IO_ERR_IO_BLOCKED —— 请求既没入队、其处理函数(cacheLoadImage1)也永不执行，
+                // 于是这一次的 texLoading++ 再也没有对应的 --，造成 texLoading 只增不减地
+                // 永久泄漏（同时泄漏 calloc 出的 req、并把该缓存槽 qr 永久钉在 1）。
+                // 一旦 texLoading 卡在 >0，cacheGetTexture 顶部的
+                // `curStartUp != value && texLoading > 0` 门控会在每次光标移动时触发
+                // cdFramesCount 冷却 / skipQr，从此不再派发任何新封面加载 —— 现象就是
+                // “按圈返回列表后封面全停、按刷新也不恢复、只有切主题重建缓存才恢复”。
+                // 修法：统一改用已有的 cacheQueueImageRequest()（与 !usePthread 分支完全一致）。
+                // 它对 calloc 失败与 ioPutRequest 失败都会同步回滚 texLoading 与槽位状态
+                // (cacheCancelImageRequest)，从根本上杜绝该泄漏。
+                cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0); // quiet=0：常规路径(死代码分支)
             }
         }
 
@@ -796,4 +785,66 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         //}
     }
     return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
+}
+
+// Coverflow 专用取图函数。
+// 常规的 cacheGetTexture() 依赖 curStartUp / skipQr / cdFramesCount / PrevCacheID_*
+// 等一整套"每帧只取选中项这一张封面"的全局状态；Coverflow 每帧需要为多张封面取图，
+// 会把这些启发式打乱，导致封面永远排不进加载、只显示占位图。
+// 本函数刻意不触碰上述任何全局状态，改用与通用分支相同的 cacheQueueImageRequest()
+// 多请求加载路径，因此可在同一帧安全地为多张封面并行取图/排队加载。
+// 命中返回纹理；未命中则排队后台加载并返回 NULL（本帧先由调用方显示占位图）。
+GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
+{
+    if (!cache || !cache->content || !value)
+        return NULL;
+
+    // 已确认该项没有对应 art 文件：直接返回，避免反复排队
+    if (*cacheId == -2)
+        return NULL;
+
+    // 已分配槽位：检查是否命中
+    if (*cacheId >= 0 && *cacheId < cache->count) {
+        cache_entry_t *entry = &cache->content[*cacheId];
+        if (entry->UID == *UID) {
+            if (entry->qr)
+                return NULL; // 正在后台加载
+            if (entry->texFound == 1 && entry->texture.Mem) {
+                entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
+                return &entry->texture;
+            }
+            if (entry->texFound == 0) {
+                *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
+                return NULL;
+            }
+            // texFound == -1：上次加载被 CD/skipQr 中断，落到下面重新排队
+        }
+        *cacheId = -1; // UID 不匹配（槽被别的封面抢走）→ 重新查找
+    }
+
+    // 需要加载：挑一个空闲/最旧、且未在加载中的槽
+    cache_entry_t *oldest = NULL;
+    int slot = -1;
+    u64 rtime = guiFrameId;
+    int i;
+    for (i = 0; i < cache->count; i++) {
+        cache_entry_t *e = &cache->content[i];
+        if (!e->qr && e->lastUsed < rtime) {
+            oldest = e;
+            rtime = e->lastUsed;
+            slot = i;
+        }
+    }
+    if (oldest) {
+        *cacheId = slot;
+        cacheClearItem(oldest, 1); // 注意：会把 qr 清 0、texFound 置 -1
+        oldest->qr = 1;
+        if (*UID == -1)
+            oldest->UID = *UID = cache->nextUID++;
+        else
+            oldest->UID = *UID;
+        oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
+        cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // quiet=1：Coverflow 路径
+    }
+    return NULL;
 }

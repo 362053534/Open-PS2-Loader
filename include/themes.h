@@ -8,6 +8,16 @@
 #define THM_MAX_FILES 64
 #define THM_MAX_FONTS 16
 
+// 内置主题数量：GUI 主题列表开头固定的两套内置主题
+//   索引 0 = 内置 Coverflow 封面流主题（默认主题）
+//   索引 1 = 强化原生主题-支持背景图（原第一套主题，顺移到 Coverflow 之后）
+// 用户从存储设备加载的主题从索引 THM_NUM_BUILTIN 开始排列。
+#define THM_NUM_BUILTIN 2
+// 内置 Coverflow 主题在 GUI 列表中显示的名称（同时用于配置保存/匹配）
+#define THM_COVERFLOW_NAME "封面流主题(Coverflow)"
+// 原第一套主题（强化原生列表主题）在 GUI 列表中显示的名称
+#define THM_LIST_NAME "强化原生主题-支持背景图"
+
 typedef struct
 {
     // optional, only for overlays
@@ -42,6 +52,12 @@ typedef struct
 
     image_texture_t *overlayTexture;
     int overlayTextureLinked;
+
+    // 仅背景(Background)元素使用：只有当真正画出"当前游戏的背景图(BG art)"时，
+    // 才在其上叠加这张 1 像素 alpha 透明遮罩；回退到兜底默认背景时不绘制，
+    // 从而不让遮罩压暗兜底背景图。通过 cfg 键 <元素>_mask 指定贴图名。
+    image_texture_t *maskTexture;
+    int maskTextureLinked;
 } mutable_image_t;
 
 typedef struct
@@ -77,6 +93,10 @@ typedef struct theme_element
     short scaled;
     u64 color;
     int font;
+
+    // 非 0 时，图像类元素会在自身下方绘制镜像倒影。
+    // 目前由 Coverflow 元素使用。
+    int reflection;
 
     void *extended;
 
@@ -122,11 +142,33 @@ typedef struct theme
     theme_element_t *loadingIcon;
     int loadingIconCount;
 
+    // Coverflow：当前主题声明了 Coverflow 元素时非 NULL。
+    // 设置后，游戏列表会以滚动封面轮播的形式渲染。
+    theme_element_t *coverflow;
+    int coverflowCoverOffset;
+
     GSTEXTURE textures[TEXTURES_COUNT];
     int fonts[THM_MAX_FONTS]; //!< Storage of font handles for removal once not needed
 } theme_t;
 
 extern theme_t *gTheme;
+
+// 触发 Coverflow 滑动动画。direction：-1 = 下一个（向左滚动），
+// 1 = 上一个（向右滚动）。即使当前没有启用 Coverflow 主题，调用也是安全的。
+void thmTriggerCoverflowAnim(int direction);
+
+// 翻页滚动专用：以 durationMs 毫秒、线性插值滑动一步（连续多步连成流畅滚动）。
+void thmTriggerCoverflowAnimStep(int direction, int durationMs);
+
+// 当前是否正处于 Coverflow 滑动动画中。
+int thmCoverflowIsAnimating(void);
+
+// Coverflow 动画是否启用（主题配置滑动时长 >0）。
+int thmCoverflowAnimEnabled(void);
+
+// Coverflow 主题下 L1/R1 整页跳转的步长（= 同屏封面数，1..COVERFLOW_MAX）。
+// 未启用 Coverflow 主题时返回 0，调用方回退到列表主题的 displayedItems 步长。
+int thmGetCoverflowJumpCount(void);
 
 void thmInit(void);
 void thmReinit(const char *path);

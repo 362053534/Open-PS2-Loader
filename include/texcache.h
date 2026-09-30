@@ -59,6 +59,9 @@ void cacheDestroyCache(image_cache_t *cache);
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId);
 
+// Coverflow 专用：不触碰"单封面"全局状态，可在同一帧为多张封面并行取图/排队加载。
+GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId);
+
 extern int ForceRefreshPrevTexCache;
 extern int forceSkipQr;
 extern int texLoading;

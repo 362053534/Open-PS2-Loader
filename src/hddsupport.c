@@ -12,7 +12,10 @@
 #include "include/system.h"
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
+#include "include/ps2cnf.h"
 #include "modules/iopcore/common/cdvd_config.h"
+
+#include <string.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioFormat, fileXioMount, fileXioUmount, fileXioDevctl
@@ -22,6 +25,12 @@
 
 #define OPL_HDD_MODE_PS2LOGO_OFFSET 0x17F8
 #define HDL_MAX_PART_SPECS           65
+
+// Magic prefix written at the start of the HDL game-list cache file.
+// It embeds sizeof(hdl_game_info_t) so that a cache produced by a build with a
+// different struct layout (e.g. the older 13-byte startup field) is rejected
+// instead of being misinterpreted as valid game entries.
+#define HDL_CACHE_MAGIC (0x4C444800 + (u32)sizeof(hdl_game_info_t)) // 'HDL' + struct size
 
 #include "../modules/isofs/zso.h"
 
@@ -678,6 +687,458 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
     return size_mcemu_irx;
 }
 
+// Reads one 2048-byte logical disc sector from an HDL game's raw APA data,
+// transparently handling ZSO (compressed) images.
+//   base_lba    - HDD LBA of the virtual disc's sector 0
+//                 (= game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET)
+//   compressed  - non-zero when the image is ZSO (ziso already initialised)
+//   disc_sector - logical sector number on the virtual disc
+static int hddReadDiscSector(u32 base_lba, int compressed, u32 disc_sector, void *buf)
+{
+    if (compressed)
+        return ziso_read_sector(buf, disc_sector, 1) == 1 ? 0 : -1;
+
+    // A 2048-byte disc sector maps onto 4 x 512-byte HDD sectors.
+    return hddReadSectors(base_lba + disc_sector * 4, 4, buf);
+}
+
+// Turn a raw BOOT2 value (e.g. "cdrom0:\\SLXX_123.45;1") into a bare exec name
+// (e.g. "SLXX_123.45"). Returns 0 on success.
+static int hddStripBootPath(const char *boot, char *startup, int maxlen)
+{
+    const char *key = boot;
+    const char *start;
+    int length = 0;
+
+    // Skip the device name part of the path ("cdrom0:\\"), if present.
+    for (; *key != ':'; key++) {
+        if (*key == '\0') {
+            key = boot; // No device prefix, take the value as-is.
+            break;
+        }
+    }
+    if (*key == ':')
+        key++;
+    while (*key == '\\' || *key == '/')
+        key++;
+
+    start = key;
+    while (*key != ';' && *key != '\0')
+        length++, key++;
+
+    if (length <= 0 || length >= maxlen)
+        return -1;
+
+    memcpy(startup, start, length);
+    startup[length] = '\0';
+    return 0;
+}
+
+// Little-endian readers for on-disc structures.
+static u16 hddReadLE16(const u8 *p)
+{
+    return (u16)p[0] | ((u16)p[1] << 8);
+}
+
+static u32 hddReadLE32(const u8 *p)
+{
+    return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
+}
+
+// Case-insensitive match of an ISO9660 directory entry name against "SYSTEM.CNF"
+// (the name may carry a trailing ";1" version suffix).
+static int hddIsSystemCnfName(const u8 *name, u32 nameLength)
+{
+    static const char wanted[] = "SYSTEM.CNF";
+    unsigned int i;
+
+    if (nameLength < sizeof(wanted) - 1)
+        return 0;
+    if (nameLength > sizeof(wanted) - 1 && name[sizeof(wanted) - 1] != ';')
+        return 0;
+
+    for (i = 0; i < sizeof(wanted) - 1; i++) {
+        char c = (char)name[i];
+        if (c >= 'a' && c <= 'z')
+            c -= 'a' - 'A';
+        if (c != wanted[i])
+            return 0;
+    }
+
+    return 1;
+}
+
+// Read up to 'cnfSize' bytes of SYSTEM.CNF starting at disc sector 'cnfLBA' into
+// 'cnf', NUL-terminate it, and return the byte count (or -1 on error).
+static int hddReadDiscFile(u32 base_lba, int compressed, u32 cnfLBA, u32 cnfSize, u8 *sector, char *cnf, u32 cnfMax)
+{
+    u32 offset = 0;
+    u32 remaining;
+    u32 s;
+
+    if (cnfSize == 0)
+        return -1;
+    if (cnfSize > cnfMax - 1)
+        cnfSize = cnfMax - 1;
+    remaining = cnfSize;
+
+    for (s = 0; remaining > 0; s++) {
+        u32 chunk = remaining > 2048 ? 2048 : remaining;
+
+        if (hddReadDiscSector(base_lba, compressed, cnfLBA + s, sector) != 0)
+            return -1;
+        memcpy(&cnf[offset], sector, chunk);
+        offset += chunk;
+        remaining -= chunk;
+    }
+    cnf[offset] = '\0';
+    return (int)offset;
+}
+
+// Locate SYSTEM.CNF via the ISO9660 file system and load its contents into 'cnf'.
+// Returns the byte count on success, or -1 to let the caller try UDF.
+static int hddGetSystemCnfFromISO9660(u32 base_lba, int compressed, u8 *sector, char *cnf, u32 cnfMax)
+{
+    u32 rootLBA, rootSize, s;
+    u32 cnfLBA = 0, cnfSize = 0;
+    int found = 0;
+
+    // ISO9660 Primary Volume Descriptor lives at logical disc sector 16.
+    if (hddReadDiscSector(base_lba, compressed, 16, sector) != 0 ||
+        sector[0] != 1 || memcmp(&sector[1], "CD001", 5) != 0 || sector[156] < 34)
+        return -1;
+
+    // Root directory record is embedded in the PVD at offset 156.
+    rootLBA = hddReadLE32(&sector[158]);
+    rootSize = hddReadLE32(&sector[166]);
+    if (rootLBA == 0 || rootSize == 0)
+        return -1;
+
+    for (s = 0; s < (rootSize + 2047) / 2048 && !found; s++) {
+        u32 position = 0;
+        u32 sectorSize = rootSize - s * 2048;
+
+        if (sectorSize > 2048)
+            sectorSize = 2048;
+        if (hddReadDiscSector(base_lba, compressed, rootLBA + s, sector) != 0)
+            return -1;
+
+        while (position < sectorSize) {
+            const u8 recordLength = sector[position];
+            const u8 *name;
+            u8 nameLength;
+
+            if (recordLength == 0)
+                break;
+            if (recordLength < 34 || position + recordLength > sectorSize)
+                break;
+
+            nameLength = sector[position + 32];
+            name = &sector[position + 33];
+
+            // Skip directories (flag bit 1); match SYSTEM.CNF.
+            if (!(sector[position + 25] & 2) && 33 + nameLength <= recordLength &&
+                hddIsSystemCnfName(name, nameLength)) {
+                cnfLBA = hddReadLE32(&sector[position + 2]);
+                cnfSize = hddReadLE32(&sector[position + 10]);
+                found = 1;
+                break;
+            }
+
+            position += recordLength;
+        }
+    }
+
+    if (!found || cnfLBA == 0 || cnfSize == 0)
+        return -1;
+
+    return hddReadDiscFile(base_lba, compressed, cnfLBA, cnfSize, sector, cnf, cnfMax);
+}
+
+// Locate SYSTEM.CNF via the UDF file system and load its contents into 'cnf'.
+// Used as a fallback for the rare images whose ISO9660 tree is broken/missing
+// while the UDF tree (both are present on a UDF-Bridge disc) is still valid.
+// Mirrors the offsets used by supportbase.c's GetStartupExecNameFromUDF, but
+// reads the file contents instead of scanning for an ID-shaped file name.
+// Returns the byte count on success, or -1 on failure.
+static int hddGetSystemCnfFromUDF(u32 base_lba, int compressed, u8 *sector, char *cnf, u32 cnfMax)
+{
+    u32 mainLength, mainLocation, partitionStart[16] = {0};
+    u16 partitionNumber[16] = {0}, partitionMap[16] = {0};
+    u32 fileSetLocation = 0, rootLocation, rootSize, position;
+    u16 fileSetPartition = 0, rootPartition;
+    u8 partitionCount = 0, partitionMapCount = 0;
+    u8 *allocationDescriptors = NULL, *rootData = NULL;
+    int result = -1;
+    u32 sec;
+
+    // Anchor Volume Descriptor Pointer at sector 256 -> Main Volume Descriptor Sequence.
+    if (hddReadDiscSector(base_lba, compressed, 256, sector) != 0 || hddReadLE16(sector) != 2)
+        return -1;
+
+    mainLength = hddReadLE32(&sector[16]);
+    mainLocation = hddReadLE32(&sector[20]);
+
+    for (sec = mainLocation; sec < mainLocation + (mainLength + 2047) / 2048; sec++) {
+        u16 tag;
+
+        if (hddReadDiscSector(base_lba, compressed, sec, sector) != 0)
+            return -1;
+
+        tag = hddReadLE16(sector);
+        if (tag == 5 && partitionCount < 16) { // Partition Descriptor
+            partitionNumber[partitionCount] = hddReadLE16(&sector[22]);
+            partitionStart[partitionCount] = hddReadLE32(&sector[188]);
+            partitionCount++;
+        } else if (tag == 6) { // Logical Volume Descriptor
+            u32 mapLength = hddReadLE32(&sector[264]);
+            u32 mapPosition = 440;
+            u32 mapEnd = mapPosition + mapLength;
+
+            if (hddReadLE32(&sector[212]) != 2048 || mapEnd > 2048)
+                return -1;
+
+            fileSetLocation = hddReadLE32(&sector[252]);
+            fileSetPartition = hddReadLE16(&sector[256]);
+            while (mapPosition + 2 <= mapEnd && partitionMapCount < 16) {
+                u8 mapType = sector[mapPosition];
+                u8 mapSize = sector[mapPosition + 1];
+
+                if (mapType != 1 || mapSize < 6 || mapPosition + mapSize > mapEnd)
+                    return -1;
+                partitionMap[partitionMapCount++] = hddReadLE16(&sector[mapPosition + 4]);
+                mapPosition += mapSize;
+            }
+        } else if (tag == 8) { // Terminating Descriptor
+            break;
+        }
+    }
+
+    if (fileSetPartition >= partitionMapCount)
+        return -1;
+
+    for (sec = 0; sec < partitionCount; sec++) {
+        if (partitionNumber[sec] == partitionMap[fileSetPartition])
+            break;
+    }
+    if (sec == partitionCount ||
+        hddReadDiscSector(base_lba, compressed, partitionStart[sec] + fileSetLocation, sector) != 0 ||
+        hddReadLE16(sector) != 256) // File Set Descriptor
+        return -1;
+
+    rootLocation = hddReadLE32(&sector[404]);
+    rootPartition = hddReadLE16(&sector[408]);
+    if (rootPartition >= partitionMapCount)
+        return -1;
+
+    for (sec = 0; sec < partitionCount; sec++) {
+        if (partitionNumber[sec] == partitionMap[rootPartition])
+            break;
+    }
+    if (sec == partitionCount ||
+        hddReadDiscSector(base_lba, compressed, partitionStart[sec] + rootLocation, sector) != 0 ||
+        hddReadLE16(sector) != 261) // File Entry
+        return -1;
+
+    rootSize = hddReadLE32(&sector[56]);
+    {
+        u32 extendedAttributesLength = hddReadLE32(&sector[168]);
+        u32 allocationDescriptorsLength = hddReadLE32(&sector[172]);
+        u32 allocationDescriptorsPosition = 176 + extendedAttributesLength;
+        u16 allocationType = hddReadLE16(&sector[34]) & 7;
+
+        if (!rootSize || allocationDescriptorsPosition + allocationDescriptorsLength > 2048)
+            return -1;
+
+        allocationDescriptors = malloc(allocationDescriptorsLength);
+        rootData = malloc(rootSize);
+        if (!allocationDescriptors || !rootData)
+            goto end;
+
+        memcpy(allocationDescriptors, &sector[allocationDescriptorsPosition], allocationDescriptorsLength);
+        if (allocationType == 3) { // Data embedded in the File Entry.
+            if (allocationDescriptorsLength < rootSize)
+                goto end;
+            memcpy(rootData, allocationDescriptors, rootSize);
+        } else if (allocationType == 0) { // Short allocation descriptors.
+            u32 copied = 0;
+
+            for (position = 0; position + 8 <= allocationDescriptorsLength && copied < rootSize; position += 8) {
+                u32 extentLength = hddReadLE32(&allocationDescriptors[position]) & 0x3fffffff;
+                u32 extentLocation = hddReadLE32(&allocationDescriptors[position + 4]);
+                u32 extentSector;
+
+                for (extentSector = 0; extentSector < (extentLength + 2047) / 2048 && copied < rootSize; extentSector++) {
+                    u32 copySize = rootSize - copied;
+                    if (copySize > 2048)
+                        copySize = 2048;
+                    if (hddReadDiscSector(base_lba, compressed, partitionStart[sec] + extentLocation + extentSector, sector) != 0)
+                        goto end;
+                    memcpy(&rootData[copied], sector, copySize);
+                    copied += copySize;
+                }
+            }
+
+            if (copied < rootSize)
+                goto end;
+        } else {
+            goto end;
+        }
+    }
+
+    // Walk the root directory's File Identifier Descriptors looking for SYSTEM.CNF.
+    for (position = 0; position + 38 <= rootSize;) {
+        u8 fileCharacteristics, nameLength;
+        u16 implementationUseLength;
+        u32 recordLength;
+        const u8 *rawName;
+        u32 decodedLength = 0;
+        u8 decodedName[64];
+
+        if (hddReadLE16(&rootData[position]) != 257) // File Identifier Descriptor
+            break;
+
+        fileCharacteristics = rootData[position + 18];
+        nameLength = rootData[position + 19];
+        implementationUseLength = hddReadLE16(&rootData[position + 36]);
+        recordLength = (38 + implementationUseLength + nameLength + 3) & ~3;
+        if (position + recordLength > rootSize)
+            break;
+
+        // Skip parent (bit 3) and deleted (bit 2) entries.
+        if (!(fileCharacteristics & 6) && nameLength > 0) {
+            rawName = &rootData[position + 38 + implementationUseLength];
+
+            // UDF d-strings: first byte is the compression id (8 or 16 bit).
+            if (rawName[0] == 8) {
+                u32 i;
+                decodedLength = nameLength - 1;
+                if (decodedLength < sizeof(decodedName)) {
+                    for (i = 0; i < decodedLength; i++)
+                        decodedName[i] = rawName[1 + i];
+                }
+            } else if (rawName[0] == 16) {
+                u32 i;
+                decodedLength = (nameLength - 1) / 2;
+                if (decodedLength < sizeof(decodedName)) {
+                    for (i = 0; i < decodedLength; i++)
+                        decodedName[i] = rawName[2 + i * 2]; // low byte of each UTF-16BE unit
+                }
+            }
+
+            if (decodedLength > 0 && decodedLength < sizeof(decodedName) &&
+                hddIsSystemCnfName(decodedName, decodedLength)) {
+                u32 cnfLBA = hddReadLE32(&rootData[position + 4]);
+                u16 cnfPartRef = hddReadLE16(&rootData[position + 8]);
+                u32 cnfSize;
+                u32 pidx;
+
+                if (cnfPartRef >= partitionMapCount)
+                    break;
+                for (pidx = 0; pidx < partitionCount; pidx++) {
+                    if (partitionNumber[pidx] == partitionMap[cnfPartRef])
+                        break;
+                }
+                if (pidx == partitionCount)
+                    break;
+
+                // Read the file's File Entry to obtain its real size + allocation.
+                if (hddReadDiscSector(base_lba, compressed, partitionStart[pidx] + cnfLBA, sector) != 0 ||
+                    hddReadLE16(sector) != 261)
+                    break;
+
+                cnfSize = hddReadLE32(&sector[56]);
+                {
+                    u32 eaLen = hddReadLE32(&sector[168]);
+                    u32 adLen = hddReadLE32(&sector[172]);
+                    u32 adPos = 176 + eaLen;
+                    u16 adType = hddReadLE16(&sector[34]) & 7;
+
+                    if (cnfSize == 0 || adPos + adLen > 2048)
+                        break;
+
+                    if (adType == 3) { // embedded content
+                        int n = (int)cnfSize;
+                        if (n > (int)cnfMax - 1)
+                            n = cnfMax - 1;
+                        memcpy(cnf, &sector[adPos], n);
+                        cnf[n] = '\0';
+                        result = n;
+                    } else if (adType == 0 && adLen >= 8) {
+                        u32 fileExtent = hddReadLE32(&sector[adPos + 4]);
+                        result = hddReadDiscFile(base_lba, compressed, partitionStart[pidx] + fileExtent, cnfSize, sector, cnf, cnfMax);
+                    }
+                }
+                break;
+            }
+        }
+
+        position += recordLength;
+    }
+
+end:
+    free(rootData);
+    free(allocationDescriptors);
+    return result;
+}
+
+// Resolve the real boot executable for an HDL game by parsing the on-disc
+// SYSTEM.CNF (BOOT2), exactly like a real PS2 / HD Loader does, instead of
+// trusting the static ID snapshotted into the APA header at install time.
+// This fixes "special" images (multiple boot ELFs, non-standard BOOT2 names)
+// that boot fine under HD Loader but white-screen when OPL blindly launches
+// the stored ID. The BOOT2 value is identical in both file systems, so ISO9660
+// is tried first and UDF is only a fallback for a damaged ISO9660 tree.
+// Returns 0 and fills 'startup' (>= GENERAL_STARTUP_MAX bytes) on success, or a
+// negative value to signal the caller to fall back to the APA header startup.
+static int hddResolveStartupFromDisc(u32 start_sector, char *startup, int maxlen)
+{
+    u32 base_lba = start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET;
+    u8 *sector;
+    int compressed = 0;
+    int result = -1;
+    int cnfLen;
+    char cnf[CNF_LEN_MAX];
+    char boot[CNF_PATH_LEN_MAX + 1];
+
+    sector = memalign(64, 2048);
+    if (sector == NULL)
+        return -1;
+
+    // Detect ZSO compression on the raw APA data.
+    if (hddReadSectors(base_lba, 4, sector) != 0)
+        goto done;
+    if (*(u32 *)sector == ZSO_MAGIC) {
+        compressed = 1;
+        probed_fd = 0;
+        probed_lba = base_lba;
+        ziso_init((ZISO_header *)sector, *(u32 *)(sector + sizeof(ZISO_header)));
+    }
+
+    // Prefer ISO9660 (matches the real PS2 / HD Loader boot path); fall back to
+    // UDF only if the ISO9660 tree fails to yield SYSTEM.CNF.
+    cnfLen = hddGetSystemCnfFromISO9660(base_lba, compressed, sector, cnf, sizeof(cnf));
+    if (cnfLen < 0) {
+        cnfLen = hddGetSystemCnfFromUDF(base_lba, compressed, sector, cnf, sizeof(cnf));
+        if (cnfLen >= 0)
+            LOG("HDD: SYSTEM.CNF read via UDF fallback.\n");
+    }
+    if (cnfLen < 0)
+        goto done;
+
+    if (ps2cnfGetBootFileFromBuffer(cnf, cnfLen, boot) != 0)
+        goto done;
+
+    if (hddStripBootPath(boot, startup, maxlen) == 0) {
+        LOG("HDD: resolved startup '%s' from on-disc SYSTEM.CNF.\n", startup);
+        result = 0;
+    }
+
+done:
+    free(sector);
+    return result;
+}
+
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, size_irx = 0;
@@ -810,8 +1271,15 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.NumParts = 1;
     settings->common.media = hdl_header->discType;
 
-    if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
-        strcpy(filename, game->startup);
+    // Boot-file resolution order (highest priority first):
+    //   1. $AltStartup    - explicit per-game override set by the user.
+    //   2. on-disc SYSTEM.CNF (BOOT2) - matches HD Loader, fixes special images
+    //      whose real boot ELF differs from the ID stored in the APA header.
+    //   3. APA header startup - the legacy static snapshot, used as a fallback.
+    if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0) {
+        if (hddResolveStartupFromDisc(game->start_sector, filename, sizeof(filename)) != 0)
+            strcpy(filename, game->startup);
+    }
 
     if (gPS2Logo)
         EnablePS2Logo = CheckPS2Logo(0, game->start_sector + OPL_HDD_MODE_PS2LOGO_OFFSET);
@@ -979,9 +1447,21 @@ static int hddLoadGameListCache(hdl_games_list_t *cache)
     sprintf(filename, gTxtRename ? "%stxtCache.bin" : "%sCache.bin", gHDDPrefix);
     file = fopen(filename, "rb");
     if (file != NULL) {
+        u32 magic = 0;
+
         fseek(file, 0, SEEK_END);
         size = ftell(file);
         rewind(file);
+
+        // Reject caches without our versioned magic (e.g. from an older build
+        // whose hdl_game_info_t had a different size/layout); they will be
+        // rebuilt from the HDD on the next scan.
+        if (size < (int)sizeof(magic) || fread(&magic, sizeof(magic), 1, file) != 1 || magic != HDL_CACHE_MAGIC) {
+            LOG("hddLoadGameListCache: incompatible or missing cache header, ignoring.\n");
+            fclose(file);
+            return -1;
+        }
+        size -= sizeof(magic);
 
         count = size / sizeof(hdl_game_info_t);
         if (count > 0) {
@@ -1062,7 +1542,12 @@ static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *gam
     if (game_list->count > 0) {
         file = fopen(filename, "wb");
         if (file != NULL) {
-            result = (fwrite(game_list->games, sizeof(hdl_game_info_t), game_list->count, file) == game_list->count) ? 0 : EIO;
+            u32 magic = HDL_CACHE_MAGIC;
+
+            if (fwrite(&magic, sizeof(magic), 1, file) != 1)
+                result = EIO;
+            else
+                result = (fwrite(game_list->games, sizeof(hdl_game_info_t), game_list->count, file) == game_list->count) ? 0 : EIO;
             fclose(file);
         } else {
             result = EIO;
