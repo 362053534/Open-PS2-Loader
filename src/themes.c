@@ -1084,8 +1084,8 @@ static clock_t animationStartTime = 0;
 // 当前 0（不额外增加相邻封面之间的间隙）。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 0
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-// 正值下移、负值上移。当前 165 = 在原 170 的基础上整体上移 5，游戏和 APPS 共用。
-#define COVERFLOW_BASELINE_YOFFSET 165
+// 正值下移、负值上移。当前 161 = 在原 165 的基础上整体上移 4，游戏和 APPS 共用。
+#define COVERFLOW_BASELINE_YOFFSET 161
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
 // 正值下移、负值上移。当前 -51 = 在原 -50 的基础上整体上移 1。
 #define COVERFLOW_APPS_YOFFSET -51
