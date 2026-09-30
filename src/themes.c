@@ -630,15 +630,19 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 
 // Coverflow 停止后才请求当前游戏的 ICO；光标变化时调用方会重置专用槽位，
 // 因此这里不会把上一款游戏的光碟图带到新游戏上。
-static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item)
+static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item, int allowRequest)
 {
     if (!gTheme || !gTheme->coverflowIcoCache || !list || !item || !gEnableArtICO)
         return NULL;
 
     char *startup = list->itemGetStartup(list, item->item.id);
-    return cacheGetTextureQuiet(gTheme->coverflowIcoCache, list,
-                                &gTheme->coverflowIcoCacheId, &gTheme->coverflowIcoCacheUID,
-                                startup, item->item.id);
+    if (allowRequest)
+        return cacheGetTextureQuiet(gTheme->coverflowIcoCache, list,
+                                    &gTheme->coverflowIcoCacheId, &gTheme->coverflowIcoCacheUID,
+                                    startup, item->item.id);
+    return cacheGetTextureQuietNoRequest(gTheme->coverflowIcoCache, list,
+                                          &gTheme->coverflowIcoCacheId, &gTheme->coverflowIcoCacheUID,
+                                          startup, item->item.id);
 }
 
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
@@ -1115,8 +1119,8 @@ static clock_t animationStartTime = 0;
 // 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
-#define COVERFLOW_ICO_SIZE 32
-#define COVERFLOW_ICO_GAP 10
+#define COVERFLOW_ICO_SIZE 64
+#define COVERFLOW_ICO_POPUP_GAP 50
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
@@ -1563,6 +1567,52 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 这里不再读取 native 分辨率做封面高度补偿或过滤判断；封面尺寸统一由 448 基线
     // 逻辑尺寸决定，渲染器只负责把整套布局按当前屏幕同比缩放。
 
+    GSTEXTURE *icoTexture = NULL;
+    if (gTheme->coverflowIcoItem != item) {
+        gTheme->coverflowIcoItem = item;
+        gTheme->coverflowIcoCacheId = -1;
+        gTheme->coverflowIcoCacheUID = -1;
+        gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
+    }
+
+    // 移动动画或新的 ART 请求一出现，旧 ICO 立即失效；不等待请求结束。
+    if (isAnimating || !gEnableArtICO || texLoading > 0) {
+        gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
+    } else {
+        // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的请求放到
+        // 本帧所有 Coverflow 预取完成之后，避免 ICO 与封面争抢当前帧的加载队列。
+        icoTexture = getCoverflowIcoTexture(sourceList, item, 0);
+        if (icoTexture && icoTexture->Mem) {
+            if (!gTheme->coverflowIcoLoaded) {
+                gTheme->coverflowIcoLoaded = 1;
+                gTheme->coverflowIcoPopupActive = 1;
+                gTheme->coverflowIcoPopupStartTime = (u64)clock();
+            }
+        } else {
+            gTheme->coverflowIcoLoaded = 0;
+            gTheme->coverflowIcoPopupActive = 0;
+        }
+    }
+
+    float icoPopupEased = 1.0f;
+    if (gTheme->coverflowIcoPopupActive) {
+        if (gCoverflowAnimSpeed <= 0) {
+            gTheme->coverflowIcoPopupActive = 0;
+        } else {
+            u64 elapsed = (u64)clock() - gTheme->coverflowIcoPopupStartTime;
+            float t = (float)elapsed / ((float)gCoverflowAnimSpeed * CLOCKS_PER_SEC / 1000);
+            if (t >= 1.0f) {
+                gTheme->coverflowIcoPopupActive = 0;
+            } else {
+                // 与单次 Coverflow 移动完全相同的纯三次缓出。
+                float inv = 1.0f - t;
+                icoPopupEased = 1.0f - inv * inv * inv;
+            }
+        }
+    }
+
     float centerIcoLeft = 0.0f;
     float centerIcoBottom = 0.0f;
     int centerIcoGeometryValid = 0;
@@ -1643,6 +1693,20 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (img->overlayTexture)
             img->overlayTexture->source.Filter = coverFilter; // case 外壳跟随封面
 
+        // ICO 位于所有非中心封面之后、中心封面之前：中心封面随后提交，
+        // 会把 ICO 的起始部分遮住，形成“从中心封面背后向左弹出”的层级关系。
+        if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
+            icoTexture->Mem && gTheme->coverflowIcoLoaded) {
+            float popupStartRight = centerIcoLeft + COVERFLOW_ICO_SIZE;
+            float popupTargetRight = centerIcoLeft - COVERFLOW_ICO_POPUP_GAP;
+            float popupRight = popupStartRight + (popupTargetRight - popupStartRight) * icoPopupEased;
+            icoTexture->Filter = GS_FILTER_LINEAR;
+            rmDrawPixmapReflect(icoTexture, (int)(popupRight + 0.5f),
+                                (int)(centerIcoBottom + 0.5f),
+                                ALIGN_BOTTOM | ALIGN_RIGHT, COVERFLOW_ICO_SIZE, COVERFLOW_ICO_SIZE,
+                                SCALING_NONE, gDefaultCol);
+        }
+
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         // y 仍来自 Coverflow 元素的 cfg y（加上既有的模块基线偏移），但改为把它作为
         // 封面模块的【底部锚点】；因此中心封面放大/非中心缩小只向上展开，底部位置不随尺寸改变。
@@ -1698,29 +1762,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
     }
 
-    // 光标变化时立即丢弃上一款游戏的 ICO；只有封面等 ART 请求全部结束后，
-    // 才为当前停留项请求 ICO。ICO 自己的请求也会让 texLoading > 0，期间不绘制。
-    if (gTheme->coverflowIcoItem != item) {
-        gTheme->coverflowIcoItem = item;
-        gTheme->coverflowIcoCacheId = -1;
-        gTheme->coverflowIcoCacheUID = -1;
-    }
-
-    // ICO 的消失条件只看移动动画：一旦动画开始就不再绘制旧 ICO，
-    // 不等待或依赖 ART 请求是否已经开始。这样短列表翻页时也不会残留旧图。
-    if (isAnimating)
-        return;
-
-    // ICO 的加载条件则独立要求动画已经完全停止，并且当前没有任何 ART 请求。
-    if (centerIcoGeometryValid && gEnableArtICO && texLoading == 0) {
-        GSTEXTURE *icoTexture = getCoverflowIcoTexture(sourceList, item);
-        if (icoTexture && icoTexture->Mem) {
-            icoTexture->Filter = GS_FILTER_LINEAR;
-            int icoRight = (int)(centerIcoLeft - COVERFLOW_ICO_GAP + 0.5f);
-            int icoBottom = (int)(centerIcoBottom + 0.5f);
-            rmDrawPixmapReflect(icoTexture, icoRight, icoBottom,
-                                ALIGN_BOTTOM | ALIGN_RIGHT, COVERFLOW_ICO_SIZE, COVERFLOW_ICO_SIZE,
-                                SCALING_NONE, gDefaultCol);
+    // 所有 Coverflow 预取请求完成后，才允许为当前停留项创建 ICO 请求。
+    // 这一步只负责排队；ICO 加载完成后由下一帧检测并启动弹出动画。
+    if (!isAnimating && gEnableArtICO && texLoading == 0 &&
+        (!icoTexture || !icoTexture->Mem)) {
+        GSTEXTURE *requestedIco = getCoverflowIcoTexture(sourceList, item, 1);
+        if (requestedIco && requestedIco->Mem && !gTheme->coverflowIcoLoaded) {
+            gTheme->coverflowIcoLoaded = 1;
+            gTheme->coverflowIcoPopupActive = 1;
+            gTheme->coverflowIcoPopupStartTime = (u64)clock();
         }
     }
 }

@@ -154,6 +154,9 @@ typedef struct theme
     int coverflowIcoCacheId;
     int coverflowIcoCacheUID;
     submenu_list_t *coverflowIcoItem;
+    int coverflowIcoLoaded;
+    int coverflowIcoPopupActive;
+    u64 coverflowIcoPopupStartTime;
 
     GSTEXTURE textures[TEXTURES_COUNT];
     // 外部 Coverflow 主题缺少菜单图标/BDM 索引时，记录对应槽位是否用了内置 CF 回退资源。
