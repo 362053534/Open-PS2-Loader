@@ -1579,15 +1579,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 移动动画开始时，当前 ICO 立即失效；不等待请求结束。
     //
     // 其它 ART（尤其是背景图）在 ICO 已经加载完成后才开始请求时，不能清掉
-    // coverflowIcoLoaded：ICO 专用 cache 仍然持有当前游戏的纹理，清掉这个状态会
-    // 让下一次 texLoading 归零时把同一张 ICO 误判成“刚加载完成”，从而重复弹出。
-    // 这类请求期间只隐藏 ICO，等请求结束后继续使用已经完成的 ICO，不重新启动动画。
+    // coverflowIcoLoaded，也不能结束 ICO 的弹出状态。否则请求结束后会把同一张 ICO
+    // 当成一次新的弹出，造成动画播放两次。
+    // 请求期间只在绘制条件中暂时隐藏 ICO；保留原来的 startTime/进度，恢复后继续
+    // 同一次动画，若期间已经走完则直接显示终点，不重新启动。
     if (isAnimating || !gEnableArtICO) {
         gTheme->coverflowIcoLoaded = 0;
         gTheme->coverflowIcoPopupActive = 0;
-    } else if (texLoading > 0) {
-        gTheme->coverflowIcoPopupActive = 0;
-    } else {
+    } else if (texLoading == 0) {
         // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的请求放到
         // 本帧所有 Coverflow 预取完成之后，避免 ICO 与封面争抢当前帧的加载队列。
         icoTexture = getCoverflowIcoTexture(sourceList, item, 0);
@@ -1702,7 +1701,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         // ICO 位于所有非中心封面之后、中心封面之前：中心封面随后提交，
         // 会把 ICO 的起始部分遮住，形成“从中心封面背后向左弹出”的层级关系。
-        if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
+        if (i == renderCenterIndex && !isAnimating && texLoading == 0 && centerIcoGeometryValid && icoTexture &&
             icoTexture->Mem && gTheme->coverflowIcoLoaded) {
             float popupStartRight = centerIcoLeft + COVERFLOW_ICO_SIZE;
             float popupTargetRight = centerIcoLeft - COVERFLOW_ICO_POPUP_GAP;
