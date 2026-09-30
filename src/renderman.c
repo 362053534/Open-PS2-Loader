@@ -696,15 +696,19 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     float blx = casePixelW * ((float)ovBlx / fbw), bly = casePixelH * ((float)ovBly / fbh);
     float brx = casePixelW * ((float)ovBrx / fbw), bry = casePixelH * ((float)ovBry / fbh);
 
-    // 内框边距单独取整，宽高单独锁定为整数；远角由近角+尺寸得到。
+    // 内框尺寸锁定为整数；位置则围绕同一个浮点内框中心取整。
+    // 不能把左边距和宽度分别取整后直接相加，否则宽度变化时 child 中心会在
+    // 左右/上下之间来回偏移，表现为封面在 case 内轻微蠕动。
     float offL = (ulx + blx) * 0.5f;
     float offR = (urx + brx) * 0.5f;
     float offT = (uly + ury) * 0.5f;
     float offB = (bly + bry) * 0.5f;
-    float inlayLeft = rUlX + rmPxSnap(offL);
-    float inlayTop = rUlY + rmPxSnap(offT);
+    float innerCenterX = (offL + offR) * 0.5f;
+    float innerCenterY = (offT + offB) * 0.5f;
     float inlayWidth = rmPxSnap(offR - offL);
     float inlayHeight = rmPxSnap(offB - offT);
+    float inlayLeft = rmPxSnap(rUlX + innerCenterX - inlayWidth * 0.5f);
+    float inlayTop = rmPxSnap(rUlY + innerCenterY - inlayHeight * 0.5f);
 
     transform->caseQuad = floatCase;
     transform->caseQuad.ul.x = rUlX - fRenderXOff;
