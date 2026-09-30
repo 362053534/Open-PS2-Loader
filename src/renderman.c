@@ -391,6 +391,56 @@ static int rmSubmitQuadTexture(GSTEXTURE *txt, float x1, float y1, float u1, flo
     return 1;
 }
 
+// 直接提交四个顶点的纹理 quad。Case 的内框可能不是严格的轴对齐矩形；
+// Coverflow 主图必须使用和 overlay_* 四个内框顶点一一对应的四个顶点，
+// 不能先平均成中心矩形，否则动画缩放时四角会相对 case 漂移。
+static int rmSubmitQuadTextureCorners(GSTEXTURE *txt,
+                                      float ulX, float ulY, float ulU, float ulV,
+                                      float urX, float urY, float urU, float urV,
+                                      float blX, float blY, float blU, float blV,
+                                      float brX, float brY, float brU, float brV,
+                                      u64 color)
+{
+    // 现有内置 Coverflow case 的四个内框顶点是轴对齐矩形；继续走原有
+    // 图元级裁切路径，保持 hires overscan 裁切和 UV 修正完全不变。
+    if (ulX == blX && urX == brX && ulY == urY && blY == brY)
+        return rmSubmitQuadTexture(txt, ulX, ulY, ulU, ulV, urX, brY, urU, brV, color);
+
+    if (rmClipToDisplay) {
+        float minX = ulX, maxX = ulX;
+        float minY = ulY, maxY = ulY;
+        if (urX < minX) minX = urX;
+        if (blX < minX) minX = blX;
+        if (brX < minX) minX = brX;
+        if (urX > maxX) maxX = urX;
+        if (blX > maxX) maxX = blX;
+        if (brX > maxX) maxX = brX;
+        if (urY < minY) minY = urY;
+        if (blY < minY) minY = blY;
+        if (brY < minY) minY = brY;
+        if (urY > maxY) maxY = urY;
+        if (blY > maxY) maxY = blY;
+        if (brY > maxY) maxY = brY;
+
+        // 当前 Coverflow case 通常完全位于可见区域内。对完全在区域外的
+        // 自定义四边形直接丢弃；部分越界仍由 GS 当前 pass 的 scissor 裁切。
+        float left = (float)iDisplayXOff;
+        float top = (float)iDisplayYOff;
+        float right = (float)(iDisplayXOff + iDisplayWidth);
+        float bottom = (float)(iDisplayYOff + iDisplayHeight);
+        if (maxX <= left || minX >= right || maxY <= top || minY >= bottom)
+            return 0;
+    }
+
+    gsKit_prim_quad_texture(gsGlobal, txt,
+                            ulX, ulY, ulU, ulV,
+                            urX, urY, urU, urV,
+                            blX, blY, blU, blV,
+                            brX, brY, brU, brV,
+                            order, color);
+    return 1;
+}
+
 // Coverflow 倒影使用一个带顶点 alpha 插值的纹理四边形，避免把同一张图
 // 切成多条横带后在屏幕上形成明显的重复锯齿层。裁切上下边界时同步插值
 // 顶/底 alpha，保证 hires 图元级裁切仍然不会改变渐隐曲线。
@@ -748,6 +798,19 @@ typedef struct
     // 这样它们与普通 ItemCover / rmDrawPixmapFrac 使用同一半像素采样相位。
     float caseLeft;
     float caseRight;
+    // 主图四个顶点分别从 overlay 的四个内框顶点变换而来；不再用中心点
+    // 和平均宽高重建一个“近似矩形”。
+    float inlayUlX;
+    float inlayUlY;
+    float inlayUrx;
+    float inlayUry;
+    float inlayBlx;
+    float inlayBly;
+    float inlayBrx;
+    float inlayBry;
+
+    // 倒影仍需要轴对齐的左右范围。对内框为矩形的现有 Coverflow case，
+    // 这四个值与上面的四角完全一致。
     float inlayLeft;
     float inlayTop;
     float inlayRight;
@@ -823,8 +886,16 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     float inlayRight = rUlX + rmPxSnap(offR);
     float inlayTop = rUlY + rmPxSnap(offT);
     float inlayBottom = rUlY + rmPxSnap(offB);
-    float inlayWidth = inlayRight - inlayLeft;
-    float inlayHeight = inlayBottom - inlayTop;
+    // 四个内框顶点均使用同一个已经锁定的 case 左上角和实际 case 尺寸。
+    // 这样中心/非中心、移动/缩放时，主图顶点始终是 case 顶点的同一组变换结果。
+    float inlayUlX = rUlX + rmPxSnap((float)ovUlx * caseScaleX);
+    float inlayUlY = rUlY + rmPxSnap((float)ovUly * caseScaleY);
+    float inlayUrx = rUlX + rmPxSnap((float)ovUrx * caseScaleX);
+    float inlayUry = rUlY + rmPxSnap((float)ovUry * caseScaleY);
+    float inlayBlx = rUlX + rmPxSnap((float)ovBlx * caseScaleX);
+    float inlayBly = rUlY + rmPxSnap((float)ovBly * caseScaleY);
+    float inlayBrx = rUlX + rmPxSnap((float)ovBrx * caseScaleX);
+    float inlayBry = rUlY + rmPxSnap((float)ovBry * caseScaleY);
 
     transform->caseQuad = floatCase;
     // 不要把 fRender*Off 提前抵消：rmDrawQuad() 会像普通 ItemCover 一样统一加上它。
@@ -835,10 +906,18 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     transform->caseHeight = casePixelH;
     transform->caseLeft = rUlX;
     transform->caseRight = rBrX;
+    transform->inlayUlX = inlayUlX;
+    transform->inlayUlY = inlayUlY;
+    transform->inlayUrx = inlayUrx;
+    transform->inlayUry = inlayUry;
+    transform->inlayBlx = inlayBlx;
+    transform->inlayBly = inlayBly;
+    transform->inlayBrx = inlayBrx;
+    transform->inlayBry = inlayBry;
     transform->inlayLeft = inlayLeft;
     transform->inlayTop = inlayTop;
-    transform->inlayRight = inlayLeft + inlayWidth;
-    transform->inlayBottom = inlayTop + inlayHeight;
+    transform->inlayRight = inlayRight;
+    transform->inlayBottom = inlayBottom;
     transform->reflectionBaseY = rBrY;
 }
 
@@ -854,12 +933,17 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
     gsKit_TexManager_bind(gsGlobal, inlay);
     // 这是直接 quad 提交，不会经过 rmDrawQuad()；在这里补上与普通 sprite
     // 相同的 fRender*Off，避免套上 case 后主图又回到整数采样相位。
-    if (rmSubmitQuadTexture(inlay,
-                            transform->inlayLeft + fRenderXOff,
-                            transform->inlayTop + fRenderYOff, 0.0f, 0.0f,
-                            transform->inlayRight + fRenderXOff,
-                            transform->inlayBottom + fRenderYOff, inlay->Width, inlay->Height,
-                            color))
+    // 四个屏幕顶点与 overlay 的四个内框顶点一一对应。
+    if (rmSubmitQuadTextureCorners(inlay,
+                                   transform->inlayUlX + fRenderXOff,
+                                   transform->inlayUlY + fRenderYOff, 0.0f, 0.0f,
+                                   transform->inlayUrx + fRenderXOff,
+                                   transform->inlayUry + fRenderYOff, inlay->Width, 0.0f,
+                                   transform->inlayBlx + fRenderXOff,
+                                   transform->inlayBly + fRenderYOff, 0.0f, inlay->Height,
+                                   transform->inlayBrx + fRenderXOff,
+                                   transform->inlayBry + fRenderYOff, inlay->Width, inlay->Height,
+                                   color))
         order++;
 
     // caseQuad 已经包含最终整数边界；rmDrawQuad 只负责提交，不再重新计算几何。
