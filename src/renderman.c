@@ -391,6 +391,42 @@ static int rmSubmitQuadTexture(GSTEXTURE *txt, float x1, float y1, float u1, flo
     return 1;
 }
 
+// Coverflow 倒影使用一个带顶点 alpha 插值的纹理四边形，避免把同一张图
+// 切成多条横带后在屏幕上形成明显的重复锯齿层。裁切上下边界时同步插值
+// 顶/底 alpha，保证 hires 图元级裁切仍然不会改变渐隐曲线。
+static int rmSubmitGoraudQuadTexture(GSTEXTURE *txt, float x1, float y1, float u1, float v1,
+                                      float x2, float y2, float u2, float v2,
+                                      u64 topColor, u64 bottomColor)
+{
+    float originalY1 = y1;
+    float originalY2 = y2;
+
+    if (!rmClipTextureRect(&x1, &y1, &u1, &v1, &x2, &y2, &u2, &v2))
+        return 0;
+
+    if (originalY2 > originalY1) {
+        int topAlpha = (int)((topColor >> 24) & 0xFF);
+        int bottomAlpha = (int)((bottomColor >> 24) & 0xFF);
+        float topT = (y1 - originalY1) / (originalY2 - originalY1);
+        float bottomT = (y2 - originalY1) / (originalY2 - originalY1);
+        int clippedTopAlpha = (int)(topAlpha + (bottomAlpha - topAlpha) * topT + 0.5f);
+        int clippedBottomAlpha = (int)(topAlpha + (bottomAlpha - topAlpha) * bottomT + 0.5f);
+
+        topColor = GS_SETREG_RGBAQ(topColor & 0xFF, (topColor >> 8) & 0xFF,
+                                   (topColor >> 16) & 0xFF, clippedTopAlpha, 0x00);
+        bottomColor = GS_SETREG_RGBAQ(bottomColor & 0xFF, (bottomColor >> 8) & 0xFF,
+                                      (bottomColor >> 16) & 0xFF, clippedBottomAlpha, 0x00);
+    }
+
+    gsKit_prim_quad_goraud_texture(gsGlobal, txt,
+                                   x1, y1, u1, v1,
+                                   x2, y1, u2, v1,
+                                   x1, y2, u1, v2,
+                                   x2, y2, u2, v2,
+                                   topColor, topColor, bottomColor, bottomColor);
+    return 1;
+}
+
 void rmDrawQuad(rm_quad_t *q)
 {
     if ((q->txt->PSM == GS_PSM_CT32) || (q->txt->Clut && q->txt->ClutPSM == GS_PSM_CT32)) {
@@ -828,54 +864,42 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
 static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GSTEXTURE *overlay,
                                       GSTEXTURE *inlay, u64 color)
 {
-    // 倒影的有效 alpha 只在 case 高度的前四分之一；跳过后面的透明行，
-    // 并用至少 4px、最多 16 条横带控制 render queue 用量。这个路径在 L1/R1 翻页时可能
-    // 同时绘制最多 COVERFLOW_RENDER_MAX 张封面，不能继续按 1px 产生数千个图元。
+    // 只有 case 高度的前四分之一显示倒影。用单个 Gouraud 纹理四边形
+    // 让 alpha 在硬件中连续插值，避免 4px 横带产生重复画面和锯齿层，
+    // 同时把每张封面的倒影命令数从最多 32 个降为 2 个。
     float totalHeight = transform->caseHeight;
     float reflectionHeight = totalHeight / 4.0f;
-    float rowHeight = reflectionHeight / 16.0f;
-    if (rowHeight < 4.0f)
-        rowHeight = 4.0f;
-    float alphaStart = 0x20;
-    float alphaEnd = 0x00;
-
     if (reflectionHeight <= 0.0f)
         return;
 
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-    // Bind each source once. Rebinding the same two textures for every reflection
-    // band needlessly increments the TexManager use counters during a page scroll.
+
+    u64 reflectionTopColor = GS_SETREG_RGBAQ(color & 0xFF, (color >> 8) & 0xFF,
+                                              (color >> 16) & 0xFF, 0x20, 0x00);
+    u64 reflectionBottomColor = GS_SETREG_RGBAQ(color & 0xFF, (color >> 8) & 0xFF,
+                                                 (color >> 16) & 0xFF, 0x00, 0x00);
+    float screenTop = transform->reflectionBaseY;
+    float screenBottom = screenTop + reflectionHeight;
+    float texTop = ((totalHeight - reflectionHeight) / totalHeight) * inlay->Height;
+    float texBottom = inlay->Height;
+
     gsKit_TexManager_bind(gsGlobal, inlay);
+    if (rmSubmitGoraudQuadTexture(inlay,
+                                  transform->inlayLeft, screenTop, 0.0f, texTop,
+                                  transform->inlayRight, screenBottom, inlay->Width, texBottom,
+                                  reflectionTopColor, reflectionBottomColor))
+        order++;
+
+    texTop = ((totalHeight - reflectionHeight) / totalHeight) * overlay->Height;
+    texBottom = overlay->Height;
     gsKit_TexManager_bind(gsGlobal, overlay);
-
-    for (float row = 0; row < reflectionHeight; row += rowHeight) {
-        float drawHeight = rowHeight;
-        if (row + drawHeight > reflectionHeight)
-            drawHeight = reflectionHeight - row;
-
-        float alpha = alphaStart - ((alphaStart - alphaEnd) * (row / reflectionHeight));
-        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF,
-                                               (color >> 8) & 0xFF, (u8)alpha, 0x00);
-        float screenTop = transform->reflectionBaseY + row;
-        float screenBottom = screenTop + drawHeight;
-        float texTop = ((totalHeight - row - drawHeight) / totalHeight) * inlay->Height;
-        float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
-
-        if (rmSubmitQuadTexture(inlay,
-                                transform->inlayLeft, screenTop, 0.0f, texTop,
-                                transform->inlayRight, screenBottom, inlay->Width, texBottom,
-                                reflectionColor))
-            order++;
-
-        texTop = ((totalHeight - row - drawHeight) / totalHeight) * overlay->Height;
-        texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
-        if (rmSubmitSpriteTexture(overlay,
-                                   transform->caseLeft, screenTop,
-                                   transform->caseQuad.ul.u, texTop,
-                                   transform->caseRight, screenBottom,
-                                   transform->caseQuad.br.u, texBottom, reflectionColor))
-            order++;
-    }
+    if (rmSubmitGoraudQuadTexture(overlay,
+                                  transform->caseLeft, screenTop,
+                                  transform->caseQuad.ul.u, texTop,
+                                  transform->caseRight, screenBottom,
+                                  transform->caseQuad.br.u, texBottom,
+                                  reflectionTopColor, reflectionBottomColor))
+        order++;
 }
 
 // Coverflow 专用浮点 overlay 绘制。普通整数版 rmDrawOverlayPixmap() 不经过此路径。
