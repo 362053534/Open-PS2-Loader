@@ -1576,13 +1576,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         gTheme->coverflowIcoPopupActive = 0;
     }
 
-    // 移动动画或新的 ART 请求一出现，旧 ICO 立即失效；不等待请求结束。
-    if (isAnimating || !gEnableArtICO || texLoading > 0) {
+    // 只有 Coverflow 移动动画或当前中心条目变化，才让旧 ICO 立即失效。
+    // 其它 ART（包括背景图）加载期间不改变 ICO 的显示和弹出动画状态。
+    if (isAnimating || !gEnableArtICO) {
         gTheme->coverflowIcoLoaded = 0;
         gTheme->coverflowIcoPopupActive = 0;
     } else {
-        // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的请求放到
+        // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的新请求仍放到
         // 本帧所有 Coverflow 预取完成之后，避免 ICO 与封面争抢当前帧的加载队列。
+        // 即使 texLoading > 0，也必须查询并继续使用已经加载好的当前 ICO。
         icoTexture = getCoverflowIcoTexture(sourceList, item, 0);
         if (icoTexture && icoTexture->Mem) {
             if (!gTheme->coverflowIcoLoaded) {
