@@ -1141,8 +1141,8 @@ static clock_t animationStartTime = 0;
 // 正值下移、负值上移。当前 169 = 在原 161 的基础上整体下移 8，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 169
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
-// 正值下移、负值上移。当前 -42 = 在原 -50 的基础上整体下移 8。
-#define COVERFLOW_APPS_YOFFSET -42
+// 正值下移、负值上移。当前 -50；整体基准下移由 COVERFLOW_BASELINE_YOFFSET 统一负责。
+#define COVERFLOW_APPS_YOFFSET -50
 // APPS 中心封面专用的垂直微调；按 centerFactor 插值，避免滑动动画中发生跳变。
 #define COVERFLOW_APPS_CENTER_YOFFSET 1
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
@@ -1355,7 +1355,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int coverWidth = coverWidthBase;                      // 供布局/中心距/居中
     int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
     if (isApps)
-        coverYOffset += COVERFLOW_APPS_YOFFSET;           // APPS 页签叠加专用偏移（当前 -42，适配 APPS case 的较小高度）
+        coverYOffset += COVERFLOW_APPS_YOFFSET;           // APPS 页签叠加专用偏移（当前 -50，适配 APPS case 的较小高度）
 
     // 间隙（间距）——【独立参数】：间隙 = 非中心基准宽 × 间距%（与放大无关）。宽屏用专用的更大
     // 间距% 把封面拉开、铺满拉宽后的屏幕（宽屏不改封面大小）；4:3 用常规间距%。
