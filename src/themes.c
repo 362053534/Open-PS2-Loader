@@ -1706,7 +1706,13 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         gTheme->coverflowIcoCacheUID = -1;
     }
 
-    if (!animationActive && centerIcoGeometryValid && gEnableArtICO && texLoading == 0) {
+    // ICO 的消失条件只看移动动画：一旦动画开始就不再绘制旧 ICO，
+    // 不等待或依赖 ART 请求是否已经开始。这样短列表翻页时也不会残留旧图。
+    if (isAnimating)
+        return;
+
+    // ICO 的加载条件则独立要求动画已经完全停止，并且当前没有任何 ART 请求。
+    if (centerIcoGeometryValid && gEnableArtICO && texLoading == 0) {
         GSTEXTURE *icoTexture = getCoverflowIcoTexture(sourceList, item);
         if (icoTexture && icoTexture->Mem) {
             icoTexture->Filter = GS_FILTER_LINEAR;
