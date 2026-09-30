@@ -767,64 +767,21 @@ static void menuPrevV()
 }
 
 // ===== Coverflow 翻页滚动（L1/R1）状态 =====
-// gCoverflowScrollRemaining：还剩几格没滚；gCoverflowScrollDir：+1=向后(R1)、-1=向前(L1)；
-// gCoverflowScrollStepMs：每一格滑动的时长。翻页不再一次硬切 N 格，而是逐格滚动、
-// 每格播放一小段线性滑动动画，由 menuHandleInput 每帧在上一格动画放完后推进下一格，
-// 连成一段流畅滚动。
-static int gCoverflowScrollRemaining = 0;
-static int gCoverflowScrollDir = 0;
-static int gCoverflowScrollStepMs = 60;
+// 翻页时 current 会一次性指向目标项；这里仅负责在动画结束前屏蔽其它输入，
+// 不再逐格推进列表或串接多段动画。
+static int gCoverflowPageScrollActive = 0;
 
-// 根据要滚动的总格数算每一格的时长：整段滚动控制在约 350ms，并给每格设上下限，
-// 使得格数多时不至于太慢、格数少时也不至于太快。
-static int coverflowScrollStepMs(int steps)
-{
-    int ms;
-    if (steps < 1)
-        steps = 1;
-    ms = 350 / steps;
-    if (ms < 40)
-        ms = 40;
-    if (ms > 120)
-        ms = 120;
-    return ms;
-}
-
-// 推进一格 Coverflow 翻页滚动：把 current 前/后挪一格并触发一小段线性滑动动画。
-// 到列表头/尾即停止（翻页滚动不环绕）。
-static void menuAdvanceCoverflowScroll(void)
-{
-    if (gCoverflowScrollRemaining <= 0)
-        return;
-
-    submenu_list_t *cur = selected_item->item->current;
-    submenu_list_t *dst = (gCoverflowScrollDir > 0) ? (cur ? cur->next : NULL)
-                                                     : (cur ? cur->prev : NULL);
-    if (dst == NULL) { // 到边界：停止滚动
-        gCoverflowScrollRemaining = 0;
-        fntRefreshCache();
-        return;
-    }
-
-    selected_item->item->current = dst;
-    selected_item->item->pagestart = dst;
-    // 方向与单步导航一致：向后(next)滚动传 -1，向前(prev)滚动传 +1。
-    thmTriggerCoverflowAnimStep((gCoverflowScrollDir > 0) ? -1 : 1, gCoverflowScrollStepMs);
-
-    gCoverflowScrollRemaining--;
-    if (gCoverflowScrollRemaining <= 0)
-        fntRefreshCache();
-}
-
-// 由 menuHandleInputMain / menuHandleInputInfo 每帧在最前面调用：翻页滚动进行中时，
-// 等上一格动画放完再推进下一格；返回 1 表示正在滚动、本帧应屏蔽其它输入。
+// 由 menuHandleInputMain / menuHandleInputInfo 每帧在最前面调用：一次性翻页动画
+// 进行中时屏蔽其它输入。动画结束后恢复普通输入处理。
 static int menuTickCoverflowScroll(void)
 {
-    if (gCoverflowScrollRemaining <= 0)
+    if (!gCoverflowPageScrollActive)
         return 0;
-    if (!thmCoverflowIsAnimating())
-        menuAdvanceCoverflowScroll();
-    return 1;
+    if (thmCoverflowIsAnimating())
+        return 1;
+
+    gCoverflowPageScrollActive = 0;
+    return 0;
 }
 
 static void menuNextPage()
@@ -834,23 +791,32 @@ static void menuNextPage()
     if (cfJump > 0) { // ===== Coverflow 主题：一次跳 cfJump 个游戏 =====
         submenu_list_t *cur = selected_item->item->current;
         if (!cur || !cur->next) { // 已在最后一项：与单步一致环绕到首页
+            gCoverflowPageScrollActive = 0;
             menuFirstPage();
             return;
         }
+
+        // 先沿当前过滤后的 submenu_list_t 链表计算实际目标，边界不足一页时
+        // 只移动到末项，不把不存在的格数算入动画距离。
+        submenu_list_t *target = cur;
+        int steps = 0;
+        while (steps < cfJump && target->next) {
+            target = target->next;
+            steps++;
+        }
+
         if (thmCoverflowAnimEnabled()) {
-            // 逐格滚动 cfJump 格，先立刻走第一格获得即时反馈，其余由每帧驱动。
-            gCoverflowScrollDir = 1;
-            gCoverflowScrollRemaining = cfJump;
-            gCoverflowScrollStepMs = coverflowScrollStepMs(cfJump);
-            menuAdvanceCoverflowScroll();
+            // 目标项一次性写入 current，动画从保存的 cur 整段移动到 target。
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
+            thmTriggerCoverflowAnimMulti(-1, steps, cur);
+            gCoverflowPageScrollActive = 1;
+            fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         } else {
-            // 动画关闭（主题设置滑动时长为 0）：保持硬切 N 跳。
-            int k;
-            for (k = 0; k < cfJump && cur->next; k++)
-                cur = cur->next;
-            selected_item->item->current = cur;
-            selected_item->item->pagestart = cur;
+            // 动画关闭（主题设置滑动时长为 0）：保持硬切到同一个实际目标。
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
             fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         }
@@ -894,21 +860,29 @@ static void menuPrevPage()
     if (cfJump > 0) { // ===== Coverflow 主题：一次跳 cfJump 个游戏 =====
         submenu_list_t *cur = selected_item->item->current;
         if (!cur || !cur->prev) { // 已在首项：与单步一致环绕到末页
+            gCoverflowPageScrollActive = 0;
             menuLastPage();
             return;
         }
+
+        // 与 R1 对称：到首项的剩余距离不足一页时，只滚到首项。
+        submenu_list_t *target = cur;
+        int steps = 0;
+        while (steps < cfJump && target->prev) {
+            target = target->prev;
+            steps++;
+        }
+
         if (thmCoverflowAnimEnabled()) {
-            gCoverflowScrollDir = -1;
-            gCoverflowScrollRemaining = cfJump;
-            gCoverflowScrollStepMs = coverflowScrollStepMs(cfJump);
-            menuAdvanceCoverflowScroll();
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
+            thmTriggerCoverflowAnimMulti(1, steps, cur);
+            gCoverflowPageScrollActive = 1;
+            fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         } else {
-            int k;
-            for (k = 0; k < cfJump && cur->prev; k++)
-                cur = cur->prev;
-            selected_item->item->current = cur;
-            selected_item->item->pagestart = cur;
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
             fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         }

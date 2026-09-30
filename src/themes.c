@@ -605,15 +605,18 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
-// 与 getGameImageTexture() 相同，但走 Coverflow 专用的 cacheGetTextureQuiet()，
+// 与 getGameImageTexture() 相同，但走 Coverflow 专用的 quiet 缓存路径，
 // 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
 // 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
-static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struct submenu_item *item)
+// allowRequest=0 用于 Coverflow 动画期间：只查缓存和已有请求，不新增加载请求。
+static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struct submenu_item *item, int allowRequest)
 {
     if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
         char *startup = list->itemGetStartup(list, item->id);
-        return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
+        if (allowRequest)
+            return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
+        return cacheGetTextureQuietNoRequest(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
     }
 
     return NULL;
@@ -1047,13 +1050,16 @@ static void drawInfoHintText(struct menu_list *menu, struct submenu_list *item, 
 
 static int isAnimating = 0;        // 动画进行中标志
 static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上一个（向右滚动）
+static int animationSteps = 1;     // 本次动画跨过的实际格数（单步为 1）
+static submenu_list_t *animationStartItem = NULL; // 多格动画的起点，current 已提前指向目标项
 static clock_t animationStartTime = 0;
 
 // Coverflow 可调参数。
 // 规则：如果主题 cfg 里写了对应键，则【优先使用主题的定制值】；主题没写才回退到这里的默认值。
 // 这些默认值与 RiptOPL 对齐（count=5 本 fork 默认、scale=30px、anim=200ms、dim=0）。
 // 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
-#define COVERFLOW_MAX 15            // 同屏封面数的硬上限（covers[]/drawOrder[] 数组大小，防越界）
+#define COVERFLOW_MAX 15            // 同屏封面数的硬上限
+#define COVERFLOW_RENDER_MAX (COVERFLOW_MAX * 2) // 多格翻页时：可见窗口 + 最长翻页距离
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值
 // 封面主图基准尺寸：以 448 高度模式为基线，逻辑坐标经过 nativeHeight/480 映射后，
 // 游戏封面在 448 下得到约 140×200。高度 214 = 200×480/448 的整数近似值；宽度保持140，
@@ -1105,12 +1111,8 @@ static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相�
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
-// 本次滑动实际使用的时长（毫秒）。单步导航用主题配置的 gCoverflowAnimSpeed；
-// L1/R1 翻页滚动的每一步用更短的时长，让多步连成流畅滚动。
+// 本次滑动实际使用的时长（毫秒）。单步和 L1/R1 翻页都使用主题配置的总时长。
 static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
-// 本次滑动是否用线性插值。翻页滚动逐格连续进行时用线性(=1)保持匀速、不在每格
-// 边界减速抖动；单步导航仍用三次缓出(=0)，手感不变。
-static int gCoverflowLinearAnim = 0;
 
 void thmTriggerCoverflowAnim(int direction)
 {
@@ -1120,24 +1122,28 @@ void thmTriggerCoverflowAnim(int direction)
 
     isAnimating = 1;
     animationDirection = direction;
+    animationSteps = 1;
+    animationStartItem = NULL; // 单步导航从目标项的相邻项开始
     animationStartTime = clock();
-    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed; // 单步：用主题配置的时长
-    gCoverflowLinearAnim = 0;                        // 单步：三次缓出（带末段速度地板）
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
 }
 
-// 翻页滚动专用的一步滑动：每一步用更短的时长(durationMs)且用线性插值，
-// 连续多步就连成一段匀速、流畅的滚动，而不是硬切。durationMs<=0 时回退到
-// 主题配置的时长。仅在启用 Coverflow 主题时生效。
-void thmTriggerCoverflowAnimStep(int direction, int durationMs)
+// L1/R1 翻页动画：调用方已把 current 一次性写成目标项；
+// drawCoverFlow 通过 startItem 和 steps 把整段 Coverflow 从起点移动到目标项。
+void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *startItem)
 {
     if (!gTheme || gTheme->coverflow == NULL)
         return;
 
+    if (steps < 1)
+        steps = 1;
+
     isAnimating = 1;
     animationDirection = direction;
+    animationSteps = steps;
+    animationStartItem = startItem;
     animationStartTime = clock();
-    gCoverflowActiveAnimSpeed = (durationMs > 0) ? durationMs : gCoverflowAnimSpeed;
-    gCoverflowLinearAnim = 1;
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
 }
 
 // 当前是否正处于 Coverflow 滑动动画中（供 menusys 判断“上一步走完没有”）。
@@ -1248,8 +1254,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         baseCoverH = gCoverflowAppsCoverH;
     }
 
-    // 同屏封面数：宽屏自动 +2（见 getCoverflowDisplayCount），已夹取到 1..COVERFLOW_MAX，
-    // 不会越界 covers[]/drawOrder[]（数组大小 = COVERFLOW_MAX）。
+    // 同屏封面数：已夹取到 1..COVERFLOW_MAX；翻页动画需要的临时槽位另用
+    // COVERFLOW_RENDER_MAX，避免多格移动时数组越界。
     int coverCount = getCoverflowDisplayCount();
     int centerIndex = coverCount / 2;
 
@@ -1323,28 +1329,81 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
     int basePosX = (screenWidth - totalGroupWidth) / 2 + (coverWidth >> 1) + (coverWidth * gTheme->coverflowCoverOffset / 256);
 
+    // 先计算动画进度，再决定本帧需要的临时槽位数量。多格翻页以目标项为最终中心，
+    // 并在目标项的反方向额外保留 animationSteps 个槽位，从而把起点和终点之间的
+    // 整段 Coverflow 一次性画出来；动画结束后恢复原来的 coverCount 个槽位。
+    int animationActive = 0;
+    float eased = 1.0f;
+    float animOffset = 0.0f;
+    int renderCount = coverCount;
+    int renderCenterIndex = centerIndex;
+    int leavingIndex = centerIndex;
+    if (isAnimating) {
+        if (gCoverflowActiveAnimSpeed <= 0) {
+            isAnimating = 0;
+            animationStartItem = NULL;
+            animationSteps = 1;
+        } else {
+            clock_t elapsed = clock() - animationStartTime;
+            float t = (float)elapsed / ((float)gCoverflowActiveAnimSpeed * CLOCKS_PER_SEC / 1000);
+            if (t >= 1.0f) {
+                // 到达目标后立即使用目标窗口，下一帧恢复可见封面和预取的正常加载。
+                isAnimating = 0;
+                animationStartTime = 0;
+                animationStartItem = NULL;
+                animationSteps = 1;
+            } else {
+                animationActive = 1;
+                // 单步和多格翻页统一使用纯三次缓出。
+                float inv = 1.0f - t;
+                eased = 1.0f - inv * inv * inv;
+            }
+        }
+    }
+
+    if (animationActive) {
+        int steps = animationSteps;
+        if (steps < 1)
+            steps = 1;
+        if (steps > COVERFLOW_MAX)
+            steps = COVERFLOW_MAX;
+
+        // next(-1)：起点在目标左侧，因此额外槽位放在左侧；
+        // prev(+1)：起点在目标右侧，因此额外槽位放在右侧。
+        if (animationStartItem && steps > 1) {
+            renderCount = coverCount + steps;
+            if (renderCount > COVERFLOW_RENDER_MAX)
+                renderCount = COVERFLOW_RENDER_MAX;
+            if (animationDirection < 0)
+                renderCenterIndex = centerIndex + steps;
+        }
+
+        leavingIndex = renderCenterIndex + animationDirection * steps;
+        animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
+    }
+
     struct
     {
         submenu_list_t *game;
         GSTEXTURE *texture;
         float renderPosX; // 预计算好的横向绘制坐标（浮点：滑动动画不做整数量化，运动更顺滑）
-    } covers[COVERFLOW_MAX];
+    } covers[COVERFLOW_RENDER_MAX];
 
     int ci;
-    for (ci = 0; ci < coverCount; ci++) {
+    for (ci = 0; ci < renderCount; ci++) {
         covers[ci].game = NULL;
         covers[ci].texture = NULL;
         covers[ci].renderPosX = 0.0f;
     }
-    covers[centerIndex].game = item;
+    covers[renderCenterIndex].game = item;
 
-    // 填充左侧：从中心向前回溯。左边缘不做环绕
+    // 填充左侧：从目标中心向前回溯。左边缘不做环绕
     //（本分支的 menu_item_t 没有 "last" 指针），所以第一项左侧的槽位保持为空。
     // leftmostVisible / rightmostVisible 记录可见窗口两端的实际游戏节点，供下面预取使用。
     submenu_list_t *leftmostVisible = item;
     submenu_list_t *rightmostVisible = item;
     submenu_list_t *cur = item;
-    for (ci = centerIndex - 1; ci >= 0; ci--) {
+    for (ci = renderCenterIndex - 1; ci >= 0; ci--) {
         submenu_list_t *prev = cur->prev;
         if (prev == NULL || prev == item)
             break;
@@ -1357,7 +1416,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     //（centerIndex 之后）的槽位保持为空 —— 与首项左侧留空的规则保持一致，避免末项
     // 右侧又把开头的游戏绕回来显示、造成首/末表现不统一。
     cur = item;
-    for (ci = centerIndex + 1; ci < coverCount; ci++) {
+    for (ci = renderCenterIndex + 1; ci < renderCount; ci++) {
         submenu_list_t *next = cur->next;
         if (next == NULL || next == item)
             break;
@@ -1366,49 +1425,22 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     }
     rightmostVisible = cur;
 
-    // 计算滑动偏移。单步导航用三次缓出（cubic ease-out）；翻页滚动的每一步用线性插值，
-    // 让连续多步连成匀速、流畅的滚动（gCoverflowLinearAnim / gCoverflowActiveAnimSpeed
-    // 由 thmTriggerCoverflowAnim / thmTriggerCoverflowAnimStep 在触发时设定）。
-    float eased = 1.0f;
-    float animOffset = 0.0f;
-    if (isAnimating) {
-        if (gCoverflowActiveAnimSpeed <= 0) {
-            isAnimating = 0;
-        } else {
-            clock_t elapsed = clock() - animationStartTime;
-            float t = (float)elapsed / ((float)gCoverflowActiveAnimSpeed * CLOCKS_PER_SEC / 1000);
-            if (t >= 1.0f) {
-                t = 1.0f;
-                isAnimating = 0;
-                animationStartTime = 0;
-            }
-            if (gCoverflowLinearAnim) {
-                eased = t; // 线性：匀速，翻页滚动逐格衔接不抖动
-            } else {
-                // 单步导航恢复原始三次缓出：位置和速度在 t=1 自然收敛到终点，
-                // 不再使用速度地板，也不在动画尚未结束时提前把 eased 吸附到 1。
-                float inv = 1.0f - t;
-                eased = 1.0f - inv * inv * inv;
-            }
-            animOffset = (float)animationDirection * (float)coverDistance * (eased - 1.0f);
-        }
-    }
+    // targetCenterX 保持原有静止布局：目标项在原来的中心位置，临时槽位只向
+    // 起点所在方向扩展。animOffset 按实际 steps 一次性移动整段 Coverflow。
+    float targetCenterX = (float)basePosX + (float)centerIndex * (float)coverDistance;
+    float posX = targetCenterX + animOffset - (float)renderCenterIndex * (float)coverDistance;
 
-    // 浮点旁路：横向位置全程 float（不再 (int)animOffset 量化），滑动动画逐帧位移连续、更顺滑。
-    float posX = (float)basePosX + animOffset;
-    int leavingIndex = (animationDirection > 0) ? (centerIndex + 1) : (centerIndex - 1);
-
-    // 每个封面的"居中程度"cf（与下面绘制循环里的 centerFactor 完全一致）：静止时仅中心=1；
-    // 动画中 centerIndex 由 0→eased、leavingIndex 由 1→0，其余恒 0（总和恒为 1）。
-    // 每张封面的实际绘制宽 = 非中心宽 + (中心宽-非中心宽)×cf，即比非中心多出 2×centerExtraHalf×cf。
+    // 每个封面的"居中程度"cf：静止时仅目标中心=1；动画中目标中心由 0→eased，
+    // 起点封面由 1→0，其余封面恒为 0。起点和目标可以相隔多格，中间封面仍随整排
+    // 一次性移动，不再逐格触发新的动画。
     int i;
-    float cf[COVERFLOW_MAX];
+    float cf[COVERFLOW_RENDER_MAX];
     float totalCf = 0.0f;
-    for (i = 0; i < coverCount; i++) {
+    for (i = 0; i < renderCount; i++) {
         float f;
-        if (i == centerIndex)
-            f = isAnimating ? eased : 1.0f;
-        else if (isAnimating && i == leavingIndex)
+        if (i == renderCenterIndex)
+            f = animationActive ? eased : 1.0f;
+        else if (animationActive && i == leavingIndex)
             f = 1.0f - eased;
         else
             f = 0.0f;
@@ -1422,7 +1454,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 于是任意相邻封面之间的可见间隙都恰好=gap（含中心封面两侧），中心封面本身位置不变；
     // 补偿量由连续的 cf 驱动，滑动动画中平滑变化、收尾无跳变。
     float cumLeft = 0.0f; // Σ 当前封面【左侧】所有封面的 cf
-    for (i = 0; i < coverCount; i++) {
+    for (i = 0; i < renderCount; i++) {
         float cumRight = totalCf - cumLeft - cf[i]; // Σ 右侧所有封面的 cf
         covers[i].renderPosX = posX + centerExtraHalf * (cumLeft - cumRight);
         posX += (float)coverDistance;
@@ -1433,16 +1465,16 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // io worker 单线程按 FIFO 处理请求，先请求的先加载，所以这样能让居中封面
     // 最先加载、最先显示，再依次向外侧铺开——与下面的【绘制层级】完全解耦：
     // 绘制仍按画家算法（外侧先画、中心最后画=置顶），保证中心封面始终在最上层。
-    // 顺序示例（centerIndex=3）：3, 2,4, 1,5, 0,6。
-    int loadOrder[COVERFLOW_MAX];
+    // 顺序示例（renderCenterIndex=3）：3, 2,4, 1,5, 0,6。
+    int loadOrder[COVERFLOW_RENDER_MAX];
     int loadCount = 0;
-    loadOrder[loadCount++] = centerIndex;
+    loadOrder[loadCount++] = renderCenterIndex;
     int d;
-    for (d = 1; d <= centerIndex || centerIndex + d < coverCount; d++) {
-        if (centerIndex - d >= 0)
-            loadOrder[loadCount++] = centerIndex - d;
-        if (centerIndex + d < coverCount)
-            loadOrder[loadCount++] = centerIndex + d;
+    for (d = 1; d <= renderCenterIndex || renderCenterIndex + d < renderCount; d++) {
+        if (renderCenterIndex - d >= 0)
+            loadOrder[loadCount++] = renderCenterIndex - d;
+        if (renderCenterIndex + d < renderCount)
+            loadOrder[loadCount++] = renderCenterIndex + d;
     }
 
     int li;
@@ -1450,22 +1482,22 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         int idx = loadOrder[li];
         if (covers[idx].game == NULL)
             continue;
-        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item);
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, !animationActive);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
 
     // 生成绘制顺序，实现画家算法的正确层级：
-    //   先画左侧（i 从 0 递增到 centerIndex-1，越靠近中心越后画，压在外侧之上），
-    //   再画右侧（i 从 coverCount-1 递减到 centerIndex+1，同样越靠近中心越后画），
+    //   先画左侧（i 从 0 递增到 renderCenterIndex-1，越靠近中心越后画，压在外侧之上），
+    //   再画右侧（i 从 renderCount-1 递减到 renderCenterIndex+1，同样越靠近中心越后画），
     //   最后画中心封面 —— 保证放大后的中心封面永远在最上层，不被两侧邻居遮挡。
-    int drawOrder[COVERFLOW_MAX];
+    int drawOrder[COVERFLOW_RENDER_MAX];
     int drawCount = 0;
-    for (i = 0; i < centerIndex; i++)
+    for (i = 0; i < renderCenterIndex; i++)
         drawOrder[drawCount++] = i;
-    for (i = coverCount - 1; i > centerIndex; i--)
+    for (i = renderCount - 1; i > renderCenterIndex; i--)
         drawOrder[drawCount++] = i;
-    drawOrder[drawCount++] = centerIndex;
+    drawOrder[drawCount++] = renderCenterIndex;
 
     // 整个主题元素列表已经在 menuRenderElements() 中设置了可见显示区域的 scissor；
     // Coverflow、case、封面和倒影因此与木板等普通主题素材共用同一裁切范围。
@@ -1488,9 +1520,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         //   其余非中心封面：恒为 0。
         // 缩放 / 明暗 / 垂直偏移都据此插值，保证三者与动画完全同步、平滑过渡。
         float centerFactor;
-        if (i == centerIndex)
-            centerFactor = isAnimating ? eased : 1.0f;
-        else if (isAnimating && i == leavingIndex)
+        if (i == renderCenterIndex)
+            centerFactor = animationActive ? eased : 1.0f;
+        else if (animationActive && i == leavingIndex)
             centerFactor = 1.0f - eased;
         else
             centerFactor = 0.0f;
@@ -1574,7 +1606,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 #endif
     }
 
-    // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
+    // 预取（prefetch）：动画结束后为可见窗口【两侧当前看不见】的若干封面提前排队加载。这样左右滚动时
     // 这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
     //
     // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 2）。
@@ -1585,7 +1617,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
-    if (img->cache && gCoverflowPreload > 0) {
+    if (!animationActive && img->cache && gCoverflowPreload > 0) {
         int preloadPerSide = gCoverflowPreload;
 
         submenu_list_t *head = menu->item->submenu;
@@ -1603,7 +1635,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             }
             if (prev == NULL || prev == item)
                 break; // 空列表，或列表太短已绕回中心项，停止
-            getCoverflowTexture(img->cache, sourceList, &prev->item);
+            getCoverflowTexture(img->cache, sourceList, &prev->item, 1);
             pcur = prev;
         }
 
@@ -1615,7 +1647,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                 next = head; // 环绕到列表头
             if (next == NULL || next == item)
                 break;
-            getCoverflowTexture(img->cache, sourceList, &next->item);
+            getCoverflowTexture(img->cache, sourceList, &next->item, 1);
             pcur = next;
         }
     }

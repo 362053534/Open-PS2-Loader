@@ -793,8 +793,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 // 会把这些启发式打乱，导致封面永远排不进加载、只显示占位图。
 // 本函数刻意不触碰上述任何全局状态，改用与通用分支相同的 cacheQueueImageRequest()
 // 多请求加载路径，因此可在同一帧安全地为多张封面并行取图/排队加载。
-// 命中返回纹理；未命中则排队后台加载并返回 NULL（本帧先由调用方显示占位图）。
-GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
+// 命中返回纹理；未命中则按 queueRequest 决定是否排队后台加载并返回 NULL。
+static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId, int queueRequest)
 {
     if (!cache || !cache->content || !value)
         return NULL;
@@ -803,7 +803,8 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
     if (*cacheId == -2)
         return NULL;
 
-    // 已分配槽位：检查是否命中
+    // 已分配槽位：检查是否命中。动画期间即使不允许新请求，已经在队列中的
+    // 请求仍然通过 qr 路径正常等待，已经加载的纹理也继续续期。
     if (*cacheId >= 0 && *cacheId < cache->count) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
@@ -817,10 +818,14 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
                 *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
                 return NULL;
             }
-            // texFound == -1：上次加载被 CD/skipQr 中断，落到下面重新排队
+            // texFound == -1：上次加载被 CD/skipQr 中断，只有允许请求时才能重试
         }
         *cacheId = -1; // UID 不匹配（槽被别的封面抢走）→ 重新查找
     }
+
+    // Coverflow 翻页/单步动画期间只允许查询已有缓存，不分配新槽位，也不入队。
+    if (!queueRequest)
+        return NULL;
 
     // 需要加载：挑一个空闲/最旧、且未在加载中的槽
     cache_entry_t *oldest = NULL;
@@ -847,4 +852,14 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
         cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // quiet=1：Coverflow 路径
     }
     return NULL;
+}
+
+GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
+{
+    return cacheGetTextureQuietInternal(cache, list, cacheId, UID, value, itemId, 1);
+}
+
+GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
+{
+    return cacheGetTextureQuietInternal(cache, list, cacheId, UID, value, itemId, 0);
 }

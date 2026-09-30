@@ -157,8 +157,9 @@ extern theme_t *gTheme;
 // 1 = 上一个（向右滚动）。即使当前没有启用 Coverflow 主题，调用也是安全的。
 void thmTriggerCoverflowAnim(int direction);
 
-// 翻页滚动专用：以 durationMs 毫秒、线性插值滑动一步（连续多步连成流畅滚动）。
-void thmTriggerCoverflowAnimStep(int direction, int durationMs);
+// 翻页滚动专用：从 startItem 一次性滑到已计算好的目标项，跨过 steps 格；
+// current 会在调用方先写成目标项，动画仍复用单步的纯三次缓出。
+void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *startItem);
 
 // 当前是否正处于 Coverflow 滑动动画中。
 int thmCoverflowIsAnimating(void);
