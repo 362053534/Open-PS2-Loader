@@ -1084,8 +1084,8 @@ static clock_t animationStartTime = 0;
 // 当前 0（不额外增加相邻封面之间的间隙）。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 0
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
-// 正值下移、负值上移。当前 170 = 在原 160 的基础上整体下移 10，游戏和 APPS 共用。
-#define COVERFLOW_BASELINE_YOFFSET 170
+// 正值下移、负值上移。当前 165 = 在原 170 的基础上整体上移 5，游戏和 APPS 共用。
+#define COVERFLOW_BASELINE_YOFFSET 165
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
 // 正值下移、负值上移。当前 -52 = 抵消 APPS case 比游戏 case 少约 32 的半高补偿。
 #define COVERFLOW_APPS_YOFFSET -52
@@ -1097,7 +1097,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET -50 // 非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
+#define COVERFLOW_NONCENTER_YOFFSET -40 // 非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
