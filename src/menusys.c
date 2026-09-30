@@ -1118,10 +1118,12 @@ static void menuRenderElements(theme_element_t *elem)
 
     WaitSema(menuSemaId);
 
-    // Theme elements, including ordinary StaticImage assets such as the Coverflow plank,
-    // must all share the visible-display scissor. Previously this was set only inside
-    // drawCoverFlow(), which was too late for elements drawn before Coverflow.
-    rmSetScissorDisplay();
+    // Only Coverflow needs the extra visible-display clipping: its animated outer
+    // covers can intentionally move outside the theme panel. Keep the legacy path
+    // untouched for list themes, including their overscan/background behavior.
+    int coverflowScissor = (gTheme && gTheme->coverflow != NULL);
+    if (coverflowScissor)
+        rmSetScissorDisplay();
 
     while (elem) {
         if (elem->drawElem)
@@ -1130,8 +1132,9 @@ static void menuRenderElements(theme_element_t *elem)
         elem = elem->next;
     }
 
-    // Do not leak the theme scissor into other GUI drawing paths.
-    rmResetScissor();
+    // Do not leak the Coverflow scissor into other GUI drawing paths.
+    if (coverflowScissor)
+        rmResetScissor();
     SignalSema(menuSemaId);
 }
 

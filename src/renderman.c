@@ -389,33 +389,39 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
 // 供各 reflect 函数共用的辅助函数。
 static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 color)
 {
-    float rowHeight = 1.0f;
+    // 只有前四分之一的倒影具有非零 alpha；提交其余 75% 的完全透明行只会
+    // 消耗 render queue 空间。Coverflow 在翻页时会同时绘制多个封面，过多的
+    // 1px 图元会溢出 gsKit 的 256 KiB persistent queue，最终表现为死机。
+    // 至少 4px 一行，并把带宽限制在最多 16 条横带；仍保持同一段镜像采样和渐隐，只减少 GIF 命令数量。
     float totalHeight = quad->br.y - quad->ul.y;
+    float reflectionHeight = totalHeight / 4.0f;
+    float rowHeight = reflectionHeight / 16.0f;
+    if (rowHeight < 4.0f)
+        rowHeight = 4.0f;
     float alphaStart = 0x20;
     float alphaEnd = 0x00;
 
-    if (totalHeight <= 0.0f)
+    if (reflectionHeight <= 0.0f)
         return;
 
     // 确保渐隐的各行能正常进行 alpha 混合。
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
     gsKit_TexManager_bind(gsGlobal, txt);
 
-    for (float row = 0; row < totalHeight; row += rowHeight) {
-        float alpha;
-        if (row < totalHeight / 4.0f)
-            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
-        else
-            alpha = 0x00;
+    for (float row = 0; row < reflectionHeight; row += rowHeight) {
+        float drawHeight = rowHeight;
+        if (row + drawHeight > reflectionHeight)
+            drawHeight = reflectionHeight - row;
 
+        float alpha = alphaStart - ((alphaStart - alphaEnd) * (row / reflectionHeight));
         u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
 
         // 自底向上采样纹理，使倒影呈镜像效果。
-        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * txt->Height;
+        float texTop = ((totalHeight - row - drawHeight) / totalHeight) * txt->Height;
         float texBottom = ((totalHeight - row) / totalHeight) * txt->Height;
 
         float screenTop = quad->br.y + fRenderYOff + row;
-        float screenBottom = quad->br.y + fRenderYOff + row + rowHeight;
+        float screenBottom = screenTop + drawHeight;
 
         gsKit_prim_sprite_texture(gsGlobal, txt,
                                   quad->ul.x + fRenderXOff, screenTop,
@@ -754,31 +760,39 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
 static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GSTEXTURE *overlay,
                                       GSTEXTURE *inlay, u64 color)
 {
-    float rowHeight = 1.0f;
+    // 倒影的有效 alpha 只在 case 高度的前四分之一；跳过后面的透明行，
+    // 并用至少 4px、最多 16 条横带控制 render queue 用量。这个路径在 L1/R1 翻页时可能
+    // 同时绘制最多 COVERFLOW_RENDER_MAX 张封面，不能继续按 1px 产生数千个图元。
     float totalHeight = transform->caseHeight;
+    float reflectionHeight = totalHeight / 4.0f;
+    float rowHeight = reflectionHeight / 16.0f;
+    if (rowHeight < 4.0f)
+        rowHeight = 4.0f;
     float alphaStart = 0x20;
     float alphaEnd = 0x00;
 
-    if (totalHeight <= 0.0f)
+    if (reflectionHeight <= 0.0f)
         return;
 
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    // Bind each source once. Rebinding the same two textures for every reflection
+    // band needlessly increments the TexManager use counters during a page scroll.
+    gsKit_TexManager_bind(gsGlobal, inlay);
+    gsKit_TexManager_bind(gsGlobal, overlay);
 
-    for (float row = 0; row < totalHeight; row += rowHeight) {
-        float alpha;
-        if (row < totalHeight / 4.0f)
-            alpha = alphaStart - ((alphaStart - alphaEnd) * (row / (totalHeight / 4.0f)));
-        else
-            alpha = alphaEnd;
+    for (float row = 0; row < reflectionHeight; row += rowHeight) {
+        float drawHeight = rowHeight;
+        if (row + drawHeight > reflectionHeight)
+            drawHeight = reflectionHeight - row;
 
+        float alpha = alphaStart - ((alphaStart - alphaEnd) * (row / reflectionHeight));
         u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF,
                                                (color >> 8) & 0xFF, (u8)alpha, 0x00);
         float screenTop = transform->reflectionBaseY + row;
-        float screenBottom = screenTop + rowHeight;
-        float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
+        float screenBottom = screenTop + drawHeight;
+        float texTop = ((totalHeight - row - drawHeight) / totalHeight) * inlay->Height;
         float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
 
-        gsKit_TexManager_bind(gsGlobal, inlay);
         gsKit_prim_quad_texture(gsGlobal, inlay,
                                 transform->inlayLeft, screenTop,
                                 0.0f, texTop,
@@ -791,9 +805,8 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
                                 order, reflectionColor);
         order++;
 
-        texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
+        texTop = ((totalHeight - row - drawHeight) / totalHeight) * overlay->Height;
         texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
-        gsKit_TexManager_bind(gsGlobal, overlay);
         gsKit_prim_sprite_texture(gsGlobal, overlay,
                                   transform->caseLeft, screenTop,
                                   transform->caseQuad.ul.u, texTop,
@@ -945,11 +958,18 @@ void rmSetOverscan(int overscan)
 // 把 GS 裁剪框(scissor)收紧到【可见显示区域】= 过扫补偿后的矩形
 // [iDisplayXOff, iDisplayXOff+iDisplayWidth) × [iDisplayYOff, iDisplayYOff+iDisplayHeight)。
 // 之后排入的所有图元都会被 GS 硬件裁到此框内，超出部分不写入帧缓冲。
-// 用于 Coverflow：滑动动画中两侧封面会移出可见区、进入左右黑边甚至帧缓冲外，
-// 在实机上造成图像残留/串色；收紧 scissor 后这些像素被硬件裁掉，从根本上杜绝残留。
-// scissor 坐标为帧缓冲像素坐标(含端点)，与图元坐标同系（XYOFFSET 已把图元 0 对到帧缓冲 0）。
+//
+// hires 例外：gsKit 的多 pass 路径会为每个 pass 建立“局部” scissor（y=0 到
+// 当前 pass 的行数），同时用 XYOFFSET 把该 pass 映射回完整屏幕。普通的
+// GS_SETREG_SCISSOR() 使用的是 pass 局部坐标，不能直接套用这里的完整 1080i
+// 显示坐标；否则每个 pass 都会从同一个 y0 开始裁剪，造成横向内容缺失和不同步。
+// WOPL 不在 hires 的主题绘制队列中改写 scissor，因此这里保持 gsKit pass 的
+// 原生设置，只在单 framebuffer 模式使用可见区域裁剪。
 void rmSetScissorDisplay(void)
 {
+    if (hires)
+        return;
+
     int x0 = iDisplayXOff;
     int y0 = iDisplayYOff;
     int x1 = iDisplayXOff + iDisplayWidth - 1;
@@ -961,9 +981,12 @@ void rmSetScissorDisplay(void)
     gsKit_set_scissor(gsGlobal, GS_SETREG_SCISSOR(x0, x1, y0, y1));
 }
 
-// 恢复默认 scissor（整个帧缓冲）。与 rmSetScissorDisplay 成对使用。
+// 恢复默认 scissor（整个帧缓冲）。hires 时不能覆盖 gsKit 为当前 pass
+// 写入的局部 scissor；与 rmSetScissorDisplay() 保持同样的 no-op 规则。
 void rmResetScissor(void)
 {
+    if (hires)
+        return;
     gsKit_set_scissor(gsGlobal, GS_SCISSOR_RESET);
 }
 
