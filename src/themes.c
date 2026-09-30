@@ -1585,15 +1585,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // = case 尺寸 × 内框占比(fracW/H)，与正常路径里 inlay 的实际占屏尺寸一致，居中在同一位置。
         // 用来在【无 case】的隔离条件下，单看缩小封面的丢边是否受倒影影响。
         if (covers[i].texture) {
-            // 诊断分支也使用同一“底部锚点”，避免与正式 case 路径的定位方式不一致。
-            if (elem->reflection)
-                rmDrawPixmapFracReflect(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset,
-                                        (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth * fracW,
-                                        currentCoverHeight * fracH, SCALING_NONE, coverColor);
-            else
-                rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset,
-                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth * fracW,
-                                 currentCoverHeight * fracH, SCALING_NONE, coverColor);
+            // 诊断分支也使用同一“底部锚点”，但明确关闭 case 和倒影，
+            // 只观察封面主图本身的尺寸、采样和清晰度。
+            rmDrawPixmapFrac(covers[i].texture, renderPosX, elem->posY + coverYOffset + centerYOffset,
+                             (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth * fracW,
+                             currentCoverHeight * fracH, SCALING_NONE, coverColor);
         }
 #else
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
