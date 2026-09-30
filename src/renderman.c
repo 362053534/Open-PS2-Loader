@@ -870,32 +870,54 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
         rBrY = rUlY + casePixelH;
     }
 
-    // child 必须从【已经实际绘制出来的整数 case】派生，而不能继续使用未取整的
-    // caseW/caseH。否则父级已经保持在 N 像素时，child 仍会随着 199.7→199.9
-    // 的浮点动画独立取整，导致封面在 case 内来回蠕动。
+    // Case 只是外壳，不能用“已经取整的 casePixelH / baseH”反过来决定封面尺寸：
+    // casePixelH 是物理像素，而 baseH 是 640×480 逻辑坐标，二者不能直接相除。
+    // 之前的写法正是因此把 448p 的 214 逻辑高度压成了约 199 像素。
     //
-    // 每个边距都以 case 的左上整数顶点为基准单独锁定；这样 case 的位置/尺寸
-    // 一旦不变，封面的四条边就绝不会再因为中心点或宽高的二次取整而改变。
-    float caseScaleX = casePixelW / fbw;
-    float caseScaleY = casePixelH / fbh;
+    // 封面目标尺寸继续从【未取整的 caseW/caseH】和 overlay 内框比例得到；这与
+    // drawCoverFlow 中由 inlayW/inlayH 反推 case 的方向相反，因而 Case 只适配封面。
+    // casePixelW/H 只用于确定 Case 已经落地后的实际中心，不能用来缩放封面。
+    float caseScaleX = caseW / fbw;
+    float caseScaleY = caseH / fbh;
     float offL = ((float)ovUlx + (float)ovBlx) * 0.5f * caseScaleX;
     float offR = ((float)ovUrx + (float)ovBrx) * 0.5f * caseScaleX;
     float offT = ((float)ovUly + (float)ovUry) * 0.5f * caseScaleY;
     float offB = ((float)ovBly + (float)ovBry) * 0.5f * caseScaleY;
-    float inlayLeft = rUlX + rmPxSnap(offL);
-    float inlayRight = rUlX + rmPxSnap(offR);
-    float inlayTop = rUlY + rmPxSnap(offT);
-    float inlayBottom = rUlY + rmPxSnap(offB);
-    // 四个内框顶点均使用同一个已经锁定的 case 左上角和实际 case 尺寸。
-    // 这样中心/非中心、移动/缩放时，主图顶点始终是 case 顶点的同一组变换结果。
-    float inlayUlX = rUlX + rmPxSnap((float)ovUlx * caseScaleX);
-    float inlayUlY = rUlY + rmPxSnap((float)ovUly * caseScaleY);
-    float inlayUrx = rUlX + rmPxSnap((float)ovUrx * caseScaleX);
-    float inlayUry = rUlY + rmPxSnap((float)ovUry * caseScaleY);
-    float inlayBlx = rUlX + rmPxSnap((float)ovBlx * caseScaleX);
-    float inlayBly = rUlY + rmPxSnap((float)ovBly * caseScaleY);
-    float inlayBrx = rUlX + rmPxSnap((float)ovBrx * caseScaleX);
-    float inlayBry = rUlY + rmPxSnap((float)ovBry * caseScaleY);
+    float inlayWidth = rmPxSnap(offR - offL);
+    float inlayHeight = rmPxSnap(offB - offT);
+
+    // 以实际 Case 的中心放置“固定尺寸”的封面。这样 Case 外层即使因整数像素
+    // 锁定与理想浮点尺寸相差不到一像素，也不会把封面本身压缩或拉伸。
+    float innerCenterX = ((float)ovUlx + (float)ovUrx + (float)ovBlx + (float)ovBrx)
+                       * 0.25f * (casePixelW / fbw);
+    float innerCenterY = ((float)ovUly + (float)ovUry + (float)ovBly + (float)ovBry)
+                       * 0.25f * (casePixelH / fbh);
+    float inlayLeft = rmPxSnap(rUlX + innerCenterX - inlayWidth * 0.5f);
+    float inlayTop = rmPxSnap(rUlY + innerCenterY - inlayHeight * 0.5f);
+    float inlayRight = inlayLeft + inlayWidth;
+    float inlayBottom = inlayTop + inlayHeight;
+
+    // 非矩形内框仍使用 overlay 的四个原始顶点；现有内置 cf_case 是矩形，
+    // 因而会走下面的固定尺寸矩形分支，四个顶点同时保持目标封面尺寸。
+    int axisAlignedInner = (ovUlx == ovBlx && ovUrx == ovBrx &&
+                            ovUly == ovUry && ovBly == ovBry);
+    float inlayUlX, inlayUlY, inlayUrx, inlayUry;
+    float inlayBlx, inlayBly, inlayBrx, inlayBry;
+    if (axisAlignedInner) {
+        inlayUlX = inlayBlx = inlayLeft;
+        inlayUrx = inlayBrx = inlayRight;
+        inlayUlY = inlayUry = inlayTop;
+        inlayBly = inlayBry = inlayBottom;
+    } else {
+        inlayUlX = rUlX + rmPxSnap((float)ovUlx * caseScaleX);
+        inlayUlY = rUlY + rmPxSnap((float)ovUly * caseScaleY);
+        inlayUrx = rUlX + rmPxSnap((float)ovUrx * caseScaleX);
+        inlayUry = rUlY + rmPxSnap((float)ovUry * caseScaleY);
+        inlayBlx = rUlX + rmPxSnap((float)ovBlx * caseScaleX);
+        inlayBly = rUlY + rmPxSnap((float)ovBly * caseScaleY);
+        inlayBrx = rUlX + rmPxSnap((float)ovBrx * caseScaleX);
+        inlayBry = rUlY + rmPxSnap((float)ovBry * caseScaleY);
+    }
 
     transform->caseQuad = floatCase;
     // 不要把 fRender*Off 提前抵消：rmDrawQuad() 会像普通 ItemCover 一样统一加上它。
