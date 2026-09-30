@@ -880,8 +880,9 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
                                                  (color >> 16) & 0xFF, 0x00, 0x00);
     float screenTop = transform->reflectionBaseY;
     float screenBottom = screenTop + reflectionHeight;
-    float texTop = ((totalHeight - reflectionHeight) / totalHeight) * inlay->Height;
-    float texBottom = inlay->Height;
+    // 倒影上下镜像：反射区域顶部取源图底部，向下逐渐取到更高的源图位置。
+    float texTop = inlay->Height;
+    float texBottom = ((totalHeight - reflectionHeight) / totalHeight) * inlay->Height;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
     if (rmSubmitGoraudQuadTexture(inlay,
@@ -890,8 +891,8 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
                                   reflectionTopColor, reflectionBottomColor))
         order++;
 
-    texTop = ((totalHeight - reflectionHeight) / totalHeight) * overlay->Height;
-    texBottom = overlay->Height;
+    texTop = overlay->Height;
+    texBottom = ((totalHeight - reflectionHeight) / totalHeight) * overlay->Height;
     gsKit_TexManager_bind(gsGlobal, overlay);
     if (rmSubmitGoraudQuadTexture(overlay,
                                   transform->caseLeft, screenTop,
