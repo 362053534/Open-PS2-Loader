@@ -1120,7 +1120,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
 #define COVERFLOW_ICO_SIZE 128
-#define COVERFLOW_ICO_POPUP_GAP 20
+#define COVERFLOW_ICO_POPUP_GAP 17
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
