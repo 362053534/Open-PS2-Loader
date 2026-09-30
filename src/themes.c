@@ -1087,8 +1087,10 @@ static clock_t animationStartTime = 0;
 // 正值下移、负值上移。当前 165 = 在原 170 的基础上整体上移 5，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 165
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
-// 正值下移、负值上移。当前 -52 = 抵消 APPS case 比游戏 case 少约 32 的半高补偿。
-#define COVERFLOW_APPS_YOFFSET -52
+// 正值下移、负值上移。当前 -50 = 在原 -52 的基础上整体下移 2。
+#define COVERFLOW_APPS_YOFFSET -50
+// APPS 中心封面专用的垂直微调；按 centerFactor 插值，避免滑动动画中发生跳变。
+#define COVERFLOW_APPS_CENTER_YOFFSET 4
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
 // 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
@@ -1548,11 +1550,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
         // 非中心封面相对中心封面额外偏移【与 cfg y 相同的逻辑坐标单位】（正=下移、负=上移），
-        // 中心封面不动；偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
+        // 普通主题的中心封面不追加偏移；APPS 中心封面另有专用微调。非中心偏移量随 centerFactor 插值，
+        // 滑动时垂直位置也平滑过渡。
         // 这里不另设百分比参数：cfg 的 y 与本偏移都会经过同一个 nativeH/480 映射，
         // 因此二者在 448/480/512 下保持统一的相对定位规则，同时保留自然的分辨率差异。
         // 浮点旁路：垂直偏移保持 float，不取整，非中心↔中心的垂直过渡与放大动画同样顺滑。
         float centerYOffset = (float)COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor);
+        if (isApps)
+            centerYOffset += (float)COVERFLOW_APPS_CENTER_YOFFSET * centerFactor;
 
         // 纹理已在上面的【中心向外扩散】加载遍里请求并填好 covers[i].texture，
         // 这里直接取用，不再重复请求（避免打乱加载优先级）。
