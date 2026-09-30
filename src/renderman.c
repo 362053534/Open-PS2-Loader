@@ -20,6 +20,10 @@ s32 guiThreadID;
 static int order;
 static short int vmode = -1;
 static u8 hires = 0;
+// hires 的 gsKit pass 使用局部 scissor，无法在一个共享的 draw queue 中表达
+// 每个 pass 不同的 Y 偏移。因此 Coverflow 在 hires 下改用图元级裁剪；普通
+// 非 Coverflow 路径不启用此状态。
+static u8 rmClipToDisplay = 0;
 static u8 guiWakeupCount;
 static int vsync_id = -1;
 
@@ -320,6 +324,73 @@ static void rmSetupQuad(GSTEXTURE *txt, int x, int y, short aligned, int w, int 
     }
 }
 
+// 将轴对齐纹理矩形裁剪到可见 display rect，并按裁剪比例同步修正 UV。
+// 仅在 hires Coverflow 路径启用；普通主题仍完全走原来的 GS 提交路径。
+static int rmClipTextureRect(float *x1, float *y1, float *u1, float *v1,
+                             float *x2, float *y2, float *u2, float *v2)
+{
+    if (!rmClipToDisplay)
+        return 1;
+
+    float left = (float)iDisplayXOff;
+    float top = (float)iDisplayYOff;
+    float right = (float)(iDisplayXOff + iDisplayWidth);
+    float bottom = (float)(iDisplayYOff + iDisplayHeight);
+    float width = *x2 - *x1;
+    float height = *y2 - *y1;
+
+    if (width <= 0.0f || height <= 0.0f || *x2 <= left || *x1 >= right || *y2 <= top || *y1 >= bottom)
+        return 0;
+
+    if (*x1 < left) {
+        float t = (left - *x1) / width;
+        *u1 += (*u2 - *u1) * t;
+        *x1 = left;
+    }
+    if (*x2 > right) {
+        float t = (right - *x1) / (*x2 - *x1);
+        *u2 = *u1 + (*u2 - *u1) * t;
+        *x2 = right;
+    }
+    if (*y1 < top) {
+        float t = (top - *y1) / height;
+        *v1 += (*v2 - *v1) * t;
+        *y1 = top;
+    }
+    if (*y2 > bottom) {
+        float t = (bottom - *y1) / (*y2 - *y1);
+        *v2 = *v1 + (*v2 - *v1) * t;
+        *y2 = bottom;
+    }
+
+    return (*x2 > *x1 && *y2 > *y1);
+}
+
+static int rmSubmitSpriteTexture(GSTEXTURE *txt, float x1, float y1, float u1, float v1,
+                                 float x2, float y2, float u2, float v2, u64 color)
+{
+    if (!rmClipTextureRect(&x1, &y1, &u1, &v1, &x2, &y2, &u2, &v2))
+        return 0;
+
+    gsKit_prim_sprite_texture(gsGlobal, txt, x1, y1, u1, v1, x2, y2, u2, v2, order, color);
+    return 1;
+}
+
+static int rmSubmitQuadTexture(GSTEXTURE *txt, float x1, float y1, float u1, float v1,
+                               float x2, float y2, float u2, float v2, u64 color)
+{
+    if (!rmClipTextureRect(&x1, &y1, &u1, &v1, &x2, &y2, &u2, &v2))
+        return 0;
+
+    gsKit_prim_quad_texture(gsGlobal, txt,
+                            x1, y1, u1, v1,
+                            x2, y1, u2, v1,
+                            x1, y2, u1, v2,
+                            x2, y2, u2, v2,
+                            order, color);
+    return 1;
+}
+
 void rmDrawQuad(rm_quad_t *q)
 {
     if ((q->txt->PSM == GS_PSM_CT32) || (q->txt->Clut && q->txt->ClutPSM == GS_PSM_CT32)) {
@@ -331,12 +402,12 @@ void rmDrawQuad(rm_quad_t *q)
     }
 
     gsKit_TexManager_bind(gsGlobal, q->txt);
-    gsKit_prim_sprite_texture(gsGlobal, q->txt,
+    if (rmSubmitSpriteTexture(q->txt,
                               q->ul.x + fRenderXOff, q->ul.y + fRenderYOff,
                               q->ul.u, q->ul.v,
                               q->br.x + fRenderXOff, q->br.y + fRenderYOff,
-                              q->br.u, q->br.v, order, q->color);
-    order++;
+                              q->br.u, q->br.v, q->color))
+        order++;
 }
 
 void rmDrawPixmap(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, short scaled, u64 color)
@@ -423,13 +494,12 @@ static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 colo
         float screenTop = quad->br.y + fRenderYOff + row;
         float screenBottom = screenTop + drawHeight;
 
-        gsKit_prim_sprite_texture(gsGlobal, txt,
-                                  quad->ul.x + fRenderXOff, screenTop,
-                                  quad->ul.u, texTop,
-                                  quad->br.x + fRenderXOff, screenBottom,
-                                  quad->br.u, texBottom,
-                                  order, reflectionColor);
-        order++;
+        if (rmSubmitSpriteTexture(txt,
+                                   quad->ul.x + fRenderXOff, screenTop,
+                                   quad->ul.u, texTop,
+                                   quad->br.x + fRenderXOff, screenBottom,
+                                   quad->br.u, texBottom, reflectionColor))
+            order++;
     }
 }
 
@@ -741,13 +811,11 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
-    gsKit_prim_quad_texture(gsGlobal, inlay,
+    if (rmSubmitQuadTexture(inlay,
                             transform->inlayLeft, transform->inlayTop, 0.0f, 0.0f,
-                            transform->inlayRight, transform->inlayTop, inlay->Width, 0.0f,
-                            transform->inlayLeft, transform->inlayBottom, 0.0f, inlay->Height,
                             transform->inlayRight, transform->inlayBottom, inlay->Width, inlay->Height,
-                            order, color);
-    order++;
+                            color))
+        order++;
 
     // caseQuad 已经包含最终整数边界；rmDrawQuad 只负责提交，不再重新计算几何。
     // 用局部副本满足旧接口的非 const 参数，不改变 transform 本身。
@@ -793,27 +861,20 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
         float texTop = ((totalHeight - row - drawHeight) / totalHeight) * inlay->Height;
         float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
 
-        gsKit_prim_quad_texture(gsGlobal, inlay,
-                                transform->inlayLeft, screenTop,
-                                0.0f, texTop,
-                                transform->inlayRight, screenTop,
-                                inlay->Width, texTop,
-                                transform->inlayLeft, screenBottom,
-                                0.0f, texBottom,
-                                transform->inlayRight, screenBottom,
-                                inlay->Width, texBottom,
-                                order, reflectionColor);
-        order++;
+        if (rmSubmitQuadTexture(inlay,
+                                transform->inlayLeft, screenTop, 0.0f, texTop,
+                                transform->inlayRight, screenBottom, inlay->Width, texBottom,
+                                reflectionColor))
+            order++;
 
         texTop = ((totalHeight - row - drawHeight) / totalHeight) * overlay->Height;
         texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
-        gsKit_prim_sprite_texture(gsGlobal, overlay,
-                                  transform->caseLeft, screenTop,
-                                  transform->caseQuad.ul.u, texTop,
-                                  transform->caseRight, screenBottom,
-                                  transform->caseQuad.br.u, texBottom,
-                                  order, reflectionColor);
-        order++;
+        if (rmSubmitSpriteTexture(overlay,
+                                   transform->caseLeft, screenTop,
+                                   transform->caseQuad.ul.u, texTop,
+                                   transform->caseRight, screenBottom,
+                                   transform->caseQuad.br.u, texBottom, reflectionColor))
+            order++;
     }
 }
 
@@ -964,12 +1025,18 @@ void rmSetOverscan(int overscan)
 // GS_SETREG_SCISSOR() 使用的是 pass 局部坐标，不能直接套用这里的完整 1080i
 // 显示坐标；否则每个 pass 都会从同一个 y0 开始裁剪，造成横向内容缺失和不同步。
 // WOPL 不在 hires 的主题绘制队列中改写 scissor，因此这里保持 gsKit pass 的
-// 原生设置，只在单 framebuffer 模式使用可见区域裁剪。
+// 原生设置；Coverflow 的轴对齐纹理则在提交前按同一个可见矩形裁剪。
 void rmSetScissorDisplay(void)
 {
-    if (hires)
+    if (hires) {
+        // A shared hires draw queue cannot carry a different Y scissor for each
+        // pass. Enable exact rectangle clipping at the texture primitive level
+        // instead; the pass queue keeps its own framebuffer-local scissor.
+        rmClipToDisplay = 1;
         return;
+    }
 
+    rmClipToDisplay = 0;
     int x0 = iDisplayXOff;
     int y0 = iDisplayYOff;
     int x1 = iDisplayXOff + iDisplayWidth - 1;
@@ -981,10 +1048,11 @@ void rmSetScissorDisplay(void)
     gsKit_set_scissor(gsGlobal, GS_SETREG_SCISSOR(x0, x1, y0, y1));
 }
 
-// 恢复默认 scissor（整个帧缓冲）。hires 时不能覆盖 gsKit 为当前 pass
-// 写入的局部 scissor；与 rmSetScissorDisplay() 保持同样的 no-op 规则。
+// 恢复默认 scissor（整个帧缓冲）。hires 时关闭上面的图元级裁剪，
+// 但不能覆盖 gsKit 为当前 pass 写入的局部 scissor。
 void rmResetScissor(void)
 {
+    rmClipToDisplay = 0;
     if (hires)
         return;
     gsKit_set_scissor(gsGlobal, GS_SCISSOR_RESET);
