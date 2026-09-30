@@ -542,51 +542,38 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
 }
 
 // 在由 (x,y,w,h,aligned,scaled) 描述的四边形正下方，绘制该纹理向下、
-// 渐隐的镜像倒影。拆分成若干细横行，使 alpha 随距离逐渐淡出。
-// 供各 reflect 函数共用的辅助函数。
+// 渐隐的镜像倒影。使用一个带顶点 alpha 插值的 quad，避免把纹理切成多条横带
+// 后在屏幕上产生明显的阶梯、接缝和重叠感。
 static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 color)
 {
-    // 只有前四分之一的倒影具有非零 alpha；提交其余 75% 的完全透明行只会
-    // 消耗 render queue 空间。Coverflow 在翻页时会同时绘制多个封面，过多的
-    // 1px 图元会溢出 gsKit 的 256 KiB persistent queue，最终表现为死机。
-    // 至少 4px 一行，并把带宽限制在最多 16 条横带；仍保持同一段镜像采样和渐隐，只减少 GIF 命令数量。
     float totalHeight = quad->br.y - quad->ul.y;
     float reflectionHeight = totalHeight / 4.0f;
-    float rowHeight = reflectionHeight / 16.0f;
-    if (rowHeight < 4.0f)
-        rowHeight = 4.0f;
-    float alphaStart = 0x20;
-    float alphaEnd = 0x00;
-
     if (reflectionHeight <= 0.0f)
         return;
 
-    // 确保渐隐的各行能正常进行 alpha 混合。
+    float alphaStart = 0x20;
+    float alphaEnd = 0x00;
+    u64 reflectionTopColor = GS_SETREG_RGBAQ(color & 0xFF, (color >> 8) & 0xFF,
+                                              (color >> 16) & 0xFF, alphaStart, 0x00);
+    u64 reflectionBottomColor = GS_SETREG_RGBAQ(color & 0xFF, (color >> 8) & 0xFF,
+                                                 (color >> 16) & 0xFF, alphaEnd, 0x00);
+
+    // 倒影顶部取原图底部，倒影底部取原图上方四分之一处；交换 UV 方向
+    // 才是真正的垂直镜像，不能把每一条横带按正向 UV 依次拼接。
+    float texTop = quad->br.v;
+    float texBottom = ((totalHeight - reflectionHeight) / totalHeight) * txt->Height;
+    float screenTop = quad->br.y + fRenderYOff;
+    float screenBottom = screenTop + reflectionHeight;
+
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
     gsKit_TexManager_bind(gsGlobal, txt);
-
-    for (float row = 0; row < reflectionHeight; row += rowHeight) {
-        float drawHeight = rowHeight;
-        if (row + drawHeight > reflectionHeight)
-            drawHeight = reflectionHeight - row;
-
-        float alpha = alphaStart - ((alphaStart - alphaEnd) * (row / reflectionHeight));
-        u64 reflectionColor = GS_SETREG_RGBAQ((color >> 24) & 0xFF, (color >> 16) & 0xFF, (color >> 8) & 0xFF, (u8)alpha, 0x00);
-
-        // 自底向上采样纹理，使倒影呈镜像效果。
-        float texTop = ((totalHeight - row - drawHeight) / totalHeight) * txt->Height;
-        float texBottom = ((totalHeight - row) / totalHeight) * txt->Height;
-
-        float screenTop = quad->br.y + fRenderYOff + row;
-        float screenBottom = screenTop + drawHeight;
-
-        if (rmSubmitSpriteTexture(txt,
+    if (rmSubmitGoraudQuadTexture(txt,
                                    quad->ul.x + fRenderXOff, screenTop,
                                    quad->ul.u, texTop,
                                    quad->br.x + fRenderXOff, screenBottom,
-                                   quad->br.u, texBottom, reflectionColor))
-            order++;
-    }
+                                   quad->br.u, texBottom,
+                                   reflectionTopColor, reflectionBottomColor))
+        order++;
 }
 
 void rmDrawPixmapReflect(GSTEXTURE *txt, int x, int y, short aligned, int w, int h, short scaled, u64 color)
