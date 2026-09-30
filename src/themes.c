@@ -1099,7 +1099,8 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_ANIM 200  // 滑动时长（毫秒）默认值
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x50      // 非中心封面压暗后的 RGB 调制值（0x80=原亮度，越小越暗）
-#define COVERFLOW_NONCENTER_YOFFSET -29 // 非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
+#define COVERFLOW_NONCENTER_YOFFSET -27 // 游戏非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
+#define COVERFLOW_APPS_NONCENTER_YOFFSET -26 // APPS 非中心封面相对中心封面的垂直偏移（同一套 640×480 逻辑坐标）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
@@ -1555,7 +1556,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 这里不另设百分比参数：cfg 的 y 与本偏移都会经过同一个 nativeH/480 映射，
         // 因此二者在 448/480/512 下保持统一的相对定位规则，同时保留自然的分辨率差异。
         // 浮点旁路：垂直偏移保持 float，不取整，非中心↔中心的垂直过渡与放大动画同样顺滑。
-        float centerYOffset = (float)COVERFLOW_NONCENTER_YOFFSET * (1.0f - centerFactor);
+        float nonCenterYOffset = (float)(isApps ? COVERFLOW_APPS_NONCENTER_YOFFSET : COVERFLOW_NONCENTER_YOFFSET);
+        float centerYOffset = nonCenterYOffset * (1.0f - centerFactor);
         if (isApps)
             centerYOffset += (float)COVERFLOW_APPS_CENTER_YOFFSET * centerFactor;
 
