@@ -624,7 +624,7 @@ typedef struct
     // 已经完成最终像素取整的 case 四边形（坐标回减 fRender*Off，供 rmDrawQuad 使用）。
     rm_quad_t caseQuad;
 
-    // 未取整的 case 高度：保持原有倒影行数和渐隐比例。
+    // 与 case 最终像素高度一致的整数尺寸：倒影从同一整数底边绘制。
     float caseHeight;
 
     // case/inlay 的最终屏幕坐标（包含 fRender*Off）。
@@ -656,21 +656,47 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     float fbw = (baseW > 0) ? (float)baseW : 1.0f;
     float fbh = (baseH > 0) ? (float)baseH : 1.0f;
 
-    // 先在同一个浮点父级坐标系中得到 child 的局部内框四边。
-    float ulx = caseW * ((float)ovUlx / fbw), uly = caseH * ((float)ovUly / fbh);
-    float urx = caseW * ((float)ovUrx / fbw), ury = caseH * ((float)ovUry / fbh);
-    float blx = caseW * ((float)ovBlx / fbw), bly = caseH * ((float)ovBly / fbh);
-    float brx = caseW * ((float)ovBrx / fbw), bry = caseH * ((float)ovBry / fbh);
+    // 先把父级 case 的浮点尺寸锁定为整数像素。不能把左右/上下边界分别取整，
+    // 否则 Coverflow 横向移动时，case 的最终宽高会在 N/N+1/N 之间跳动，表现为
+    // 封面在动画末尾“放大过头后又吸回”。
+    float casePixelW = rmPxSnap(caseW);
+    float casePixelH = rmPxSnap(caseH);
 
-    // 泛光/丢边修复的关键：只在最终屏幕坐标这一步取整，且 case 与 child 共用同一
-    // 个已经取整的父级左上角。不要恢复旧的 EDGE_FILL=0.5f。
-    float rUlX = rmPxSnap(floatCase.ul.x + fRenderXOff);
-    float rUlY = rmPxSnap(floatCase.ul.y + fRenderYOff);
-    float rBrX = rmPxSnap(floatCase.br.x + fRenderXOff);
-    float rBrY = rmPxSnap(floatCase.br.y + fRenderYOff);
+    // 父级位置仍按原有对齐方式取整，但远角统一由“近角 + 锁定尺寸”得到。
+    // Coverflow 当前使用 ALIGN_HCENTER | ALIGN_BOTTOM，因此这里同时保持中心/底部锚点。
+    float rUlX, rBrX, rUlY, rBrY;
+    if (aligned & ALIGN_HCENTER) {
+        float centerX = (floatCase.ul.x + floatCase.br.x) * 0.5f + fRenderXOff;
+        rUlX = rmPxSnap(centerX - casePixelW * 0.5f);
+        rBrX = rUlX + casePixelW;
+    } else if (aligned & ALIGN_RIGHT) {
+        rBrX = rmPxSnap(floatCase.br.x + fRenderXOff);
+        rUlX = rBrX - casePixelW;
+    } else {
+        rUlX = rmPxSnap(floatCase.ul.x + fRenderXOff);
+        rBrX = rUlX + casePixelW;
+    }
 
-    // 内框边距单独取整，宽高单独锁定为整数；远角由近角+尺寸得到，避免尺寸随主题
-    // 坐标的小数部分在 N-1/N/N+1 之间抖动。
+    if (aligned & ALIGN_BOTTOM) {
+        rBrY = rmPxSnap(floatCase.br.y + fRenderYOff);
+        rUlY = rBrY - casePixelH;
+    } else if (aligned & ALIGN_VCENTER) {
+        float centerY = (floatCase.ul.y + floatCase.br.y) * 0.5f + fRenderYOff;
+        rUlY = rmPxSnap(centerY - casePixelH * 0.5f);
+        rBrY = rUlY + casePixelH;
+    } else {
+        rUlY = rmPxSnap(floatCase.ul.y + fRenderYOff);
+        rBrY = rUlY + casePixelH;
+    }
+
+    // Child 的相对边距和尺寸也从已经锁定的父级尺寸派生，避免 case、封面和倒影
+    // 各自使用不同的浮点父级尺寸后，在最后一帧出现一像素的相对回弹。
+    float ulx = casePixelW * ((float)ovUlx / fbw), uly = casePixelH * ((float)ovUly / fbh);
+    float urx = casePixelW * ((float)ovUrx / fbw), ury = casePixelH * ((float)ovUry / fbh);
+    float blx = casePixelW * ((float)ovBlx / fbw), bly = casePixelH * ((float)ovBly / fbh);
+    float brx = casePixelW * ((float)ovBrx / fbw), bry = casePixelH * ((float)ovBry / fbh);
+
+    // 内框边距单独取整，宽高单独锁定为整数；远角由近角+尺寸得到。
     float offL = (ulx + blx) * 0.5f;
     float offR = (urx + brx) * 0.5f;
     float offT = (uly + ury) * 0.5f;
@@ -685,14 +711,14 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     transform->caseQuad.ul.y = rUlY - fRenderYOff;
     transform->caseQuad.br.x = rBrX - fRenderXOff;
     transform->caseQuad.br.y = rBrY - fRenderYOff;
-    transform->caseHeight = caseH;
+    transform->caseHeight = casePixelH;
     transform->caseLeft = rUlX;
     transform->caseRight = rBrX;
     transform->inlayLeft = inlayLeft;
     transform->inlayTop = inlayTop;
     transform->inlayRight = inlayLeft + inlayWidth;
     transform->inlayBottom = inlayTop + inlayHeight;
-    transform->reflectionBaseY = rmPxSnap(floatCase.br.y + fRenderYOff);
+    transform->reflectionBaseY = rBrY;
 }
 
 // 使用已经构建好的父子变换绘制主图和 case。case 与 inlay 仍是两个 GS 纹理调用，
