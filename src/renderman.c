@@ -737,13 +737,15 @@ void rmDrawPixmapFracReflect(GSTEXTURE *txt, float x, float y, short aligned, fl
 // 中重复 rmSetupQuadF / 重复取整造成 case、inlay、reflection 的边界不一致。
 typedef struct
 {
-    // 已经完成最终像素取整的 case 四边形（坐标回减 fRender*Off，供 rmDrawQuad 使用）。
+    // 已经完成最终像素取整的 case 四边形。坐标仍处于与普通 rmSetupQuad() 相同的
+    // render offset 之前；提交时由 rmDrawQuad() 统一加 fRender*Off。
     rm_quad_t caseQuad;
 
     // 与 case 最终像素高度一致的整数尺寸：倒影从同一整数底边绘制。
     float caseHeight;
 
-    // case/inlay 的最终屏幕坐标（包含 fRender*Off）。
+    // case/inlay 的整数屏幕坐标；提交到直接 quad primitive 时统一加 fRender*Off。
+    // 这样它们与普通 ItemCover / rmDrawPixmapFrac 使用同一半像素采样相位。
     float caseLeft;
     float caseRight;
     float inlayLeft;
@@ -828,10 +830,11 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     float inlayTop = rmPxSnap(rUlY + innerCenterY - inlayHeight * 0.5f);
 
     transform->caseQuad = floatCase;
-    transform->caseQuad.ul.x = rUlX - fRenderXOff;
-    transform->caseQuad.ul.y = rUlY - fRenderYOff;
-    transform->caseQuad.br.x = rBrX - fRenderXOff;
-    transform->caseQuad.br.y = rBrY - fRenderYOff;
+    // 不要把 fRender*Off 提前抵消：rmDrawQuad() 会像普通 ItemCover 一样统一加上它。
+    transform->caseQuad.ul.x = rUlX;
+    transform->caseQuad.ul.y = rUlY;
+    transform->caseQuad.br.x = rBrX;
+    transform->caseQuad.br.y = rBrY;
     transform->caseHeight = casePixelH;
     transform->caseLeft = rUlX;
     transform->caseRight = rBrX;
@@ -852,9 +855,13 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
     gsKit_TexManager_bind(gsGlobal, inlay);
+    // 这是直接 quad 提交，不会经过 rmDrawQuad()；在这里补上与普通 sprite
+    // 相同的 fRender*Off，避免套上 case 后主图又回到整数采样相位。
     if (rmSubmitQuadTexture(inlay,
-                            transform->inlayLeft, transform->inlayTop, 0.0f, 0.0f,
-                            transform->inlayRight, transform->inlayBottom, inlay->Width, inlay->Height,
+                            transform->inlayLeft + fRenderXOff,
+                            transform->inlayTop + fRenderYOff, 0.0f, 0.0f,
+                            transform->inlayRight + fRenderXOff,
+                            transform->inlayBottom + fRenderYOff, inlay->Width, inlay->Height,
                             color))
         order++;
 
@@ -883,7 +890,9 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
                                               (color >> 16) & 0xFF, 0x20, 0x00);
     u64 reflectionBottomColor = GS_SETREG_RGBAQ(color & 0xFF, (color >> 8) & 0xFF,
                                                  (color >> 16) & 0xFF, 0x00, 0x00);
-    float screenTop = transform->reflectionBaseY;
+    // 倒影同样直接提交 quad，不能沿用 case 的整数最终坐标；补回统一的
+    // render offset，使主图、case、倒影处于同一采样相位。
+    float screenTop = transform->reflectionBaseY + fRenderYOff;
     float screenBottom = screenTop + reflectionHeight;
     // 倒影上下镜像：反射区域顶部取源图底部，向下逐渐取到更高的源图位置。
     float texTop = inlay->Height;
@@ -891,8 +900,8 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
 
     gsKit_TexManager_bind(gsGlobal, inlay);
     if (rmSubmitGoraudQuadTexture(inlay,
-                                  transform->inlayLeft, screenTop, 0.0f, texTop,
-                                  transform->inlayRight, screenBottom, inlay->Width, texBottom,
+                                  transform->inlayLeft + fRenderXOff, screenTop, 0.0f, texTop,
+                                  transform->inlayRight + fRenderXOff, screenBottom, inlay->Width, texBottom,
                                   reflectionTopColor, reflectionBottomColor))
         order++;
 
@@ -900,9 +909,9 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
     texBottom = ((totalHeight - reflectionHeight) / totalHeight) * overlay->Height;
     gsKit_TexManager_bind(gsGlobal, overlay);
     if (rmSubmitGoraudQuadTexture(overlay,
-                                  transform->caseLeft, screenTop,
+                                  transform->caseLeft + fRenderXOff, screenTop,
                                   transform->caseQuad.ul.u, texTop,
-                                  transform->caseRight, screenBottom,
+                                  transform->caseRight + fRenderXOff, screenBottom,
                                   transform->caseQuad.br.u, texBottom,
                                   reflectionTopColor, reflectionBottomColor))
         order++;
