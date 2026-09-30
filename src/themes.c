@@ -1055,16 +1055,17 @@ static clock_t animationStartTime = 0;
 // 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
 #define COVERFLOW_MAX 15            // 同屏封面数的硬上限（covers[]/drawOrder[] 数组大小，防越界）
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值
-// 封面主图基准尺寸：PS2 封面标准分辨率 140×200（cfg 可用 coverflow_cover_width/height 覆盖）。
-// 中心/非中心封面各自 = 基准 ± 各自的 scale（等比，以横向宽度为基准：加到宽度、高按基准比例跟随）。
+// 封面主图基准尺寸：以 448 高度模式为基线，逻辑坐标经过 nativeHeight/480 映射后，
+// 游戏封面在 448 下得到约 140×200。高度 214 = 200×480/448 的整数近似值；宽度保持140，
+// 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
-#define COVERFLOW_COVER_H 200
-// APPS 页签封面主图基准尺寸：应用封面通常为正方形，默认 140×140（cfg 可用
-// coverflow_apps_cover_width/height 覆盖），用来反推 apps 的 case(cf_apps_case)。
+#define COVERFLOW_COVER_H 214
+// APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
+// 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
-#define COVERFLOW_APPS_COVER_H 140
-#define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 140×200 的增减（0=原生点对点、无失真）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 非中心封面尺寸【唯一旋钮】：相对 140 基准的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）
+#define COVERFLOW_APPS_COVER_H 150
+#define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 非中心封面尺寸【唯一旋钮】：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）
 // 宽屏(16:9)专用的【封面间距】百分比。宽屏【不再改变非中心封面的大小】（尺寸与 4:3 完全一致），
 // 改为在宽屏下把封面间距略微拉大一点。语义同下面的间距%：间隙 = 非中心封面基准宽 × 此值/100。
 // 当前 10（间隙 ≈ 非中心基准宽的 10%；基准宽约 80px 时间隙约 8px，比 4:3 的 3% 稍大，之前 100 太大了）。
@@ -1082,13 +1083,8 @@ static clock_t animationStartTime = 0;
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
 // 正值下移、负值上移。当前 -52 = 抵消 APPS case 比游戏 case 少约 32 的半高补偿。
 #define COVERFLOW_APPS_YOFFSET -52
-// 封面主图【物理像素 1:1】绘制开关：
-//   1 = 抵消 640×480 虚拟坐标 → 物理扫描线(NTSC 448 / PAL 512) 的缩放，让排版的 200 高【真正占用
-//       200 条物理行】（而不是 NTSC 下被压到 ~187 行）。此时每个纹素≈1 物理像素，自适应过滤取 NEAREST，
-//       封面点对点、最锐、绝不丢行；各视频模式下封面物理行数一致（都是 200）。
-//   代价：偏离"方形像素几何"——4:3 下 448 封面会略高、512 略矮（约 ±6~7% 高度），因为固定占 200 物理行
-//       而非各模式各自的等比高度。想要几何绝对精确（缩小时走线性、略软）就设 0。
-#define COVERFLOW_NATIVE_PIXEL_COVERS 1
+// 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
+// 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
 //   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
 #define COVERFLOW_DIAG_PLAIN_COVER 0
@@ -1099,9 +1095,9 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_PRELOAD 2 // 每侧屏幕外预取封面数默认值（左右各 2 张，共 4 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
-static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（cfg 可覆盖）
-static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图基准宽（cfg 可覆盖）
-static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（cfg 可覆盖）
+static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（448 基线逻辑值214）
+static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图基准宽（448 基线逻辑值140）
+static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（448 基线逻辑值150）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 非中心封面相对基准的等比增减【像素】
 static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT; // 宽屏专用封面间距%（宽屏靠拉开间距铺屏，不改封面大小）
@@ -1241,9 +1237,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 
-    // 封面主图基准尺寸：APPS 页签用正方形基准(默认 200×200)，其它(游戏)用 140×200。
-    // 这里选定的 baseCoverW/H 会贯穿本函数的布局(Block A)与逐封面绘制(Block B)，
-    // case 外壳按 overlay 内框占比逆向适配该基准。
+    // 封面主图基准尺寸：游戏使用 140×214、APPS 使用 140×150（均为 448 基线换算到
+    // 640×480 逻辑坐标后的尺寸）。这里选定的 baseCoverW/H 会贯穿布局(Block A)与逐封面
+    // 绘制(Block B)，case 外壳按 overlay 内框占比逆向适配该基准。
     int baseCoverW = gCoverflowCoverW;
     int baseCoverH = gCoverflowCoverH;
     int isApps = (sourceList && sourceList->mode == APP_MODE);
@@ -1258,8 +1254,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int centerIndex = coverCount / 2;
 
     // ——封面主图为主、case 外壳逆向适配——
-    // 封面主图基准尺寸 = 140×200（COVERFLOW_COVER_W/H，cfg 可覆盖）。中心/非中心封面各自
-    // = 基准 ± 各自 scale（等比），中心 scale=0 时即原生点对点、无缩放失真。
+    // 封面主图基准尺寸 = 上面的 448 基线逻辑尺寸（游戏 140×214、APPS 140×150）。中心/
+    // 非中心封面各自 = 基准 ± 各自 scale（等比，以横向宽度为基准）；中心 scale=0 时，
+    // 448 模式下分别对应 140×200 和 140×140 的基准观感。
     // case 外壳不再是主导尺寸，而是按 overlay 顶点给出的【内框占比】反推，使其内框正好
     // 套住原生封面（case 被拉伸的轻微失真无所谓）。fracW/fracH = 内框在元素坐标系里的占比。
     float fracW = 1.0f, fracH = 1.0f;
@@ -1484,12 +1481,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 整个主题元素列表已经在 menuRenderElements() 中设置了可见显示区域的 scissor；
     // Coverflow、case、封面和倒影因此与木板等普通主题素材共用同一裁切范围。
 
-    // 物理显示分辨率（native）：OPL 所有元素都在 640×480【虚拟】坐标里排版，PS2 再把它缩放到
-    // 实际视频模式的扫描线数（NTSC 640×448 / PAL 640×512 / 仅 480p·VGA 才是 640×480）。因此一个
-    // 排版高 200 的封面，在 NTSC 上实际只有 200×448/480 ≈ 187 物理行——这不是换算 bug（case÷frac
-    // 再×frac 精确抵消），而是虚拟→物理这一步固有的缩放。据此为每张封面选过滤方式（见循环内）。
-    int nativeW = 640, nativeH = 480;
-    rmGetScreenExtentsNative(&nativeW, &nativeH);
+    // 这里不再读取 native 分辨率做封面高度补偿或过滤判断；封面尺寸统一由 448 基线
+    // 逻辑尺寸决定，渲染器只负责把整套布局按当前屏幕同比缩放。
 
     int oi;
     for (oi = 0; oi < drawCount; oi++) {
@@ -1532,15 +1525,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
-#if COVERFLOW_NATIVE_PIXEL_COVERS
-        // 物理像素 1:1：rmSetupQuadF 稍后会把尺寸 × nativeW/640、× nativeH/480（虚拟→物理）。
-        // 这里预乘其倒数(640/nativeW、480/nativeH)把那一步【精确抵消】，于是排版的宽/高数值最终
-        // 就等于实际物理像素数——例如 200 高在 NTSC(448) 上不再被压到 ~187，而是真正画满 200 条扫描线。
-        // case 与 inlay 用同一 currentCover*，二者一起放大、始终对齐。宽屏横向压缩已含在 nativeW 里。
-        currentCoverWidth *= 640.0f / (float)nativeW;
-        currentCoverHeight *= 480.0f / (float)nativeH;
-#endif
-
         // 非中心封面相对中心封面额外偏移【与 cfg y 相同的逻辑坐标单位】（正=下移、负=上移），
         // 中心封面不动；偏移量随 centerFactor 插值，滑动时垂直位置也平滑过渡。
         // 这里不另设百分比参数：cfg 的 y 与本偏移都会经过同一个 nativeH/480 映射，
@@ -1566,32 +1550,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
         }
 
-        // 封面主图过滤方式【按封面大小 vs 原生基准分辨率自适应】——防丢线且尽量锐利：
-        //   基准原生分辨率 = 游戏 140×200 / APPS 140×140（即 baseCoverW×baseCoverH）。
-        //   · 封面【小于】原生（缩小，如非中心 104<140，或几何模式下 NTSC 200→187）→ LINEAR：
-        //     平滑缩小，避免最近邻把整行/整列丢弃（就是"丢线"的来源）。
-        //   · 封面【≥】原生（1:1 或放大）→ NEAREST：点对点锐利，放大只复制像素、绝不丢行。
-        //   比较用【物理绘制尺寸】vs 基准分辨率：4:3 下即 inlay vs 140×200；宽屏封面被横向压缩，
-        //   宽度物理上确实 < 原生 → 自动走 LINEAR，防竖线丢失。
-        //   case 外壳与封面【一起同步】用同一过滤方式：封面走 NEAREST 时外壳也 NEAREST，避免锐利封面
-        //   套在被线性糊过的外壳里、观感割裂（外壳与封面一同缩放，故用同一判定）。仅动封面主图+case。
-#if COVERFLOW_NATIVE_PIXEL_COVERS
-        // 物理像素 1:1 模式：封面按排版数值直接占物理像素，故物理尺寸就是 inlayW/inlayH（宽屏含横向压缩）。
-        float physInlayH = inlayH;
-        float physInlayW = inlayW;
-        if (gWideScreen)
-            physInlayW = rmWideScaleF(physInlayW);
-#else
-        float physInlayH = inlayH * (float)nativeH / 480.0f;
-        float physInlayW = inlayW * (float)nativeW / 640.0f;
-        if (gWideScreen)
-            physInlayW = rmWideScaleF(physInlayW);
-#endif
-        int minifying = ((float)baseCoverH > physInlayH + 0.5f) ||
-                        ((float)baseCoverW > physInlayW + 0.5f);
-        // APPS 封面无论当前尺寸是否达到原生大小，都固定使用线性过滤；游戏封面继续按
-        // 物理绘制尺寸自适应。case 外壳沿用同一过滤方式，避免 APPS 封面与外壳观感不一致。
-        short coverFilter = isApps ? GS_FILTER_LINEAR : (minifying ? GS_FILTER_LINEAR : GS_FILTER_NEAREST);
+        // 封面与 case 始终使用线性过滤，不再根据分辨率、封面尺寸或是否缩小来切换
+        // LINEAR/NEAREST。这样 448 基线以外的分辨率虽然不是点对点，但采样方式保持稳定，
+        // 也避免自动过滤判断在边界尺寸附近来回切换。
+        short coverFilter = GS_FILTER_LINEAR;
         if (covers[i].texture)
             covers[i].texture->Filter = coverFilter;         // 封面主图
         if (img->overlayTexture)
@@ -2085,10 +2047,10 @@ static void thmLoad(const char *themePath)
     // 主题时残留上一个主题的设置。本函数在元素定义解析（initCoverflow）之前运行，因此这里
     // 读到的 count/preload 在分配封面缓存时即可用。
     //   coverflow_count            —— 同屏封面数（夹取到 1..COVERFLOW_MAX）
-    //   coverflow_cover_width       —— 游戏封面主图基准宽（默认 140，PS2 标准封面）
-    //   coverflow_cover_height      —— 游戏封面主图基准高（默认 200）
-    //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（默认 140，正方形）
-    //   coverflow_apps_cover_height —— APPS 封面主图基准高（默认 140，正方形）
+    //   coverflow_cover_width       —— 游戏封面主图基准宽（内部固定为448基线逻辑值140）
+    //   coverflow_cover_height      —— 游戏封面主图基准高（内部固定为448基线逻辑值214）
+    //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（内部固定为448基线逻辑值140）
+    //   coverflow_apps_cover_height —— APPS 封面主图基准高（内部固定为448基线逻辑值150）
     //   coverflow_center_scale     —— 中心封面相对基准的等比增减像素（0=原生点对点、无失真）
     //   coverflow_noncenter_scale  —— 非中心封面相对基准的等比增减像素（负值=缩小）
     //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
