@@ -1145,16 +1145,13 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_YOFFSET -50
 // APPS 中心封面专用的垂直微调；按 centerFactor 插值，避免滑动动画中发生跳变。
 #define COVERFLOW_APPS_CENTER_YOFFSET 1
-// 主题 cfg 可调的中心封面/ICO 相对非中心封面的垂直偏移；按 centerFactor 插值，
-// 因此非中心封面位置不变，中心封面和 ICO 可整体平滑下移。
-#define COVERFLOW_DEFAULT_CENTER_YOFFSET 0
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
 // 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
 #define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x66      // 非中心封面亮度为原亮度的80%（0x80=100%）
-#define COVERFLOW_NONCENTER_YOFFSET -27 // 游戏非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
-#define COVERFLOW_APPS_NONCENTER_YOFFSET -24 // APPS 非中心封面相对中心封面的垂直偏移（同一套 640×480 逻辑坐标）
+#define COVERFLOW_NONCENTER_YOFFSET -37 // 游戏非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
+#define COVERFLOW_APPS_NONCENTER_YOFFSET -34 // APPS 非中心封面相对中心封面的垂直偏移（同一套 640×480 逻辑坐标）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
@@ -1167,7 +1164,6 @@ static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT
 static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
-static int gCoverflowCenterYOffset = COVERFLOW_DEFAULT_CENTER_YOFFSET; // 中心封面/ICO 相对非中心封面的 cfg 垂直偏移
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
 // 本次滑动实际使用的时长（毫秒）。普通单步使用 gCoverflowAnimSpeed，
 // L1/R1 翻页使用 gCoverflowAnimSpeed * 2.5。
@@ -1664,7 +1660,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         float centerYOffset = nonCenterYOffset * (1.0f - centerFactor);
         if (isApps)
             centerYOffset += (float)COVERFLOW_APPS_CENTER_YOFFSET * centerFactor;
-        centerYOffset += (float)gCoverflowCenterYOffset * centerFactor;
 
         if (i == renderCenterIndex && !animationActive) {
             // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
@@ -2242,7 +2237,6 @@ static void thmLoad(const char *themePath)
     //   coverflow_center_scale     —— 中心封面相对基准的等比增减像素（0=原生点对点、无失真）
     //   coverflow_noncenter_scale  —— 非中心封面相对基准的等比增减像素（负值=缩小）
     //   coverflow_animation_speed  —— 滑动动画时长（毫秒，<=0 关闭动画）
-    //   coverflow_center_y_offset  —— 中心封面/ICO 相对非中心封面的垂直偏移
     //   coverflow_dim_covers       —— 非中心封面是否变暗（0/1）
     //   coverflow_preload          —— 每侧屏幕外预取封面数（如填 3 = 左右各 3、共 6；无上限）
     gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
@@ -2256,11 +2250,9 @@ static void thmLoad(const char *themePath)
     gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
-    gCoverflowCenterYOffset = COVERFLOW_DEFAULT_CENTER_YOFFSET;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
     // 动画速度必须优先使用主题 cfg；没有该键时保留上面的引擎默认值。
     configGetInt(themeConfig, "coverflow_animation_speed", &gCoverflowAnimSpeed);
-    configGetInt(themeConfig, "coverflow_center_y_offset", &gCoverflowCenterYOffset);
     // 其余可配置项继续按各自兼容规则读取。封面位置/坐标系与外壳美术（overlay 顶点等）
     // 由主题引擎按元素通用解析。
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
