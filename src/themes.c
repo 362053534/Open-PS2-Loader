@@ -32,6 +32,9 @@ static int screenWidth;
 static int screenHeight;
 static int guiThemeID = 0;
 
+// 诊断：Coverflow 中始终显示 BdmIndex，便于校准其位置。
+#define COVERFLOW_DIAG_BDM_INDEX_ALWAYS 1
+
 static int nThemes = 0;
 static theme_file_t themes[THM_MAX_FILES];
 static const char **guiThemesNames = NULL;
@@ -1120,8 +1123,6 @@ static clock_t animationStartTime = 0;
 // 【诊断开关】1 = 只画纯封面图，【关闭 case 外壳与倒影】，用来单独观察封面的缩小/放大是否变形
 //   （排除 case/倒影干扰，定位畸变到底在不在封面主图的缩放算法上）。诊断完成后改回 0 恢复正常绘制。
 #define COVERFLOW_DIAG_PLAIN_COVER 0
-// 诊断：Coverflow 中始终显示 BdmIndex，即使当前只有一个设备或设备页不可见，便于校准位置。
-#define COVERFLOW_DIAG_BDM_INDEX_ALWAYS 1
 #define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
 #define COVERFLOW_DEFAULT_PAGE_ANIM 500  // L1/R1 翻页滑动时长（毫秒，独立于普通单步动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
