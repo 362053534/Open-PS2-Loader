@@ -65,6 +65,9 @@ typedef struct
     // 详情页)置成非 0 就再没人把它清零，导致 cacheLoadImage1 永久跳过所有封面加载、
     // 封面被反复排队又跳过(texLoading 卡住不归零)。因此 quiet 请求必须无视 cdFramesCount。
     int quiet;
+    // 在渲染线程入队时决定是否压缩低分辨率 BG，worker 不直接读取可能
+    // 正在切换的 gsGlobal 指针。
+    int compactBackground;
 } load_image_request_t;
 load_image_request_t req1 = {0};
 load_image_request_t req2 = {0};
@@ -112,6 +115,12 @@ static void cacheDecreaseLoading(void)
     if (texLoading > 0)
         texLoading--;
     pthread_mutex_unlock(&texLoadingMutex);
+}
+
+static int cacheShouldCompactBackground(image_cache_t *cache)
+{
+    return cache && !strncmp(cache->suffix, "BG", 2) && gsGlobal &&
+           gsGlobal->DoubleBuffering == GS_SETTING_ON && gsGlobal->PSM == GS_PSM_CT24;
 }
 
 static void cacheCancelImageRequest(void *data)
@@ -167,6 +176,7 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->itemId = itemId;
     req->qr = 1;
     req->quiet = quiet;
+    req->compactBackground = cacheShouldCompactBackground(cache);
 
     pthread_mutex_lock(&texLoadingMutex);
     if (texLoading >= 0)
@@ -214,8 +224,7 @@ static void cacheLoadImage1(void *data)
     // 加载图片
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
-    if (result >= 0 && !strncmp(ioReq->cache->suffix, "BG", 2) && gsGlobal &&
-        gsGlobal->DoubleBuffering == GS_SETTING_ON && gsGlobal->PSM == GS_PSM_CT24)
+    if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
 
     if (result < 0) {
@@ -282,8 +291,7 @@ static void *cacheLoadImage(void *data)
         // 加载图片
         int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
-        if (result >= 0 && !strncmp(ioReq->cache->suffix, "BG", 2) && gsGlobal &&
-            gsGlobal->DoubleBuffering == GS_SETTING_ON && gsGlobal->PSM == GS_PSM_CT24)
+        if (result >= 0 && ioReq->compactBackground)
             texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
 
         if (result < 0) {
@@ -697,6 +705,7 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     req1.value = value;
                     req1.itemId = itemId;
                     req1.qr = 1;
+                    req1.compactBackground = cacheShouldCompactBackground(cache);
                     if (!pthread_created_BG) {
                         pthread_created_BG = 1;
                         pthread_create(&tid1, &attr, cacheLoadImage, &req1);

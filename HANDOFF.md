@@ -171,6 +171,7 @@ temp = !temp
 - 普通 Background cache 改为只保留当前一张（包括主题 CFG 中请求的 `_count`，Background 会强制限制为 1），切换游戏时释放旧的完整背景纹理，避免连续页面保留多个 BG block；cache 选择器对单槽允许替换上一张 BG，并清除已释放槽位的 fallback，避免单槽配置卡在旧背景。
 - 仅在当前显示为 CT24 且启用双缓冲的低分辨率路径中，将加载成功的大型 RGB/CT24 背景在进入 cache 前转换为带抖动的 CT16S；RGBA/带 alpha 的 CT32 背景不转换，保持 alpha 语义。framebuffer、双缓冲、坐标和普通主题绘制路径不变。
 - 静态检查当前默认 `usePthread = 0` 的生命周期：待处理请求由 `ioRemoveRequestsWithCleanup()` 移除并通过 UID 校验，正在执行的请求不在队列中；cache 选择只复用 `qr == 0` 的槽，因此取消请求不会把活动槽交给下一张图。`rmEndFrame()` 先执行 `gsKit_finish()`，随后才允许 `texFree()`/`rmUnloadTexture()` 复用纹理管理器 block，未发现渲染线程过早释放的直接路径。
+- 是否压缩 BG 在渲染线程入队时记录到请求中，IO worker 不直接解引用模式切换中的 `gsGlobal`；这也覆盖了默认队列和备用 pthread 加载路径。
 
 ### 非 Coverflow 内置列表 ART 对比结论
 
@@ -251,5 +252,5 @@ git log -1 --oneline
 - 定位 NTSC 448i 大背景卡顿：`640×480` CT24 BG 约占 `1.23 MiB`，与 plank/case/Coverflow 封面共同触发 gsKit VRAM 驱逐和重复上传；不是单纯的 BG 删除竞态。
 - 低分辨率修复：Background cache 从 3 槽改为 1 槽；仅在 CT24 + 双缓冲路径中，大型无 alpha CT24 背景加载完成后转换为带抖动的 CT16S，RGBA/CT32 背景保持原格式，不改 framebuffer 或双缓冲。
 - 单槽 cache 的选择器同步允许替换旧的 `PrevCacheID`，并在释放后取消 fallback，避免把 cache 数量从 3 改为 1 后永远无法加载下一张 BG。
-- 静态审计确认默认 IO 路径不会复用 `qr` 活动槽，也没有发现渲染线程在 `gsKit_finish()` 前释放纹理的直接路径。
+- 静态审计确认默认 IO 路径不会复用 `qr` 活动槽，也没有发现渲染线程在 `gsKit_finish()` 前释放纹理的直接路径；BG 压缩条件由入队请求携带，避免 worker 在模式切换时读取 `gsGlobal`。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；本次仅完成静态代码对比和 `git diff --check`。
