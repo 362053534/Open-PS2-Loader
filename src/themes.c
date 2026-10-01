@@ -1160,9 +1160,6 @@ static clock_t animationStartTime = 0;
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
 // 当前 0（不额外增加相邻封面之间的间隙）。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 0
-// 3 张封面时两侧预留的安全边距（逻辑像素）；非中心封面大小保持 5 张基线不变，
-// 通过间距缩小/调整来避免两侧封面贴近屏幕边缘。
-#define COVERFLOW_THREE_COVER_EDGE_MARGIN 60
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 169 = 在原 161 的基础上整体下移 8，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 169
@@ -1400,12 +1397,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (gWideScreen)
         centerCoverWidth = rmWideScale(centerCoverWidth);
 
-    // 3 张比 5 张少：保留 5 张的非中心封面大小，并为左右两侧各预留安全边距，
-    // 只反过来计算 3 张专用间距；这样两侧封面不会贴近屏幕边缘。
+    // 3 张比 5 张少：保留 5 张的非中心封面大小，反过来计算 3 张专用间距，
+    // 使 (数量-1)×(非中心宽+间隙)+中心宽 恰好覆盖整个 640 逻辑屏幕。
     // 7/9 张比 5 张多：保留 5 张的间距，再反推较小的非中心封面大小来铺满整排。
     if (coverCount == 3) {
-        int targetGroupWidth = screenWidth - 2 * COVERFLOW_THREE_COVER_EDGE_MARGIN;
-        int gapWidth = targetGroupWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
+        int gapWidth = screenWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
         if (gapWidth < 0)
             gapWidth = 0;
         gap = (gapWidth + ((coverCount - 1) >> 1)) / (coverCount - 1);
