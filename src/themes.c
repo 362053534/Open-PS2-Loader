@@ -1461,6 +1461,21 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量。
     float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
 
+    // Overlay 的内框不一定位于 Case 的几何中心（内置 cf_case 的内框就略偏左）。
+    // 如果只按 Case 外框中心补偿，中心封面放大后会把内框偏移量一并放大，导致
+    // 中心左/右两侧的实际封面边缘间距不同。这里记录中心/非中心内框中心相对
+    // Case 中心的偏移，绘制位置时再按当前 centerFactor 抵消这部分差异。
+    float inlayCenterRatio = 0.5f;
+    if (img->overlayTexture && elem->width > 0) {
+        image_texture_t *ov = img->overlayTexture;
+        inlayCenterRatio = ((float)ov->upperLeft_x + (float)ov->upperRight_x +
+                            (float)ov->lowerLeft_x + (float)ov->lowerRight_x) *
+                           0.25f / (float)elem->width;
+    }
+    float centerInlayCenterOffset = (inlayCenterRatio - 0.5f) * (float)centerCoverWidth;
+    float nonCenterInlayCenterOffset = (inlayCenterRatio - 0.5f) * (float)coverWidth;
+    float inlayCenterOffsetDelta = centerInlayCenterOffset - nonCenterInlayCenterOffset;
+
     // 垂直方向以中心封面的底边作为整个模块的定位锚点；非中心封面不再有独立的 Y 偏移。
     // 先按中心封面的目标尺寸确定唯一的水平中心线，再让每个动画阶段的封面围绕这条
     // 中心线绘制。这样中心封面与非中心封面始终中心对齐，不需要反推缩放锚点。
@@ -1602,13 +1617,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
     // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
     // 基础位置按均匀中心距 coverDistance 排布，再叠加【间距补偿】：把每张封面多出的宽度
-    // (2×centerExtraHalf×cf) 对称摊到两侧——某封面右侧的所有封面右移其半宽、左侧的所有封面左移其半宽。
-    // 于是任意相邻封面之间的可见间隙都恰好=gap（含中心封面两侧），中心封面本身位置不变；
-    // 补偿量由连续的 cf 驱动，滑动动画中平滑变化、收尾无跳变。
+    // (2×centerExtraHalf×cf) 对称摊到两侧——某封面右侧的所有封面右移其半宽、左侧的所有封面左移其半宽；
+    // 另外抵消 Overlay 内框中心偏移随封面尺寸变化带来的左右差异。于是静止时中心两侧的实际封面边缘
+    // 间距一致，动画中补偿量也由连续的 cf 驱动，不会在收尾时跳变。
     float cumLeft = 0.0f; // Σ 当前封面【左侧】所有封面的 cf
     for (i = 0; i < renderCount; i++) {
         float cumRight = totalCf - cumLeft - cf[i]; // Σ 右侧所有封面的 cf
-        covers[i].renderPosX = posX + centerExtraHalf * (cumLeft - cumRight);
+        float inlayOffsetCorrection = 0.0f;
+        if (i != renderCenterIndex)
+            inlayOffsetCorrection = inlayCenterOffsetDelta *
+                                    (cf[renderCenterIndex] - cf[i]);
+        covers[i].renderPosX = posX + centerExtraHalf * (cumLeft - cumRight) +
+                               inlayOffsetCorrection;
         posX += (float)coverDistance;
         cumLeft += cf[i];
     }
