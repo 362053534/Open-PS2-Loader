@@ -1398,13 +1398,17 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         centerCoverWidth = rmWideScale(centerCoverWidth);
 
     // 3 张比 5 张少：保留 5 张的非中心封面大小，反过来计算 3 张专用间距，
-    // 使 (数量-1)×(非中心宽+间隙)+中心宽 恰好覆盖整个 640 逻辑屏幕。
+    // 再从每个间距扣除 60 像素，为两侧留下约 60 像素安全距离。
     // 7/9 张比 5 张多：保留 5 张的间距，再反推较小的非中心封面大小来铺满整排。
     if (coverCount == 3) {
         int gapWidth = screenWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
         if (gapWidth < 0)
             gapWidth = 0;
         gap = (gapWidth + ((coverCount - 1) >> 1)) / (coverCount - 1);
+        // 满屏计算得到的是零边距间距；3 张时每侧需留约 60 像素，直接从每个间距扣除 60。
+        gap -= 60;
+        if (gap < 0)
+            gap = 0;
     } else if (coverCount >= 7) {
         float targetCoverWidth = ((float)screenWidth - (float)centerCoverWidth -
                                   (float)(coverCount - 1) * (float)gap) /
