@@ -785,27 +785,30 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     // 父级位置仍按原有对齐方式取整，但远角统一由“近角 + 锁定尺寸”得到。
     // Coverflow 当前使用 ALIGN_HCENTER | ALIGN_BOTTOM，因此这里同时保持中心/底部锚点。
     float rUlX, rBrX, rUlY, rBrY;
+    // Keep the transform in the pre-offset coordinate space. The case is submitted
+    // through rmDrawQuad(), while the inlay and reflection are submitted directly;
+    // each of those paths applies fRenderXOff/fRenderYOff exactly once.
     if (aligned & ALIGN_HCENTER) {
-        float centerX = (floatCase.ul.x + floatCase.br.x) * 0.5f + fRenderXOff;
+        float centerX = (floatCase.ul.x + floatCase.br.x) * 0.5f;
         rUlX = rmPxSnap(centerX - casePixelW * 0.5f);
         rBrX = rUlX + casePixelW;
     } else if (aligned & ALIGN_RIGHT) {
-        rBrX = rmPxSnap(floatCase.br.x + fRenderXOff);
+        rBrX = rmPxSnap(floatCase.br.x);
         rUlX = rBrX - casePixelW;
     } else {
-        rUlX = rmPxSnap(floatCase.ul.x + fRenderXOff);
+        rUlX = rmPxSnap(floatCase.ul.x);
         rBrX = rUlX + casePixelW;
     }
 
     if (aligned & ALIGN_BOTTOM) {
-        rBrY = rmPxSnap(floatCase.br.y + fRenderYOff);
+        rBrY = rmPxSnap(floatCase.br.y);
         rUlY = rBrY - casePixelH;
     } else if (aligned & ALIGN_VCENTER) {
-        float centerY = (floatCase.ul.y + floatCase.br.y) * 0.5f + fRenderYOff;
+        float centerY = (floatCase.ul.y + floatCase.br.y) * 0.5f;
         rUlY = rmPxSnap(centerY - casePixelH * 0.5f);
         rBrY = rUlY + casePixelH;
     } else {
-        rUlY = rmPxSnap(floatCase.ul.y + fRenderYOff);
+        rUlY = rmPxSnap(floatCase.ul.y);
         rBrY = rUlY + casePixelH;
     }
 
