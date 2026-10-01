@@ -472,6 +472,8 @@ static void endMutableImage(struct theme_element *elem)
     free(elem);
 }
 
+static int themeConfigHasCoverflow(config_set_t *themeConfig);
+
 static mutable_image_t *initMutableImage(const char *themePath, config_set_t *themeConfig, theme_t *theme, const char *name, int type, const char *cachePattern, int cacheCount, const char *defaultTexture, const char *overlayTexture)
 {
     mutable_image_t *mutableImage = (mutable_image_t *)malloc(sizeof(mutable_image_t));
@@ -498,8 +500,11 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         configGetStr(themeConfig, elemProp, &cachePattern);
         snprintf(elemProp, sizeof(elemProp), "%s_count", name);
         configGetInt(themeConfig, elemProp, &cacheCount);
-        if (type == ELEM_TYPE_BACKGROUND)
-            cacheCount = 1; // 不让主题 CFG 保留多个完整 BG，避免低分辨率 VRAM 工作集抖动
+        if (type == ELEM_TYPE_BACKGROUND) {
+            // 为了复现实机故障，Coverflow 背景暂时恢复 3 个槽；普通列表
+            // 仍只保留当前 BG，避免多个完整背景扩大低分辨率 VRAM 工作集。
+            cacheCount = themeConfigHasCoverflow(themeConfig) ? 3 : 1;
+        }
         LOG("THEMES MutableImage %s: type: %s using cache pattern: %s count: %d\n", name, elementsType[type], cachePattern, cacheCount);
     }
 
@@ -885,6 +890,21 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
 }
 
 // Internal elements ////////////////////////////////////////////////////////////////////////////////////////////////////////
+static int themeConfigHasCoverflow(config_set_t *themeConfig)
+{
+    struct config_value_t *value;
+
+    if (!themeConfig)
+        return 0;
+
+    for (value = themeConfig->head; value; value = value->next) {
+        if (strstr(value->key, "_type") && !strcmp(value->val, elementsType[ELEM_TYPE_COVERFLOW]))
+            return 1;
+    }
+
+    return 0;
+}
+
 static void drawBackground(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     guiDrawBGPlasma();
