@@ -33,6 +33,9 @@ struct EECoreConfig_t
 
     char GameMode;
     char GameModeDesc[CORE_GAME_MODE_DESC_MAX_LEN];
+    /* 复用 EnableDebug 前的对齐填充，不增加常驻配置大小或移动后续字段。 */
+    u8 EnableRnC3UyaPatch;
+    u8 RnC3UyaMultiplayer;
 
     int EnableDebug;
 

@@ -76,8 +76,8 @@ void sysLoadElf(char *filename, int argc, char **argv)
 
     DPRINTF("t_loadElf: Resetting IOP...\n");
 
-    /* 必须在重启 IOP 前识别下一 ELF，否则单人也会预留多人缓冲区。 */
-    RnC3_SetCurrentElf(config->GameID, filename);
+    /* 配置会跨换 ELF 保留，必须在重启 IOP 前覆盖多人状态。 */
+    config->RnC3UyaMultiplayer = config->EnableRnC3UyaPatch && RnC3_IsMultiplayerElf(filename);
 
     set_reg_disabled = 0;
     New_Reset_Iop(NULL, 0);

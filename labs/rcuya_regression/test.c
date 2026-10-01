@@ -4,12 +4,19 @@
 #include <string.h>
 
 #include "rc_uya.h"
-#include "util.h"
+#include "coreconfig.h"
 
-/* 模式识别只使用相等性；用主机 libc 替代 EE core 的轻量比较函数。 */
-int _strcmp(const char *a, const char *b)
+struct EECoreConfig_t g_ee_core_config;
+
+static void selectGame(const char *game_id)
 {
-    return strcmp(a, b);
+    g_ee_core_config.EnableRnC3UyaPatch = RnC3_IsGameID(game_id);
+    g_ee_core_config.RnC3UyaMultiplayer = 0;
+}
+
+static void setCurrentElf(const char *path)
+{
+    g_ee_core_config.RnC3UyaMultiplayer = g_ee_core_config.EnableRnC3UyaPatch && RnC3_IsMultiplayerElf(path);
 }
 
 /* 包含生产实现，仅重命名入口；IOP 静态状态可据此模拟重启清零。 */
@@ -220,6 +227,25 @@ static void startPatch(void)
     assert(interrupts_enabled && suspend_calls == resume_calls);
 }
 
+static void testConfigPadding(void)
+{
+    struct legacy_prefix
+    {
+        u32 magic[2];
+        char GameMode;
+        char GameModeDesc[CORE_GAME_MODE_DESC_MAX_LEN];
+        int EnableDebug;
+    };
+
+    assert(offsetof(struct EECoreConfig_t, EnableDebug) == offsetof(struct legacy_prefix, EnableDebug));
+    assert(offsetof(struct EECoreConfig_t, ExitPath) == sizeof(struct legacy_prefix));
+    assert(offsetof(struct EECoreConfig_t, HDDSpindown) == sizeof(struct legacy_prefix) + CORE_EXIT_PATH_MAX_LEN);
+    assert(offsetof(struct EECoreConfig_t, EnableRnC3UyaPatch) == 25);
+    assert(offsetof(struct EECoreConfig_t, RnC3UyaMultiplayer) == 26);
+    assert(offsetof(struct EECoreConfig_t, EnableDebug) == 28);
+    puts("PASS: UYA flags fit in existing config padding without shifting subsequent fields");
+}
+
 static void testElfScope(void)
 {
     static const char *games[] = {"SCUS_973.53", "SCES_524.56", "SCPS_150.84"};
@@ -231,43 +257,52 @@ static void testElfScope(void)
         "I5BOOTN.ELF;", "I5BOOTN.ELF;2", "I5BOOTN.ELF;1\\other.elf", "rom0:PS2LOGO"};
     unsigned int g, p;
 
-    assert(!RnC3_NeedsIopPatch());
+    assert(!g_ee_core_config.RnC3UyaMultiplayer);
+    assert(!RnC3_IsMultiplayerElf(NULL));
     for (g = 0; g < sizeof(games) / sizeof(games[0]); g++) {
-        RnC3_SetCurrentElf(games[g], games[g]);
-        assert(!RnC3_NeedsIopPatch());
+        selectGame(games[g]);
+        assert(g_ee_core_config.EnableRnC3UyaPatch);
+        setCurrentElf(games[g]);
+        assert(!g_ee_core_config.RnC3UyaMultiplayer);
         for (p = 0; p < sizeof(paths) / sizeof(paths[0]); p++) {
-            RnC3_SetCurrentElf(games[g], paths[p]);
-            assert(RnC3_NeedsIopPatch());
+            setCurrentElf(paths[p]);
+            assert(g_ee_core_config.RnC3UyaMultiplayer);
         }
         for (p = 0; p < sizeof(non_multiplayer) / sizeof(non_multiplayer[0]); p++) {
-            RnC3_SetCurrentElf(games[g], non_multiplayer[p]);
-            assert(!RnC3_NeedsIopPatch());
+            setCurrentElf(non_multiplayer[p]);
+            assert(!g_ee_core_config.RnC3UyaMultiplayer);
         }
     }
-    RnC3_SetCurrentElf("SCUS_974.65", paths[0]);
-    assert(!RnC3_NeedsIopPatch());
-    RnC3_SetCurrentElf(NULL, paths[0]);
-    assert(!RnC3_NeedsIopPatch());
-    RnC3_SetCurrentElf(games[0], NULL);
-    assert(!RnC3_NeedsIopPatch());
+    selectGame("SCUS_974.65");
+    setCurrentElf(paths[0]);
+    assert(!g_ee_core_config.RnC3UyaMultiplayer);
+    assert(!RnC3_IsGameID("SCUS_973.53.backup"));
+    assert(!RnC3_IsGameID("SCUS_973.5"));
+    selectGame(NULL);
+    setCurrentElf(paths[0]);
+    assert(!g_ee_core_config.RnC3UyaMultiplayer);
+    selectGame(games[0]);
+    setCurrentElf(NULL);
+    assert(!g_ee_core_config.RnC3UyaMultiplayer);
     puts("PASS: only known UYA multiplayer ELFs enable the patch; cold single-player does not");
 }
 
 static void testModeTransitions(void)
 {
-    RnC3_SetCurrentElf("SCUS_973.53", "cdrom0:\\SCUS_973.53;1");
+    selectGame("SCUS_973.53");
+    setCurrentElf("cdrom0:\\SCUS_973.53;1");
     resetIopFixture();
-    assert(!RnC3_NeedsIopPatch() && used_bytes == 0);
+    assert(!g_ee_core_config.RnC3UyaMultiplayer && used_bytes == 0);
 
-    RnC3_SetCurrentElf("SCUS_973.53", "cdrom0:\\I5BOOTN.ELF;1");
+    setCurrentElf("cdrom0:\\I5BOOTN.ELF;1");
     startPatch();
-    assert(RnC3_NeedsIopPatch());
+    assert(g_ee_core_config.RnC3UyaMultiplayer);
     startPatch();
-    assert(RnC3_NeedsIopPatch() && used_bytes == UYA_BUF_SIZE);
+    assert(g_ee_core_config.RnC3UyaMultiplayer && used_bytes == UYA_BUF_SIZE);
 
-    RnC3_SetCurrentElf("SCUS_973.53", "cdrom0:\\SCUS_973.53;1");
+    setCurrentElf("cdrom0:\\SCUS_973.53;1");
     resetIopFixture();
-    assert(!RnC3_NeedsIopPatch() && used_bytes == 0);
+    assert(!g_ee_core_config.RnC3UyaMultiplayer && used_bytes == 0);
     puts("PASS: simulated IOP resets preserve multiplayer state; returning to single-player clears it");
 }
 
@@ -400,6 +435,7 @@ static void testLibraryHooks(void)
 
 int main(void)
 {
+    testConfigPadding();
     testElfScope();
     testModeTransitions();
     testHandoffAndRelease();

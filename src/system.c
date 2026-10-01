@@ -24,6 +24,7 @@
 #include "include/extern_irx.h"
 #include "../ee_core/include/modules.h"
 #include "../ee_core/include/coreconfig.h"
+#include "../ee_core/include/rc_uya.h"
 #include "modules/iopcore/common/cdvd_config.h"
 #include <osd_config.h>
 #include "include/pggsm.h"
@@ -1007,6 +1008,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     config->BDMFragmentTableCount = bdmFragmentTableCount;
 
     strncpy(config->GameID, filename, CORE_GAME_ID_MAX_LEN);
+    config->EnableRnC3UyaPatch = RnC3_IsGameID(filename);
 
     config->_CompatMask = compatflags;
 

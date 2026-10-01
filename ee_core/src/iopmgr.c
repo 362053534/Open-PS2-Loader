@@ -19,7 +19,6 @@
 #include "util.h"
 #include "syshook.h"
 #include "coreconfig.h"
-#include "rc_uya.h"
 #include "../../modules/iopcore/common/cdvd_config.h"
 
 extern int _iop_reboot_count;
@@ -240,7 +239,7 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     DPRINTF("Loading extra IOP modules...\n");
 
     /* 单人由原 EE 补丁处理；只有多人 ELF 才在设备模块之前预留固定地址。 */
-    if (RnC3_NeedsIopPatch())
+    if (config->RnC3UyaMultiplayer)
         LoadOPLModule(OPL_MODULE_ID_IOP_PATCH, 0, 0, NULL);
 
 #ifdef __LOAD_DEBUG_MODULES
