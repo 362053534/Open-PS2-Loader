@@ -10,8 +10,7 @@
 - 不要切换、创建或推送其它分支。
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`
-- 当前性能修复基于：`736a525 fix: decouple coverflow vertical motion from scale`。
-- 当前工作区：本次低分辨率纹理预算与普通帧提交修复已同步到本文，待提交后保持干净。
+- 当前工作区：干净。
 
 ## 2. 当前任务重点
 
@@ -163,14 +162,6 @@ temp = !temp
 - `misc/conf_theme_coverflow.cfg`：内置 Coverflow 主题 CFG，由 Makefile 的 `bin2c` 规则嵌入。
 - `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑。
 - `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测。
-- `include/textures.h`、`src/textures.c`：按当前视频模式的真实 gsKit 纹理池限制单张 ART；PNG/JPG 都必须走同一尺寸校验。
-
-### 低分辨率大背景的 VRAM/提交保护
-
-- `gsGlobal->CurrentPointer` 只有在普通或 hires framebuffer 分配完成后才有效；`rmSetMode()` 在这之后调用 `texCheckBudget()`，所以低分辨率普通双缓冲和高分辨率 hires 都使用当前模式的真实纹理池。
-- `maxSize` 每次从 `TEX_MAXSIZE_DEFAULT` 重新计算，并预留最坏情况下的 `16×16 CT32 CLUT`。放不下的图片走既有失败/默认图回退路径，不能进入 gsKit `_blockAlloc()` 的无限重试。
-- JPG 不能绕过该限制：`texJpgLoad()` 在把解码缓冲交给渲染器前执行与 PNG 相同的尺寸校验。
-- 普通低分辨率帧提交仍保留 `gsKit_finish()`、手动双缓冲切换和现有 clear 流程；只移除 `gsKit_queue_exec()` 已经自动追加的重复 FINISH token，避免大纹理首帧额外串行化。没有把 hires 初始化、sync/flip 或 scissor 规则套到低分辨率路径。
 
 ### 非 Coverflow 内置列表 ART 对比结论
 
@@ -201,8 +192,6 @@ temp = !temp
 - 不要把游戏和 APPS 的非中心垂直偏移合并成一个不可区分的值。
 - 不要用 `texLoading > 0` 隐藏或重置当前未变化游戏的 ICO。
 - 未完成完整构建和 PS2 实机验证前，不要继续提交未经验证的 hires 裁切方案。
-- 不要移除 `texCheckBudget()`，也不要让 JPG 路径绕过 `texSizeValidate()`；这是防止低分辨率大图触发 gsKit `_blockAlloc()` 无限循环的稳定性保护。
-- 不要把低分辨率路径改成 hires 的 framebuffer、sync/flip 或局部 scissor 流程；当前修复只复用安全的纹理预算和重复 FINISH 清理。
 - 不要执行会生成大量无关文件的完整 `make clean release`；当前环境也没有有效的 PS2SDK/GSKIT 交叉工具链。
 
 ## 8. 验证限制
@@ -248,5 +237,4 @@ git log -1 --oneline
 - 对比 `origin/362053534-patch-1` 时发现 `cacheLoadImage1()` 的全局冷却移除会改变普通列表的光标切换行为；已改为仅 Coverflow quiet 请求绕过 `cdFramesCount`，普通请求恢复 worker 侧旧请求丢弃保护。
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
 - Coverflow 垂直动画改为围绕反推的 `verticalScalePivotY` 缩放，取消独立的 `centerFactor`→Y 位移曲线，保持当前静态中心/非中心位置。
-- 低分辨率大背景/ART 防护：framebuffer 分配完成后按真实 gsKit 纹理池重新计算单纹理上限，PNG 与 JPG 统一拒绝放不下的资源，避免 `_blockAlloc()` 无限等待；普通双缓冲提交只移除 `queue_exec()` 已包含的重复 FINISH token，保留 `finish`、clear 和手动翻页以维持画面稳定性。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；本次仅完成静态代码对比和 `git diff --check`。

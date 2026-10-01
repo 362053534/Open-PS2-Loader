@@ -10,7 +10,6 @@
 #include "include/opl.h"
 #include "include/renderman.h"
 #include "include/ioman.h"
-#include "include/textures.h"
 
 // Allocateable space in vram, as indicated in GsKit's code
 #define __VRAM_SIZE 4194304
@@ -116,12 +115,10 @@ void rmEndFrame(void)
         gsKit_hires_sync(gsGlobal);
         gsKit_hires_flip(gsGlobal);
     } else {
-        // gsKit_queue_exec() appends its own FINISH token. Do not append a
-        // second one here: the extra token needlessly serializes the regular
-        // double-buffer path, especially when a large texture was just bound.
+        gsKit_set_finish(gsGlobal);
         gsKit_queue_exec(gsGlobal);
 
-        // Wait for draw ops to finish before reusing the texture manager.
+        // Wait for draw ops to finish
         gsKit_finish();
 
         if (!gsGlobal->FirstFrame) {
@@ -232,11 +229,6 @@ int rmSetMode(int force)
             gsKit_init_screen(gsGlobal);
             gsKit_mode_switch(gsGlobal, GS_ONESHOT);
         }
-
-        // CurrentPointer is valid only after the framebuffer(s) are allocated.
-        // Clamp every mode, including the regular low-resolution double-buffer
-        // path, before any background or ART can be bound to the texture manager.
-        texCheckBudget(__VRAM_SIZE - gsGlobal->CurrentPointer);
 
         gsKit_set_test(gsGlobal, GS_ZTEST_OFF);
         gsKit_set_primalpha(gsGlobal, gDefaultAlpha, 0);
