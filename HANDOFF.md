@@ -80,8 +80,7 @@ appsMain3:
 ```c
 #define COVERFLOW_BASELINE_YOFFSET 169
 #define COVERFLOW_APPS_YOFFSET -50
-#define COVERFLOW_NONCENTER_YOFFSET -37
-#define COVERFLOW_APPS_NONCENTER_YOFFSET -34
+#define COVERFLOW_APPS_CENTER_YOFFSET 1
 ```
 
 这些值的意图：
@@ -91,7 +90,7 @@ appsMain3:
 - 因此内置主题的最终位置保持原来的视觉位置；
 - 外部 Coverflow 主题如果没有相同的 CFG 补偿，会使用新的代码基准。
 
-APPS 的 `COVERFLOW_APPS_YOFFSET` 保持 `-50`，游戏和 APPS 的共同下移由 `COVERFLOW_BASELINE_YOFFSET` 负责。
+APPS 的 `COVERFLOW_APPS_YOFFSET` 保持 `-50`，游戏和 APPS 的共同下移由 `COVERFLOW_BASELINE_YOFFSET` 负责。`COVERFLOW_APPS_CENTER_YOFFSET` 只作为 APPS 中心封面底边锚点的微调；非中心封面不再使用独立的 Y 偏移。
 
 ## 4. 倒影实现
 
@@ -188,9 +187,9 @@ temp = !temp
 
 ### Coverflow 垂直缩放变换
 
-- Coverflow 动画的 `centerFactor` 只决定尺寸、明暗和水平布局补偿，不再直接插值 `centerYOffset`。
-- 游戏/APPS 继续使用当前已经校准好的非中心与中心静态底边；`src/themes.c` 根据两端 Case 高度和底边反推出 `verticalScalePivotY`。
-- 每个封面当前的底边由围绕该 pivot 的缩放得到，Case、封面和倒影共享同一变换，避免动画结束时额外吸附 Y。
+- Coverflow 动画的 `centerFactor` 只决定尺寸、明暗和水平布局补偿；垂直方向不再插值非中心 Y 偏移。
+- 中心封面的底边是整个 Coverflow 模块的定位锚点，中心尺寸决定固定的水平中心线；非中心封面 Y 相对偏移始终为 0。
+- 每个动画阶段的封面都围绕这条中心线按自身当前高度计算底边，因此非中心与中心封面中点水平对齐，不再反推 `verticalScalePivotY`。Case、封面和倒影仍共享同一浮点绘制变换。
 
 ## 7. 不要恢复的内容
 
@@ -248,7 +247,7 @@ git log -1 --oneline
 - 当前内置 Coverflow CFG 使用 `main3 y=262`、`appsMain3 y=309`；代码公共基准为 `169`，APPS 专用偏移为 `-50`。
 - 对比 `origin/362053534-patch-1` 时发现 `cacheLoadImage1()` 的全局冷却移除会改变普通列表的光标切换行为；已改为仅 Coverflow quiet 请求绕过 `cdFramesCount`，普通请求恢复 worker 侧旧请求丢弃保护。
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
-- Coverflow 垂直动画改为围绕反推的 `verticalScalePivotY` 缩放，取消独立的 `centerFactor`→Y 位移曲线，保持当前静态中心/非中心位置。
+- Coverflow 垂直动画曾改为围绕反推的 `verticalScalePivotY` 缩放并取消独立的 `centerFactor`→Y 位移曲线；该方案已在 2026-10-02 改为中心封面底边锚点与中心线对齐方案。
 - 定位 NTSC 448i 大背景卡顿：`640×480` CT24 BG 约占 `1.23 MiB`，与 plank/case/Coverflow 封面共同触发 gsKit VRAM 驱逐和重复上传；不是单纯的 BG 删除竞态。
 - 低分辨率修复：普通列表 Background cache 始终保持 2 槽；Coverflow 仅在 GS 原生高度低于 480（448i/448p/240p/224p 等）时使用单槽并禁止双槽 fallback，480 及以上恢复 2 槽。背景仍仅在 CT24 + 双缓冲路径中将大型无 alpha CT24 压缩为带抖动的 CT16S，RGBA/CT32 背景保持原格式，不改 framebuffer 或双缓冲。
 - 单槽 cache 的选择器修复仍保留：低分辨率 Coverflow 会直接替换旧 BG 并清除 fallback；普通列表以及 Coverflow 的 480 及以上分辨率继续保留两槽 fallback 保护。
@@ -258,3 +257,8 @@ git log -1 --oneline
 - 实机验证显示 Coverflow 背景 cache 使用 3 槽也不死机；按后续请求取消主题分支，所有主题 Background cache 统一调整为 2 槽。
 - 低分辨率整数绘制链实测观感更不和谐，已撤回 `58e059b` 的整数 Coverflow 绘制改动，恢复原有浮点 Coverflow 绘制旁路。
 - 实机回归显示死机与 Coverflow 背景的双槽 fallback 相关；进一步限定为：仅 Coverflow 且 GS 原生高度低于 480 时使用 1 槽，普通列表和 480 及以上 Coverflow 使用 2 槽。
+
+### 2026-10-02
+
+- Coverflow 垂直对齐改为以中心封面底边为模块锚点，中心封面目标尺寸确定统一的水平中心线。
+- 删除游戏/APPS 非中心封面的独立 Y 偏移和 `verticalScalePivotY` 反推；动画中每张封面按自身当前高度围绕中心线定位，使非中心与中心封面中点对齐。

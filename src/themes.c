@@ -10,7 +10,6 @@
 #include "include/pad.h"
 #include "include/sound.h"
 
-#include <math.h>
 #include <time.h>
 
 #define MENU_POS_V     50
@@ -1167,15 +1166,13 @@ static clock_t animationStartTime = 0;
 // APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
 // 正值下移、负值上移。当前 -50；整体基准下移由 COVERFLOW_BASELINE_YOFFSET 统一负责。
 #define COVERFLOW_APPS_YOFFSET -50
-// APPS 中心封面专用的垂直微调；按 centerFactor 插值，避免滑动动画中发生跳变。
+// APPS 中心封面专用的垂直微调，作为中心封面底边锚点的一部分。
 #define COVERFLOW_APPS_CENTER_YOFFSET 1
 // 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
 // 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
 #define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x66      // 非中心封面亮度为原亮度的80%（0x80=100%）
-#define COVERFLOW_NONCENTER_YOFFSET -37 // 游戏非中心封面相对中心封面的垂直偏移（与 cfg 的 y 使用同一套 640×480 逻辑坐标）
-#define COVERFLOW_APPS_NONCENTER_YOFFSET -34 // APPS 非中心封面相对中心封面的垂直偏移（同一套 640×480 逻辑坐标）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（drawCoverFlow 夹取到 1..COVERFLOW_MAX）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（cfg 可覆盖）
@@ -1373,8 +1370,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (nonInlayW < 1.0f)
         nonInlayW = 1.0f;
-    float nonInlayH = (float)baseCoverH * nonInlayW / (float)baseCoverW;
-    float nonCenterCaseHeight = nonInlayH / fracH;
     int coverWidthBase = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 基准宽（4:3 逻辑宽，未放大）
 
     // 非中心 case 绘制宽 = 基准宽（非中心大小由【唯一旋钮 noncenter_scale】决定；不再有单独的放大倍率）。
@@ -1410,22 +1405,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量（可正可负）。
     float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
 
-    // 垂直方向不再把 centerFactor 当作独立的 Y 位移动画。
-    // 保留当前已经校准好的非中心/中心静态底边，然后反推出一个固定的缩放中心：
-    // 以该中心缩放时，非中心尺寸和位置仍落在旧的非中心位置，中心尺寸和位置仍落在旧的中心位置。
-    // 这样动画期间的垂直变化只来自缩放本身，Case、封面和倒影共享同一个缩放基准。
-    float nonCenterYOffset = (float)(isApps ? COVERFLOW_APPS_NONCENTER_YOFFSET : COVERFLOW_NONCENTER_YOFFSET);
+    // 垂直方向以中心封面的底边作为整个模块的定位锚点；非中心封面不再有独立的 Y 偏移。
+    // 先按中心封面的目标尺寸确定唯一的水平中心线，再让每个动画阶段的封面围绕这条
+    // 中心线绘制。这样中心封面与非中心封面始终中心对齐，不需要反推缩放锚点。
     float centerYOffset = isApps ? (float)COVERFLOW_APPS_CENTER_YOFFSET : 0.0f;
-    float nonCenterBottomY = (float)elem->posY + (float)coverYOffset + nonCenterYOffset;
     float centerBottomY = (float)elem->posY + (float)coverYOffset + centerYOffset;
     float centerInlayH = (float)baseCoverH * centerInlayWF / (float)baseCoverW;
     float centerCaseHeight = centerInlayH / fracH;
-    float verticalScaleRatio = centerCaseHeight / nonCenterCaseHeight;
-    float verticalScalePivotY = nonCenterBottomY;
-    if (fabsf(verticalScaleRatio - 1.0f) > 0.0001f) {
-        verticalScalePivotY = (centerBottomY - verticalScaleRatio * nonCenterBottomY) /
-                              (1.0f - verticalScaleRatio);
-    }
+    float coverCenterY = centerBottomY - centerCaseHeight * 0.5f;
 
     // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
     //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
@@ -1697,13 +1684,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
-        // 垂直位置不再做独立的 centerFactor 插值。
-        // 以非中心底边为起点，根据当前 Case 高度相对于非中心 Case 高度的比例，
-        // 围绕上面反推出的 verticalScalePivotY 缩放；因此尺寸、Case、封面和倒影
-        // 使用同一个父级缩放，不会在动画结束时再额外吸附一次 Y。
-        float verticalScale = currentCoverHeight / nonCenterCaseHeight;
-        float drawBottomY = verticalScalePivotY +
-                            (nonCenterBottomY - verticalScalePivotY) * verticalScale;
+        // 所有封面都以中心封面的目标缩放作为垂直定位基准：保持中心线一致，
+        // 当前封面只根据自身高度计算底边，不再使用独立的 Y 偏移或反推缩放锚点。
+        float drawBottomY = coverCenterY + currentCoverHeight * 0.5f;
 
         if (i == renderCenterIndex && !animationActive) {
             // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
