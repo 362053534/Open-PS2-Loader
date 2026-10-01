@@ -17,7 +17,11 @@ typedef struct
 
     int UID;
 
-    int texFound; // 图片解析完毕，防止解析到一半就进行使用，也许会造成死机？
+    // 1=已加载，0=确认无图/无效，-1=暂时未加载（例如 CD 中断或 VRAM 预算不足，可重试）
+    int texFound;
+
+    // 预算拒绝只在条目离开后再次进入时重试，避免当前画面每帧重复解码大图。
+    int retryOnRevisit;
 } cache_entry_t;
 
 

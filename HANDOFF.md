@@ -164,6 +164,7 @@ temp = !temp
 - `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑。
 - `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测。
 - `include/textures.h`、`src/textures.c`：按当前视频模式的真实 gsKit 纹理池限制单张 ART；PNG/JPG 都必须走同一尺寸校验。
+- `src/texcache.c`：将“当前 VRAM 预算不足”与“文件不存在/图片无效”区分；预算拒绝保留 `texFound=-1` 和 `retryOnRevisit`，当前条目仍在画面中时不重复解码，条目离开后再次进入时重新尝试，不得变成永久的 `cacheId=-2`。
 
 ### 低分辨率大背景的 VRAM/提交保护
 
@@ -202,6 +203,7 @@ temp = !temp
 - 不要用 `texLoading > 0` 隐藏或重置当前未变化游戏的 ICO。
 - 未完成完整构建和 PS2 实机验证前，不要继续提交未经验证的 hires 裁切方案。
 - 不要移除 `texCheckBudget()`，也不要让 JPG 路径绕过 `texSizeValidate()`；这是防止低分辨率大图触发 gsKit `_blockAlloc()` 无限循环的稳定性保护。
+- 不要把 `ERR_TEXTURE_TOO_LARGE` 当作永久缺图：缓存层必须保留 `texFound=-1`，当前条目离开后再次进入时重试；当前条目仍在画面中时不得每帧重复解码。只有真实缺图/无效图片才使用 `texFound=0` 和 `cacheId=-2`。
 - 不要把低分辨率路径改成 hires 的 framebuffer、sync/flip 或局部 scissor 流程；当前修复只复用安全的纹理预算和重复 FINISH 清理。
 - 不要执行会生成大量无关文件的完整 `make clean release`；当前环境也没有有效的 PS2SDK/GSKIT 交叉工具链。
 
@@ -249,4 +251,5 @@ git log -1 --oneline
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
 - Coverflow 垂直动画改为围绕反推的 `verticalScalePivotY` 缩放，取消独立的 `centerFactor`→Y 位移曲线，保持当前静态中心/非中心位置。
 - 低分辨率大背景/ART 防护：framebuffer 分配完成后按真实 gsKit 纹理池重新计算单纹理上限，PNG 与 JPG 统一拒绝放不下的资源，避免 `_blockAlloc()` 无限等待；普通双缓冲提交只移除 `queue_exec()` 已包含的重复 FINISH token，保留 `finish`、clear 和手动翻页以维持画面稳定性。
+- 修正超预算 ART 的缓存状态：新增 `ERR_TEXTURE_TOO_LARGE`，PNG/JPG 加载链路将它传递给缓存；缓存把这类失败保留为 `texFound=-1`，当前条目离开后再次进入时重试，并避免当前画面每帧重复解码；真实不存在/无效图片仍保持 `texFound=0` 的永久缺图优化。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；本次仅完成静态代码对比和 `git diff --check`。

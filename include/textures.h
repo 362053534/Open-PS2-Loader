@@ -124,9 +124,11 @@ enum INTERNAL_TEXTURE {
 #define ERR_READ_STRUCT   -2
 #define ERR_INFO_STRUCT   -3
 #define ERR_SET_JMP       -4
-#define ERR_BAD_DIMENSION -5
-#define ERR_MISSING_ALPHA -6
-#define ERR_BAD_DEPTH     -7
+#define ERR_BAD_DIMENSION      -5
+#define ERR_MISSING_ALPHA      -6
+#define ERR_BAD_DEPTH          -7
+// 资源本身可能存在，但当前视频模式的 gsKit 纹理池容纳不了；调用方可重试。
+#define ERR_TEXTURE_TOO_LARGE  -8
 
 int texLookupInternalTexId(const char *name);
 int texLoadInternal(GSTEXTURE *texture, int texId);
