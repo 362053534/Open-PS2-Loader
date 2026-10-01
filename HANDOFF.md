@@ -253,4 +253,5 @@ git log -1 --oneline
 - 低分辨率修复：Background cache 从 3 槽改为 1 槽；仅在 CT24 + 双缓冲路径中，大型无 alpha CT24 背景加载完成后转换为带抖动的 CT16S，RGBA/CT32 背景保持原格式，不改 framebuffer 或双缓冲。
 - 单槽 cache 的选择器同步允许替换旧的 `PrevCacheID`，并在释放后取消 fallback，避免把 cache 数量从 3 改为 1 后永远无法加载下一张 BG。
 - 静态审计确认默认 IO 路径不会复用 `qr` 活动槽，也没有发现渲染线程在 `gsKit_finish()` 前释放纹理的直接路径；BG 压缩条件由入队请求携带，避免 worker 在模式切换时读取 `gsGlobal`。
-- 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；本次仅完成静态代码对比和 `git diff --check`。
+- 修复 CI 交叉编译发现的类型错误：`GSTEXTURE.Mem` 是 `u32 *`，CT16S 压缩临时缓冲为 `u16 *`；提交时使用显式 `(u32 *)` 转换，保持底层 16-bit 缓冲布局不变。
+- 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；CI 已实际编译到 `src/textures.c`，此前唯一阻塞错误为上述指针类型不匹配。

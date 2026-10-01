@@ -372,7 +372,8 @@ void texCompactBackground(GSTEXTURE *texture)
     }
 
     free(texture->Mem);
-    texture->Mem = pixels16;
+    // GSTEXTURE stores Mem as a u32 pointer even for 16-bit GS formats.
+    texture->Mem = (u32 *)pixels16;
     texture->PSM = GS_PSM_CT16S;
 }
 
