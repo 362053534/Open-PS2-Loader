@@ -1134,7 +1134,7 @@ static clock_t animationStartTime = 0;
 // 显示数量、压暗和预取允许由主题 cfg 覆盖；封面尺寸/间距/缩放等其它核心参数使用这里的内部基线。
 // 这些默认值与当前内置观感对齐（count=5、scale=内部基线、anim=200ms、dim=0）。
 // 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
-#define COVERFLOW_MAX 7             // 同屏封面数的硬上限（只允许 1/3/5/7）
+#define COVERFLOW_MAX 9             // 同屏封面数的硬上限（只允许 1/3/5/7/9）
 #define COVERFLOW_RENDER_MAX (COVERFLOW_MAX * 2) // 多格翻页时：可见窗口 + 最长翻页距离
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值（也是尺寸/间距基线）
 // 封面主图基准尺寸：以 448 高度模式为基线，逻辑坐标经过 nativeHeight/480 映射后，
@@ -1149,11 +1149,11 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 150
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；3/7张自动反推
-// 宽屏(16:9)专用的【封面间距】百分比。宽屏【不再改变非中心封面的大小】（尺寸与 4:3 完全一致），
-// 改为在宽屏下把封面间距略微拉大一点。语义同下面的间距%：间隙 = 非中心封面基准宽 × 此值/100。
-// 当前 34（间隙 ≈ 非中心基准宽的 34%；宽屏下用于拉开封面间距）。
-// 4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
+// 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
+// 7/9张仍以该间距为基准反推较小的非中心封面，3张则保持5张大小并反算更大的间距。
+// 语义同下面的间距%：间隙 = 5张基线非中心封面基准宽 × 此值/100。
+// 当前 34；4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
 #define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 34
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
@@ -1174,14 +1174,14 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
 #define COVERFLOW_DIM_RGB 0x66      // 非中心封面亮度为原亮度的80%（0x80=100%）
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
-static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（规范化到 1/3/5/7）
+static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（规范化到 1/3/5/7/9）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（内部基线）
 static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（448 基线逻辑值214）
 static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图基准宽（内部基线）
 static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（448 基线逻辑值150）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 5张基线非中心封面相对基准的等比增减【像素】
-static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT; // 宽屏专用封面间距%（宽屏靠拉开间距铺屏，不改封面大小）
+static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT; // 宽屏 5 张基线间距%（7/9 张据此缩放封面）
 static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
@@ -1238,7 +1238,7 @@ int thmCoverflowAnimEnabled(void)
     return gCoverflowAnimSpeed > 0;
 }
 
-// 将主题设置的 Coverflow 数量规范化为 1/3/5/7：<=1 取 1，>7 取 7，
+// 将主题设置的 Coverflow 数量规范化为 1/3/5/7/9：<=1 取 1，>9 取 9，
 // 中间的偶数向上取最近的奇数。绘制、翻页跳转和缓存槽位都以该值为准。
 static int normalizeCoverflowCount(int count)
 {
@@ -1253,14 +1253,14 @@ static int normalizeCoverflowCount(int count)
     return count;
 }
 
-// 当前实际同屏显示的封面数：= coverflow_count 规范化后的 1/3/5/7。
+// 当前实际同屏显示的封面数：= coverflow_count 规范化后的 1/3/5/7/9。
 static int getCoverflowDisplayCount(void)
 {
     return normalizeCoverflowCount(gCoverflowCount);
 }
 
 // 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
-// 该值 = 当前同屏显示的封面数（getCoverflowDisplayCount 规范化为 1/3/5/7，
+// 该值 = 当前同屏显示的封面数（getCoverflowDisplayCount 规范化为 1/3/5/7/9，
 // 与 drawCoverFlow 实际显示的封面数保持一致）。未启用 Coverflow 主题时返回 0，调用方据此
 // 回退到列表主题的原有整页步长（displayedItems）。
 int thmGetCoverflowJumpCount(void)
@@ -1346,7 +1346,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         baseCoverH = gCoverflowAppsCoverH;
     }
 
-    // 同屏封面数：已规范化到 1/3/5/7；翻页动画需要的临时槽位另用
+    // 同屏封面数：已规范化到 1/3/5/7/9；翻页动画需要的临时槽位另用
     // COVERFLOW_RENDER_MAX，避免多格移动时数组越界。
     int coverCount = getCoverflowDisplayCount();
     int centerIndex = coverCount / 2;
@@ -1368,8 +1368,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             fracH = (float)ih / (float)elem->height;
     }
 
-    // 5 封面布局是现有的大小/间距基线。先从该基线得到真实可见间隙，
-    // 再根据主题选择的 1/3/5/7 个槽位反推非中心封面大小；这样改变数量时不改变间隙观感。
+    // 5 封面布局是现有的大小/间距基线。先从该基线得到非中心封面大小和真实可见间隙，
+    // 再根据主题选择的 1/3/5/7/9 个槽位决定尺寸或间距，保持整排的观感。
     // 中心封面仍使用 gCoverflowCenterScale，并参与最终的整排宽度计算。
     int effNonCenterScale = gCoverflowNonCenterScale;
     float referenceNonInlayW = (float)baseCoverW + (float)effNonCenterScale;
@@ -1384,6 +1384,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int gap = (referenceCoverWidthBase * spacingPct) / 100;
     if (gWideScreen)
         gap = rmWideScale(gap);
+    int referenceCoverWidth = referenceCoverWidthBase;
+    if (gWideScreen)
+        referenceCoverWidth = rmWideScale(referenceCoverWidth);
 
     // 中心封面的 case 宽（用于间距补偿）：中心封面比非中心封面宽时，
     // 下面的布局会把中心封面两侧多出的半宽均匀摊开，保证可见间隙一致。
@@ -1394,10 +1397,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (gWideScreen)
         centerCoverWidth = rmWideScale(centerCoverWidth);
 
-    // 5 封面保留原有非中心尺寸；切换到 3 或 7 张时，让
-    // (数量-1)×(非中心宽+间隙)+中心宽 恰好覆盖整个 640 逻辑屏幕。
-    // 宽屏先在压缩前的 4:3 逻辑宽度上反推，随后沿用原有 rmWideScale()。
-    if (coverCount > 1 && coverCount != COVERFLOW_DEFAULT_COUNT) {
+    // 3 张比 5 张少：保留 5 张的非中心封面大小，反过来计算 3 张专用间距，
+    // 使 (数量-1)×(非中心宽+间隙)+中心宽 恰好覆盖整个 640 逻辑屏幕。
+    // 7/9 张比 5 张多：保留 5 张的间距，再反推较小的非中心封面大小来铺满整排。
+    if (coverCount == 3) {
+        int gapWidth = screenWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
+        if (gapWidth < 0)
+            gapWidth = 0;
+        gap = (gapWidth + ((coverCount - 1) >> 1)) / (coverCount - 1);
+    } else if (coverCount >= 7) {
         float targetCoverWidth = ((float)screenWidth - (float)centerCoverWidth -
                                   (float)(coverCount - 1) * (float)gap) /
                                  (float)(coverCount - 1);
@@ -1436,7 +1444,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         nonInlayW = 1.0f;
     int coverWidthBase = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽）
 
-    // 非中心 case 绘制宽由当前数量反推；5 张时保持现有基线尺寸。
+    // 非中心 case 绘制宽：3 张保持 5 张基线尺寸，7/9 张使用反推后的尺寸。
     int coverWidth = coverWidthBase;                      // 供布局/中心距/居中
     int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
     if (isApps)
@@ -2302,7 +2310,7 @@ static void thmLoad(const char *themePath)
     // Coverflow 参数先复位到内部基线；第三方主题只覆盖这里明确开放的 count/dim/preload。
     // 每次加载主题都先复位，避免切换到未定义这些键的主题时残留上一个主题的设置。本函数
     // 在元素定义解析（initCoverflow）之前运行，因此读到的 count/preload 在分配缓存时即可用。
-    //   coverflow_count            —— 同屏封面数（规范化为 1/3/5/7；偶数向上取奇数）
+    //   coverflow_count            —— 同屏封面数（规范化为 1/3/5/7/9；偶数向上取奇数）
     //   coverflow_cover_width       —— 游戏封面主图基准宽（内部固定为448基线逻辑值140）
     //   coverflow_cover_height      —— 游戏封面主图基准高（内部固定为448基线逻辑值214）
     //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（内部固定为448基线逻辑值140）
@@ -2324,13 +2332,13 @@ static void thmLoad(const char *themePath)
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
-    // 显示数量重新开放给第三方主题；读取后在下面统一规范化为 1/3/5/7。
+    // 显示数量重新开放给第三方主题；读取后在下面统一规范化为 1/3/5/7/9。
     configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
     // 其余可配置项继续按各自兼容规则读取。封面位置/坐标系与外壳美术（overlay 顶点等）
     // 由主题引擎按元素通用解析。
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
-    // count 规范化到 1/3/5/7，防止 covers[]/drawOrder[] 越界；preload 只挡负值、不设上限
+    // count 规范化到 1/3/5/7/9，防止 covers[]/drawOrder[] 越界；preload 只挡负值、不设上限
     //（主题填过大导致内存/崩溃属用户行为，不额外处理）。
     gCoverflowCount = normalizeCoverflowCount(gCoverflowCount);
     if (gCoverflowPreload < 0)
