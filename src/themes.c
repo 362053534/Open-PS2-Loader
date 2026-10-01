@@ -1250,48 +1250,49 @@ int thmGetCoverflowJumpCount(void)
 
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
-static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float x, float y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, int x, int y, short aligned, int w, int h, u64 color, int reflection, int baseW, int baseH)
 {
     if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
 
-        // NULL 保护：rmDrawOverlayPixmap*Frac 会直接解引用 inlay 指针（无 NULL 检查）。
-        // 若既没有封面、也没有占位图（第三方主题未提供 cover.png 且内置 COVER_DEFAULT
-        // 也不可用），则不能带 inlay 调用，否则会崩溃。此时【仍然单独把 case 外壳画出来】，
-        // 避免整块 case 模块直接消失（修复"缺图时整个 case 都不显示"的问题）。
+        // 暂时恢复整数缩放链：case 和封面都通过普通整数版
+        // rmDrawOverlayPixmap* 提交，overlay 顶点在提交前四舍五入。
+        // 宽屏时先撤销 case 的一次横向压缩，避免 inlay 被再次压窄。
+        float sx = (baseW > 0) ? rmWideUnscaleF((float)w) / (float)baseW : 1.0f;
+        float sy = (baseH > 0) ? (float)h / (float)baseH : 1.0f;
+
+        // NULL 保护：普通 overlay 绘制路径会直接解引用 inlay 指针。
+        // 没有封面时仍单独绘制 case 外壳，避免整个模块消失。
         if (!texture || !texture->Mem) {
-            // 无 Frac 版：把浮点 x/y 四舍五入到整数（此分支只在缺图兜底画外壳时走）。
             if (reflection)
-                rmDrawPixmapReflect(&ov->source, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+                rmDrawPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color);
             else
-                rmDrawPixmap(&ov->source, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+                rmDrawPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color);
             return;
         }
 
-        // overlay_* 顶点遵循 wOPL/RiptOPL 约定：相对【元素配置尺寸 width/height】(=baseW/baseH)
-        // 给出（例如第三方主题 width=150/height=212 时，overlay_lry=212 落在 0..212 内）。
-        // 这里原样把顶点 + baseW/baseH 传给 rmDrawOverlayPixmap*Frac，由它以 case quad 的
-        // 【实际绘制尺寸】按浮点比例定位 inlay——inlay 与 case 内框完全锁定、同步缩放，
-        // 中心封面放大/滑动收尾时二者【不相对蠕动】。宽屏也自动一致（caseW 已含横向压缩），
-        // 故不再需要手动 sx/sy 及宽屏预缩放。
+        int ulx = (int)(ov->upperLeft_x * sx + 0.5f);
+        int uly = (int)(ov->upperLeft_y * sy + 0.5f);
+        int urx = (int)(ov->upperRight_x * sx + 0.5f);
+        int ury = (int)(ov->upperRight_y * sy + 0.5f);
+        int blx = (int)(ov->lowerLeft_x * sx + 0.5f);
+        int bly = (int)(ov->lowerLeft_y * sy + 0.5f);
+        int brx = (int)(ov->lowerRight_x * sx + 0.5f);
+        int bry = (int)(ov->lowerRight_y * sy + 0.5f);
+
         if (reflection)
-            rmDrawOverlayPixmapReflectFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
-                                           baseW, baseH,
-                                           ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
-                                           ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
+            rmDrawOverlayPixmapReflect(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
+                                       ulx, uly, urx, ury, blx, bly, brx, bry);
         else
-            rmDrawOverlayPixmapFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
-                                    baseW, baseH,
-                                    ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
-                                    ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
+            rmDrawOverlayPixmap(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
+                                ulx, uly, urx, ury, blx, bly, brx, bry);
     } else {
-        // 无外壳（纯封面）主题：没有可用贴图就直接跳过。这里没有 Frac 版，x/y 四舍五入到整数。
         if (!texture || !texture->Mem)
             return;
         if (reflection)
-            rmDrawPixmapReflect(texture, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+            rmDrawPixmapReflect(texture, x, y, aligned, w, h, SCALING_NONE, color);
         else
-            rmDrawPixmap(texture, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+            rmDrawPixmap(texture, x, y, aligned, w, h, SCALING_NONE, color);
     }
 }
 
@@ -1740,12 +1741,21 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                                 SCALING_NONE, gDefaultCol);
         }
 
-        // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
-        // drawBottomY 来自固定缩放中心，而不是独立的垂直移动曲线；Case、封面和倒影
-        // 因而由同一个缩放变换自然展开。尺寸、物理像素模式和 448/480/512 的比例规则不变。
+        // 暂时把动画最终提交恢复为整数坐标/尺寸链，观察 448/480 低分辨率下的观感。
+        // 上面的布局和动画仍按当前逻辑计算，但 case、封面和倒影进入普通整数绘制入口前
+        // 统一四舍五入，避免浮点旁路继续影响本次对比。
+        int integerPosX = (int)(renderPosX + 0.5f);
+        int integerBottomY = (int)(drawBottomY + 0.5f);
+        int integerWidth = (int)(currentCoverWidth + 0.5f);
+        int integerHeight = (int)(currentCoverHeight + 0.5f);
+        if (integerWidth < 1)
+            integerWidth = 1;
+        if (integerHeight < 1)
+            integerHeight = 1;
+
         if (gEnableArtCOV)
-            coverflowDrawTexture(covers[i].texture, img, renderPosX, drawBottomY,
-                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
+            coverflowDrawTexture(covers[i].texture, img, integerPosX, integerBottomY,
+                                 (ALIGN_BOTTOM | ALIGN_HCENTER), integerWidth, integerHeight, coverColor,
                                  elem->reflection, elem->width, elem->height);
     }
 
