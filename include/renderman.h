@@ -144,10 +144,8 @@ void rmSetAspectRatio(enum rm_aratio dar);
 
 /** Widescreen scaling */
 int rmWideScale(int x);
-/** rmWideScale 的浮点版：横向宽屏压缩、不做整数截断。 */
+/** rmWideScale 的浮点版：横向宽屏压缩、不做整数截断；供 Coverflow 浮点旁路使用。 */
 float rmWideScaleF(float x);
-/** 撤销一次 rmWideScaleF 的横向压缩，供 Coverflow 整数 overlay 链还原逻辑坐标。 */
-float rmWideUnscaleF(float x);
 
 /** 把 GS 裁剪框收紧到可见显示区域（过扫补偿后的矩形）；之后排入的图元超出部分被硬件裁掉。 */
 void rmSetScissorDisplay(void);

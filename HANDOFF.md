@@ -256,4 +256,4 @@ git log -1 --oneline
 - 修复 CI 交叉编译发现的类型错误：`GSTEXTURE.Mem` 是 `u32 *`，CT16S 压缩临时缓冲为 `u16 *`；提交时使用显式 `(u32 *)` 转换，保持底层 16-bit 缓冲布局不变。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；CI 已实际编译到 `src/textures.c`，此前唯一阻塞错误为上述指针类型不匹配。
 - 实机验证显示 Coverflow 背景 cache 使用 3 槽也不死机；按后续请求取消主题分支，所有主题 Background cache 统一调整为 2 槽。
-- 按 448/480 低分辨率观感复测请求，Coverflow 当前暂时改回整数绘制链：case/封面/倒影走 `rmDrawOverlayPixmap*` 整数入口，动画计算结果在最终提交前统一四舍五入；浮点旁路保留但不再由 Coverflow 调用。
+- 低分辨率整数绘制链实测观感更不和谐，已撤回 `58e059b` 的整数 Coverflow 绘制改动，恢复原有浮点 Coverflow 绘制旁路。

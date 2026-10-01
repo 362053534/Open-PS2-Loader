@@ -1041,11 +1041,6 @@ float rmWideScaleF(float x)
     return x * (float)iAspectWidth / 4.0f;
 }
 
-float rmWideUnscaleF(float x)
-{
-    return iAspectWidth ? (x * 4.0f) / (float)iAspectWidth : x;
-}
-
 // Get the pixel aspect ratio (how wide or narrow are the pixels?)
 float rmGetPAR()
 {
