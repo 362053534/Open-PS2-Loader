@@ -29,6 +29,8 @@ extern u16 size_conf_theme_OPL_cfg;
 extern const char conf_theme_coverflow_cfg;
 extern u16 size_conf_theme_coverflow_cfg;
 
+extern GSGLOBAL *gsGlobal;
+
 // thmLoad(NULL) 时选择加载哪一套内置主题：
 //   0 = 内置 Coverflow 主题（默认）；1 = 强化原生列表主题。
 // 由 thmSetGuiValue()/thmReinit() 在调用 thmLoad(NULL) 前设置。
@@ -501,9 +503,9 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         snprintf(elemProp, sizeof(elemProp), "%s_count", name);
         configGetInt(themeConfig, elemProp, &cacheCount);
         if (type == ELEM_TYPE_BACKGROUND) {
-            // Coverflow 背景禁止使用两槽 fallback：切换期间只保留当前 BG，
-            // 避免 Coverflow 翻页时旧 BG 与封面工作集共同扩大并触发死机。
-            cacheCount = themeConfigHasCoverflow(themeConfig) ? 1 : 2;
+            // 仅在 Coverflow 且当前 GS 原生高度低于 480（448/240/224 等）时
+            // 禁止两槽 fallback；普通列表以及 480p 及以上仍使用双槽。
+            cacheCount = (themeConfigHasCoverflow(themeConfig) && gsGlobal && gsGlobal->Height < 480) ? 1 : 2;
         }
         LOG("THEMES MutableImage %s: type: %s using cache pattern: %s count: %d\n", name, elementsType[type], cachePattern, cacheCount);
     }
