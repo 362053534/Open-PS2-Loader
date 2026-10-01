@@ -197,14 +197,12 @@ static void cacheLoadImage1(void *data)
         return;
     }
 
-    // 【封面/背景永久停载·彻底根治】节流只能在“入队时”决定，不能在“处理时”再决定。
-    // 入队侧 cacheGetTexture 已用 skipQr(源自 cdFramesCount)在冷却期直接 `return` 不入队；
-    // 光标移动时 menusys 又会 cacheCancelPendingArtRequests() 把过期请求从队列清掉。
-    // 因此凡是已经进到这里的请求，都是“入队时判定值得加载、且尚未被取消”的有效请求，worker
-    // 必须老实处理。此前这里还按 cdFramesCount 二次跳过，会把有效请求丢弃并让上层每帧重新排队
-    // (qr 清 0→下一帧重排→再跳过…)，导致 texLoading 卡在 >0 永不归零、封面/详情页背景永久停载
-    // (常规路径与 Coverflow quiet 路径都中招)。此处只保留 forceSkipQr(cacheEnd 真正退出时)判断。
-    if (forceSkipQr) {
+    // 普通 cacheGetTexture 请求仍保留原有的 worker 侧冷却保护：请求从 IO 队列
+    // 取出后，光标可能已经变化，menusys 来不及再把它移除；此时丢弃旧 ART，避免
+    // 普通列表在快速切换时为已离开的游戏做无谓的解码。Coverflow 的 quiet 请求
+    // 不依赖这套单封面冷却，所以显式绕过 cdFramesCount。两条路径都必须响应
+    // forceSkipQr（cacheEnd 的退出保护）。
+    if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
         cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         free(ioReq);
