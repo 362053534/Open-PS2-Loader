@@ -28,8 +28,6 @@ extern u16 size_conf_theme_OPL_cfg;
 extern const char conf_theme_coverflow_cfg;
 extern u16 size_conf_theme_coverflow_cfg;
 
-extern GSGLOBAL *gsGlobal;
-
 // thmLoad(NULL) 时选择加载哪一套内置主题：
 //   0 = 内置 Coverflow 主题（默认）；1 = 强化原生列表主题。
 // 由 thmSetGuiValue()/thmReinit() 在调用 thmLoad(NULL) 前设置。
@@ -473,8 +471,6 @@ static void endMutableImage(struct theme_element *elem)
     free(elem);
 }
 
-static int themeConfigHasCoverflow(config_set_t *themeConfig);
-
 static mutable_image_t *initMutableImage(const char *themePath, config_set_t *themeConfig, theme_t *theme, const char *name, int type, const char *cachePattern, int cacheCount, const char *defaultTexture, const char *overlayTexture)
 {
     mutable_image_t *mutableImage = (mutable_image_t *)malloc(sizeof(mutable_image_t));
@@ -502,9 +498,9 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         snprintf(elemProp, sizeof(elemProp), "%s_count", name);
         configGetInt(themeConfig, elemProp, &cacheCount);
         if (type == ELEM_TYPE_BACKGROUND) {
-            // 仅在 Coverflow 且当前 GS 原生高度低于 480（448/240/224 等）时
-            // 禁止两槽 fallback；普通列表以及 480p 及以上仍使用双槽。
-            cacheCount = (themeConfigHasCoverflow(themeConfig) && gsGlobal && gsGlobal->Height < 480) ? 1 : 2;
+            // 所有主题、所有分辨率统一保留两个背景槽，保持上一张 BG fallback。
+            // 背景 cache 不再按 Coverflow 或 GS 原生高度区分槽位数。
+            cacheCount = 2;
         }
         LOG("THEMES MutableImage %s: type: %s using cache pattern: %s count: %d\n", name, elementsType[type], cachePattern, cacheCount);
     }
@@ -891,21 +887,6 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
 }
 
 // Internal elements ////////////////////////////////////////////////////////////////////////////////////////////////////////
-static int themeConfigHasCoverflow(config_set_t *themeConfig)
-{
-    struct config_value_t *value;
-
-    if (!themeConfig)
-        return 0;
-
-    for (value = themeConfig->head; value; value = value->next) {
-        if (strstr(value->key, "_type") && !strcmp(value->val, elementsType[ELEM_TYPE_COVERFLOW]))
-            return 1;
-    }
-
-    return 0;
-}
-
 static void drawBackground(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     guiDrawBGPlasma();
