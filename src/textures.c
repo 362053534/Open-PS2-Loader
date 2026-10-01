@@ -320,7 +320,7 @@ static int texSizeValidate(int width, int height, u8 psm)
         return -1;
 
     if (gsKit_texture_size(width, height, (int)psm) > maxSize)
-        return ERR_TEXTURE_TOO_LARGE;
+        return -1;
 
     return 0;
 }
@@ -357,13 +357,12 @@ static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
         // JPG used to bypass texSizeValidate(), so a large background could
         // reach gsKit_TexManager_bind() even after the VRAM budget was clamped.
         // Reject it before exposing the buffer to the renderer, just like PNG.
-        int validation = texSizeValidate(texture->Width, texture->Height, texture->PSM);
-        if (validation < 0) {
+        if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0) {
             free(jpg->buffer);
             free(jpg);
             texture->Width = 0;
             texture->Height = 0;
-            return (validation == ERR_TEXTURE_TOO_LARGE) ? validation : ERR_BAD_DIMENSION;
+            return ERR_BAD_DIMENSION;
         }
 
         texture->Mem = jpg->buffer;
@@ -655,12 +654,10 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
             return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture);
     }
 
-    int validation = texSizeValidate(texture->Width, texture->Height, texture->PSM);
-    if (validation < 0) {
+    if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0) {
         texFree(texture);
 
-        int error = (validation == ERR_TEXTURE_TOO_LARGE) ? validation : ERR_BAD_DIMENSION;
-        return texEnd(pngPtr, infoPtr, pFileBuffer, error, pngTexture);
+        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DIMENSION, pngTexture);
     }
 
     texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture);
@@ -701,9 +698,7 @@ int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
         snprintf(filePath, sizeof(filePath), "%s.%s", path, "png");
 
     //beforeTime = GetTimerSystemTime(); // 开始搜索图片，记录时间
-    int result = texLoad(texture, filePath);
-    int tooLarge = (result == ERR_TEXTURE_TOO_LARGE);
-    if (result >= 0)
+    if (texLoad(texture, filePath) >= 0)
         return 0;
     else {
         if (gEnableJpg) {
@@ -712,18 +707,13 @@ int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
             else
                 snprintf(filePath, sizeof(filePath), "%s.%s", path, "jpg");
 
-            result = texJpgLoad(texture, filePath);
-            if (result >= 0)
+            if (texJpgLoad(texture, filePath) >= 0)
                 return 0;
-            if (result == ERR_TEXTURE_TOO_LARGE)
-                tooLarge = 1;
             //else
             //    searchTexTime += (GetTimerSystemTime() - beforeTime) / CLOCKS_PER_MILISEC; // 记录搜索PNG和JPG图片的时间，避免出现光标连续跳2次的问题
         }
         //else
         //    searchTexTime += (GetTimerSystemTime() - beforeTime) / CLOCKS_PER_MILISEC; // 记录搜索PNG图片的时间，避免出现光标连续跳2次的问题
     }
-    // 过大表示资源可能存在，只是当前 VRAM 预算不允许；与真正不存在的图片区分开，
-    // 让缓存层保留可重试状态。
-    return tooLarge ? ERR_TEXTURE_TOO_LARGE : ERR_BAD_FILE;
+    return ERR_BAD_FILE;
 }

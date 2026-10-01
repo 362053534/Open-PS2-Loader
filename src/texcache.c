@@ -213,17 +213,12 @@ static void cacheLoadImage1(void *data)
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
     if (result < 0) {
-        // A budget rejection is transient: the asset may become drawable after
-        // a mode change or a later cache visit. Keep texFound at -1 so the
-        // caller can retry; only genuine missing/invalid art becomes texFound=0.
-        ioReq->cache->content[ioReq->cacheId].lastUsed = (result == ERR_TEXTURE_TOO_LARGE) ? guiFrameId : 0;
-        ioReq->cache->content[ioReq->cacheId].texFound = (result == ERR_TEXTURE_TOO_LARGE) ? -1 : 0;
-        ioReq->cache->content[ioReq->cacheId].retryOnRevisit = (result == ERR_TEXTURE_TOO_LARGE);
+        ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
+        ioReq->cache->content[ioReq->cacheId].texFound = 0;
         //*ioReq->cacheId = -2;
     } else {
         ioReq->cache->content[ioReq->cacheId].lastUsed = guiFrameId;
         ioReq->cache->content[ioReq->cacheId].texFound = 1;
-        ioReq->cache->content[ioReq->cacheId].retryOnRevisit = 0;
     }
     cacheDecreaseLoading();
     ioReq->cache->content[ioReq->cacheId].qr = 0;
@@ -282,17 +277,12 @@ static void *cacheLoadImage(void *data)
         int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
         if (result < 0) {
-            // A budget rejection is transient: the asset may become drawable after
-            // a mode change or a later cache visit. Keep texFound at -1 so the
-            // caller can retry; only genuine missing/invalid art becomes texFound=0.
-            ioReq->cache->content[ioReq->cacheId].lastUsed = (result == ERR_TEXTURE_TOO_LARGE) ? guiFrameId : 0;
-            ioReq->cache->content[ioReq->cacheId].texFound = (result == ERR_TEXTURE_TOO_LARGE) ? -1 : 0;
-            ioReq->cache->content[ioReq->cacheId].retryOnRevisit = (result == ERR_TEXTURE_TOO_LARGE);
+            ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
+            ioReq->cache->content[ioReq->cacheId].texFound = 0;
             //*ioReq->cacheId = -2;
         } else {
             ioReq->cache->content[ioReq->cacheId].lastUsed = guiFrameId;
             ioReq->cache->content[ioReq->cacheId].texFound = 1;
-            ioReq->cache->content[ioReq->cacheId].retryOnRevisit = 0;
         }
         pthread_mutex_lock(&texLoadingMutex);
         if (texLoading > 0)
@@ -598,14 +588,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
         if (entry->UID == *UID) {
             if (entry->qr) {
                 return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
-            } else if (entry->texFound == -1 && entry->retryOnRevisit) {
-                // Keep the fallback for the current visit. Once this item has
-                // not been queried for a frame, the next visit may retry it.
-                if (guiFrameId <= entry->lastUsed + 1) {
-                    entry->lastUsed = guiFrameId;
-                    return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
-                }
-                entry->retryOnRevisit = 0;
             } else if (entry->texFound == 0) {
                 *cacheId = -2;
                 // 根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
@@ -826,16 +808,6 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
         if (entry->UID == *UID) {
             if (entry->qr)
                 return NULL; // 正在后台加载
-            if (entry->texFound == -1 && entry->retryOnRevisit) {
-                // Do not decode the same oversized art every frame. A gap in
-                // queries means the item left the visible/current set; the
-                // next visit can enqueue a fresh attempt.
-                if (guiFrameId <= entry->lastUsed + 1) {
-                    entry->lastUsed = guiFrameId;
-                    return NULL;
-                }
-                entry->retryOnRevisit = 0;
-            }
             if (entry->texFound == 1 && entry->texture.Mem) {
                 entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
                 return &entry->texture;
@@ -844,8 +816,7 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                 *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
                 return NULL;
             }
-            // texFound == -1：上次加载被 CD/skipQr 中断，或当前 VRAM 预算不足；
-            // 只有允许请求时才能重新排队
+            // texFound == -1：上次加载被 CD/skipQr 中断，只有允许请求时才能重试
         }
         *cacheId = -1; // UID 不匹配（槽被别的封面抢走）→ 重新查找
     }
