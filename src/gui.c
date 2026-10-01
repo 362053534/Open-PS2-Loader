@@ -670,13 +670,16 @@ static int guiUIUpdater(int modified)
                 diaSetItemType(diaUIConfig, UICFG_SELCOL, UI_SPACER);
             }
 
-            // The user cannot adjust the current theme's colours.
-            temp = !temp;
-            diaSetEnabled(diaUIConfig, UICFG_BGCOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_UICOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_TXTCOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_SELCOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_RESETCOL, temp);
+            // Both built-in themes use the global colour settings. The Coverflow
+            // theme is index 0, while the built-in list theme is index 1; using
+            // `!temp` here accidentally disabled all colour controls for the
+            // second built-in theme.
+            int colorsEditable = (temp < THM_NUM_BUILTIN);
+            diaSetEnabled(diaUIConfig, UICFG_BGCOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_UICOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_TXTCOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_SELCOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_RESETCOL, colorsEditable);
         }
 
         diaGetInt(diaUIConfig, UICFG_XOFF, &x);
@@ -768,7 +771,7 @@ reselect_video_mode:
     if (ret) {
         diaGetInt(diaUIConfig, UICFG_LANG, &langID);
         diaGetInt(diaUIConfig, UICFG_THEME, &themeID);
-        if (themeID == 0) {
+        if (themeID < THM_NUM_BUILTIN) {
             diaGetColor(diaUIConfig, UICFG_BGCOL, gDefaultBgColor);
             diaGetColor(diaUIConfig, UICFG_UICOL, gDefaultUITextColor);
             diaGetColor(diaUIConfig, UICFG_TXTCOL, gDefaultTextColor);
