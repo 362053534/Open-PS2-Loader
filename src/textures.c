@@ -121,8 +121,27 @@ extern void *cf_hdd_png;
 extern void *cf_eth_png;
 extern void *cf_app_png;
 
-// Not related to screen size, just to limit at some point
-static int maxSize = 720 * 512 * 4;
+// Not related to screen size, just to limit at some point.
+// 这只是一个软上限；真正可用的纹理池会随视频模式的帧缓冲而变化。
+#define TEX_MAXSIZE_DEFAULT (720 * 512 * 4)
+static int maxSize = TEX_MAXSIZE_DEFAULT;
+
+// gsKit 的纹理分配器在请求大于整个池子的纹理时没有失败出口，会在
+// _blockAlloc() 内无限驱逐/重试。帧缓冲分配完成后，把单纹理上限夹到
+// "真实池 - 最坏情况下的16x16 CT32 CLUT"，让放不下的资源走既有的
+// ERR_BAD_DIMENSION/默认图回退路径，而不是把低分辨率主机卡死。
+// 每次从默认值重新计算，避免切换视频模式后沿用旧模式的较小上限。
+void texCheckBudget(unsigned int poolBytes)
+{
+    unsigned int clut = gsKit_texture_size(16, 16, GS_PSM_CT32);
+
+    if (poolBytes > clut)
+        poolBytes -= clut;
+    else
+        poolBytes = 0;
+
+    maxSize = (poolBytes < (unsigned int)TEX_MAXSIZE_DEFAULT) ? (int)poolBytes : TEX_MAXSIZE_DEFAULT;
+}
 
 // 尝试添加open文件时的临界区
 static s32 fileLockId;
@@ -334,6 +353,18 @@ static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
         texture->Width = jpg->width;
         texture->Height = jpg->height;
         texture->PSM = GS_PSM_CT24;
+
+        // JPG used to bypass texSizeValidate(), so a large background could
+        // reach gsKit_TexManager_bind() even after the VRAM budget was clamped.
+        // Reject it before exposing the buffer to the renderer, just like PNG.
+        if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0) {
+            free(jpg->buffer);
+            free(jpg);
+            texture->Width = 0;
+            texture->Height = 0;
+            return ERR_BAD_DIMENSION;
+        }
+
         texture->Mem = jpg->buffer;
         free(jpg);
         result = 0;

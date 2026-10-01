@@ -135,5 +135,10 @@ void texFree(GSTEXTURE *texture);
 void texInit(void);
 void texFinish(void);
 
+// 视频模式/帧缓冲确定后，把单张纹理大小上限(maxSize)夹到 gsKit 真实显存池以内，
+// 避免大于池子的纹理触发 gsKit _blockAlloc 死循环把主机挂死(OPL issue #1776)。
+// poolBytes 应为 __VRAM_SIZE - gsGlobal->CurrentPointer。
+void texCheckBudget(unsigned int poolBytes);
+
 //extern s32 fileLockId;
 #endif
