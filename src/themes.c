@@ -1349,6 +1349,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (nonInlayW < 1.0f)
         nonInlayW = 1.0f;
+    float nonInlayH = (float)baseCoverH * nonInlayW / (float)baseCoverW;
+    float nonCenterCaseHeight = nonInlayH / fracH;
     int coverWidthBase = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 基准宽（4:3 逻辑宽，未放大）
 
     // 非中心 case 绘制宽 = 基准宽（非中心大小由【唯一旋钮 noncenter_scale】决定；不再有单独的放大倍率）。
@@ -1383,6 +1385,23 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         centerCoverWidth = rmWideScale(centerCoverWidth);
     // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量（可正可负）。
     float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
+
+    // 垂直方向不再把 centerFactor 当作独立的 Y 位移动画。
+    // 保留当前已经校准好的非中心/中心静态底边，然后反推出一个固定的缩放中心：
+    // 以该中心缩放时，非中心尺寸和位置仍落在旧的非中心位置，中心尺寸和位置仍落在旧的中心位置。
+    // 这样动画期间的垂直变化只来自缩放本身，Case、封面和倒影共享同一个缩放基准。
+    float nonCenterYOffset = (float)(isApps ? COVERFLOW_APPS_NONCENTER_YOFFSET : COVERFLOW_NONCENTER_YOFFSET);
+    float centerYOffset = isApps ? (float)COVERFLOW_APPS_CENTER_YOFFSET : 0.0f;
+    float nonCenterBottomY = (float)elem->posY + (float)coverYOffset + nonCenterYOffset;
+    float centerBottomY = (float)elem->posY + (float)coverYOffset + centerYOffset;
+    float centerInlayH = (float)baseCoverH * centerInlayWF / (float)baseCoverW;
+    float centerCaseHeight = centerInlayH / fracH;
+    float verticalScaleRatio = centerCaseHeight / nonCenterCaseHeight;
+    float verticalScalePivotY = nonCenterBottomY;
+    if (fabsf(verticalScaleRatio - 1.0f) > 0.0001f) {
+        verticalScalePivotY = (centerBottomY - verticalScaleRatio * nonCenterBottomY) /
+                              (1.0f - verticalScaleRatio);
+    }
 
     // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
     //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
@@ -1654,21 +1673,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
-        // 非中心封面相对中心封面额外偏移【与 cfg y 相同的逻辑坐标单位】（正=下移、负=上移），
-        // 普通主题的中心封面不追加偏移；APPS 中心封面另有专用微调。非中心偏移量随 centerFactor 插值，
-        // 滑动时垂直位置也平滑过渡。
-        // 这里不另设百分比参数：cfg 的 y 与本偏移都会经过同一个 nativeH/480 映射，
-        // 因此二者在 448/480/512 下保持统一的相对定位规则，同时保留自然的分辨率差异。
-        // 浮点旁路：垂直偏移保持 float，不取整，非中心↔中心的垂直过渡与放大动画同样顺滑。
-        float nonCenterYOffset = (float)(isApps ? COVERFLOW_APPS_NONCENTER_YOFFSET : COVERFLOW_NONCENTER_YOFFSET);
-        float centerYOffset = nonCenterYOffset * (1.0f - centerFactor);
-        if (isApps)
-            centerYOffset += (float)COVERFLOW_APPS_CENTER_YOFFSET * centerFactor;
+        // 垂直位置不再做独立的 centerFactor 插值。
+        // 以非中心底边为起点，根据当前 Case 高度相对于非中心 Case 高度的比例，
+        // 围绕上面反推出的 verticalScalePivotY 缩放；因此尺寸、Case、封面和倒影
+        // 使用同一个父级缩放，不会在动画结束时再额外吸附一次 Y。
+        float verticalScale = currentCoverHeight / nonCenterCaseHeight;
+        float drawBottomY = verticalScalePivotY +
+                            (nonCenterBottomY - verticalScalePivotY) * verticalScale;
 
         if (i == renderCenterIndex && !animationActive) {
             // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
             centerIcoLeft = renderPosX - (currentCoverWidth * fracW * 0.5f);
-            centerIcoBottom = elem->posY + coverYOffset + centerYOffset;
+            centerIcoBottom = drawBottomY;
             centerIcoGeometryValid = 1;
         }
 
@@ -1720,11 +1736,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
 
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
-        // y 仍来自 Coverflow 元素的 cfg y（加上既有的模块基线偏移），但改为把它作为
-        // 封面模块的【底部锚点】；因此中心封面放大/非中心缩小只向上展开，底部位置不随尺寸改变。
-        // 不改动封面尺寸、物理像素模式或过滤方式，保留 448/480/512 的原有尺寸差异。
+        // drawBottomY 来自固定缩放中心，而不是独立的垂直移动曲线；Case、封面和倒影
+        // 因而由同一个缩放变换自然展开。尺寸、物理像素模式和 448/480/512 的比例规则不变。
         if (gEnableArtCOV)
-            coverflowDrawTexture(covers[i].texture, img, renderPosX, elem->posY + coverYOffset + centerYOffset,
+            coverflowDrawTexture(covers[i].texture, img, renderPosX, drawBottomY,
                                  (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
                                  elem->reflection, elem->width, elem->height);
     }

@@ -176,6 +176,12 @@ temp = !temp
 - Coverflow 的 `rmBuildCoverTransform()` 必须保持 transform 坐标处于 render offset 之前；Case、封面和倒影各自在提交阶段统一添加一次 offset。
 - 不要在 `rmBuildCoverTransform()` 中提前加入 `fRenderXOff/fRenderYOff`，否则 overscan 大于 0 时会重复应用偏移，导致整个 Coverflow 模块向右/下漂移。
 
+### Coverflow 垂直缩放变换
+
+- Coverflow 动画的 `centerFactor` 只决定尺寸、明暗和水平布局补偿，不再直接插值 `centerYOffset`。
+- 游戏/APPS 继续使用当前已经校准好的非中心与中心静态底边；`src/themes.c` 根据两端 Case 高度和底边反推出 `verticalScalePivotY`。
+- 每个封面当前的底边由围绕该 pivot 的缩放得到，Case、封面和倒影共享同一变换，避免动画结束时额外吸附 Y。
+
 ## 7. 不要恢复的内容
 
 - 不要恢复 `COVERFLOW_DIAG_BDM_INDEX_ALWAYS` 或其它 BdmIndex 常显诊断逻辑。
@@ -230,4 +236,5 @@ git log -1 --oneline
 - 当前内置 Coverflow CFG 使用 `main3 y=262`、`appsMain3 y=309`；代码公共基准为 `169`，APPS 专用偏移为 `-50`。
 - 对比 `origin/362053534-patch-1` 时发现 `cacheLoadImage1()` 的全局冷却移除会改变普通列表的光标切换行为；已改为仅 Coverflow quiet 请求绕过 `cdFramesCount`，普通请求恢复 worker 侧旧请求丢弃保护。
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
+- Coverflow 垂直动画改为围绕反推的 `verticalScalePivotY` 缩放，取消独立的 `centerFactor`→Y 位移曲线，保持当前静态中心/非中心位置。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；本次仅完成静态代码对比和 `git diff --check`。
