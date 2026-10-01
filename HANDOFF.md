@@ -250,9 +250,9 @@ git log -1 --oneline
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
 - Coverflow 垂直动画改为围绕反推的 `verticalScalePivotY` 缩放，取消独立的 `centerFactor`→Y 位移曲线，保持当前静态中心/非中心位置。
 - 定位 NTSC 448i 大背景卡顿：`640×480` CT24 BG 约占 `1.23 MiB`，与 plank/case/Coverflow 封面共同触发 gsKit VRAM 驱逐和重复上传；不是单纯的 BG 删除竞态。
-- 低分辨率修复：普通 Background cache 保持 1 槽；为复现实机故障，声明 Coverflow 元素的主题背景 cache 暂时恢复为 3 槽。两者都仅在 CT24 + 双缓冲路径中压缩大型无 alpha CT24 背景为带抖动的 CT16S，RGBA/CT32 背景保持原格式，不改 framebuffer 或双缓冲。
-- 单槽 cache 的选择器同步允许替换旧的 `PrevCacheID`，并在释放后取消 fallback；Coverflow 恢复 3 槽后保留原有多槽 fallback 保护。
+- 低分辨率修复：所有主题的 Background cache 统一保持 2 槽，便于切换时保留上一张 fallback，同时避免 3 个完整 BG 长期扩大低分辨率 VRAM 工作集。背景仍仅在 CT24 + 双缓冲路径中将大型无 alpha CT24 压缩为带抖动的 CT16S，RGBA/CT32 背景保持原格式，不改 framebuffer 或双缓冲。
+- 单槽 cache 的选择器修复仍保留，Coverflow 和普通列表现在统一使用两槽背景 cache，并保留多槽 fallback 保护。
 - 静态审计确认默认 IO 路径不会复用 `qr` 活动槽，也没有发现渲染线程在 `gsKit_finish()` 前释放纹理的直接路径；BG 压缩条件由入队请求携带，避免 worker 在模式切换时读取 `gsGlobal`。
 - 修复 CI 交叉编译发现的类型错误：`GSTEXTURE.Mem` 是 `u32 *`，CT16S 压缩临时缓冲为 `u16 *`；提交时使用显式 `(u32 *)` 转换，保持底层 16-bit 缓冲布局不变。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；CI 已实际编译到 `src/textures.c`，此前唯一阻塞错误为上述指针类型不匹配。
-- 按实机复现请求：仅将包含 `Coverflow` 元素的主题 Background cache 恢复为 3 槽，普通列表主题继续使用 1 槽，以便单独观察多 BG 工作集是否与死机相关。
+- 实机验证显示 Coverflow 背景 cache 使用 3 槽也不死机；按后续请求取消主题分支，所有主题 Background cache 统一调整为 2 槽。
