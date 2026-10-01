@@ -19,6 +19,7 @@
 #include "util.h"
 #include "syshook.h"
 #include "coreconfig.h"
+#include "rc_uya.h"
 #include "../../modules/iopcore/common/cdvd_config.h"
 
 extern int _iop_reboot_count;
@@ -238,8 +239,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 
     DPRINTF("Loading extra IOP modules...\n");
 
-    /* UYA: stake 0x4C900 before ETH/BDM modules eat IOP RAM (multiplayer IOP reboot path). */
-    if (_strcmp(config->GameID, "SCUS_973.53") == 0 || _strcmp(config->GameID, "SCES_524.56") == 0 || _strcmp(config->GameID, "SCPS_150.84") == 0)
+    /* 单人由原 EE 补丁处理；只有多人 ELF 才在设备模块之前预留固定地址。 */
+    if (RnC3_NeedsIopPatch())
         LoadOPLModule(OPL_MODULE_ID_IOP_PATCH, 0, 0, NULL);
 
 #ifdef __LOAD_DEBUG_MODULES
