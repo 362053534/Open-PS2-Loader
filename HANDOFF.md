@@ -79,7 +79,7 @@ appsMain3:
 
 ```c
 #define COVERFLOW_BASELINE_YOFFSET 169
-#define COVERFLOW_APPS_YOFFSET -50
+#define COVERFLOW_APPS_YOFFSET -60
 #define COVERFLOW_APPS_CENTER_YOFFSET 1
 ```
 
@@ -90,7 +90,7 @@ appsMain3:
 - 因此内置主题的最终位置保持原来的视觉位置；
 - 外部 Coverflow 主题如果没有相同的 CFG 补偿，会使用新的代码基准。
 
-APPS 的 `COVERFLOW_APPS_YOFFSET` 保持 `-50`，游戏和 APPS 的共同下移由 `COVERFLOW_BASELINE_YOFFSET` 负责。`COVERFLOW_APPS_CENTER_YOFFSET` 只作为 APPS 中心封面底边锚点的微调；非中心封面不再使用独立的 Y 偏移。
+APPS 的 `COVERFLOW_APPS_YOFFSET` 为 `-60`，相对原 `-50` 上移 10 像素；游戏和 APPS 的共同下移由 `COVERFLOW_BASELINE_YOFFSET` 负责。`COVERFLOW_APPS_CENTER_YOFFSET` 只作为 APPS 中心封面底边锚点的微调；非中心封面不再使用独立的 Y 偏移。
 
 ## 4. 倒影实现
 
@@ -262,3 +262,4 @@ git log -1 --oneline
 
 - Coverflow 垂直对齐改为以中心封面底边为模块锚点，中心封面目标尺寸确定统一的水平中心线。
 - 删除游戏/APPS 非中心封面的独立 Y 偏移和 `verticalScalePivotY` 反推；动画中每张封面按自身当前高度围绕中心线定位，使非中心与中心封面中点对齐。
+- APPS Coverflow 的非 CFG 基线偏移从 `-50` 调整为 `-60`，使 APPS 封面模块整体上移 10 像素；游戏 Coverflow 和 CFG 坐标不变。
