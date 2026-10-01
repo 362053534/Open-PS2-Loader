@@ -498,6 +498,8 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         configGetStr(themeConfig, elemProp, &cachePattern);
         snprintf(elemProp, sizeof(elemProp), "%s_count", name);
         configGetInt(themeConfig, elemProp, &cacheCount);
+        if (type == ELEM_TYPE_BACKGROUND)
+            cacheCount = 1; // 不让主题 CFG 保留多个完整 BG，避免低分辨率 VRAM 工作集抖动
         LOG("THEMES MutableImage %s: type: %s using cache pattern: %s count: %d\n", name, elementsType[type], cachePattern, cacheCount);
     }
 
@@ -1920,7 +1922,10 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
             } else if (!strcmp(elementsType[ELEM_TYPE_BACKGROUND], type)) {
                 if (!elems->first) { // Background elem can only be the first one
                     elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_BACKGROUND, 0, 0, ALIGN_NONE, screenWidth, screenHeight, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 3, NULL);
+                    // Full-screen RGB backgrounds are large CT24 textures. Keep only
+                    // the current BG in the cache so old games do not retain competing
+                    // VRAM blocks while Coverflow loads the next page of covers.
+                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 1, NULL);
                 }
             } else if (!strcmp(elementsType[ELEM_TYPE_MENU_ICON], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_MENU_ICON, screenWidth >> 1, 400, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);

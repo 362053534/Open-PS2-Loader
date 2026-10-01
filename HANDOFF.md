@@ -162,6 +162,15 @@ temp = !temp
 - `misc/conf_theme_coverflow.cfg`：内置 Coverflow 主题 CFG，由 Makefile 的 `bin2c` 规则嵌入。
 - `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑。
 - `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测。
+- `src/textures.c`、`include/textures.h`：大型无 alpha 背景的 CT24→CT16S 压缩，降低低分辨率纹理池争用。
+
+### 低分辨率大背景卡顿的根因与处理
+
+- 测试图 `temp/SLPM_552.82_BG.png` 是 `640×480` RGB PNG。CT24 在 gsKit 中按约 `1,228,800` bytes 占用 VRAM。
+- NTSC 448i 普通双缓冲的纹理池约为 `1,900,544` bytes；再扣除 plank、case 和当前 Coverflow 封面后，背景会迫使 gsKit TexManager 在每帧反复驱逐/重新上传纹理。这是 VRAM 工作集抖动，不是 PNG worker 与 BG 擦除之间的直接竞态。
+- 普通 Background cache 改为只保留当前一张（包括主题 CFG 中请求的 `_count`，Background 会强制限制为 1），切换游戏时释放旧的完整背景纹理，避免连续页面保留多个 BG block；cache 选择器对单槽允许替换上一张 BG，并清除已释放槽位的 fallback，避免单槽配置卡在旧背景。
+- 仅在当前显示为 CT24 且启用双缓冲的低分辨率路径中，将加载成功的大型 RGB/CT24 背景在进入 cache 前转换为带抖动的 CT16S；RGBA/带 alpha 的 CT32 背景不转换，保持 alpha 语义。framebuffer、双缓冲、坐标和普通主题绘制路径不变。
+- 静态检查当前默认 `usePthread = 0` 的生命周期：待处理请求由 `ioRemoveRequestsWithCleanup()` 移除并通过 UID 校验，正在执行的请求不在队列中；cache 选择只复用 `qr == 0` 的槽，因此取消请求不会把活动槽交给下一张图。`rmEndFrame()` 先执行 `gsKit_finish()`，随后才允许 `texFree()`/`rmUnloadTexture()` 复用纹理管理器 block，未发现渲染线程过早释放的直接路径。
 
 ### 非 Coverflow 内置列表 ART 对比结论
 
@@ -192,6 +201,8 @@ temp = !temp
 - 不要把游戏和 APPS 的非中心垂直偏移合并成一个不可区分的值。
 - 不要用 `texLoading > 0` 隐藏或重置当前未变化游戏的 ICO。
 - 未完成完整构建和 PS2 实机验证前，不要继续提交未经验证的 hires 裁切方案。
+- 不要把大型 RGB 背景恢复为低分辨率路径中的长期 CT24 常驻纹理，也不要把 Background cache 恢复为 3 个槽；这会重新触发 NTSC 448i 的 VRAM 工作集抖动。
+- 不要对 CT32/RGBA 背景强制使用 CT16S；当前压缩只针对无 alpha 的 CT24 背景。
 - 不要执行会生成大量无关文件的完整 `make clean release`；当前环境也没有有效的 PS2SDK/GSKIT 交叉工具链。
 
 ## 8. 验证限制
@@ -237,4 +248,8 @@ git log -1 --oneline
 - 对比 `origin/362053534-patch-1` 时发现 `cacheLoadImage1()` 的全局冷却移除会改变普通列表的光标切换行为；已改为仅 Coverflow quiet 请求绕过 `cdFramesCount`，普通请求恢复 worker 侧旧请求丢弃保护。
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
 - Coverflow 垂直动画改为围绕反推的 `verticalScalePivotY` 缩放，取消独立的 `centerFactor`→Y 位移曲线，保持当前静态中心/非中心位置。
+- 定位 NTSC 448i 大背景卡顿：`640×480` CT24 BG 约占 `1.23 MiB`，与 plank/case/Coverflow 封面共同触发 gsKit VRAM 驱逐和重复上传；不是单纯的 BG 删除竞态。
+- 低分辨率修复：Background cache 从 3 槽改为 1 槽；仅在 CT24 + 双缓冲路径中，大型无 alpha CT24 背景加载完成后转换为带抖动的 CT16S，RGBA/CT32 背景保持原格式，不改 framebuffer 或双缓冲。
+- 单槽 cache 的选择器同步允许替换旧的 `PrevCacheID`，并在释放后取消 fallback，避免把 cache 数量从 3 改为 1 后永远无法加载下一张 BG。
+- 静态审计确认默认 IO 路径不会复用 `qr` 活动槽，也没有发现渲染线程在 `gsKit_finish()` 前释放纹理的直接路径。
 - 当前环境无法运行 PS2SDK/GSKIT 交叉构建或实机验证；本次仅完成静态代码对比和 `git diff --check`。

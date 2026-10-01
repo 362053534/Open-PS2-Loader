@@ -135,5 +135,9 @@ void texFree(GSTEXTURE *texture);
 void texInit(void);
 void texFinish(void);
 
+// 对大型无 alpha 背景图进行一次带抖动的 CT24 -> CT16S 压缩，减少低分辨率
+// framebuffer 与 Coverflow 封面同时驻留时的 VRAM 争用；失败时保留原纹理。
+void texCompactBackground(GSTEXTURE *texture);
+
 //extern s32 fileLockId;
 #endif

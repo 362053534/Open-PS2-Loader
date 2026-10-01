@@ -8,6 +8,8 @@
 #include "include/pad.h"
 #include <pthread.h>
 
+extern GSGLOBAL *gsGlobal;
+
 int ForceRefreshPrevTexCache = 0;
 int forceSkipQr = 0;
 int texLoading = 0;
@@ -212,6 +214,10 @@ static void cacheLoadImage1(void *data)
     // 加载图片
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
+    if (result >= 0 && !strncmp(ioReq->cache->suffix, "BG", 2) && gsGlobal &&
+        gsGlobal->DoubleBuffering == GS_SETTING_ON && gsGlobal->PSM == GS_PSM_CT24)
+        texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
+
     if (result < 0) {
         ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
         ioReq->cache->content[ioReq->cacheId].texFound = 0;
@@ -275,6 +281,10 @@ static void *cacheLoadImage(void *data)
 
         // 加载图片
         int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
+
+        if (result >= 0 && !strncmp(ioReq->cache->suffix, "BG", 2) && gsGlobal &&
+            gsGlobal->DoubleBuffering == GS_SETTING_ON && gsGlobal->PSM == GS_PSM_CT24)
+            texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
 
         if (result < 0) {
             ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
@@ -626,8 +636,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     // 寻找可替换的槽
     for (i = 0; i < cache->count; i++) {
         currEntry = &cache->content[i];
-        // 可用槽，但需保护正在使用的
-        if (!currEntry->qr && (currEntry->lastUsed < rtime) && (PrevCacheID != i)) {
+        // 可用槽。多槽 cache 保留上一帧的 fallback；单槽 BG cache 必须允许
+        // 直接替换上一张背景，否则 PrevCacheID 会永久占住唯一槽位。
+        if (!currEntry->qr && (currEntry->lastUsed < rtime) &&
+            (cache->count == 1 || PrevCacheID != i)) {
             oldestEntry = currEntry;
             rtime = currEntry->lastUsed;
             cacheId_temp = i;
@@ -635,6 +647,18 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     }
 
     if (oldestEntry) {
+        if (PrevCacheID == cacheId_temp && cache->count == 1) {
+            // cacheClearItem() 会立即释放旧背景；不要把已清空的唯一槽位
+            // 当作 fallback 返回给本帧的渲染路径。
+            PrevCacheID = -1;
+            if (!strncmp("BG", cache->suffix, 2))
+                PrevCacheID_BG = -1;
+            else if (!strncmp("COV", cache->suffix, 3))
+                PrevCacheID_COV = -1;
+            else if (!strncmp("ICO", cache->suffix, 3))
+                PrevCacheID_ICO = -1;
+        }
+
         if (!usePthread) {
             *cacheId = cacheId_temp; // 指针赋值放在for循环外面，只赋值一次，防止竞态
             // 使用官方的多线程方法

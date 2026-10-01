@@ -323,6 +323,59 @@ static void texPrepare(GSTEXTURE *texture)
     texture->Delayed = 1;
 }
 
+// 大型 RGB 背景在 CT24 下会独占低分辨率纹理池的大部分空间。保留 CT24
+// 会让 gsKit 在背景、plank、case 和 Coverflow 封面之间反复驱逐/重新上传。
+// 只压缩无 alpha 的 CT24 图，保持 RGBA 背景的 alpha 语义不变；失败时不破坏
+// 原始纹理，调用方仍可按原路径绘制。
+#define TEX_BACKGROUND_COMPACT_THRESHOLD (512 * 1024)
+void texCompactBackground(GSTEXTURE *texture)
+{
+    static const s8 ditherMatrix[16] = {-4, 2, -3, 3, 0, -2, 1, -1,
+                                        -3, 3, -4, 2, 1, -1, 0, -2};
+    u16 *pixels16;
+    u8 *pixels24;
+    size_t pixelCount;
+    size_t size;
+    int x, y;
+
+    if (!texture || !texture->Mem || texture->PSM != GS_PSM_CT24)
+        return;
+    if (gsKit_texture_size(texture->Width, texture->Height, texture->PSM) <= TEX_BACKGROUND_COMPACT_THRESHOLD)
+        return;
+
+    pixelCount = (size_t)texture->Width * texture->Height;
+    size = pixelCount * sizeof(u16);
+    pixels16 = memalign(128, size);
+    if (!pixels16)
+        return;
+
+    pixels24 = (u8 *)texture->Mem;
+    for (y = 0; y < texture->Height; y++) {
+        for (x = 0; x < texture->Width; x++) {
+            int index = y * texture->Width + x;
+            int dither = ditherMatrix[(y & 3) * 4 + (x & 3)];
+            int red = pixels24[index * 3 + 0] + dither;
+            int green = pixels24[index * 3 + 1] + dither;
+            int blue = pixels24[index * 3 + 2] + dither;
+
+            if (red < 0) red = 0;
+            if (red > 255) red = 255;
+            if (green < 0) green = 0;
+            if (green > 255) green = 255;
+            if (blue < 0) blue = 0;
+            if (blue > 255) blue = 255;
+
+            // CT16S: opaque A1 B5 G5 R5. CT24 has no alpha, so A=1 is exact.
+            pixels16[index] = 0x8000 | ((blue >> 3) << 10) |
+                              ((green >> 3) << 5) | (red >> 3);
+        }
+    }
+
+    free(texture->Mem);
+    texture->Mem = pixels16;
+    texture->PSM = GS_PSM_CT16S;
+}
+
 /// JPG SUPPORT ///////////////////////////////////////////////////////////////////////////////////////
 static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
 {
