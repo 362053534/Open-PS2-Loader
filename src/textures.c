@@ -389,7 +389,12 @@ static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
     texPrepare(texture);
     int result = ERR_BAD_FILE;
 
+    // PNG loads already serialize their device access with fileLockId.  Keep
+    // JPG discovery under the same lock so theme construction on the main
+    // thread cannot race an active BDM/SMB art read in the IO worker.
+    WaitSema(fileLockId);
     jpgData *jpg = jpgFromFilename(filePath, JPG_NORMAL);
+    SignalSema(fileLockId);
     if (jpg) {
         texture->Width = jpg->width;
         texture->Height = jpg->height;

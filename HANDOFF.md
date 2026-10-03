@@ -287,3 +287,9 @@ git log -1 --oneline
 - 为 Coverflow 的 active COV/ICO/BG 请求统一增加目标代际：光标变化后，仍在当前 Coverflow 可见窗口或预取范围内的请求会被重新标记为当前代；不在这些范围内的请求即使完成解码，也会释放结果并保持 cache 槽位无效，不再进入后续 GS bind。普通列表请求仍保持原有发布规则。该检查不尝试中断正在执行的 SMB/PNG 读取，也不额外保护动画过渡路径。
 - 恢复 Coverflow 字体 atlas 的 pending/条件刷新策略：只有缓存耗尽下一条标题的保留余量时才在导航阶段刷新，不在每帧或每个字符串之间 flush。
 - Coverflow 背景改为只在背景绘制阶段查询已有纹理，真正的 BG 请求延后到同一帧 ICO 请求之后提交。ICO 关闭或已知不存在时不等待 ICO 状态，BG 仍会正常入队。
+- 2026-10-04 BDM 快速翻页排查：默认 `usePthread=0` 的单一 IO worker、活动请求不可由 `ioRemoveRequestsWithCleanup()` 中途取消，以及 BDM `open/read` 异常时可能长期占住 `fileLockId`，均已确认是必须分别处理的生命周期边界；本轮没有用无条件清零 `texLoading` 掩盖它们。
+- 本轮加固 `texcache`：active stale 槽位在释放前使用 UID+`qr` 所有权再次确认；普通请求的早退路径也只释放自己拥有的槽位。Coverflow 动画扩展出来的过渡槽位不再刷新 active 代际，只有目标可见窗口和预取范围会续期 COV/ICO/BG 请求。COV/ICO/BG 对“缺图”和暂时性 BDM 读取失败共用的错误码增加低频重试，避免一次设备抖动把缓存永久钉成占位图。
+- BDM 侧减少不必要的目录句柄压力：ART2 分桶探测和 `sbReadList()` 的 CD/DVD 存在性检查改为 `stat()`；`bdmUpdateGameList()` 删除重复的 CD/DVD `dopen/dclose` 探测，仅保留 MX4SIO 必需的一次根目录读取。
+- 主题切换不再直接销毁可能仍被 worker 使用的旧 cache：旧 theme 会先进入 deferred-retired 列表，只有 `ioHasPendingRequests()==0` 后才回收；因此切主题不会因等待一个异常 BDM `open/read` 而再次锁死主界面，也不会让旧结果写入已释放 cache。JPG 文件发现也纳入 `fileLockId`，避免主题构建与 IO worker 并发访问 BDM/SMB 文件。
+- 静态审计仍确认：`texLoading` 正常入队、队列清理和 worker 出口配平；本轮未启用看门狗或强制置零。USB/MX4SIO/BDMHDD 使用的 `bdmfs_fatfs` 外部 IRX 若仍是旧版，在设备抖动时的 `f_close/f_closedir` 句柄槽位泄漏和同步 I/O 超时不属于本仓库可重编的 EE 源码，根修补丁仍见仓库根的 `bdmfs_fatfs-fix-EMFILE-handle-leak.patch` / `FatFs-PS2OPL-fix-EMFILE-handle-leak.patch`；本提交只能减少 EE 侧目录探测压力并避免 cache/UAF 级联。
+- 当前环境仍无 PS2SDK/GSKIT 交叉编译器、实机或模拟器，因此本轮完成 `git diff --check` 和静态控制流检查，未宣称目标平台构建或实机验证。

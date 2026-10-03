@@ -151,6 +151,45 @@ static void cacheCancelImageRequest(void *data)
     free(ioReq);
 }
 
+// Release only the slot owned by this request.  The checks matter for the
+// early exits below: they may run after a cache teardown/rebuild has already
+// changed the slot, and must not clear a newer request by index alone.
+static void cacheReleaseRequestSlot(load_image_request_t *ioReq)
+{
+    if (!ioReq || !ioReq->cache || !ioReq->cache->content ||
+        ioReq->cacheId < 0 || ioReq->cacheId >= ioReq->cache->count)
+        return;
+
+    cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
+    pthread_mutex_lock(&texLoadingMutex);
+    if (entry->UID == ioReq->cacheUID && entry->qr) {
+        entry->qr = 0;
+        entry->requestGeneration = 0;
+    }
+    pthread_mutex_unlock(&texLoadingMutex);
+}
+
+// A stale active request first reserves its slot with a non-zero qr value.
+// Keep the final clear conditional as well, so a future cache change cannot
+// make an old worker free a slot that it no longer owns.
+static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
+{
+    int owned = 0;
+
+    if (!entry)
+        return;
+
+    pthread_mutex_lock(&texLoadingMutex);
+    if (entry->UID == cacheUID && entry->qr == 2) {
+        entry->qr = 3; // reserved while texture memory is released below
+        owned = 1;
+    }
+    pthread_mutex_unlock(&texLoadingMutex);
+
+    if (owned)
+        cacheClearItem(entry, 1);
+}
+
 void cacheCancelPendingArtRequests(void)
 {
     pthread_mutex_lock(&texLoadingMutex);
@@ -218,9 +257,8 @@ static void cacheLoadImage1(void *data)
 
     item_list_t *handler = ioReq->list;
     if (!handler) {
+        cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
-        ioReq->cache->content[ioReq->cacheId].qr = 0;
-        ioReq->cache->content[ioReq->cacheId].requestGeneration = 0;
         free(ioReq);
         return;
     }
@@ -231,9 +269,8 @@ static void cacheLoadImage1(void *data)
     // 不依赖这套单封面冷却，所以显式绕过 cdFramesCount。两条路径都必须响应
     // forceSkipQr（cacheEnd 的退出保护）。
     if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
+        cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
-        ioReq->cache->content[ioReq->cacheId].qr = 0;
-        ioReq->cache->content[ioReq->cacheId].requestGeneration = 0;
         free(ioReq);
         return;
     }
@@ -276,7 +313,7 @@ static void cacheLoadImage1(void *data)
 
     if (!keepResult) {
         if (sameEntry && ioReq->trackGeneration)
-            cacheClearItem(entry, 1);
+            cacheClearExpiredItem(entry, ioReq->cacheUID);
         cacheDecreaseLoading();
         ioReq->qr = 0;
         free(ioReq);
@@ -926,9 +963,10 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
             if (entry->qr) {
                 // 当前帧仍需要这张图：Coverflow 的 COV/ICO/BG active 请求
                 // 重新标记为最新目标；普通列表不会走 quiet 路径。
-                if (!strncmp(cache->suffix, "COV", 3) ||
-                    !strncmp(cache->suffix, "ICO", 3) ||
-                    !strncmp(cache->suffix, "BG", 2)) {
+                if (queueRequest &&
+                    (!strncmp(cache->suffix, "COV", 3) ||
+                     !strncmp(cache->suffix, "ICO", 3) ||
+                     !strncmp(cache->suffix, "BG", 2))) {
                     pthread_mutex_lock(&texLoadingMutex);
                     entry->requestGeneration = artRequestGeneration;
                     pthread_mutex_unlock(&texLoadingMutex);

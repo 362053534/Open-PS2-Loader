@@ -580,18 +580,19 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     *list = NULL;
     *fsize = -1;
     *gamecount = 0;
-    // 如果没有DVD和CD文件夹，直接跳过扫描，避免设备"假存在"而引起的卡死
+    // 如果没有DVD和CD文件夹，直接跳过扫描，避免设备"假存在"而引起的卡死。
+    // Use stat rather than an opendir/closedir probe: BDM FatFs has a small
+    // directory-handle pool and older drivers can leak a slot when close runs
+    // during a media glitch.  The actual scan below still opens the directory
+    // only once it is known to exist.
     char isoPath[256];
-    DIR *isoDir;
+    struct stat isoStat;
     snprintf(isoPath, sizeof(isoPath), "%sCD", prefix);
-    if ((isoDir = opendir(isoPath)) == NULL) {
+    if (stat(isoPath, &isoStat) != 0) {
         snprintf(isoPath, sizeof(isoPath), "%sDVD", prefix);
-        if ((isoDir = opendir(isoPath)) == NULL)
+        if (stat(isoPath, &isoStat) != 0)
             return 0;
-        else
-            closedir(isoDir);
-    } else
-        closedir(isoDir);
+    }
 
     if (gTxtRename) {
         // TXT相关变量
@@ -2178,13 +2179,13 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
 
 static int sbArtDirExists(const char *path)
 {
-    DIR *dir = opendir(path);
+    struct stat st;
 
-    if (!dir)
-        return 0;
-
-    closedir(dir);
-    return 1;
+    // ART2 bucket discovery only needs existence.  Opening and immediately
+    // closing a directory consumes a BDM/FatFs directory slot and, on a
+    // transient device error, older bdmfs builds may fail to reclaim it.
+    // stat() performs the same probe without creating a directory handle.
+    return path && stat(path, &st) == 0;
 }
 
 void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)

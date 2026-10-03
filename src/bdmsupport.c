@@ -436,43 +436,25 @@ static int bdmUpdateGameList(item_list_t *itemList)
             pDeviceData->bdmGameCount = -1;
             return 0;
         } else {
-            enum { BDMFS_NO_PATH = -5 };
-            char isoPath[256];
-            int rootDir, cdDir, dvdDir;
-
-            rootDir = fileXioDopen(pDeviceData->bdmPrefix);
-            if (rootDir < 0) {
-                pDeviceData->bdmGameCount = -1;
-                return 0;
-            }
-
+            // MX4SIO needs one real root read to distinguish an empty device
+            // from a drive that has not finished mounting.  Do not probe CD
+            // and DVD with extra dopen/dclose pairs here: sbReadList() performs
+            // the same existence check without those duplicate BDM handles.
             if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                iox_dirent_t dirent;
+                int rootDir = fileXioDopen(pDeviceData->bdmPrefix);
+                if (rootDir < 0) {
+                    pDeviceData->bdmGameCount = -1;
+                    return 0;
+                }
 
+                iox_dirent_t dirent;
                 // MX4SIO根目录为空时，继续保持未完成状态，等待下一次扫描。
                 if (fileXioDread(rootDir, &dirent) <= 0) {
                     fileXioDclose(rootDir);
                     pDeviceData->bdmGameCount = -1;
                     return 0;
                 }
-            }
-            fileXioDclose(rootDir);
-
-            snprintf(isoPath, sizeof(isoPath), "%sCD", pDeviceData->bdmPrefix);
-            cdDir = fileXioDopen(isoPath);
-            if (cdDir >= 0)
-                fileXioDclose(cdDir);
-
-            snprintf(isoPath, sizeof(isoPath), "%sDVD", pDeviceData->bdmPrefix);
-            dvdDir = fileXioDopen(isoPath);
-            if (dvdDir >= 0)
-                fileXioDclose(dvdDir);
-
-            // bdmfs_fatfs会将FatFs的FRESULT取负后原样返回。
-            if ((cdDir < 0 && cdDir != BDMFS_NO_PATH) ||
-                (dvdDir < 0 && dvdDir != BDMFS_NO_PATH)) {
-                pDeviceData->bdmGameCount = -1;
-                return 0;
+                fileXioDclose(rootDir);
             }
 
             int result = sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);

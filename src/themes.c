@@ -50,6 +50,14 @@ static image_cache_t *deferredCoverflowBgCache = NULL;
 static item_list_t *deferredCoverflowBgList = NULL;
 static u64 deferredCoverflowBgFrame = 0;
 
+typedef struct retired_theme {
+    theme_t *theme;
+    struct retired_theme *next;
+} retired_theme_t;
+
+static retired_theme_t *retiredThemes = NULL;
+static void thmCollectRetiredThemes(void);
+
 enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_ATTRIBUTE_TEXT = 0,
     ELEM_TYPE_STATIC_TEXT,
@@ -621,6 +629,29 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
+// texDiscoverLoad() intentionally reports a missing art file and a transient
+// BDM read error with the same status.  Do not permanently turn that ambiguity
+// into a cache_id == -2 decision while a removable/slow device is recovering.
+// Retry the current Coverflow window (including ICO and BG) at a low rate; a
+// genuinely missing file simply fails again and remains cheap between retries.
+#define COVERFLOW_MISSING_RETRY_MS 2500
+static clock_t gCovMissingRetryAt = 0;
+static int gCovRetryMissingThisFrame = 0;
+
+static void coverflowRetryMissing(image_cache_t *cache, struct submenu_item *item)
+{
+    int uid;
+
+    if (!gCovRetryMissingThisFrame || !cache || !item)
+        return;
+
+    uid = cache->userId;
+    if (item->cache_id[uid] == -2) {
+        item->cache_id[uid] = -1;
+        item->cache_uid[uid] = -1;
+    }
+}
+
 // 与 getGameImageTexture() 相同，但走 Coverflow 专用的 quiet 缓存路径，
 // 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
 // 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
@@ -629,6 +660,7 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 {
     if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
+        coverflowRetryMissing(cache, item);
         char *startup = list->itemGetStartup(list, item->id);
         if (allowRequest)
             return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
@@ -645,6 +677,7 @@ static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item
     if (!gTheme || !gTheme->coverflowIcoCache || !list || !item || !gEnableArtICO)
         return NULL;
 
+    coverflowRetryMissing(gTheme->coverflowIcoCache, &item->item);
     char *startup = list->itemGetStartup(list, item->item.id);
     if (allowRequest)
         return cacheGetTextureQuiet(gTheme->coverflowIcoCache, list,
@@ -666,6 +699,7 @@ static void queueDeferredCoverflowBackground(submenu_list_t *item)
     if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item)
         return;
 
+    coverflowRetryMissing(deferredCoverflowBgCache, &item->item);
     char *startup = deferredCoverflowBgList->itemGetStartup(deferredCoverflowBgList, item->item.id);
     // quiet 路径不受普通列表的 cdFrames/skipQr 状态影响；此调用发生在
     // ICO 入队之后，因此 BG 的 IO 队列顺序始终落在 ICO 后面。
@@ -1350,6 +1384,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (item == NULL)
         return;
 
+    // One bounded retry window covers COV, ICO and BG.  The flag is consumed
+    // only while this frame queries the current Coverflow target.
+    gCovRetryMissingThisFrame = 0;
+    {
+        clock_t now = clock();
+        if (now >= gCovMissingRetryAt) {
+            gCovRetryMissingThisFrame = 1;
+            gCovMissingRetryAt = now +
+                                 (clock_t)COVERFLOW_MISSING_RETRY_MS * CLOCKS_PER_SEC / 1000;
+        }
+    }
+
     // 关闭封面图时仍保留 Coverflow 的布局计算和 ICO 绘制；只跳过封面/case 的实际提交。
     // 由于此时没有可见封面动画，ICO 只随当前 item 的变化切换，不等待 Coverflow 动画。
     if (!gEnableArtCOV) {
@@ -1574,9 +1620,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
     // 填充左侧：从目标中心向前回溯。左边缘不做环绕
     //（本分支的 menu_item_t 没有 "last" 指针），所以第一项左侧的槽位保持为空。
-    // leftmostVisible / rightmostVisible 记录可见窗口两端的实际游戏节点，供下面预取使用。
-    submenu_list_t *leftmostVisible = item;
-    submenu_list_t *rightmostVisible = item;
+    // 动画期间绘制窗口会额外包含过渡槽位；预取和 active 请求代际只允许
+    // 目标项的新可见窗口，因此单独记录不含过渡槽位的目标窗口两端。
+    submenu_list_t *leftmostTarget = item;
+    submenu_list_t *rightmostTarget = item;
     submenu_list_t *cur = item;
     for (ci = renderCenterIndex - 1; ci >= 0; ci--) {
         submenu_list_t *prev = cur->prev;
@@ -1585,7 +1632,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         covers[ci].game = prev;
         cur = prev;
     }
-    leftmostVisible = cur;
 
     // 填充右侧：向后遍历。右边缘同样【不做环绕】，到列表末尾即停止，让最后一项右侧
     //（centerIndex 之后）的槽位保持为空 —— 与首项左侧留空的规则保持一致，避免末项
@@ -1598,7 +1644,28 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         covers[ci].game = next;
         cur = next;
     }
-    rightmostVisible = cur;
+
+    // Resolve the target window independently from the animation-expanded
+    // drawing window.  Requests for the visual transition path are deliberately
+    // not kept alive across a page change; only this window and the prefetch
+    // range below can refresh an active request's generation.
+    cur = item;
+    for (ci = 0; ci < centerIndex; ci++) {
+        submenu_list_t *prev = cur->prev;
+        if (prev == NULL || prev == item)
+            break;
+        cur = prev;
+    }
+    leftmostTarget = cur;
+
+    cur = item;
+    for (ci = 0; ci < centerIndex; ci++) {
+        submenu_list_t *next = cur->next;
+        if (next == NULL || next == item)
+            break;
+        cur = next;
+    }
+    rightmostTarget = cur;
 
     // targetCenterX 保持原有静止布局：目标项在原来的中心位置，临时槽位只向
     // 起点所在方向扩展。animOffset 按实际 steps 一次性移动整段 Coverflow。
@@ -1659,9 +1726,22 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int li;
     for (li = 0; li < loadCount; li++) {
         int idx = loadOrder[li];
+        int requestTargetWindow = 1;
+
         if (covers[idx].game == NULL || !gEnableArtCOV)
             continue;
-        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, 1);
+
+        // During a page animation the extra slots are only visual transition
+        // content.  Query them without admitting a new request or refreshing an
+        // active request's generation; the target window remains fully active.
+        if (animationActive &&
+            (idx < renderCenterIndex - centerIndex ||
+             idx > renderCenterIndex + centerIndex))
+            requestTargetWindow = 0;
+
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList,
+                                                   &covers[idx].game->item,
+                                                   requestTargetWindow);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
@@ -1851,7 +1931,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         submenu_list_t *head = menu->item->submenu;
 
         // 左侧预取：到列表头(prev==NULL)时环绕到列表尾继续。
-        submenu_list_t *pcur = leftmostVisible;
+        // It is intentionally based on the target window, not the extra
+        // animation slots, so a page jump cannot keep old transition art alive.
+        submenu_list_t *pcur = leftmostTarget;
         int p;
         for (p = 0; p < preloadPerSide && pcur; p++) {
             submenu_list_t *prev = pcur->prev;
@@ -1868,7 +1950,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
 
         // 右侧预取：到列表尾(next==NULL)时环绕到列表头继续。
-        pcur = rightmostVisible;
+        pcur = rightmostTarget;
         for (p = 0; p < preloadPerSide && pcur; p++) {
             submenu_list_t *next = pcur->next;
             if (next == NULL)
@@ -2102,6 +2184,8 @@ static void freeGUIElems(theme_elems_t *elems)
 
 GSTEXTURE *thmGetTexture(unsigned int id)
 {
+    thmCollectRetiredThemes();
+
     if (id >= TEXTURES_COUNT)
         return NULL;
     else {
@@ -2143,6 +2227,22 @@ static void thmFree(theme_t *theme)
             fntRelease(theme->fonts[id]);
 
         free(theme);
+    }
+}
+
+static void thmCollectRetiredThemes(void)
+{
+    retired_theme_t **link;
+
+    if (!retiredThemes || ioHasPendingRequests())
+        return;
+
+    link = &retiredThemes;
+    while (*link) {
+        retired_theme_t *retired = *link;
+        *link = retired->next;
+        thmFree(retired->theme);
+        free(retired);
     }
 }
 
@@ -2283,6 +2383,12 @@ static void thmLoad(const char *themePath)
     LOG("THEMES Load theme path=%s\n", themePath);
     char path[256];
     theme_t *curT = gTheme;
+
+    // A previous theme may have become reclaimable since the last frame.  Do
+    // this opportunistically, never by blocking the UI on a potentially slow
+    // BDM read.
+    thmCollectRetiredThemes();
+
     theme_t *newT = (theme_t *)malloc(sizeof(theme_t));
     memset(newT, 0, sizeof(theme_t));
 
@@ -2533,7 +2639,29 @@ static void thmLoad(const char *themePath)
             thmLoadResource(&newT->textures[i], i, NULL, GS_PSM_CT32, 1);
 
     gTheme = newT;
-    thmFree(curT);
+
+    // A worker may still own a cache in the previous theme.  Retire that
+    // object instead of waiting for it: a BDM driver that is slow or stuck must
+    // not turn a theme switch into another permanent UI lock.  The retired
+    // theme is reclaimed once ioHasPendingRequests() is false.
+    if (curT) {
+        if (!ioHasPendingRequests())
+            thmFree(curT);
+        else {
+            retired_theme_t *retired = malloc(sizeof(*retired));
+            if (retired) {
+                retired->theme = curT;
+                retired->next = retiredThemes;
+                retiredThemes = retired;
+            } else {
+                // Safety beats reclamation here: keep the old theme alive if
+                // the retirement node cannot be allocated.
+                LOG("THEMES: unable to defer old theme reclamation\n");
+            }
+        }
+    }
+
+    thmCollectRetiredThemes();
 }
 
 static void thmRebuildGuiNames(void)
@@ -2689,6 +2817,7 @@ char *thmGetFilePath(int themeID)
 
 void thmEnd(void)
 {
+    thmCollectRetiredThemes();
     thmFree(gTheme);
 
     int i = 0;
