@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -41,6 +42,9 @@ def main():
     parent = ROOT / "tmp/rcuya_layout"
     parent.mkdir(parents=True, exist_ok=True)
 
+    addresses = {}
+    good_binary = None
+
     # 从已知提交导出临时副本，不能切换工作分支或把旧文件覆盖到当前源码树。
     with tempfile.TemporaryDirectory(dir=parent) as temp:
         for label, revision in REFERENCES.items():
@@ -65,9 +69,22 @@ def main():
             if result.returncode and not (known_overflow and "not within region `ram84'" in log.read_text()):
                 print(log.read_text())
                 raise RuntimeError(f"Cannot build {revision}")
-            report(label, map_path, output)
+            addresses[label] = report(label, map_path, output)
+            if label == "good" and result.returncode == 0:
+                good_binary = hashlib.sha256((target / "ee_core/ee_core.elf").read_bytes()).hexdigest()
 
-    report("current", ROOT / "ee_core/ee_core.map", output)
+    current = report("current", ROOT / "ee_core/ee_core.map", output)
+    if current != addresses["good"]:
+        raise RuntimeError("UYA packed-patch target changed from the hardware-tested version")
+    if args.igs == 0:
+        current_binary = hashlib.sha256((ROOT / "ee_core/ee_core.elf").read_bytes()).hexdigest()
+        if current_binary != good_binary:
+            raise RuntimeError("Default EE core binary differs from the hardware-tested version")
+        print(f"PASS: default EE core exactly matches d05b5bc; SHA256={current_binary}")
+    if output:
+        with open(output, "a") as stream:
+            stream.write("layout_check=matched\n")
+    print("PASS: UYA helper address and encoded JAL match the hardware-tested version")
 
 
 if __name__ == "__main__":
