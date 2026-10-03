@@ -833,6 +833,25 @@ vmc_prepared:;
         close(fd);
     }
 
+    /* 诊断用：把镜像在 U 盘/SD 上的碎片情况打出来。
+     * 「扇区不一样」的镜像（重新打包过）在 FAT 上的碎片分布也不同，
+     * 碎片数/是否连续能直接决定读请求会不会被切碎成多次设备读。 */
+    {
+        unsigned int i;
+        unsigned int fragments = iso_frag->frag_count;
+        unsigned int runs = fragments > 0 ? 1 : 0;
+        u64 total_sectors = 0;
+
+        for (i = 0; i < fragments; i++) {
+            total_sectors += frag_table[i].count;
+            if (i > 0 && frag_table[i - 1].sector + frag_table[i - 1].count != frag_table[i].sector)
+                runs++;
+        }
+        if (frag_table != NULL && fragments > 0)
+            LOG("BDM image: %u fragments in %u contiguous runs, %u sectors (first @%u)\n",
+                fragments, runs, (unsigned int)total_sectors, (unsigned int)frag_table[0].sector);
+    }
+
     // Initialize layer 1 information.
     sbCreatePath(game, partname, pDeviceData->bdmPrefix, "/", 0);
     layer1_start = sbGetISO9660MaxLBA(partname);

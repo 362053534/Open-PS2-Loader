@@ -115,11 +115,71 @@ def parse_afs(f, file_lba, file_size):
     return {'count': count, 'entries': entries}
 
 
+def scan_pss(f, lba, size, chunk=4 << 20):
+    """扫 MPEG-2 PS 的 pack 头（00 00 01 BA + 6 字节 SCR），估算时长和平均码率。
+
+    用来核对「汉化版这段动画的码率/大小」到底和原版差多少——
+    PCSX2 日志只能看出游戏每秒要了多少扇区，文件本身能给出真实码率。
+    """
+    if size <= 0:
+        return None
+    f.seek(lba * SECTOR)
+    remaining = size
+    base = 0
+    carry = b''
+    first = last = None
+    count = 0
+    while remaining > 0:
+        data = f.read(min(chunk, remaining))
+        if not data:
+            break
+        buf = carry + data
+        pos = 0
+        while True:
+            i = buf.find(b'\x00\x00\x01\xba', pos)
+            if i < 0:
+                break
+            if i + 14 <= len(buf):
+                b = buf[i:i + 14]
+                if (b[4] & 0xC0) == 0x40:  # MPEG-2 pack header
+                    scr = (((b[4] >> 3) & 0x07) << 30) | ((b[4] & 0x03) << 28) | (b[5] << 20) \
+                        | (((b[6] >> 3) & 0x1F) << 15) | ((b[6] & 0x03) << 13) | (b[7] << 5) \
+                        | ((b[8] >> 3) & 0x1F)
+                    off = base - len(carry) + i
+                    if first is None:
+                        first = (off, scr)
+                    last = (off, scr)
+                    count += 1
+            pos = i + 4
+        base += len(data)
+        carry = buf[-16:]
+        remaining -= len(data)
+
+    if first is None or last is None or last[1] <= first[1]:
+        return None
+    span_bytes = last[0] - first[0]
+    duration = (last[1] - first[1]) / 90000.0
+    return {
+        'count': count,
+        'duration': duration,
+        'bitrate_mbps': span_bytes * 8.0 / duration / 1e6,
+        'avg_gbps': 0.0,
+        'entry_mbps': size * 8.0 / duration / 1e6,
+    }
+
+
+def fmt_pss(info, label=''):
+    if info is None:
+        return '%s(扫不到 MPEG-2 pack 头，可能不是 MPEG-PS，或整段是别的东西)' % label
+    return ('%s时长 %.2f s，平均码率 %.2f Mbps（按条目总大小折算 %.2f Mbps，共 %d 个 pack）'
+            % (label, info['duration'], info['bitrate_mbps'], info['entry_mbps'], info['count']))
+
+
 def fmt_size(n):
     return '%9d B (%8.1f KB)' % (n, n / 1024.0)
 
 
-def describe(iso_path, target, want_lba, compare_path):
+def describe(iso_path, target, want_lba, compare_path, pss_idx=None):
     f = open(iso_path, 'rb')
     f.seek(0, os.SEEK_END)
     iso_size = f.tell()
@@ -154,12 +214,26 @@ def describe(iso_path, target, want_lba, compare_path):
 
     print('AFS 条目数      : %d' % afs['count'])
     print(' #    AFS偏移     大小                  ISO LBA 区间           扇区数')
+    hit = None
     for e in afs['entries']:
         rng = '%-7d - %-7d' % (e['lba'], e['lba'] + e['sectors'] - 1) if e['sectors'] else '        (空)'
         mark = ''
         if want_lba is not None and e['sectors'] and e['lba'] <= want_lba < e['lba'] + e['sectors']:
             mark = '   <== 命中 --lba %d' % want_lba
+            hit = e
         print('%3d  %10d  %s  %s  %8d%s' % (e['idx'], e['off'], fmt_size(e['size']), rng, e['sectors'], mark))
+    print()
+
+    # 码率核对：默认扫「--lba 命中的那一条」，没有就给 --pss 指定条目号。
+    scan_idx = pss_idx if pss_idx is not None else (hit['idx'] if hit is not None else None)
+    if scan_idx is not None and 0 <= scan_idx < len(afs['entries']):
+        e = afs['entries'][scan_idx]
+        info = scan_pss(f, e['lba'], e['size'])
+        print('条目 %d 码率扫描 : %s' % (scan_idx, fmt_pss(info)))
+        if info is not None and want_lba is not None:
+            inside = (want_lba - e['lba']) * SECTOR
+            print('                 : 日志里的 LBA %d 在这条里偏移 %.1f MB（%.1f%% 处）'
+                  % (want_lba, inside / 2 ** 20, 100.0 * inside / e['size']))
     f.close()
 
     if not compare_path:
@@ -188,6 +262,17 @@ def describe(iso_path, target, want_lba, compare_path):
     print('\n提示：两条视频如果时长差不多，大小倍数 ≈ 码率倍数；'
           'PCSX2 日志里测出来的读取速率倍数应和它接近。')
 
+    # 码率实测对比：同样扫这条条目（有 --pss/命中条目时）。
+    if scan_idx is not None and scan_idx < len(afs['entries']) and scan_idx < len(afs2['entries']):
+        e1 = afs['entries'][scan_idx]
+        e2 = afs2['entries'][scan_idx]
+        with open(iso_path, 'rb') as ff:
+            i1 = scan_pss(ff, e1['lba'], e1['size'])
+        i2 = scan_pss(g, e2['lba'], e2['size'])
+        print('\n条目 %d 码率对比：' % scan_idx)
+        print('  本镜像  : %s' % fmt_pss(i1))
+        print('  对比镜像: %s' % fmt_pss(i2))
+
 
 def main():
     ap = argparse.ArgumentParser(description='PS2 ISO / AFS 结构检查')
@@ -195,8 +280,9 @@ def main():
     ap.add_argument('--file', default='MOV.AFS', help='要展开的 AFS 文件（默认 MOV.AFS）')
     ap.add_argument('--lba', type=int, default=None, help='给出 PCSX2 日志里的 LBA，标出它落在哪一条条目')
     ap.add_argument('--compare', default=None, help='对比镜像（例如原版 ISO）')
+    ap.add_argument('--pss', type=int, default=None, help='指定要测码率的 AFS 条目号（默认用 --lba 命中的那条）')
     args = ap.parse_args()
-    describe(args.iso, args.file, args.lba, args.compare)
+    describe(args.iso, args.file, args.lba, args.compare, args.pss)
 
 
 if __name__ == '__main__':

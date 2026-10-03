@@ -71,8 +71,8 @@ extern struct irx_export_table _exp_atad;
 #endif
 
 /* 调试用：统计 BDM 设备的实际吞吐（USB / MX4SIO / HDD 都走这里）。
- * 用途：判断「游戏需要的码率」和「载体能给多少」哪个先撞墙——
- * 例如高达SEED汉化版 OP 需要约 1.7MB/s，而 PS2 的 USB 1.1 实测上限只有 1.0~1.25MB/s。
+ * 用途：和日志里「游戏每秒要了多少扇区」对照——游戏要 1.7MB/s 而设备只给 1MB/s，
+ * 还是设备给得动、游戏自己读法不对，一眼能分开。
  * 只在调试构建（make IOPCORE_DEBUG=1）里编译，发布版整个函数体为空，零开销。 */
 static void bdmRateAccount(u32 bytes)
 {
@@ -617,6 +617,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         rv = DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
         if (rv == SCECdErNO)
             bdmRateAccount(sectors * 2048);
+        else
+            DPRINTF("bdm read failed: lsn=%u sectors=%u rv=%d\n", (unsigned int)lsn, sectors, rv);
         return rv;
     }
 
@@ -645,6 +647,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     }
     if (rv == SCECdErNO)
         bdmRateAccount(sectors * 2048);
+    else
+        DPRINTF("bdm read failed: lsn=%u sectors=%u rv=%d\n", (unsigned int)lsn, sectors, rv);
     SignalSema(bdm_io_sema);
 
     return rv;
