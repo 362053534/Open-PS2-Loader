@@ -1121,6 +1121,9 @@ static clock_t animationStartTime = 0;
 // A/B 诊断开关：置 1 时，多格翻页的过渡专用槽位不请求/不绘制 COV 主图，
 // 只保留目标页可见窗口，用来确认额外封面纹理工作集是否触发问题。
 #define COVERFLOW_AB_SKIP_TRANSITION_COV 1
+// 第二阶段诊断：任何 Coverflow 动画期间只查询已经驻留的 COV，
+// 不在绘制帧中新增解码/缓存请求或预取，用来区分“动画中的 COV 异步加载”与单纯工作集压力。
+#define COVERFLOW_AB_SKIP_ANIM_COV_LOAD 1
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值（也是尺寸/间距基线）
 // 封面主图基准尺寸：以 448 高度模式为基线，逻辑坐标经过 nativeHeight/480 映射后，
 // 游戏封面在 448 下得到约 140×200。高度 214 = 200×480/448 的整数近似值；宽度保持140，
@@ -1634,7 +1637,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (idx < transitionVisibleStart || idx >= transitionVisibleEnd)
             continue;
 #endif
-        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, 1);
+        int allowAnimationCovRequest = 1;
+#if COVERFLOW_AB_SKIP_ANIM_COV_LOAD
+        if (animationActive)
+            allowAnimationCovRequest = 0;
+#endif
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, allowAnimationCovRequest);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
@@ -1826,7 +1834,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
-    if (img->cache && gCoverflowPreload > 0) {
+    if (img->cache && gCoverflowPreload > 0
+#if COVERFLOW_AB_SKIP_ANIM_COV_LOAD
+        && !animationActive
+#endif
+    ) {
         int preloadPerSide = gCoverflowPreload;
 
         submenu_list_t *head = menu->item->submenu;

@@ -280,4 +280,5 @@ git log -1 --oneline
 - 为外部 PNG 增加有界内存读取；截断/损坏文件不再由自定义 libpng read callback 越界读取，而是进入统一的 longjmp 清理路径。
 - 当前修复只处理解码失败/分配失败的资源生命周期，不改变 Background cache 槽位、Coverflow 预取、CT24→CT16S 压缩策略或正常成功加载路径。
 - 当前环境仍缺少 PS2SDK/GSKIT 交叉编译器、PS2 实机和模拟器，已执行静态差异检查和 `git diff --check`，未完成目标平台构建与实机验证。
-- 根据实机 A/B 结果，当前字体 atlas flush 不是 Coverflow 翻页花屏/死机的触发条件；新增 `src/themes.c` 的 `COVERFLOW_AB_SKIP_TRANSITION_COV` 诊断开关，当前置 `1` 时多格翻页只请求/绘制目标页可见窗口，跳过过渡专用槽位的 COV 主图请求和预取，用于与 `0` 的完整多格 COV 工作集做对照。该开关仅用于 A/B，未改变 Coverflow 几何和普通列表路径。
+- 根据实测，字体 atlas flush 不是 Coverflow 翻页花屏/死机的主要触发条件；`src/themes.c` 的 `COVERFLOW_AB_SKIP_TRANSITION_COV` 当前置 `1` 时，多格翻页只请求/绘制目标页可见窗口，跳过过渡专用槽位的 COV 主图请求和预取。该变体只降低花屏频率，不能视为最终修复。
+- 针对单步动画仍有低概率花屏，新增第二阶段诊断开关 `COVERFLOW_AB_SKIP_ANIM_COV_LOAD`，当前置 `1` 时所有 Coverflow 动画期间只查询已驻留 COV，不新增解码/缓存请求，也不执行 COV 预取；动画结束后再恢复目标窗口加载。该开关用于区分动画中的异步 COV 加载与纯 GS VRAM/纹理生命周期问题，不改变 Coverflow 几何和普通列表路径。
