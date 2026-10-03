@@ -1117,6 +1117,10 @@ static clock_t animationStartTime = 0;
 // 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
 #define COVERFLOW_MAX 9             // 同屏封面数的硬上限（只允许 1/3/5/7/9）
 #define COVERFLOW_RENDER_MAX (COVERFLOW_MAX * 2) // 多格翻页时：可见窗口 + 最长翻页距离
+
+// A/B 诊断开关：置 1 时，多格翻页的过渡专用槽位不请求/不绘制 COV 主图，
+// 只保留目标页可见窗口，用来确认额外封面纹理工作集是否触发问题。
+#define COVERFLOW_AB_SKIP_TRANSITION_COV 1
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值（也是尺寸/间距基线）
 // 封面主图基准尺寸：以 448 高度模式为基线，逻辑坐标经过 nativeHeight/480 映射后，
 // 游戏封面在 448 下得到约 140×200。高度 214 = 200×480/448 的整数近似值；宽度保持140，
@@ -1594,6 +1598,17 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         cumLeft += cf[i];
     }
 
+#if COVERFLOW_AB_SKIP_TRANSITION_COV
+    // A/B 变体下，多格翻页只允许目标页可见窗口请求封面主图；
+    // 过渡专用槽位仍保留几何位置，但不触发 COV 解码、缓存分配或 GS bind。
+    int transitionVisibleStart = 0;
+    int transitionVisibleEnd = renderCount;
+    if (animationActive && animationStartItem && animationSteps > 1) {
+        transitionVisibleStart = renderCenterIndex - centerIndex;
+        transitionVisibleEnd = transitionVisibleStart + coverCount;
+    }
+#endif
+
     // 纹理【加载/请求顺序】：从中心向两侧扩散，中心封面最先入加载队列。
     // io worker 单线程按 FIFO 处理请求，先请求的先加载，所以这样能让居中封面
     // 最先加载、最先显示，再依次向外侧铺开——与下面的【绘制层级】完全解耦：
@@ -1615,6 +1630,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         int idx = loadOrder[li];
         if (covers[idx].game == NULL || !gEnableArtCOV)
             continue;
+#if COVERFLOW_AB_SKIP_TRANSITION_COV
+        if (idx < transitionVisibleStart || idx >= transitionVisibleEnd)
+            continue;
+#endif
         covers[idx].texture = getCoverflowTexture(img->cache, sourceList, &covers[idx].game->item, 1);
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
@@ -1787,6 +1806,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                                  (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
                                  elem->reflection, elem->width, elem->height);
     }
+
+#if COVERFLOW_AB_SKIP_TRANSITION_COV
+    if (animationActive && animationStartItem && animationSteps > 1) {
+        // 诊断变体的预取边界也锁定到目标页窗口，避免从过渡槽位继续扩展请求。
+        leftmostVisible = covers[transitionVisibleStart].game;
+        rightmostVisible = covers[transitionVisibleEnd - 1].game;
+    }
+#endif
 
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载，动画期间也不暂停。
     // 这样左右滚动时这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
