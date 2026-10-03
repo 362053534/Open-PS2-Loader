@@ -102,6 +102,122 @@ enum CDVD_ST_CMDS {
  * 实机验证对 USB 卡 OP 无效，而且汉化版每轮都有这样一笔 1 扇区读（246 笔/OP），
  * 每笔白白多付最多 30ms —— 已整体回退。相关结论见 notes/gundam_seed_ce_op_hang_analysis.md */
 
+#ifdef FSV_MERGE_SMALLREAD
+/* ===== 实验（2026-10-04）：把每轮开头的小额读并进相邻读，从设备侧消掉它 =====
+ *
+ * 实测：游戏自己发的读是「汉化版 1+64+64+63、原版 3+64+64+61 扇区」（PCSX2 的
+ * DvdRead 日志一行 = 游戏的一次 sceCdRead）。cdvdfsv 按 CDVDMAN_FS_SECTORS(8)
+ * 切块发给设备，于是设备侧每轮各有一笔小额读：
+ *     汉化版  1 + 8×8 + 8×8 + 7×8+7    （小额读 = 1 / 7 扇区）
+ *     原版    3 + 8×8 + 8×8 + 7×8+5    （小额读 = 3 / 5 扇区）
+ * 本开关让 cdvdfsv 每笔设备读至少 FSV_MERGE_SECTORS 扇区：多读出来的扇区放进
+ * carry，紧接的顺序请求直接取用 —— 小额读不再单独出现在设备侧（USB/BOT 每笔
+ * 命令都要一次 CBW/CSW 往返，小额读最不划算）。
+ *
+ * 用法（切换 N 值会自动重编 ncmd.o，见 cdvdfsv/Makefile）：
+ *     make FSV_MERGE_SMALLREAD=8    每笔设备读凑成 8 扇区（=CDVDMAN_FS_SECTORS，
+ *                                   正好把汉化版那笔 1 扇区读并进下一笔）
+ *     make FSV_MERGE_SMALLREAD=16   每笔设备读 16 扇区（摊薄 USB 每笔命令开销）
+ *     make FSV_MERGE_SMALLREAD=32   32 扇区（静态缓冲 64KB，注意 IOP 内存是否够）
+ *
+ * 判读：置 8 后能播 => H2 成立（就是那笔 1 扇区读的问题）；
+ *       置 8 无效、16/32 有效 => 设备读块太小（命令开销），也是设备侧问题；
+ *       都无效 => 转 H1（换 SMB/MX4SIO/HDD，或重编码压低开头需求）。
+ *
+ * 注意：只对 sector_size==2048 的读生效；请求不是严格接在 carry 后面时丢弃 carry；
+ *       过读最多 FSV_MERGE_SECTORS-1 扇区，越界部分由 device-bdm 补零（USB 侧安全）。 */
+#define FSV_MERGE_SECTORS FSV_MERGE_SMALLREAD
+
+#if FSV_MERGE_SECTORS < CDVDMAN_FS_SECTORS
+#undef FSV_MERGE_SECTORS
+#define FSV_MERGE_SECTORS CDVDMAN_FS_SECTORS
+#endif
+
+static u8 fsv_mg_buf[FSV_MERGE_SECTORS * 2048] __attribute__((aligned(64)));
+static u32 fsv_mg_lsn;   /* carry 里第一扇区对应的 LSN */
+static u32 fsv_mg_count; /* carry 里的有效扇区数 */
+static u32 fsv_mg_off;   /* carry 数据在 fsv_mg_buf 里的起始扇区号 */
+static u32 fsv_mg_end;   /* 上一笔请求结束的 LSN（判断是不是顺序流） */
+
+/* 读 sectors(<=CDVDMAN_FS_SECTORS) 个扇区到 dst，并把多读的留给下一笔。
+ * 只有"紧接上一笔"的顺序流才会放大读块，零散的小额读保持原样（不拖慢普通加载）。 */
+static inline void fsv_read_merged(u32 lsn, u32 sectors, u8 *dst)
+{
+    u32 serve = 0, need, fetch;
+    int sequential = (lsn == fsv_mg_end);
+
+    fsv_mg_end = lsn + sectors;
+
+    if (sectors > FSV_MERGE_SECTORS) { /* 大块读不走合并，避免缓冲装不下 */
+        while (sceCdRead(lsn, sectors, (void *)dst, NULL) == 0)
+            sceCdSync(0);
+        sceCdSync(0);
+        return;
+    }
+
+    if (fsv_mg_count && (lsn == fsv_mg_lsn)) { /* carry 正好接上才用 */
+        serve = (sectors < fsv_mg_count) ? sectors : fsv_mg_count;
+        memcpy(dst, fsv_mg_buf + fsv_mg_off * 2048, serve * 2048);
+        fsv_mg_lsn += serve;
+        fsv_mg_count -= serve;
+        fsv_mg_off += serve;
+        if (fsv_mg_count == 0)
+            fsv_mg_off = 0;
+    } else {
+        fsv_mg_count = 0;
+        fsv_mg_off = 0;
+    }
+
+    need = sectors - serve;
+    if (need == 0)
+        return;
+
+    fetch = need;
+    if (sequential && (need < FSV_MERGE_SECTORS))
+        fetch = FSV_MERGE_SECTORS;
+
+    if ((serve == 0) && (fetch == sectors)) { /* 整块正好够：直接读进 dst */
+        while (sceCdRead(lsn, fetch, (void *)dst, NULL) == 0)
+            sceCdSync(0);
+        sceCdSync(0);
+        return;
+    }
+
+    /* 走到这里 carry 一定是空的（还有剩的话 need 就会是 0），直接读进缓冲开头 */
+    while (sceCdRead(lsn + serve, fetch, (void *)fsv_mg_buf, NULL) == 0)
+        sceCdSync(0);
+    sceCdSync(0);
+
+    memcpy(dst + serve * 2048, fsv_mg_buf, need * 2048);
+    if (fetch > need) { /* 多读的留在缓冲里，记下偏移，不搬数据 */
+        fsv_mg_lsn = lsn + serve + need;
+        fsv_mg_count = fetch - need;
+        fsv_mg_off = need;
+    } else {
+        fsv_mg_count = 0;
+        fsv_mg_off = 0;
+    }
+}
+#endif
+
+/* 设备读的统一入口（原先直接写 while (sceCdRead(...)) sceCdSync(0); sceCdSync(0);）。
+ * 打开 FSV_MERGE_SMALLREAD 后，2048 字节扇区的读走上面的合并逻辑。 */
+static inline void fsv_read_sectors(u32 lsn, u32 sectors, u8 *dst, u16 sector_size)
+{
+#ifdef FSV_MERGE_SMALLREAD
+    if (sector_size == 2048) {
+        fsv_read_merged(lsn, sectors, dst);
+        return;
+    }
+#else
+    (void)sector_size;
+#endif
+
+    while (sceCdRead(lsn, sectors, (void *)dst, NULL) == 0)
+        sceCdSync(0);
+    sceCdSync(0);
+}
+
 //--------------------------------------------------------------
 static inline void cdvd_readee(void *buf)
 { // Read Disc data to EE mem buffer
@@ -199,9 +315,7 @@ static inline void cdvd_readee(void *buf)
                 temp = nsectors;
             }
 
-            while (sceCdRead(r->lsn, temp, (void *)fsvRbuf, NULL) == 0)
-                sceCdSync(0);
-            sceCdSync(0);
+            fsv_read_sectors(r->lsn, temp, (u8 *)fsvRbuf, sector_size);
 
             size_64b = nsectors * sector_size;
             size_64bb = size_64b;

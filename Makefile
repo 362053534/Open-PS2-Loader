@@ -222,6 +222,14 @@ else
   USB_READ_RETRY_FLAGS =
 endif
 
+# FSV_MERGE_SMALLREAD=N：cdvdfsv 每笔设备读凑成 N 扇区（≥8），把小额读并进相邻读（实验，见 cdvdfsv/ncmd.c）。
+# 例：make FSV_MERGE_SMALLREAD=8    （正好消掉汉化版 OP 每轮那笔 1 扇区读）
+ifneq ($(FSV_MERGE_SMALLREAD),)
+  FSV_MERGE_SMALLREAD_FLAGS = FSV_MERGE_SMALLREAD=$(FSV_MERGE_SMALLREAD)
+else
+  FSV_MERGE_SMALLREAD_FLAGS =
+endif
+
 EE_CFLAGS += -fsingle-precision-constant -DOPL_VERSION=\"$(OPL_VERSION)\"
 
 # There are a few places where the config key/value are truncated, so disable these warnings
@@ -483,7 +491,7 @@ $(EE_ASM_DIR)hdd_hdpro_cdvdman.c: modules/iopcore/cdvdman/hdd_hdpro_cdvdman.irx 
 	$(BIN2C) $< $@ $(*F)_irx
 
 modules/iopcore/cdvdfsv/cdvdfsv.irx: modules/iopcore/cdvdfsv
-	$(MAKE) -C $<
+	$(MAKE) $(FSV_MERGE_SMALLREAD_FLAGS) -C $<
 
 $(EE_ASM_DIR)cdvdfsv.c: modules/iopcore/cdvdfsv/cdvdfsv.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
