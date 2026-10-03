@@ -17,7 +17,7 @@ test: $(BIN)
 	$(BIN)
 	python3 check_integration.py
 
-$(BIN): test.c $(IOP_PATCH)/main.c $(IOP_PATCH)/ioplib.c $(IOP_PATCH)/ioplib.h $(EE_CORE)/src/rc_uya.c $(EE_CORE)/include/rc_uya.h $(EE_CORE)/include/util.h $(wildcard include/*.h)
+$(BIN): test.c $(IOP_PATCH)/main.c $(IOP_PATCH)/ioplib.c $(IOP_PATCH)/ioplib.h $(EE_CORE)/src/rc_uya.c $(EE_CORE)/include/rc_uya.h $(EE_CORE)/include/igs_format.h $(EE_CORE)/include/util.h $(wildcard include/*.h)
 	mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -Iinclude -I$(EE_CORE)/include test.c $(IOP_PATCH)/ioplib.c $(EE_CORE)/src/rc_uya.c -o $@ $(LDFLAGS) $(TEST_LDFLAGS)
 

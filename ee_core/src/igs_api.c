@@ -26,6 +26,7 @@
 #define NEWLIB_PORT_AWARE
 #include "fileio.h"
 #include "coreconfig.h"
+#include "igs_format.h"
 
 static void FastDelay(int count)
 {
@@ -74,51 +75,6 @@ static void ClearBuffer(u8 *buffer, u32 size)
     for (i = 0; i < size; i++) {
         buffer[i] = 0;
     }
-}
-
-static void u8todecstr(u8 input, char *output, u8 digits)
-{
-    u8 i = digits; // Number of digits (output)
-    do {
-        i--;
-        output[i] = "0123456789"[input % 10];
-        input = input / 10;
-    } while (input > 0);
-    while (i > 0) {
-        i--;
-        output[i] = '0';
-    }
-    output[digits] = 0;
-}
-
-static void u16todecstr(u16 input, char *output, u8 digits)
-{
-    u8 i = digits; // Number of digits (output)
-    do {
-        i--;
-        output[i] = "0123456789"[input % 10];
-        input = input / 10;
-    } while (input > 0);
-    while (i > 0) {
-        i--;
-        output[i] = '0';
-    }
-    output[digits] = 0;
-}
-
-static void u32todecstr(u32 input, char *output, u8 digits)
-{
-    u8 i = digits; // Number of digits (output)
-    do {
-        i--;
-        output[i] = "0123456789"[input % 10];
-        input = input / 10;
-    } while (input > 0);
-    while (i > 0) {
-        i--;
-        output[i] = '0';
-    }
-    output[digits] = 0;
 }
 
 static void u32tohexstr(u32 input, char *output, u8 digits)

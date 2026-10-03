@@ -51,11 +51,6 @@ endif
 
 EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 
-ifeq ($(IGS),1)
-# 只压缩辅助函数之后的 IGS 代码，默认版及写入打包 ELF 的 JAL 地址必须保持已验证布局。
-$(EE_OBJS_DIR)igs_api.o: EE_CFLAGS += -Oz
-endif
-
 EE_LDFLAGS = -nostartfiles -nostdlib -Tlinkfile -L$(PS2SDK)/ee/lib -s -Wl,-Map,$(MAPFILE)
 EE_LIBS += -lpatches
 
