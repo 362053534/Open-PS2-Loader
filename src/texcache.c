@@ -25,6 +25,9 @@ static int buttonPressedOnce = 0;  // 快速连按时，每次按键只重置CD�
 static int cdFrames = 30;         // 一轮Art图Qr后的CD时间(帧数)
 static int skipQr = 0;             // 判断是否可以跳过请求Qr队列
 static int cdFramesCount = 0; // 手动重复按键
+// 光标改变时递增；active COV 请求不能从 IO worker 中途摘除时，
+// 仍可在解码完成前后判断它是否属于最新目标。
+static u32 artRequestGeneration = 1;
 
 //int buttonFrames = 0; // 按住按键的帧数，用来跳过cdFrames
 //static u64 prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
@@ -65,6 +68,8 @@ typedef struct
     // 详情页)置成非 0 就再没人把它清零，导致 cacheLoadImage1 永久跳过所有封面加载、
     // 封面被反复排队又跳过(texLoading 卡住不归零)。因此 quiet 请求必须无视 cdFramesCount。
     int quiet;
+    // 只有 Coverflow COV 请求参与目标代际判断；ICO 和普通列表保持原有生命周期。
+    int trackGeneration;
     // 在渲染线程入队时决定是否压缩低分辨率 BG，worker 不直接读取可能
     // 正在切换的 gsGlobal 指针。
     int compactBackground;
@@ -136,6 +141,7 @@ static void cacheCancelImageRequest(void *data)
         if (entry->UID == ioReq->cacheUID) {
             entry->qr = 0;
             entry->lastUsed = 0;
+            entry->requestGeneration = 0;
             entry->texFound = -1;
         }
     }
@@ -146,12 +152,15 @@ static void cacheCancelImageRequest(void *data)
 
 void cacheCancelPendingArtRequests(void)
 {
-    if (usePthread)
-        return;
-
     pthread_mutex_lock(&texLoadingMutex);
+    artRequestGeneration++;
+    if (artRequestGeneration == 0)
+        artRequestGeneration = 1;
     int wasLoading = texLoading > 0;
     pthread_mutex_unlock(&texLoadingMutex);
+
+    if (usePthread)
+        return;
 
     // 光标移动瞬间仍有图片未显示时，保留原有的30帧连按保护。
     if (wasLoading && !ForceRefreshPrevTexCache && !padGetRepeating())
@@ -176,9 +185,11 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->itemId = itemId;
     req->qr = 1;
     req->quiet = quiet;
+    req->trackGeneration = quiet && !strncmp(cache->suffix, "COV", 3);
     req->compactBackground = cacheShouldCompactBackground(cache);
 
     pthread_mutex_lock(&texLoadingMutex);
+    cache->content[cacheId].requestGeneration = req->trackGeneration ? artRequestGeneration : 0;
     if (texLoading >= 0)
         texLoading++;
     else
@@ -205,6 +216,7 @@ static void cacheLoadImage1(void *data)
     if (!handler) {
         cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
+        ioReq->cache->content[ioReq->cacheId].requestGeneration = 0;
         free(ioReq);
         return;
     }
@@ -217,26 +229,57 @@ static void cacheLoadImage1(void *data)
     if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
         cacheDecreaseLoading();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
+        ioReq->cache->content[ioReq->cacheId].requestGeneration = 0;
         free(ioReq);
         return;
     }
 
-    // 加载图片
-    int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
+    cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
+
+    // 加载图片。itemGetImage() 可能已经无法中途取消；结果先留在原槽位，
+    // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
+    int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
 
     if (result >= 0 && ioReq->compactBackground)
-        texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
+        texCompactBackground(&entry->texture);
 
-    if (result < 0) {
-        ioReq->cache->content[ioReq->cacheId].lastUsed = 0;
-        ioReq->cache->content[ioReq->cacheId].texFound = 0;
-        //*ioReq->cacheId = -2;
-    } else {
-        ioReq->cache->content[ioReq->cacheId].lastUsed = guiFrameId;
-        ioReq->cache->content[ioReq->cacheId].texFound = 1;
+    // 光标变化会递增 artRequestGeneration；Coverflow 当前可见/预取路径再次
+    // 查询仍需要的 active 槽位时，会把 requestGeneration 更新回当前代。
+    // 没有被重新查询的旧请求在此处丢弃，不进入 cache，也不会在后续触发 GS bind。
+    int keepResult = 0;
+    int sameEntry = 0;
+    pthread_mutex_lock(&texLoadingMutex);
+    sameEntry = (entry->UID == ioReq->cacheUID);
+    if (sameEntry && entry->qr &&
+        (!ioReq->trackGeneration || entry->requestGeneration == artRequestGeneration)) {
+        // 普通列表和 ICO 请求保持原有发布规则；只有 Coverflow COV 请求需要
+        // 通过代际确认它仍属于新的可见/预取范围。
+        keepResult = 1;
+        if (result < 0) {
+            entry->lastUsed = 0;
+            entry->texFound = 0;
+            //*ioReq->cacheId = -2;
+        } else {
+            entry->lastUsed = guiFrameId;
+            entry->texFound = 1;
+        }
+        entry->requestGeneration = 0;
+        entry->qr = 0;
+    } else if (sameEntry && entry->qr) {
+        entry->qr = 2; // 丢弃期间禁止主线程复用此槽位
     }
+    pthread_mutex_unlock(&texLoadingMutex);
+
+    if (!keepResult) {
+        if (sameEntry && ioReq->trackGeneration)
+            cacheClearItem(entry, 1);
+        cacheDecreaseLoading();
+        ioReq->qr = 0;
+        free(ioReq);
+        return;
+    }
+
     cacheDecreaseLoading();
-    ioReq->cache->content[ioReq->cacheId].qr = 0;
     ioReq->qr = 0;
     free(ioReq);
     return;
@@ -839,8 +882,17 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
     if (*cacheId >= 0 && *cacheId < cache->count) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
-            if (entry->qr)
+            if (entry->qr) {
+                // 当前帧仍需要这张图：只有 COV active 请求需要重新标记为最新目标。
+                // 这样翻页后仍在新可见/预取范围内的请求可以继续完成；
+                // 没有再次被查询的旧 COV 请求则会在 worker 返回时被丢弃。
+                if (!strncmp(cache->suffix, "COV", 3)) {
+                    pthread_mutex_lock(&texLoadingMutex);
+                    entry->requestGeneration = artRequestGeneration;
+                    pthread_mutex_unlock(&texLoadingMutex);
+                }
                 return NULL; // 正在后台加载
+            }
             if (entry->texFound == 1 && entry->texture.Mem) {
                 entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
                 return &entry->texture;

@@ -17,6 +17,10 @@ typedef struct
 
     int UID;
 
+    // 该槽位的 active Coverflow 请求属于哪一代目标；光标变化时递增，
+    // 过期的 active COV 完成后不再发布到 cache/GS。
+    u32 requestGeneration;
+
     int texFound; // 图片解析完毕，防止解析到一半就进行使用，也许会造成死机？
 } cache_entry_t;
 
