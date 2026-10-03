@@ -15,6 +15,7 @@
 
 import argparse
 import os
+import re
 import struct
 import sys
 
@@ -115,11 +116,34 @@ def parse_afs(f, file_lba, file_size):
     return {'count': count, 'entries': entries}
 
 
-def scan_pss(f, lba, size, chunk=4 << 20):
-    """扫 MPEG-2 PS 的 pack 头（00 00 01 BA + 6 字节 SCR），估算时长和平均码率。
+FRAME_RATES = {1: 23.976, 2: 24.0, 3: 25.0, 4: 29.97, 5: 30.0, 6: 50.0, 7: 59.94, 8: 60.0}
 
-    用来核对「汉化版这段动画的码率/大小」到底和原版差多少——
-    PCSX2 日志只能看出游戏每秒要了多少扇区，文件本身能给出真实码率。
+
+def _parse_pts(b, i):
+    """从 PES 起始码位置解析 PTS（兼容 MPEG-2 和 MPEG-1 两种 PES 头布局）。"""
+    if i + 14 > len(b):
+        return None
+    # MPEG-2 PES: 00 00 01 id | len(2) | 0x80|x | flags | hdrlen | PTS(5)
+    if (b[i + 6] & 0xC0) == 0x80 and (b[i + 9] & 0xF0) in (0x20, 0x30):
+        p = b[i + 9:i + 14]
+        if (p[0] & 1) and (p[2] & 1) and (p[4] & 1):
+            return ((p[0] >> 1) & 0x07) << 30 | p[1] << 22 | ((p[2] >> 1) & 0x7F) << 15 | \
+                   p[3] << 7 | (p[4] >> 1)
+    # MPEG-1 PES: 00 00 01 id | len(2) | PTS(5)
+    if (b[i + 6] & 0xF0) in (0x20, 0x30):
+        p = b[i + 6:i + 11]
+        if (p[0] & 1) and (p[2] & 1) and (p[4] & 1):
+            return ((p[0] >> 1) & 0x07) << 30 | p[1] << 22 | ((p[2] >> 1) & 0x7F) << 15 | \
+                   p[3] << 7 | (p[4] >> 1)
+    return None
+
+
+def scan_pss(f, lba, size, chunk=4 << 20):
+    """扫 MPEG-PS 结构：pack/SCR 时间轴、视频/音频 PTS、序列头（分辨率/帧率）。
+
+    关键输出是「需要的持续读取速率」= 条目大小 / 时间轴时长：
+    播放器要按这个速度持续喂数据，喂不上就会停住等待；
+    拿它和 PCSX2 日志里量到的「每秒请求扇区数」对照，能直接判断谁对。
     """
     if size <= 0:
         return None
@@ -127,52 +151,83 @@ def scan_pss(f, lba, size, chunk=4 << 20):
     remaining = size
     base = 0
     carry = b''
-    first = last = None
-    count = 0
+    first_pack = last_pack = None
+    packs = 0
+    pts = {0xE0: [None, None, 0], 0xC0: [None, None, 0]}
+    seq = None
     while remaining > 0:
         data = f.read(min(chunk, remaining))
         if not data:
             break
         buf = carry + data
-        pos = 0
-        while True:
-            i = buf.find(b'\x00\x00\x01\xba', pos)
-            if i < 0:
-                break
-            if i + 14 <= len(buf):
+        off0 = base - len(carry)
+
+        for m in re.finditer(rb'\x00\x00\x01', buf):
+            i = m.start()
+            code = buf[i + 3] if i + 3 < len(buf) else None
+            if code is None:
+                continue
+            if code == 0xBA and i + 14 <= len(buf):
                 b = buf[i:i + 14]
-                if (b[4] & 0xC0) == 0x40:  # MPEG-2 pack header
+                if (b[4] & 0xC0) == 0x40:  # MPEG-2 pack
                     scr = (((b[4] >> 3) & 0x07) << 30) | ((b[4] & 0x03) << 28) | (b[5] << 20) \
                         | (((b[6] >> 3) & 0x1F) << 15) | ((b[6] & 0x03) << 13) | (b[7] << 5) \
                         | ((b[8] >> 3) & 0x1F)
-                    off = base - len(carry) + i
-                    if first is None:
-                        first = (off, scr)
-                    last = (off, scr)
-                    count += 1
-            pos = i + 4
+                    if first_pack is None:
+                        first_pack = scr
+                    last_pack = scr
+                    packs += 1
+            elif code in pts and i + 16 <= len(buf):
+                v = _parse_pts(buf, i)
+                if v is not None:
+                    slot = pts[code]
+                    if slot[0] is None:
+                        slot[0] = v
+                    slot[1] = v
+                    slot[2] += 1
+            elif code == 0xB3 and i + 8 <= len(buf):
+                b = buf[i + 4:i + 8]
+                w = (b[0] << 4) | (b[1] >> 4)
+                h = ((b[1] & 0x0F) << 8) | b[2]
+                fr = b[3] & 0x0F
+                if seq is None:
+                    seq = (w, h, FRAME_RATES.get(fr, fr))
+
         base += len(data)
         carry = buf[-16:]
         remaining -= len(data)
 
-    if first is None or last is None or last[1] <= first[1]:
+    if first_pack is None or last_pack is None or last_pack <= first_pack:
         return None
-    span_bytes = last[0] - first[0]
-    duration = (last[1] - first[1]) / 90000.0
-    return {
-        'count': count,
+    duration = (last_pack - first_pack) / 90000.0
+    out = {
+        'count': packs,
         'duration': duration,
-        'bitrate_mbps': span_bytes * 8.0 / duration / 1e6,
-        'avg_gbps': 0.0,
-        'entry_mbps': size * 8.0 / duration / 1e6,
+        'bitrate_mbps': size * 8.0 / duration / 1e6,
+        'required_kbps': size / duration / 1024.0,
+        'seq': seq,
+        'pts': {},
     }
+    for code, name in ((0xE0, 'video'), (0xC0, 'audio')):
+        a, b_, n = pts[code]
+        if a is not None and b_ is not None and b_ > a:
+            out['pts'][name] = {'span': (b_ - a) / 90000.0, 'count': n, 'first': a / 90000.0}
+    return out
 
 
 def fmt_pss(info, label=''):
     if info is None:
-        return '%s(扫不到 MPEG-2 pack 头，可能不是 MPEG-PS，或整段是别的东西)' % label
-    return ('%s时长 %.2f s，平均码率 %.2f Mbps（按条目总大小折算 %.2f Mbps，共 %d 个 pack）'
-            % (label, info['duration'], info['bitrate_mbps'], info['entry_mbps'], info['count']))
+        return '%s(扫不到 MPEG-PS 结构：可能不是 MPEG-PS，或整段是别的东西)' % label
+    lines = ['%s时长 %.2f s，平均码率 %.2f Mbps，共 %d 个 pack' % (label, info['duration'], info['bitrate_mbps'], info['count'])]
+    if info.get('seq'):
+        w, h, fps = info['seq']
+        lines.append('%s序列头：%dx%d, %.2f fps' % (' ' * len(label), w, h, fps))
+    for name, zh in (('video', '视频'), ('audio', '音频')):
+        p = info['pts'].get(name)
+        if p:
+            lines.append('%s%s PTS 跨度 %.2f s（共 %d 个包）' % (' ' * len(label), zh, p['span'], p['count']))
+    lines.append('%s>>> 播放需要的持续读取速率 = %.0f KB/s (%.2f MB/s)' % (' ' * len(label), info['required_kbps'], info['required_kbps'] / 1024.0))
+    return '\n'.join(lines)
 
 
 def fmt_size(n):
@@ -269,9 +324,15 @@ def describe(iso_path, target, want_lba, compare_path, pss_idx=None):
         with open(iso_path, 'rb') as ff:
             i1 = scan_pss(ff, e1['lba'], e1['size'])
         i2 = scan_pss(g, e2['lba'], e2['size'])
-        print('\n条目 %d 码率对比：' % scan_idx)
+        print('\n条目 %d 码率/时间轴对比：' % scan_idx)
         print('  本镜像  : %s' % fmt_pss(i1))
         print('  对比镜像: %s' % fmt_pss(i2))
+        if i1 and i2:
+            r = i1['required_kbps'] / i2['required_kbps'] if i2['required_kbps'] else 0
+            print('  >>> 需要读取速率的倍数：**%.2fx**' % r)
+            print('      和 PCSX2 日志里量到的「每秒请求扇区数」倍数对照：'
+                  '一致 ⇒ 就是码率/时间轴决定的；'
+                  '不一致 ⇒ 是播放器按扇区模式多读（不是码率问题）')
 
 
 def main():
