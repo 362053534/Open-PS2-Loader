@@ -3,8 +3,8 @@
 
 #include <tamtypes.h>
 
-/* 截图文本共用转换实现，避免三种整数宽度的重复代码占用常驻区。 */
-static void u32todecstr(u32 input, char *output, u8 digits)
+/* 必须保留单一实现，按常量位宽内联或克隆会让共用代码反而增大常驻区。 */
+static void __attribute__((noinline, noclone)) u32todecstr(u32 input, char *output, u8 digits)
 {
     u8 i = digits;
     do {
