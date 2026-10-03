@@ -20,11 +20,6 @@ ifeq ($(INGAME_DRIVER),1)
 IOP_CFLAGS += -DINGAME_DRIVER
 endif
 
-# 和 cdvdman 的 SMB_BIGWND 配套：放大接收窗口/pbuf 池，配合更大的单笔 SMB 读。
-ifeq ($(SMB_BIGWND),1)
-IOP_CFLAGS += -DSMB_BIGWND
-endif
-
 ifeq ($(INTERRUPT_CTX_INPKT),1)
 IOP_CFLAGS += -DINTERRUPT_CTX_INPKT
 endif

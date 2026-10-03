@@ -70,6 +70,43 @@ extern struct irx_export_table _exp_bdm;
 extern struct irx_export_table _exp_atad;
 #endif
 
+/* 调试用：统计 BDM 设备的实际吞吐（USB / MX4SIO / HDD 都走这里）。
+ * 用途：判断「游戏需要的码率」和「载体能给多少」哪个先撞墙——
+ * 例如高达SEED汉化版 OP 需要约 1.7MB/s，而 PS2 的 USB 1.1 实测上限只有 1.0~1.25MB/s。
+ * 只在调试构建（make IOPCORE_DEBUG=1）里编译，发布版整个函数体为空，零开销。 */
+static void bdmRateAccount(u32 bytes)
+{
+#ifdef __IOPCORE_DEBUG
+    static u32 acc_bytes, window_start_lo;
+    static const char *last_name;
+    iop_sys_clock_t now;
+    u32 elapsed_ms, kb_per_s;
+
+    if (bytes == 0)
+        return;
+
+    GetSystemTime(&now);
+    if (window_start_lo == 0 || last_name == NULL) {
+        window_start_lo = now.lo;
+        last_name = g_bd != NULL ? g_bd->name : "bdm";
+        return;
+    }
+
+    acc_bytes += bytes;
+
+    /* 36.864MHz，/37 得到微秒（和 cdvdfsv 里取时间的算法保持一致）。 */
+    elapsed_ms = (now.lo - window_start_lo) / 37u / 1000u;
+    if (elapsed_ms >= 1000u) {
+        kb_per_s = (acc_bytes / elapsed_ms) * 1000u / 1024u;
+        DPRINTF("%s rate: %u KB/s (%u KB in %u ms)\n", last_name, kb_per_s, acc_bytes >> 10, elapsed_ms);
+        acc_bytes = 0;
+        window_start_lo = now.lo;
+    }
+#else
+    (void)bytes;
+#endif
+}
+
 //
 // BDM exported functions
 //
@@ -577,7 +614,10 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
     if (g_bd->sectorSize != 512) {
         SignalSema(bdm_io_sema);
-        return DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
+        rv = DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
+        if (rv == SCECdErNO)
+            bdmRateAccount(sectors * 2048);
+        return rv;
     }
 
     isMX4SIO = g_bd->name[0] == 's' && g_bd->name[1] == 'd' && g_bd->name[2] == 'c' && g_bd->name[3] == '\0';
@@ -603,6 +643,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         } else
             rv = isMX4SIO ? SCECdErTRMOPN : SCECdErREAD;
     }
+    if (rv == SCECdErNO)
+        bdmRateAccount(sectors * 2048);
     SignalSema(bdm_io_sema);
 
     return rv;

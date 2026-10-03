@@ -97,12 +97,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* ---------- Pbuf options ---------- */
 /* PBUF_POOL_SIZE: the number of buffers in the pbuf pool. */
 #ifdef INGAME_DRIVER
-#ifdef SMB_BIGWND
-/* 32KB 接收窗口按 1540 字节/pbuf 估算需要 ~22 个 pbuf，留点余量给 SIF/SMAP。 */
-#define PBUF_POOL_SIZE 32
-#else
 #define PBUF_POOL_SIZE 8
-#endif
 #else
 #define PBUF_POOL_SIZE 25
 #endif
@@ -147,15 +142,10 @@ a lot of data that needs to be copied, this should be set high. */
 #endif
 
 /* TCP receive window. */
-#ifdef SMB_BIGWND
-/* 放大窗口才能在单笔 SMB 读里塞下更多数据；注意必须大于 cdvdman 的 CLIENT_MAX_RECV_SIZE。 */
-#define TCP_WND 32768
-#else
 #ifdef INGAME_DRIVER
 #define TCP_WND 10240
 #else
 #define TCP_WND 32768
-#endif
 #endif
 
 /* TCP writable space (bytes).  This must be less than or equal

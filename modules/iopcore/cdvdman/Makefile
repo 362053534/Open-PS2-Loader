@@ -26,9 +26,6 @@ IOP_OBJS += device-smb.o smb.o
 IOP_CFLAGS += -DSMB_DRIVER
 USE_DEV9 = 1
 IOP_INCS += -I../../network/common
-ifeq ($(SMB_BIGWND),1)
-IOP_CFLAGS += -DSMB_BIGWND
-endif
 endif
 
 ifeq ($(USE_BDM),1)
