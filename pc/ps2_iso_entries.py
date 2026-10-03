@@ -14,6 +14,7 @@
 """
 
 import argparse
+import bisect
 import os
 import re
 import struct
@@ -153,6 +154,8 @@ def scan_pss(f, lba, size, chunk=4 << 20):
     carry = b''
     first_pack = last_pack = None
     packs = 0
+    marks = []  # [(SCR 秒, pack 在条目内的字节偏移)]，用来算「每秒要多少数据」
+    seen_off = set()
     pts = {0xE0: [None, None, 0], 0xC0: [None, None, 0]}
     seq = None
     while remaining > 0:
@@ -177,6 +180,10 @@ def scan_pss(f, lba, size, chunk=4 << 20):
                         first_pack = scr
                     last_pack = scr
                     packs += 1
+                    off = off0 + i
+                    if off not in seen_off:  # 跨缓冲区重复看到的 pack 只算一次
+                        seen_off.add(off)
+                        marks.append((scr / 90000.0, off))
             elif code in pts and i + 16 <= len(buf):
                 v = _parse_pts(buf, i)
                 if v is not None:
@@ -200,6 +207,29 @@ def scan_pss(f, lba, size, chunk=4 << 20):
     if first_pack is None or last_pack is None or last_pack <= first_pack:
         return None
     duration = (last_pack - first_pack) / 90000.0
+
+    # 逐秒数据量：按每个 pack 的 SCR 做「累计字节数 vs 时间」曲线。
+    # 这是回答「开头是不是更吃带宽」的关键：全程平均一样，开头差别可能很大。
+    t0 = marks[0][0]
+    times = [m[0] for m in marks] + [last_pack / 90000.0]
+    offs = [m[1] for m in marks] + [size]
+
+    def bytes_up_to(t):
+        i = min(bisect.bisect_left(times, t), len(offs) - 1)
+        return offs[i]
+
+    per_sec = [bytes_up_to(t0 + k + 1) - bytes_up_to(t0 + k)
+               for k in range(int(last_pack / 90000.0 - t0) + 1)]
+    peak = (0, 0.0)
+    for t in times[:-1]:
+        v = bytes_up_to(t + 1.0) - bytes_up_to(t)
+        if v > peak[0]:
+            peak = (v, t - t0)
+    windows = {}
+    for n in (1, 2, 5, 10, 20, 40):
+        if n <= duration:
+            windows[n] = bytes_up_to(t0 + n) / float(n)
+
     out = {
         'count': packs,
         'duration': duration,
@@ -207,6 +237,9 @@ def scan_pss(f, lba, size, chunk=4 << 20):
         'required_kbps': size / duration / 1024.0,
         'seq': seq,
         'pts': {},
+        'per_sec': per_sec,
+        'peak1s': peak,
+        'windows': windows,
     }
     for code, name in ((0xE0, 'video'), (0xC0, 'audio')):
         a, b_, n = pts[code]
@@ -227,6 +260,23 @@ def fmt_pss(info, label=''):
         if p:
             lines.append('%s%s PTS 跨度 %.2f s（共 %d 个包）' % (' ' * len(label), zh, p['span'], p['count']))
     lines.append('%s>>> 播放需要的持续读取速率 = %.0f KB/s (%.2f MB/s)' % (' ' * len(label), info['required_kbps'], info['required_kbps'] / 1024.0))
+    return '\n'.join(lines)
+
+
+def fmt_profile(info, secs=12):
+    """打印「开头每秒要多少数据」——全程平均值相同、开头曲线不同的两个版本，差别就在这里。"""
+    if info is None or 'per_sec' not in info:
+        return ''
+    ps = info['per_sec']
+    n = min(secs, len(ps))
+    lines = ['%s 前 %d 秒每秒数据量 (KB/s): %s' % (' ' * 2, n, ' '.join('%d' % (v / 1024.0) for v in ps[:n]))]
+    pk, pt = info['peak1s']
+    lines.append('%s 1 秒窗峰值 %d KB/s @ +%.1f s（±1 个 pack 的窗口边界误差）'
+                 % (' ' * 2, pk / 1024.0, pt))
+    if info.get('windows'):
+        w = info['windows']
+        lines.append('%s 窗口需求: ' % (' ' * 2) +
+                     ' | '.join('前%ds %.2f MB/s' % (k, w[k] / 1048576.0) for k in sorted(w)))
     return '\n'.join(lines)
 
 
@@ -285,6 +335,9 @@ def describe(iso_path, target, want_lba, compare_path, pss_idx=None):
         e = afs['entries'][scan_idx]
         info = scan_pss(f, e['lba'], e['size'])
         print('条目 %d 码率扫描 : %s' % (scan_idx, fmt_pss(info)))
+        prof = fmt_profile(info)
+        if prof:
+            print(prof)
         if info is not None and want_lba is not None:
             inside = (want_lba - e['lba']) * SECTOR
             print('                 : 日志里的 LBA %d 在这条里偏移 %.1f MB（%.1f%% 处）'
@@ -327,6 +380,10 @@ def describe(iso_path, target, want_lba, compare_path, pss_idx=None):
         print('\n条目 %d 码率/时间轴对比：' % scan_idx)
         print('  本镜像  : %s' % fmt_pss(i1))
         print('  对比镜像: %s' % fmt_pss(i2))
+        for lbl, ii in (('本镜像  ', i1), ('对比镜像', i2)):
+            prof = fmt_profile(ii)
+            if prof:
+                print('  ' + lbl + ':' + prof.replace('\n', '\n  ' + lbl + ':'))
         if i1 and i2:
             r = i1['required_kbps'] / i2['required_kbps'] if i2['required_kbps'] else 0
             print('  >>> 需要读取速率的倍数：**%.2fx**' % r)
