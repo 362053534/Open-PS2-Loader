@@ -98,38 +98,9 @@ enum CDVD_ST_CMDS {
     CDVD_ST_CMD_SEEKF
 };
 
-/* 余数 1 扇区：上一笔 EE 读 >1 扇区且 LSN 紧挨着。连续 1 扇区（目录）不拖。 */
-#define REM1_MIN_US 30000u
-
-static u32 rem1_next_lsn;
-static unsigned int rem1_prev_sectors;
-static int rem1_have_prev;
-
-static int rem1_is_remainder(u32 lsn, u32 sectors)
-{
-    return (sectors == 1 && rem1_have_prev && rem1_prev_sectors > 1 && lsn == rem1_next_lsn);
-}
-
-static void rem1_note_read(u32 lsn, u32 sectors)
-{
-    rem1_have_prev = 1;
-    rem1_next_lsn = lsn + sectors;
-    rem1_prev_sectors = sectors;
-}
-
-static void rem1_pad_elapsed(int rem1, const iop_sys_clock_t *t0)
-{
-    iop_sys_clock_t t1;
-    u32 elapsed_us;
-
-    if (!rem1)
-        return;
-    GetSystemTime(&t1);
-    /* 36.864MHz，/37 得到微秒；慢设备已经超过 30ms 就不再 DelayThread。 */
-    elapsed_us = (t1.lo - t0->lo) / 37u;
-    if (elapsed_us < REM1_MIN_US)
-        DelayThread(REM1_MIN_US - elapsed_us);
-}
+/* 说明：曾在这里试过"1 扇区余数读补 30ms"的实验（REM1_MIN_US），
+ * 实机验证对 USB 卡 OP 无效，而且汉化版每轮都有这样一笔 1 扇区读（246 笔/OP），
+ * 每笔白白多付最多 30ms —— 已整体回退。相关结论见 notes/gundam_seed_ce_op_hang_analysis.md */
 
 //--------------------------------------------------------------
 static inline void cdvd_readee(void *buf)
@@ -144,8 +115,6 @@ static inline void cdvd_readee(void *buf)
     RpcCdvd_t *r = (RpcCdvd_t *)buf;
     u32 orig_lsn;
     u32 orig_sectors;
-    int rem1;
-    iop_sys_clock_t rem1_t0;
 
     if (r->sectors == 0) {
         *(int *)buf = 0;
@@ -156,9 +125,6 @@ static inline void cdvd_readee(void *buf)
     orig_sectors = r->sectors;
     /* 调试用：配合 cdvdman 的 bdm read 日志，看卡住时是哪一笔 EE 请求没结束。 */
     DPRINTF("readee: start lsn=%u sectors=%u\n", orig_lsn, orig_sectors);
-    rem1 = rem1_is_remainder(orig_lsn, orig_sectors);
-    if (rem1)
-        GetSystemTime(&rem1_t0);
 
     sector_size = 2048;
 
@@ -215,11 +181,6 @@ static inline void cdvd_readee(void *buf)
 
                 *(int *)buf = nbytes;
                 DPRINTF("readee: done lsn=%u sectors=%u nbytes=%u err=%d\n", orig_lsn, orig_sectors, nbytes, sceCdGetError());
-                if (sceCdGetError() != SCECdErABRT) {
-                    /* 余数 dest 是 bounce，SendEE 之后再补时仍挡着 EE 下一笔盖堆。 */
-                    rem1_pad_elapsed(rem1, &rem1_t0);
-                    rem1_note_read(orig_lsn, orig_sectors);
-                }
                 return;
             }
 
