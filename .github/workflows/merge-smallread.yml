@@ -1,0 +1,42 @@
+name: 实验构建-合并小额读
+
+# 这个 workflow 只用于「合并小额读」实验（FSV_MERGE_SMALLREAD），
+# 一次 push / 手动触发就同时产出 N=8、16、32 三个实验版 OPL：
+#   OPNPS2LD-v1.2.0-M8-g<hash>.ELF  /  ...-M16...  /  ...-M32...
+# 产物文件名和 OPL「关于」里的版本行都带 -M8 / -M16 / -M32，方便确认刷进去的是哪个版本。
+#
+# 说明：FSV_MERGE_SMALLREAD 只有在 make 命令行上显式给出时才生效；
+# 普通 CI（compilation.yml 里的 `make clean release`）建出来的产物是**没有打开这个开关**的。
+on:
+  push:
+    branches:
+      - arena/01a101c3-open-ps2-loader
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    strategy:
+      fail-fast: false
+      matrix:
+        merge: [8, 16, 32]
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v6
+
+    - run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git fetch --prune --unshallow
+
+    - name: Compile -> make clean release FSV_MERGE_SMALLREAD=${{ matrix.merge }}
+      run: make --trace clean release FSV_MERGE_SMALLREAD=${{ matrix.merge }}
+
+    - name: Upload experimental ELF
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: OPL-M${{ matrix.merge }}
+        path: |
+          OPNPS2LD-*.ELF
+          OPNPS2LD-*.ZIP

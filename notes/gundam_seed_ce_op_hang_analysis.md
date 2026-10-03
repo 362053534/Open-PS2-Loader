@@ -211,6 +211,12 @@ make FSV_MERGE_SMALLREAD=32    # 每笔 32 扇区（静态缓冲 64KB，注意 I
 
 （切换 N 值会自动重编 `ncmd.o`，见 `cdvdfsv/Makefile`；保守起见也可以 `make clean` 后整编。）
 
+**用 GitHub Actions 出产物**（你不用本地编译）：这个分支上加了 `.github/workflows/merge-smallread.yml`，
+往分支 push 就会自动跑一次，一次给出三个 artifact：`OPL-M8` / `OPL-M16` / `OPL-M32`。
+实验版把版本号写成短的 **`v1.2.0-M8-g<hash>`** —— 产物文件名和 OPL「关于」里的版本行都能认出来。
+⚠️ 注意：仓库原有的 `compilation.yml`（普通 CI）跑的是不带任何开关的 `make clean release`，
+**产物里没有这个实验** —— 这一点没有说明清楚，导致第一次实机测试拿到的其实是普通版（所以"完全没变化"）。
+
 预期效果（PC 上 `python3 pc/fsv_merge_test.py` 仿真，数据逐字节校验通过）：
 
 | N | 每轮设备读笔数（原 25 笔） | 说明 |

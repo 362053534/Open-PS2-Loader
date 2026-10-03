@@ -71,6 +71,13 @@ ifneq ($(GIT_TAG),latest)
 endif
 endif
 
+# 实验开关 FSV_MERGE_SMALLREAD=N（见 modules/iopcore/cdvdfsv/ncmd.c）：
+# 实验版用一个短版本号 —— 产物文件名和 OPL「关于」里的版本行都能一眼认出是 -M8/-M16/-M32
+# （「关于」的缓冲区只有 40 字节，完整的 vX.Y.Z-Beta-<rev>-<hash> 本来就会被截断）。
+ifneq ($(FSV_MERGE_SMALLREAD),)
+  OPL_VERSION := v$(VERSION).$(SUBVERSION).$(PATCHLEVEL)-M$(FSV_MERGE_SMALLREAD)$(if $(GIT_HASH),-$(GIT_HASH))
+endif
+
 FRONTEND_OBJS = pad.o xparam.o fntsys.o renderman.o menusys.o OSDHistory.o system.o lang.o lang_internal.o config.o hdd.o dialogs.o \
 		dia.o ioman.o texcache.o themes.o supportbase.o bdmsupport.o ethsupport.o hddsupport.o zso.o lz4.o \
 		appsupport.o popstarter_smb_vfs.o gui.o guigame.o textures.o opl.o atlas.o nbns.o httpclient.o gsm.o cheatman.o sound.o ps2cnf.o
