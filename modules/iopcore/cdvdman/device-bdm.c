@@ -714,11 +714,17 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         for (i = 0; i < cdvdman_settings.fragfile[0].frag_count; i++)
             totalSectorCount += frags[i].count;
 
-        if (sector >= totalSectorCount)
+        if (sector >= totalSectorCount) {
+            /* 注意：这条路径「返回成功但内容是零」，调用方看不到任何错误。
+             * 万一是游戏读到 0 就停住，日志里只会出现这一行。 */
+            DPRINTF("bdm read ZERO-FILL: lsn=%u sectors=%u 超出碎片表范围 (sector=%u >= total=%u)\n",
+                    (unsigned int)lsn, sectors, (unsigned int)sector, (unsigned int)totalSectorCount);
             memset(buffer, 0, sectors * 2048);
-        else if (sectorCount > totalSectorCount - sector) {
+        } else if (sectorCount > totalSectorCount - sector) {
             unsigned int validSectorCount = totalSectorCount - sector;
 
+            DPRINTF("bdm read ZERO-TAIL: lsn=%u sectors=%u 只读到 %u/%u 块（到文件末尾）\n",
+                    (unsigned int)lsn, sectors, validSectorCount, sectorCount);
             if (bdm_read_blocks(frags, sector, buffer, validSectorCount))
                 memset((u8 *)buffer + validSectorCount * 512, 0, (sectorCount - validSectorCount) * 512);
             else

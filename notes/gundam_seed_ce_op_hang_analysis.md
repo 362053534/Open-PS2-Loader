@@ -1,137 +1,85 @@
-# 高达SEED C.E. 汉化版：USB 模式 OP 开头停住 —— 重新定位
+# 高达SEED C.E. 汉化版：USB 模式 OP 开头停住 —— 定位到 USB 读路径
 
-## 0. 现在已知的事实（含你这次补充的三条）
+## 0. 已知事实
 
 | # | 事实 | 来源 |
 |---|---|---|
 | 1 | 汉化版放 **HDD** 上 OP 正常 | 你实测 |
-| 2 | USB 上跑到某处后**彻底不再读盘**（不是读得慢），画面停住 | 你实测 |
-| 3 | 停住时游戏**没死**，按 Start 能正常跳过 | 你实测 |
-| 4 | 用**没有 `REM1_MIN_US`** 的旧版本，问题照旧 | 你实测 |
-| 5 | 两版动画**码率/大小几乎一样**，汉化版只是重新打包过 | 你指出 |
-| 6 | 两版每轮 4 笔读的耗时相同（~101 ms），差别在轮间等待（0.636 s vs 0.232 s） | 日志 |
+| 2 | USB 上某处起**彻底不再读盘**，画面停住 | 你实测 |
+| 3 | 没有卡死，**按 Start 可以正常跳过** | 你实测 |
+| 4 | 动画文件码率/大小几乎一样，汉化版只是重新打包 | 你指出 |
+| 5 | **碎片数 = 1**，走 bd_defrag 的单碎片快速路径 | 你实测 |
+| 6 | 去掉 `REM1_MIN_US` 的版本照样复现 | 你实测 |
+| 7 | 两版每轮读盘耗时一样（~101 ms），汉化版轮周期 0.232 s vs 原版 0.636 s | 日志 |
 
-**由 1 + 4 + 5 可以直接排除的**：
+**排除**：码率/文件大小、镜像损坏、碎片问题、`rem1`、带宽不足（带宽不足只会变慢，不会停）。
 
-* ❌ “汉化版码率高、数据更胖”（你已指出，且 HDD 能播）
-* ❌ `rem1` 余数补时（没有它的版本照样复现）
-* ❌ 镜像/数据损坏（HDD 上同一份数据能正常播完）
+## 1. 关键推论：这不是“永久卡死”，而是“游戏自己不要数据了”
 
-**由此收敛到的机制**：USB 上不是“供给不足”，而是**读请求在某个点断了**。
-带宽不足只会让读取**变慢、继续读**；而现在是**不读了**，说明游戏的读循环在等一个永远不来的结果：
+如果 USB 传输真的永久挂住，那么：`bdm_io_sema` 一直被占 → **之后任何一次读盘（包括按 Start 之后的加载）都会跟着挂住**。
+你说按 Start 能正常跳过（游戏继续跑），说明 **USB 链路之后是活的** —— 所以：
 
-* (A) 某笔读**永远不返回**（卡在 USB 设备层内部，OPL 这条路径没有超时）→
-  `sync_flag` 一直是 1 → 游戏 `sceCdSync` 永远等 → 不再发新的读请求 → Start 还能跳过（游戏主循环没死）。**完全符合现象 2+3。**
-* (B) 某笔读**返回了错误**（碎片/边界/短读）→ 播放器把错误当成“读失败/数据结束”，停止读取、等玩家操作（Start 跳过）。**同样符合现象 2+3。**
+> 停住的原因是：**某一笔读返回了错误（或返回了坏数据）→ 视频播放器放弃这段流 → 它不再发读请求**。
+> “读盘停住”是结果，不是原因。
 
-两种情况都在 USB 链路、都不影响 HDD（HDD 走的是另一条设备与碎片来源：PFS 区块表 vs FAT 簇表），和事实 1 一致。
+这也和 HDD 正常吻合（同一份数据、不同设备驱动，错误不出现）。
 
-> 为什么不是“带宽不够”：日志里汉化版确实比原版取数快 2.7 倍（每轮 384 KB / 0.232 s），
-> 但那只会让它**越播越卡、读盘继续**；而你的现象是**读盘停住**。所以带宽是次要因素，主因是 (A)/(B)。
-
----
-
-## 1. 怎么区分 (A) 和 (B)：一次调试运行就够
-
-```bash
-make DEBUG=1 IOPCORE_DEBUG=1 TTY_APPROACH=UDP        # 或者你惯用的 TTY 方式
-```
-
-跑汉化版到停住，看日志的最后几行（本次新加/已有的打印）：
+## 2. USB 读路径上有三种会“让游戏放弃”的失败签名（都已加了日志）
 
 ```
-readee: start lsn=574096 sectors=64          ← 新增：EE 请求进来
-bdm read: ...                                ← 已有（cdvdman_read）
-bdm read slow: lsn=... took 5000 ms          ← 新增：单笔读超过 200ms 会打
-bdm read HUNG: lsn=... sectors=... (7000 ms and counting)   ← 新增：看门狗每秒打一次
-bdm read failed: lsn=... sectors=... rv=...  ← 新增：设备层读失败/短读
-bdm read attempt 2 failed: sector=... blocks=...            ← 新增：重试（见 §2）
-readee: done lsn=... sectors=... nbytes=... err=0/1/5        ← 新增：请求收尾（err 非 0 = 设备报错）
+EE → cdvdfsv(8 扇区一段) → cdvdman_read → device-bdm.c → bd_defrag(单碎片快速路径)
+   → usbmass_bd: scsi_read → USB BOT(CBW/数据/CSW) → usbd → OHCI
 ```
 
-| 日志表现 | 结论 | 下一步 |
-|---|---|---|
-| 最后一行是 `bdm read: ...`，随后 `bdm read HUNG: ...` 每秒刷 | **(A) 卡死在设备层**（usbd/usbmass_bd 内部，无超时） | §3 |
-| 出现 `bdm read failed: ...` / `readee: done ... err=≠0` | **(B) 读返回错误，游戏放弃读盘** | §2 |
-| 两者都没有、`readee: done err=0` 一堆后停住 | 读都成功了，是**游戏自己**不再要数据（另有原因） | 见 §4 |
+| 签名 | 日志（调试构建） | 含义 | 修法方向 |
+|---|---|---|---|
+| **A. 设备层读错误** | `bdm read failed: lsn=… rv=…`；通常前面还有 `usbmass_bd: ERROR: unable to read sector after N retries (sector=0x…)`（这行是他们 ps2sdk 分支里的 M_PRINTF，**默认就会打**） | SCSI 层重试 32 次/2 秒后放弃 → OPL 返回 `SCECdErREAD` → 游戏收到错误、放弃视频 | 有界重试 / 失败补零返回成功（`make USB_READ_RETRY=N` 就是测这个） |
+| **B. 静默零填充** | `bdm read ZERO-FILL: lsn=… 超出碎片表范围` 或 `bdm read ZERO-TAIL: lsn=… 只读到 x/y 块`（**本机新增**） | 读失败但请求超出碎片表范围 → OPL **返回成功、内容是 0**；游戏拿到一堆 0，解码器停住 → 不再读盘 | 说明碎片表范围/文件长度和游戏要读的位置对不上 |
+| **C. 真的卡住** | `bdm read HUNG: lsn=… sectors=… (N ms and counting)` 每秒刷（**本机新增**） | `usbmass_bd` 里所有 `WaitSema` **都没有超时**，URB 回调没来就永远等；`bdm_io_sema` 一直占着 | 只能在 ps2sdk（usbmass_bd）里加超时+复位（你们之前试过 5 秒超时，后来回退了） |
 
-另外启动时会打一行（新增，用于判断碎片表是否和镜像对得上）：
+**一次运行就能分开**：调试构建跑到停住，看最后十行是上面哪一种；如果三种都没有、只是安静下来，那就是数据层问题（§4）。
 
-```
-BDM image: N fragments in M contiguous runs, K sectors (first @S)
-```
+## 3. 优先做这两个实验
 
-把 `K` 和镜像实际扇区数（`python3 pc/ps2_iso_entries.py xxx.iso` 输出的“镜像大小 xxx 扇区”）对比：
-**不相等就说明给到 IOP 的碎片表和镜像不一致** → USB 上后段的读会越界/失败，而 HDD 用的是另一套碎片来源（PFS 区块表）不受影响 —— 这和事实 1 完全吻合，是最值得先看的一条。
-
----
-
-## 2. 如果是 (B)：读错误被当成致命
-
-已经做好了开关，先做这个实验（不用等改代码）：
-
-```bash
-make USB_READ_RETRY=3        # BDM 读失败时重试 3 次（每次间隔 50ms），默认 0 = 不重试
-```
-
-* **能过 OP** ⇒ 确认是“偶发读错误 → 游戏不再读”；那正式修法就是给 USB 加**有界重试**，或像 SMB 那样在失败时**补零返回成功**（SMB 分支已经这么做过容错，USB 这边目前是一失败就返回 `SCECdErREAD`）。
-* **照样停住** ⇒ 排除 (B)，看 (A)。
-
----
-
-## 3. 如果是 (A)：读卡在设备层
-
-OPL 这条链路上没有超时：`device-bdm.c → bd_defrag_read_cached_indexed() → usbmass_bd.irx → usbd.irx → OHCI`。
-USB 传输的等待在 `usbd` 里（等 URB 完成），**如果设备/驱动不回完成，就会一直等**，`bdm_io_sema` 一直被持有 → 后面所有读都排不上 → 现象就是“不再读盘”。
-
-这一层**不在本仓库里**（`usbmass_bd`/`usbd` 来自 ps2sdk），所以：
-
-1. 先用 §1 的日志确认是卡在哪一笔（`bdm read HUNG: lsn=X sectors=Y`）；
-2. 拿到那个 LBA 后，用脚本看它落在哪：
+1. **看最后几行日志**（最重要，直接定案）。
+   顺便注意启动时 `usbmass_bd` 打的那行 `%08x%08x %u-byte logical blocks`：确认你的 U 盘报告的是 512 还是 4096 字节逻辑块
+   （4096 的话 OPL 会走 `DeviceReadSectorsGeneric_2` 那条带 `mediaLsnCount` 截断 + 零填充的分支，完全是另一条路，需要单独看）。
+2. **有界重试能不能救回来**：
    ```bash
-   python3 pc/ps2_iso_entries.py 汉化版.iso --file MOV.AFS --lba X --compare 原版.iso
+   make DEBUG=1 IOPCORE_DEBUG=1 USB_READ_RETRY=8
    ```
-   —— 如果正好在 AFS 条目边界、镜像末尾、或碎片表的某段边界上，就能反推出触发条件；
-3. 把 X 换到原版镜像里对应位置做对照（原版不卡），看差异是“绝对位置”还是“相对条目位置”；
-4. 真要修，只能改 ps2sdk 的 `usbmass_bd`/`usbd`（加超时/复位/重试），或者换一根 U 盘/读卡器把触发点躲开。
+   * 能过 OP ⇒ 是签名 A（偶发读错误被游戏当致命），修法就是重试（可再加“连续失败才报错”）；
+   * 照样停住、且日志里出现 A 的报错 ⇒ 重试也失败，说明是那块数据/那个位置稳定读不出来（驱动器层面），换盘/重拷镜像一试；
+   * 日志干净、只有 ZERO-FILL/ZERO-TAIL ⇒ 签名 B，问题在碎片表范围与游戏读取位置的对应关系上。
 
----
+## 4. 如果三种签名都没有（数据层）
 
-## 4. 如果是“读都成功、游戏自己不要数据了”
+那么读全部成功、数据也正确，是**游戏自己不再要数据**，需要往“汉化版这段视频的数据/时间戳”方向查：
 
-那就不是 I/O 停，而是**游戏看到的数据不对**（比如它以为读到了有效数据、但校验/序列头不对）而进入等待。
-这种情况要点：
+```bash
+python3 pc/ps2_iso_entries.py 汉化版.iso --file MOV.AFS --lba 574094 --compare 原版.iso
+```
+* 打出该 AFS 条目的**真实时长、平均码率**（扫 MPEG-2 pack 头）、日志 LBA 落在条目内什么位置；
+* 两版对比：码率/时长是否一致（你已确认“几乎一样”，这条是量化确认）；
+* 用它算出**停住时游戏读到条目的百分之几**（如果每次都停在同一个百分比，说明是那段码流本身的问题；如果百分比每次不同，说明是 I/O 时序）。
 
-* 用 §1 的日志确认停住前的读全部 `err=0`；
-* 检查汉化版镜像的 **PVD 卷大小 vs 实际扇区数**（脚本会打；改版镜像常见这里不一致）；
-* 用 `--lba` 看停住位置是否落在某条 AFS 条目之外（重新打包时条目表和实际数据错位）；
-* 同一个 ISO 在 **SMB/MX4SIO** 上跑一次对照（SMB 够 1.7 MB/s），如果 SMB 也停 → 和载体无关，是数据/结构问题。
+## 5. 想请你确认的两点
 
----
+1. **按 Start 跳过之后，游戏能不能继续正常读盘/加载？**（这一条决定签名 A/B 还是签名 C ——
+   如果跳过之后一切正常，就基本排除 C；如果跳过之后的下一次加载也卡，那就是 C，得在 ps2sdk 的 USB 驱动里加超时。）
+2. **停住时画面是最后一帧冻住还是黑屏？**（冻住更像 A/B：播放器主动放弃；黑屏更像 C。）
 
-## 5. 本次改动清单
+## 6. 本次改动清单
 
 | 文件 | 改动 |
 |---|---|
-| `modules/iopcore/cdvdman/device-bdm.c` | 调试构建：读看门狗（`bdm read HUNG`，5 秒起每秒一次）、单笔读超 200 ms 打 `bdm read slow`、读失败打 `bdm read attempt N failed`；`bdm_read_blocks()` 支持有界重试（`USB_READ_RETRY`）；发布版不建线程、零开销 |
-| `modules/iopcore/cdvdman/Makefile`、`Makefile` | 新增 `USB_READ_RETRY=N` 开关（默认 0），例：`make USB_READ_RETRY=3` |
-| `modules/iopcore/cdvdfsv/ncmd.c` | 调试构建：每个 EE 请求打 `readee: start ...` / `readee: done ... err=N`，用于确认卡住时是哪一笔请求没结束 |
-| `src/bdmsupport.c` | 启动打印镜像在 FAT 上的碎片情况（碎片数/连续段数/总扇区），用于核对碎片表是否和镜像一致 |
-| `pc/ps2_iso_entries.py` | （上一轮已加）ISO9660/AFS 检查 + MPEG-PS 码率扫描；本轮无改动 |
-| `notes/gundam_seed_ce_op_hang_analysis.md` | 本文 |
+| `modules/iopcore/cdvdman/device-bdm.c` | 调试构建：读看门狗 `bdm read HUNG`；单笔读 >200 ms 打 `bdm read slow`；读失败打 `bdm read failed` / `bdm read attempt N failed`；**新增零填充分支的 `ZERO-FILL` / `ZERO-TAIL` 打印**（这条路径返回成功但内容是 0）；`USB_READ_RETRY=N` 有界重试 |
+| `Makefile`、`modules/iopcore/cdvdman/Makefile` | `USB_READ_RETRY=N` 开关（默认 0） |
+| `modules/iopcore/cdvdfsv/ncmd.c` | 调试打印每个 EE 请求的 `readee: start / done(+err)` |
+| `src/bdmsupport.c` | 启动打印 `BDM image: N fragments in M contiguous runs, K sectors` |
+| `pc/ps2_iso_entries.py` | ISO9660/AFS 结构 + MPEG-PS 码率扫描，`--lba` 命中定位、`--compare` 两镜像对比 |
 
-**已回退**：`SMB_BIGWND` 全部还原（上一轮误判 SMB 时加的）。
-**保留但与本题无关**：`cdvdman.c` 的 SMB 扇区缓存修复、`device-smb.c` 的 SMB 速率打印（可随时回退）。
+已回退：`SMB_BIGWND`（上一轮误判 SMB 时加的）。
+保留但与本题无关：`cdvdman.c` 的 SMB 扇区缓存修复、`device-smb.c` 的 SMB 速率打印。
 
-> 说明：本机没有 ps2sdk，改动的 C 代码只做了静态检查（括号/声明顺序），**没有真正编译过**；
-> 请在 `C:\GitHub\Open-PS2-Loader` 编译确认。
-
----
-
-## 6. 还需要你回答两个问题
-
-1. 你说的“未加入 `REM1_MIN_US` 的旧版本”是**本 fork 的旧提交**，还是 **官方 OPL 1.2.0**？
-   —— 如果是官方 OPL 也能复现，说明与本 fork 的 BDM 碎片/索引改造无关，方向直接转到 ps2sdk 的 USB 驱动；
-   如果只有本 fork 复现，重点查 `bdmGetFragmentList` 分页 + `bd_defrag` 索引这条新代码路径。
-2. 停住时画面是**最后一张画面冻住**还是**黑屏**？
-   —— 冻住更像 (B)（播放器不再解码），黑屏更像 (A)（等数据等到花掉）。
+> 本机无 ps2sdk，C 代码只做了静态检查（括号/声明顺序），未编译。
