@@ -44,7 +44,4 @@ int fntCalcDimensions(int id, const char *str);
 // 手动刷新字体缓存
 void fntRefreshCache();
 
-// 在 Coverflow 导航前仅刷新已经耗尽保留空间的字体缓存。
-void fntRefreshCacheIfPending();
-
 #endif

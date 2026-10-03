@@ -30,12 +30,6 @@ extern int size_poeveticanew_raw;
 
 #define GLYPH_CACHE_PAGE_SIZE 64 // 设多少都没区别，有BUG?
 
-// Coverflow 同时只显示一条游戏名；保留下一条标题的保守余量，
-// 不再在每次翻页时刷新 atlas。余量按完整空 atlas 计算，避免现有 atlas 碎片
-// 让容量估计过于乐观。
-#define FNT_REFRESH_RESERVE_GLYPHS 30
-#define FNT_REFRESH_WORST_GLYPH_PAD 2
-
 // freetype vars
 static FT_Library font_library;
 
@@ -90,9 +84,6 @@ typedef struct
 
     /// Pointer to data, if allocation takeover was selected (will be freed)
     void *dataPtr;
-
-    /// 当前缓存不足以保留下一条 Coverflow 标题的安全余量时置位。
-    int refreshPending;
 } font_t;
 
 #define FNT_MAX_COUNT (16)
@@ -151,7 +142,6 @@ static void fntCacheFlush(font_t *font)
     free(font->glyphCache);
     font->glyphCache = NULL;
     font->cacheMaxPageID = -1;
-    font->refreshPending = 0;
 
     // free all atlasses too, they're invalid now anyway
     int aid;
@@ -159,70 +149,6 @@ static void fntCacheFlush(font_t *font)
         atlasFree(font->atlases[aid]);
         font->atlases[aid] = NULL;
     }
-}
-
-static int fntCountAtlases(const font_t *font)
-{
-    int aid;
-    int count = 0;
-
-    for (aid = 0; aid < ATLAS_MAX; ++aid) {
-        if (font->atlases[aid])
-            count++;
-    }
-
-    return count;
-}
-
-// 计算下一批假定的 30 个新汉字需要保留的完整空 atlas 数量。
-// 使用当前 FreeType 的像素尺寸作为保守方格大小，额外边界也覆盖 atlasPlace()
-// 使用的 1 像素间隔。
-static int fntRefreshReserveAtlases(const font_t *font)
-{
-    int cellW = font->fontSize + FNT_REFRESH_WORST_GLYPH_PAD;
-    int cellH = font->fontSize + FNT_REFRESH_WORST_GLYPH_PAD;
-    int cell;
-    int glyphsPerAtlas;
-    int reserve;
-
-    if (font->face && font->face->size) {
-        cellW = font->face->size->metrics.x_ppem + FNT_REFRESH_WORST_GLYPH_PAD;
-        cellH = font->face->size->metrics.y_ppem + FNT_REFRESH_WORST_GLYPH_PAD;
-    }
-
-    // 汉字通常接近方形；取两个轴中较大的值，避免依赖外挂语言字体的单独宽高估计。
-    cell = (cellW > cellH) ? cellW : cellH;
-    if (cell < 1)
-        cell = 1;
-
-    glyphsPerAtlas = (ATLAS_WIDTH / cell) * (ATLAS_HEIGHT / cell);
-    if (glyphsPerAtlas < 1)
-        glyphsPerAtlas = 1;
-
-    reserve = (FNT_REFRESH_RESERVE_GLYPHS + glyphsPerAtlas - 1) / glyphsPerAtlas;
-    if (reserve < 1)
-        reserve = 1;
-
-    return reserve;
-}
-
-static void fntUpdateRefreshPending(font_t *font)
-{
-    int usedAtlases;
-    int emptyAtlases;
-
-    if (!font || !font->isValid || !(gVMode == 10 || gVMode == 11))
-        return;
-
-    usedAtlases = fntCountAtlases(font);
-    emptyAtlases = ATLAS_MAX - usedAtlases;
-    if (emptyAtlases < fntRefreshReserveAtlases(font))
-        font->refreshPending = 1;
-}
-
-static int fntIsRefreshPending(font_t *font)
-{
-    return font && font->isValid && (gVMode == 10 || gVMode == 11) && font->refreshPending;
 }
 
 static int fntPrepareGlyphCachePage(font_t *font, int pageid)
@@ -289,7 +215,6 @@ static void fntInitSlot(font_t *font)
     font->glyphCache = NULL;
     font->cacheMaxPageID = -1;
     font->dataPtr = NULL;
-    font->refreshPending = 0;
     font->isValid = 0;
     font->fontSize = 0;
 
@@ -510,11 +435,8 @@ static fnt_glyph_cache_entry_t *fntCacheGlyph(font_t *font, uint32_t gid)
     }
 
     // find atlas placement for the glyph
-    if (!fntGlyphAtlasPlace(font, glyph)) {
-        // 绘制帧内不能 flush；延迟到当前帧结束后的下一次 Coverflow 导航。
-        font->refreshPending = 1;
+    if (!fntGlyphAtlasPlace(font, glyph))
         return NULL;
-    }
 
     FT_GlyphSlot slot = font->face->glyph;
     glyph->width = slot->bitmap.width;
@@ -525,7 +447,6 @@ static fnt_glyph_cache_entry_t *fntCacheGlyph(font_t *font, uint32_t gid)
     glyph->oy = -slot->bitmap_top;
 
     glyph->isValid = 1;
-    fntUpdateRefreshPending(font);
 
     return glyph;
 }
@@ -597,19 +518,6 @@ void fntRefreshCache()
 {
     if (gVMode == 10 || gVMode == 11) {
         if (fonts[lngGetGuiValue()].isValid) {
-            WaitSema(gFontSemaId);
-            fntCacheFlush(&fonts[lngGetGuiValue()]);
-            SignalSema(gFontSemaId);
-        }
-    }
-}
-
-// 只有当前字体耗尽下一条 Coverflow 标题的保守余量时才刷新。
-// 必须从上一帧结束后的输入处理阶段调用，不能从 fntCacheGlyph() 内部调用。
-void fntRefreshCacheIfPending()
-{
-    if (gVMode == 10 || gVMode == 11) {
-        if (fntIsRefreshPending(&fonts[lngGetGuiValue()])) {
             WaitSema(gFontSemaId);
             fntCacheFlush(&fonts[lngGetGuiValue()]);
             SignalSema(gFontSemaId);

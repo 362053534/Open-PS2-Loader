@@ -282,3 +282,4 @@ git log -1 --oneline
 - 当前环境仍缺少 PS2SDK/GSKIT 交叉编译器、PS2 实机和模拟器，已执行静态差异检查和 `git diff --check`，未完成目标平台构建与实机验证。
 - 根据实测，字体 atlas flush 不是 Coverflow 翻页花屏/死机的主要触发条件；`src/themes.c` 的 `COVERFLOW_AB_SKIP_TRANSITION_COV` 当前置 `1` 时，多格翻页只请求/绘制目标页可见窗口，跳过过渡专用槽位的 COV 主图请求和预取。该变体只降低花屏频率，不能视为最终修复。
 - 针对单步动画仍有低概率花屏，新增第二阶段诊断开关 `COVERFLOW_AB_SKIP_ANIM_COV_LOAD`，当前置 `1` 时所有 Coverflow 动画期间只查询已驻留 COV，不新增解码/缓存请求，也不执行 COV 预取；动画结束后再恢复目标窗口加载。该开关用于区分动画中的异步 COV 加载与纯 GS VRAM/纹理生命周期问题，不改变 Coverflow 几何和普通列表路径。
+- 本诊断版本撤销 4f55b526 引入的 720p/1080i 字体缓存 pending/条件刷新处理，恢复原有 `fntRefreshCache()` 路径；不新增每帧字体 atlas 刷新。字体只作为排除变量，不作为本问题根因或修复方向。
