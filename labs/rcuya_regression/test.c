@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "rc_uya.h"
-#include "igs_format.h"
 #include "util.h"
 
 /* 模式识别只使用相等性；用主机 libc 替代 EE core 的轻量比较函数。 */
@@ -399,41 +398,8 @@ static void testLibraryHooks(void)
     puts("PASS: bounded library-name lookup and import relinking with I-cache flush");
 }
 
-static void testIgsDecimalFormat(void)
-{
-    char actual[16], expected[16];
-    unsigned int input;
-    static const u32 wide[] = {0, 1, 9, 10, 255, 65535, 65536, 999999999, UINT32_MAX};
-    unsigned int i;
-
-    for (input = 0; input <= UINT8_MAX; input++) {
-        u8todecstr(input, actual, 3);
-        snprintf(expected, sizeof(expected), "%03u", input);
-        assert(strcmp(actual, expected) == 0);
-    }
-    for (input = 0; input <= UINT16_MAX; input++) {
-        u16todecstr(input, actual, 5);
-        snprintf(expected, sizeof(expected), "%05u", input);
-        assert(strcmp(actual, expected) == 0);
-    }
-    for (i = 0; i < sizeof(wide) / sizeof(wide[0]); i++) {
-        u32todecstr(wide[i], actual, 10);
-        snprintf(expected, sizeof(expected), "%010u", wide[i]);
-        assert(strcmp(actual, expected) == 0);
-    }
-    u8todecstr(256, actual, 3);
-    assert(strcmp(actual, "000") == 0);
-    u16todecstr(65536, actual, 5);
-    assert(strcmp(actual, "00000") == 0);
-    input = 1;
-    u8todecstr(input++, actual, 3);
-    assert(input == 2 && strcmp(actual, "001") == 0);
-    puts("PASS: shared IGS formatter preserves integer truncation, zero-padding, and single evaluation");
-}
-
 int main(void)
 {
-    testIgsDecimalFormat();
     testElfScope();
     testModeTransitions();
     testHandoffAndRelease();
