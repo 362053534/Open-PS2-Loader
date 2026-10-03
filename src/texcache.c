@@ -68,7 +68,8 @@ typedef struct
     // 详情页)置成非 0 就再没人把它清零，导致 cacheLoadImage1 永久跳过所有封面加载、
     // 封面被反复排队又跳过(texLoading 卡住不归零)。因此 quiet 请求必须无视 cdFramesCount。
     int quiet;
-    // 只有 Coverflow COV 请求参与目标代际判断；ICO 和普通列表保持原有生命周期。
+    // 只有 Coverflow 专用的 COV/ICO/BG 请求参与目标代际判断；
+    // 普通列表请求保持原有生命周期。
     int trackGeneration;
     // 在渲染线程入队时决定是否压缩低分辨率 BG，worker 不直接读取可能
     // 正在切换的 gsGlobal 指针。
@@ -185,7 +186,10 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     req->itemId = itemId;
     req->qr = 1;
     req->quiet = quiet;
-    req->trackGeneration = quiet && !strncmp(cache->suffix, "COV", 3);
+    req->trackGeneration = quiet &&
+                            (!strncmp(cache->suffix, "COV", 3) ||
+                             !strncmp(cache->suffix, "ICO", 3) ||
+                             !strncmp(cache->suffix, "BG", 2));
     req->compactBackground = cacheShouldCompactBackground(cache);
 
     pthread_mutex_lock(&texLoadingMutex);
@@ -252,7 +256,7 @@ static void cacheLoadImage1(void *data)
     sameEntry = (entry->UID == ioReq->cacheUID);
     if (sameEntry && entry->qr &&
         (!ioReq->trackGeneration || entry->requestGeneration == artRequestGeneration)) {
-        // 普通列表和 ICO 请求保持原有发布规则；只有 Coverflow COV 请求需要
+        // 普通列表请求保持原有发布规则；Coverflow 的 COV/ICO/BG 请求
         // 通过代际确认它仍属于新的可见/预取范围。
         keepResult = 1;
         if (result < 0) {
@@ -920,10 +924,11 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
             if (entry->qr) {
-                // 当前帧仍需要这张图：只有 COV active 请求需要重新标记为最新目标。
-                // 这样翻页后仍在新可见/预取范围内的请求可以继续完成；
-                // 没有再次被查询的旧 COV 请求则会在 worker 返回时被丢弃。
-                if (!strncmp(cache->suffix, "COV", 3)) {
+                // 当前帧仍需要这张图：Coverflow 的 COV/ICO/BG active 请求
+                // 重新标记为最新目标；普通列表不会走 quiet 路径。
+                if (!strncmp(cache->suffix, "COV", 3) ||
+                    !strncmp(cache->suffix, "ICO", 3) ||
+                    !strncmp(cache->suffix, "BG", 2)) {
                     pthread_mutex_lock(&texLoadingMutex);
                     entry->requestGeneration = artRequestGeneration;
                     pthread_mutex_unlock(&texLoadingMutex);
