@@ -280,3 +280,5 @@ git log -1 --oneline
 - 为外部 PNG 增加有界内存读取；截断/损坏文件不再由自定义 libpng read callback 越界读取，而是进入统一的 longjmp 清理路径。
 - 当前修复只处理解码失败/分配失败的资源生命周期，不改变 Background cache 槽位、Coverflow 预取、CT24→CT16S 压缩策略或正常成功加载路径。
 - 当前环境仍缺少 PS2SDK/GSKIT 交叉编译器、PS2 实机和模拟器，已执行静态差异检查和 `git diff --check`，未完成目标平台构建与实机验证。
+- Coverflow 字体缓存改为按需刷新：不再在每次 R1/L1 或 CF 单步移动时无条件调用 `fntRefreshCache()`；`src/fntsys.c` 按当前 FreeType glyph 尺寸估算 30 个新汉字所需的保守空 atlas 余量，余量不足时只设置 pending。下一次 Coverflow 当前项改变前通过 `fntRefreshCacheIfPending()` 刷新一次，避免在绘制中的 `fntCacheGlyph()` 内释放 atlas。
+- 该策略只改变 Coverflow 路径；非 Coverflow 列表翻页仍保持原有字体 atlas flush 行为，以覆盖一页多行游戏名的大量汉字。实际 glyph 排布失败也只记录 pending，不在当前帧中途 flush。

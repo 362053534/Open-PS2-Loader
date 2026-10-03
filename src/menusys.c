@@ -667,6 +667,18 @@ static void menuPrevH()
     }
 }
 
+static int menuIsCoverflow(void)
+{
+    return thmGetCoverflowJumpCount() > 0;
+}
+
+// Coverflow 标题只有一行，不要在每次导航时刷新字体 atlas。
+// fntRefreshCacheIfPending() 只在上一帧结束且缓存耗尽保留余量后执行刷新。
+static void menuRefreshCoverflowFontCache(void)
+{
+    fntRefreshCacheIfPending();
+}
+
 static void menuFirstPage()
 {
     submenu_list_t *cur = selected_item->item->current;
@@ -674,8 +686,10 @@ static void menuFirstPage()
         if (!cur->prev)
             return;
 
-        // 翻页了才刷新，不翻页不刷新
-        if (selected_item->item->pagestart != selected_item->item->submenu)
+        // 列表主题仍保持原有的整页刷新；Coverflow 只在缓存余量不足时刷新。
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
+        else if (selected_item->item->pagestart != selected_item->item->submenu)
             fntRefreshCache(); // 刷新字模缓存
 
         selected_item->item->current = selected_item->item->submenu;
@@ -701,11 +715,15 @@ static void menuLastPage()
         while (--itms && cur->prev) // and move back to have a full page
             cur = cur->prev;
 
-        // 翻页了才刷新，不翻页不刷新
-        if (selected_item->item->pagestart != cur) {
+        // 列表主题仍保持原有的整页刷新；Coverflow 只在缓存余量不足时刷新。
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
+        else if (selected_item->item->pagestart != cur) {
             fntRefreshCache(); // 刷新字模缓存
             selected_item->item->pagestart = cur;
         }
+        if (menuIsCoverflow())
+            selected_item->item->pagestart = cur;
 
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     }
@@ -716,6 +734,8 @@ static void menuNextV()
     submenu_list_t *cur = selected_item->item->current;
 
     if (cur && cur->next) {
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
         selected_item->item->current = cur->next;
 
         thmTriggerCoverflowAnim(-1); // 滑动 Coverflow 整排（列表主题下为空操作）
@@ -731,7 +751,10 @@ static void menuNextV()
             else
                 cur = cur->next;
 
-        fntRefreshCache(); // 刷新字模缓存
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
+        else
+            fntRefreshCache(); // 刷新字模缓存
         selected_item->item->pagestart = selected_item->item->current;
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to start
@@ -746,6 +769,8 @@ static void menuPrevV()
     submenu_list_t *cur = selected_item->item->current;
 
     if (cur && cur->prev) {
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
         selected_item->item->current = cur->prev;
 
         thmTriggerCoverflowAnim(1); // 滑动 Coverflow 整排（列表主题下为空操作）
@@ -755,8 +780,12 @@ static void menuPrevV()
             int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1; // +1 because the selection will move as well
             while (--itms && selected_item->item->pagestart->prev)
                 selected_item->item->pagestart = selected_item->item->pagestart->prev;
-            if (selected_item->item->pagestart != cur)
-                fntRefreshCache(); // 刷新字模缓存
+            if (selected_item->item->pagestart != cur) {
+                if (menuIsCoverflow())
+                    menuRefreshCoverflowFontCache();
+                else
+                    fntRefreshCache(); // 刷新字模缓存
+            }
         }
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
@@ -796,6 +825,8 @@ static void menuNextPage()
             return;
         }
 
+        menuRefreshCoverflowFontCache();
+
         // 先沿当前过滤后的 submenu_list_t 链表计算实际目标，边界不足一页时
         // 只移动到末项，不把不存在的格数算入动画距离。
         submenu_list_t *target = cur;
@@ -811,13 +842,11 @@ static void menuNextPage()
             selected_item->item->pagestart = target;
             thmTriggerCoverflowAnimMulti(-1, steps, cur);
             gCoverflowPageScrollActive = 1;
-            fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         } else {
             // 动画关闭（主题设置滑动时长为 0）：保持硬切到同一个实际目标。
             selected_item->item->current = target;
             selected_item->item->pagestart = target;
-            fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         }
         return;
@@ -865,6 +894,8 @@ static void menuPrevPage()
             return;
         }
 
+        menuRefreshCoverflowFontCache();
+
         // 与 R1 对称：到首项的剩余距离不足一页时，只滚到首项。
         submenu_list_t *target = cur;
         int steps = 0;
@@ -878,12 +909,10 @@ static void menuPrevPage()
             selected_item->item->pagestart = target;
             thmTriggerCoverflowAnimMulti(1, steps, cur);
             gCoverflowPageScrollActive = 1;
-            fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         } else {
             selected_item->item->current = target;
             selected_item->item->pagestart = target;
-            fntRefreshCache();
             sfxPlay(SFX_CURSOR);
         }
         return;
