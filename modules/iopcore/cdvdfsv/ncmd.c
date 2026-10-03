@@ -154,6 +154,8 @@ static inline void cdvd_readee(void *buf)
 
     orig_lsn = r->lsn;
     orig_sectors = r->sectors;
+    /* 调试用：配合 cdvdman 的 bdm read 日志，看卡住时是哪一笔 EE 请求没结束。 */
+    DPRINTF("readee: start lsn=%u sectors=%u\n", orig_lsn, orig_sectors);
     rem1 = rem1_is_remainder(orig_lsn, orig_sectors);
     if (rem1)
         GetSystemTime(&rem1_t0);
@@ -212,6 +214,7 @@ static inline void cdvd_readee(void *buf)
                 sysmemSendEE((void *)curlsn_buf, (void *)r->eeaddr2, 16);
 
                 *(int *)buf = nbytes;
+                DPRINTF("readee: done lsn=%u sectors=%u nbytes=%u err=%d\n", orig_lsn, orig_sectors, nbytes, sceCdGetError());
                 if (sceCdGetError() != SCECdErABRT) {
                     /* 余数 dest 是 bounce，SendEE 之后再补时仍挡着 EE 下一笔盖堆。 */
                     rem1_pad_elapsed(rem1, &rem1_t0);

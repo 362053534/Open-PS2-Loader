@@ -39,6 +39,12 @@ USE_DEV9 = 1
 endif
 endif
 
+# USB_READ_RETRY=N：BDM 读失败时重试 N 次（默认 0=不重试）。
+# 用来区分「偶发读错误被游戏当成致命」和「设备层卡住」：开着重试能过就是前者。
+ifneq ($(USB_READ_RETRY),)
+IOP_CFLAGS += -DUSB_READ_RETRY=$(USB_READ_RETRY)
+endif
+
 ifeq ($(USE_BDM_ATA),1)
 IOP_BIN  = bdm_ata_cdvdman.irx
 IOP_OBJS_DIR = obj.bdm_ata/

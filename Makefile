@@ -214,6 +214,14 @@ else
   SMSTCPIP_INGAME_CFLAGS = INGAME_DRIVER=1
 endif
 
+# USB_READ_RETRY=N：BDM(USB/MX4SIO/HDD-ISO) 读失败时重试 N 次，用于排查「游戏读到失败就不读了」。
+# 例：make USB_READ_RETRY=3
+ifneq ($(USB_READ_RETRY),)
+  USB_READ_RETRY_FLAGS = USB_READ_RETRY=$(USB_READ_RETRY)
+else
+  USB_READ_RETRY_FLAGS =
+endif
+
 EE_CFLAGS += -fsingle-precision-constant -DOPL_VERSION=\"$(OPL_VERSION)\"
 
 # There are a few places where the config key/value are truncated, so disable these warnings
@@ -445,7 +453,7 @@ $(EE_ASM_DIR)popstarter_smb_smsutils.c: modules/popstarter/SMB/SMSUTILS.irx | $(
 	$(BIN2C) $< $@ popstarter_smb_smsutils_irx
 
 modules/iopcore/cdvdman/bdm_cdvdman.irx: modules/iopcore/cdvdman
-	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) USE_BDM=1 -C $< all
+	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) $(USB_READ_RETRY_FLAGS) USE_BDM=1 -C $< all
 
 $(EE_ASM_DIR)bdm_cdvdman.c: modules/iopcore/cdvdman/bdm_cdvdman.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx

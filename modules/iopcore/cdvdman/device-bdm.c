@@ -49,6 +49,16 @@ static volatile u8 g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
 /* 该边界覆盖APA HDL和单个PFS inode能够提供的完整区段表。 */
 #define BDM_DEFRAG_DENSE_INDEX_LIMIT 114
 
+/* 调试用：记录「当前正在读的请求」，卡住时日志里最后一条就是它。
+ * 发布版不建看门狗线程、这些字段也不参与逻辑。 */
+static volatile u32 g_bdm_cur_lsn;
+static volatile u32 g_bdm_cur_sectors;
+static volatile u32 g_bdm_cur_start_lo;
+static volatile int g_bdm_cur_busy;
+#ifdef __IOPCORE_DEBUG
+static void bdm_watchdog_thread(void *arg);
+#endif
+
 static u32 bdm_get_checkpoint_stride(u32 fragcount)
 {
     /* 小表为每个碎片建立检查点，避免随机读取仍从表头扫描。 */
@@ -284,6 +294,20 @@ void DeviceInit(void)
     g_bdm_fragment_rpc_thread_id = CreateThread(&thread);
     if (g_bdm_fragment_rpc_thread_id >= 0)
         StartThread(g_bdm_fragment_rpc_thread_id, NULL);
+
+#ifdef __IOPCORE_DEBUG
+    /* 读看门狗，只在调试构建里建（发布版不建线程、不占栈）。 */
+    g_bdm_cur_busy = 0;
+    thread.option = 0;
+    thread.thread = bdm_watchdog_thread;
+    thread.stacksize = 0x400;
+    thread.priority = 0x60;
+    {
+        int wd = CreateThread(&thread);
+        if (wd >= 0)
+            StartThread(wd, NULL);
+    }
+#endif
 
     RegisterLibraryEntries(&_exp_bdm);
 
@@ -592,22 +616,78 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
     return SCECdErNO;
 }
 
+/* USB 读失败时的重试次数（make USB_READ_RETRY=N，默认 0=不重试）。
+ * 用途：区分「偶发读错误 → 游戏读到失败就不读了」和「设备层真的挂住」。
+ * 若开重试后 OP 能过，说明是错误返回路径；若照样停住，说明卡在设备层内部。 */
+#ifndef USB_READ_RETRY
+#define USB_READ_RETRY 0
+#endif
+
+#ifdef __IOPCORE_DEBUG
+/* 看门狗：读超过 5 秒还没回来就每秒打一行，用来判断是「卡住」还是「已返回错误」。 */
+static void bdm_watchdog_thread(void *arg)
+{
+    iop_sys_clock_t now;
+    u32 elapsed_ms;
+
+    (void)arg;
+    while (1) {
+        DelayThread(1000000);
+        if (g_bdm_cur_busy) {
+            GetSystemTime(&now);
+            elapsed_ms = (now.lo - g_bdm_cur_start_lo) / 37u / 1000u;
+            if (elapsed_ms >= 5000u)
+                DPRINTF("bdm read HUNG: lsn=%u sectors=%u (%u ms and counting)\n",
+                        (unsigned int)g_bdm_cur_lsn, (unsigned int)g_bdm_cur_sectors, elapsed_ms);
+        }
+    }
+}
+#endif
+
+/* 512 字节扇区设备的读（USB / MX4SIO / ATA 都走这条）。
+ * 带可选重试，见 USB_READ_RETRY。 */
+static int bdm_read_blocks(bd_fragment_t *frags, u64 sector, void *buffer, unsigned int sectorCount)
+{
+    int attempt = 0;
+
+    for (;;) {
+        if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count, frags,
+                                          &g_bd_defrag_index, sector, buffer, sectorCount, &g_bd_defrag_cursor) == (int)sectorCount)
+            return 1;
+
+        attempt++;
+        DPRINTF("bdm read attempt %d failed: sector=%u blocks=%u\n", attempt, (unsigned int)sector, sectorCount);
+        if (attempt > (int)USB_READ_RETRY)
+            return 0;
+        DelayThread(50000);
+    }
+}
+
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     int rv = SCECdErNO;
     int isMX4SIO;
+    iop_sys_clock_t t0, t1;
 
     // DPRINTF("%s(%u, 0x%p, %u)\n", __func__, (unsigned int)lsn, buffer, sectors);
 
     if (g_bd == NULL)
         return SCECdErTRMOPN;
 
+    g_bdm_cur_lsn = lsn;
+    g_bdm_cur_sectors = sectors;
+    GetSystemTime(&t0);
+    g_bdm_cur_start_lo = t0.lo;
+    g_bdm_cur_busy = 1;
+
     WaitSema(bdm_io_sema);
     if (g_bd == NULL) {
+        g_bdm_cur_busy = 0;
         SignalSema(bdm_io_sema);
         return SCECdErTRMOPN;
     }
     if (g_frag_table_state != BDM_FRAG_TABLE_READY) {
+        g_bdm_cur_busy = 0;
         SignalSema(bdm_io_sema);
         return SCECdErREAD;
     }
@@ -619,6 +699,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             bdmRateAccount(sectors * 2048);
         else
             DPRINTF("bdm read failed: lsn=%u sectors=%u rv=%d\n", (unsigned int)lsn, sectors, rv);
+        g_bdm_cur_busy = 0;
         return rv;
     }
 
@@ -626,7 +707,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     u64 sector = ((u64)lsn) * 4;
     unsigned int sectorCount = sectors * 4;
     bd_fragment_t *frags = &g_frag_table[cdvdman_settings.fragfile[0].frag_start];
-    if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, &g_bd_defrag_index, sector, buffer, sectorCount, &g_bd_defrag_cursor) != (int)sectorCount) {
+    if (!bdm_read_blocks(frags, sector, buffer, sectorCount)) {
         u64 totalSectorCount = 0;
         unsigned int i;
 
@@ -638,17 +719,22 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         else if (sectorCount > totalSectorCount - sector) {
             unsigned int validSectorCount = totalSectorCount - sector;
 
-            if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, &g_bd_defrag_index, sector, buffer, validSectorCount, &g_bd_defrag_cursor) == (int)validSectorCount)
+            if (bdm_read_blocks(frags, sector, buffer, validSectorCount))
                 memset((u8 *)buffer + validSectorCount * 512, 0, (sectorCount - validSectorCount) * 512);
             else
                 rv = isMX4SIO ? SCECdErTRMOPN : SCECdErREAD;
         } else
             rv = isMX4SIO ? SCECdErTRMOPN : SCECdErREAD;
     }
+    GetSystemTime(&t1);
     if (rv == SCECdErNO)
         bdmRateAccount(sectors * 2048);
     else
         DPRINTF("bdm read failed: lsn=%u sectors=%u rv=%d\n", (unsigned int)lsn, sectors, rv);
+    if ((t1.lo - t0.lo) / 37u / 1000u >= 200u)
+        DPRINTF("bdm read slow: lsn=%u sectors=%u took %u ms\n", (unsigned int)lsn, sectors,
+                (unsigned int)((t1.lo - t0.lo) / 37u / 1000u));
+    g_bdm_cur_busy = 0;
     SignalSema(bdm_io_sema);
 
     return rv;
