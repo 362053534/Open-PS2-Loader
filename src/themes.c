@@ -44,6 +44,12 @@ static const char **guiThemesNames = NULL;
 // Global data
 theme_t *gTheme;
 
+// Coverflow 背景在背景元素绘制阶段只查询已有纹理，真正的 BG 请求延后到
+// drawCoverFlow() 中，在 ICO 请求之后提交，避免普通背景绘制抢在 ICO 前入队。
+static image_cache_t *deferredCoverflowBgCache = NULL;
+static item_list_t *deferredCoverflowBgList = NULL;
+static u64 deferredCoverflowBgFrame = 0;
+
 enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_ATTRIBUTE_TEXT = 0,
     ELEM_TYPE_STATIC_TEXT,
@@ -649,11 +655,51 @@ static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item
                                           startup, item->item.id);
 }
 
+static void queueDeferredCoverflowBackground(submenu_list_t *item)
+{
+    if (deferredCoverflowBgFrame != guiFrameId) {
+        deferredCoverflowBgCache = NULL;
+        deferredCoverflowBgList = NULL;
+        deferredCoverflowBgFrame = 0;
+        return;
+    }
+    if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item)
+        return;
+
+    char *startup = deferredCoverflowBgList->itemGetStartup(deferredCoverflowBgList, item->item.id);
+    // quiet 路径不受普通列表的 cdFrames/skipQr 状态影响；此调用发生在
+    // ICO 入队之后，因此 BG 的 IO 队列顺序始终落在 ICO 后面。
+    cacheGetTextureQuiet(deferredCoverflowBgCache, deferredCoverflowBgList,
+                         &item->item.cache_id[deferredCoverflowBgCache->userId],
+                         &item->item.cache_uid[deferredCoverflowBgCache->userId],
+                         startup, item->item.id);
+
+    deferredCoverflowBgCache = NULL;
+    deferredCoverflowBgList = NULL;
+    deferredCoverflowBgFrame = 0;
+}
+
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
     if (item) {
-        GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);
+        item_list_t *support = menu->item->userdata;
+        GSTEXTURE *texture;
+
+        if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow &&
+            gameImage->cache && artEnabledForCache(gameImage->cache)) {
+            // 先画已加载的 BG/fallback；新的 BG 请求留到 drawCoverFlow，
+            // 这样它可以紧跟在 ICO 请求之后入队。
+            deferredCoverflowBgCache = gameImage->cache;
+            deferredCoverflowBgList = support;
+            deferredCoverflowBgFrame = guiFrameId;
+            texture = cacheGetTextureNoRequest(gameImage->cache, support,
+                                                &item->item.cache_id[gameImage->cache->userId],
+                                                &item->item.cache_uid[gameImage->cache->userId],
+                                                support->itemGetStartup(support, item->item.id), item->item.id);
+        } else {
+            texture = getGameImageTexture(gameImage->cache, support, &item->item);
+        }
         // 是否真正取到"当前游戏的背景图/封面"本身（区别于回退到默认兜底贴图）。
         int drewGameArt = (texture && texture->Mem);
         if (!drewGameArt) {
@@ -1834,10 +1880,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
     }
 
-    // 所有 Coverflow 预取请求完成后，才允许为当前停留项创建 ICO 请求。
-    // 这一步只负责排队；ICO 加载完成后由下一帧检测并启动弹出动画。
-    if (!isAnimating && gEnableArtICO && texLoading == 0 &&
-        (!icoTexture || !icoTexture->Mem)) {
+    // 所有 Coverflow 预取请求已经按顺序入队后，才为当前停留项创建 ICO 请求。
+    // 不再等待 texLoading == 0：ICO 会直接排在已经入队的封面/预取请求之后，
+    // 随后 BG 再紧跟其后入队。ICO 不存在时也只会得到一次失败结果，BG 不等待
+    // coverflowIcoLoaded，而是继续在 ICO 请求之后提交。
+    if (!isAnimating && gEnableArtICO && (!icoTexture || !icoTexture->Mem)) {
         GSTEXTURE *requestedIco = getCoverflowIcoTexture(sourceList, item, 1);
         if (requestedIco && requestedIco->Mem && !gTheme->coverflowIcoLoaded) {
             gTheme->coverflowIcoLoaded = 1;
@@ -1845,6 +1892,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             gTheme->coverflowIcoPopupStartTime = (u64)clock();
         }
     }
+
+    // CF 背景在这里才真正入队，因此当 ICO 开启且尚未确认不存在时，
+    // BG 的队列位置一定在 ICO 之后；ICO 关闭或已标记不存在时不会阻塞 BG。
+    queueDeferredCoverflowBackground(item);
 }
 
 static void initCoverflow(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, int count, const char *texture, const char *overlay)

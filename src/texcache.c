@@ -861,6 +861,43 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
 }
 
+// 只查询现有缓存/回退纹理，不触发新的加载请求。
+// Coverflow 的 BG 在渲染背景阶段只走这里，真正的请求由 drawCoverFlow 在 ICO 请求之后提交。
+GSTEXTURE *cacheGetTextureNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
+{
+    (void)list;
+    (void)value;
+    (void)itemId;
+
+    if (!cache || !cache->content || !cacheId || !UID || *cacheId == -2)
+        return NULL;
+
+    int previousId = PrevCacheID_BG;
+    if (ForceRefreshPrevTexCache || previousId < 0 || previousId >= cache->count)
+        previousId = -1;
+
+    if (*cacheId >= 0 && *cacheId < cache->count) {
+        cache_entry_t *entry = &cache->content[*cacheId];
+        if (entry->UID == *UID) {
+            if (entry->qr)
+                return previousId < 0 ? NULL : &cache->content[previousId].texture;
+
+            if (entry->texFound == 0) {
+                *cacheId = -2;
+                return NULL;
+            }
+
+            if (entry->texFound == 1 && entry->texture.Mem) {
+                PrevCacheID_BG = *cacheId;
+                return &entry->texture;
+            }
+        }
+        *cacheId = -1;
+    }
+
+    return previousId < 0 ? NULL : &cache->content[previousId].texture;
+}
+
 // Coverflow 专用取图函数。
 // 常规的 cacheGetTexture() 依赖 curStartUp / skipQr / cdFramesCount / PrevCacheID_*
 // 等一整套"每帧只取选中项这一张封面"的全局状态；Coverflow 每帧需要为多张封面取图，
@@ -913,11 +950,15 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
     // 需要加载：挑一个空闲/最旧、且未在加载中的槽
     cache_entry_t *oldest = NULL;
     int slot = -1;
+    int protectedId = -1;
     u64 rtime = guiFrameId;
     int i;
+    if (!strncmp(cache->suffix, "BG", 2))
+        protectedId = PrevCacheID_BG;
+
     for (i = 0; i < cache->count; i++) {
         cache_entry_t *e = &cache->content[i];
-        if (!e->qr && e->lastUsed < rtime) {
+        if (!e->qr && i != protectedId && e->lastUsed < rtime) {
             oldest = e;
             rtime = e->lastUsed;
             slot = i;
