@@ -275,6 +275,22 @@ static int iso_sector_cache_find(u32 lsn, unsigned int sectors)
     return -1;
 }
 
+/* 只要求「窗口压在 lsn 上」，不要求整段都命中：给大读吃掉预取开头用。 */
+static int iso_sector_cache_find_head(u32 lsn)
+{
+    int i;
+    u32 off;
+
+    for (i = 0; i < iso_cache_ways; i++) {
+        if (iso_cache_lsn[i] == 0xFFFFFFFF || lsn < iso_cache_lsn[i])
+            continue;
+        off = lsn - iso_cache_lsn[i];
+        if (off < iso_cache_count[i])
+            return i;
+    }
+    return -1;
+}
+
 static int iso_sector_cache_pick_victim(void)
 {
     int i;
@@ -296,10 +312,33 @@ static int DeviceReadSectorsIsoCached(u32 lsn, void *buffer, unsigned int sector
     unsigned int fetch;
     u8 *way_buf;
 
-    /* 大于 16 扇区穿透（≥17）。≤16 可查命中；未命中预取填窗（含 2～16）。
-     * Amazon：1/16 双流仍可用缓存；≥17（含音乐 32）直读不占窗。 */
-    if (!iso_cache_size || !iso_sector_cache || sectors > 16)
+    if (!iso_cache_size || !iso_sector_cache)
         return DeviceReadSectors(lsn, buffer, sectors);
+
+    /* 大于 16 扇区穿透（≥17），但不再无视窗口：流式视频的读法是
+     * 「少量扇区 + 64 + 64 + 余数」，小读触发的预取窗口正好压在大读开头，
+     * 直接穿透会把同一段数据从设备再读一遍（每轮白读 ~31 扇区）。
+     * 这里只吃掉窗口能覆盖的开头，剩下的尾巴照旧直读，窗口内容不动。 */
+    if (sectors > 16) {
+        way = iso_sector_cache_find_head(lsn);
+        if (way < 0)
+            return DeviceReadSectors(lsn, buffer, sectors);
+
+        {
+            unsigned int head = iso_cache_count[way] - (lsn - iso_cache_lsn[way]);
+
+            if (head > sectors)
+                head = sectors;
+
+            memcpy(buffer, iso_sector_cache + ((way * iso_cache_size) + (lsn - iso_cache_lsn[way])) * 2048, head * 2048);
+            iso_cache_mru = (u8)way;
+
+            if (head == sectors)
+                return SCECdErNO;
+
+            return DeviceReadSectors(lsn + head, (u8 *)buffer + head * 2048, sectors - head);
+        }
+    }
 
     way = iso_sector_cache_find(lsn, sectors);
     if (way >= 0) {

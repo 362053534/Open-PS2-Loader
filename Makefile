@@ -214,6 +214,15 @@ else
   SMSTCPIP_INGAME_CFLAGS = INGAME_DRIVER=1
 endif
 
+# SMB_BIGWND=1：把「单笔 SMB 读」和 in-game 网络栈的接收窗口一起放大（8KB→32KB）。
+# 用于高码率 OP/FMV 卡死的排查：往返次数可以少 3/4，代价是 IOP 内存多占 25~40KB。
+# 默认关闭，先用 make SMB_BIGWND=1 出测试包验证，确认没问题再考虑默认开。
+ifeq ($(SMB_BIGWND),1)
+  SMB_BIGWND_FLAGS = SMB_BIGWND=1
+else
+  SMB_BIGWND_FLAGS =
+endif
+
 EE_CFLAGS += -fsingle-precision-constant -DOPL_VERSION=\"$(OPL_VERSION)\"
 
 # There are a few places where the config key/value are truncated, so disable these warnings
@@ -457,7 +466,7 @@ $(EE_ASM_DIR)bdm_ata_cdvdman.c: modules/iopcore/cdvdman/bdm_ata_cdvdman.irx | $(
 	$(BIN2C) $< $@ bdm_ata_cdvdman_irx
 
 modules/iopcore/cdvdman/smb_cdvdman.irx: modules/iopcore/cdvdman
-	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) USE_SMB=1 -C $< all
+	$(MAKE) $(CDVDMAN_PS2LOGO_FLAGS) $(CDVDMAN_DEBUG_FLAGS) $(SMB_BIGWND_FLAGS) USE_SMB=1 -C $< all
 
 $(EE_ASM_DIR)smb_cdvdman.c: modules/iopcore/cdvdman/smb_cdvdman.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
@@ -641,7 +650,7 @@ $(EE_ASM_DIR)ps2ip.c: $(PS2SDK)/iop/irx/ps2ip-nm.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
 
 modules/network/SMSTCPIP/SMSTCPIP.irx: modules/network/SMSTCPIP
-	$(MAKE) $(SMSTCPIP_INGAME_CFLAGS) -C $< rebuild
+	$(MAKE) $(SMSTCPIP_INGAME_CFLAGS) $(SMB_BIGWND_FLAGS) -C $< rebuild
 
 $(EE_ASM_DIR)ingame_smstcpip.c: modules/network/SMSTCPIP/SMSTCPIP.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx

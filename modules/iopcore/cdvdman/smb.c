@@ -29,9 +29,17 @@
    This is because the IOP cannot clear the received frames fast enough, causing the number of bytes in flight to grow exponentially.
    The TCP congestion avoidence algorithm may induce some latency, causing extremely poor performance.
    The value to use should be smaller than the TCP window size. Right now, it is 10240 (according to lwipopts.h). */
+#ifdef SMB_BIGWND
+/* SMB_BIGWND=1（配合 lwipopts.h 里放大的 TCP_WND/PBUF_POOL_SIZE）：
+ * 高码率 OP/FMV 卡死时用大读减少往返次数，先出测试包验证再考虑默认开。 */
+#define CLIENT_MAX_BUFFER_SIZE 32768     //Allow up to 32768 bytes to be received.
+#define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
+#define CLIENT_MAX_RECV_SIZE   32768     //Allow up to 32768 bytes to be received.
+#else
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
+#endif
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
 

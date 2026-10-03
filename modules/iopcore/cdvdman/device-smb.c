@@ -29,6 +29,40 @@ extern int smb_io_sema;
 
 static void ps2ip_init(void);
 
+/* 调试用：统计 SMB 实际吞吐，判断带宽是不是瓶颈
+ * （对照 PCSX2 日志里游戏每轮需要的 KB/s，例如高达SEED汉化版 OP 约 1.7 MB/s）。
+ * 只在调试构建（make IOPCORE_DEBUG=1）里编译，发布版整个函数体为空，零开销。 */
+static void smbRateAccount(unsigned int bytes)
+{
+#ifdef __IOPCORE_DEBUG
+    static u32 acc_bytes, window_start_lo;
+    iop_sys_clock_t now;
+    u32 elapsed_ms, kb_per_s;
+
+    if (bytes == 0)
+        return;
+
+    GetSystemTime(&now);
+    if (window_start_lo == 0) {
+        window_start_lo = now.lo;
+        return;
+    }
+
+    acc_bytes += bytes;
+
+    /* 36.864MHz，/37 得到微秒（和 cdvdfsv 里取时间的算法保持一致）。 */
+    elapsed_ms = (now.lo - window_start_lo) / 37u / 1000u;
+    if (elapsed_ms >= 1000u) {
+        kb_per_s = (acc_bytes / elapsed_ms) * 1000u / 1024u;
+        DPRINTF("SMB rate: %u KB/s (%u KB in %u ms)\n", kb_per_s, acc_bytes >> 10, elapsed_ms);
+        acc_bytes = 0;
+        window_start_lo = now.lo;
+    }
+#else
+    (void)bytes;
+#endif
+}
+
 // !!! ps2ip exports functions pointers !!!
 // Note: recvfrom() used here is not a standard recvfrom() function.
 int (*plwip_close)(int s);                                                                                                                 // #6
@@ -356,6 +390,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
                 result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
                 if (result >= 0) {
+                    smbRateAccount((unsigned int)result);
                     smbReconnectResult = SMB_RECONNECT_IDLE;
                     smbIdleTicks = 0;
                     smbEchoRetryCount = 0;
