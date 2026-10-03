@@ -110,6 +110,15 @@ jobs:
       if: ${{ always() && steps.ee_memory.outputs.end_bss != '' }}
       run: echo "EE core linker memory report"
 
+    - name: 对照已验证版本的单人补丁地址
+      id: rc_layout
+      if: always()
+      run: python3 labs/rcuya_regression/audit_core_layout.py --igs ${{ matrix.extra == 'EXTRA_FEATURES=1' && '1' || '0' }} --pademu ${{ matrix.pademu == 'PADEMU=1' && '1' || '0' }}
+
+    - name: "UYA JAL 已验证版 ${{ steps.rc_layout.outputs.good_jal }}，回归版 ${{ steps.rc_layout.outputs.regressed_jal }}，当前版 ${{ steps.rc_layout.outputs.current_jal }}"
+      if: ${{ always() && steps.rc_layout.outputs.good_jal != '' }}
+      run: echo "UYA packed patch layout comparison"
+
     - name: Create detailed changelog
       run: sh ./make_changelog.sh
 
