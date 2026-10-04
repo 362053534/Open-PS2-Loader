@@ -10,3 +10,14 @@
 - 路径、协议、寄存器等字面量可保留原文，说明用中文。
 
 本仓库日常工作目录是 `C:\GitHub\Open-PS2-Loader`。Grok 会话若落在 `~/.grok/worktrees/` 下的拷贝，改动要同步回这个目录。
+
+## 分支、提交与用户文件
+
+- 只在当前会话指定的分支上工作；默认采用增量提交，不把已有工作树整体重新打包成一个提交。
+- 开始修改前必须先检查 `git status --short --branch`、当前分支提交和 `git diff`；已有的已跟踪修改、未跟踪文件、用户上传的图片以及 stash 都属于用户数据，不能擅自删除、重命名、覆盖或排除。
+- 禁止使用 `git add -A`、`git add .` 来收集包含用户已有修改的工作树。只暂存本次请求明确涉及的文件或精确 hunk，并在提交前检查 `git diff --cached --name-status` 和 `git diff --cached --check`。
+- 不得自动排除 `temp/` 或其它目录。先用 `git ls-tree -r <基线> -- <路径>` 判断文件是否在目标基线中被跟踪；如果是，必须保留并纳入正确的增量历史。
+- 禁止使用 `git merge -s ours`、ours 策略合并或其它只保留当前文件树的合并方式。它会把第二父提交中的文件历史保留在图中，却静默丢弃其文件内容；曾导致 `48018ee` 中已跟踪的 `temp/SLPM_552.82_BG.png` 在错误的 `84871da`/`0c6ec35` 合并后消失。
+- 未经用户明确要求，不得 `git reset --hard`、rebase、改写远端历史或 force push。需要以某个提交为基线时，先确认基线和远端 SHA，保护并核对未提交文件；只有用户明确要求移除后续历史时，才可以使用带期望旧 SHA 的 `--force-with-lease`。
+- 推送前确认提交只包含本次请求：检查 `git diff <基线>..HEAD --stat`、关键路径是否仍存在，并核对 `git ls-tree -r HEAD -- temp gfx`。推送后再用 `git ls-remote origin <分支>` 和 `git show origin/<分支>:<关键文件>` 验证远端树。
+- 每次操作结束都要确认 `git status --short --branch`，并报告保留的用户文件和实际推送的提交；不要把“fetch 已完成”误报为工作树已经更新，`git fetch` 不会移动当前分支。
