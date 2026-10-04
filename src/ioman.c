@@ -379,6 +379,17 @@ int ioGetPendingRequestCount(void)
     return count;
 }
 
+int ioGetActiveRequestType(void)
+{
+    int type;
+
+    WaitSema(gEndSemaId);
+    type = gActiveRequestType;
+    SignalSema(gEndSemaId);
+
+    return type;
+}
+
 int ioHasPendingRequests(void)
 {
     return isIOPending;

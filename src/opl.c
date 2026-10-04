@@ -3253,8 +3253,8 @@ int main(int argc, char *argv[])
 
     init();
 
-    // until this point in the code is reached, only PREINIT_LOG macro should be used
-    //LOG_ENABLE();
+    // Enable the debug transport after normal OPL initialization.
+    LOG_ENABLE();
 
     guiIntroLoop();
     guiMainLoop();

@@ -623,6 +623,10 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         WaitSema(fileLockId);
         int fd = open(filePath, O_RDONLY);
         if (fd < 0) {
+#ifdef __DEBUG
+            if (errno == EMFILE || errno == ENFILE || errno == EIO)
+                LOG("[ART_IO] open_failed errno=%d path=%s\n", errno, filePath);
+#endif
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
@@ -644,6 +648,9 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         }
 
         if (read(fd, pFileBuffer, fileBufferSize) != (ssize_t)fileBufferSize) {
+#ifdef __DEBUG
+            LOG("[ART_IO] read_failed errno=%d path=%s\n", errno, filePath);
+#endif
             LOG("texLoadAll: failed to read file %s\n", filePath);
             free(pFileBuffer);
             close(fd);

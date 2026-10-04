@@ -29,6 +29,25 @@ static int cdFramesCount = 0; // 手动重复按键
 // 仍可在解码完成前后判断它是否属于最新目标。
 static u32 artRequestGeneration = 1;
 
+#ifdef __DEBUG
+// Low-rate diagnostics for reproducing high-frequency Coverflow failures.
+// Counters are intentionally aggregated so UDP logging does not change I/O timing.
+static volatile u32 diagArtQueueAllocFail;
+static volatile u32 diagArtQueuePutFail;
+static volatile u32 diagArtStarted;
+static volatile u32 diagArtCompleted;
+static volatile u32 diagArtFailed;
+static volatile u32 diagArtCancelled;
+static volatile u32 diagArtRemoved;
+static volatile u32 diagArtStale;
+static volatile u32 diagBgFallbackHit;
+static volatile u32 diagBgFallbackMiss;
+static volatile int diagLastResult;
+static volatile int diagLastQueueError;
+static char diagLastSuffix[8] = "-";
+static u32 diagNextFrame;
+#endif
+
 //int buttonFrames = 0; // 按住按键的帧数，用来跳过cdFrames
 //static u64 prevGuiFrameId = 0; // 和guiFrameId进行比对，判断是否完成了一轮Qr
 static char *curStartUp = NULL;
@@ -206,13 +225,19 @@ void cacheCancelPendingArtRequests(void)
     if (wasLoading && !ForceRefreshPrevTexCache && !padGetRepeating())
         cdFramesCount = 1;
 
-    ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
+    int removed = ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
+#ifdef __DEBUG
+    diagArtRemoved += removed;
+#endif
 }
 
 static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId, int quiet)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
     if (!req) {
+#ifdef __DEBUG
+        diagArtQueueAllocFail++;
+#endif
         cache->content[cacheId].qr = 0;
         return;
     }
@@ -240,8 +265,14 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     pthread_mutex_unlock(&texLoadingMutex);
 
     // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
-    if (ioPutRequest(IO_CACHE_LOAD_ART, req) != IO_OK)
+    int ioResult = ioPutRequest(IO_CACHE_LOAD_ART, req);
+    if (ioResult != IO_OK) {
+#ifdef __DEBUG
+        diagArtQueuePutFail++;
+        diagLastQueueError = ioResult;
+#endif
         cacheCancelImageRequest(req);
+    }
 }
 
 // 加载其他图片时用的线程函数
@@ -250,6 +281,9 @@ static void cacheLoadImage1(void *data)
     load_image_request_t *ioReq = (load_image_request_t *)data;
     // Safeguards...
     if (!ioReq->cache || !ioReq->cache->content) {
+#ifdef __DEBUG
+        diagArtCancelled++;
+#endif
         cacheDecreaseLoading();
         free(ioReq);
         return;
@@ -257,6 +291,9 @@ static void cacheLoadImage1(void *data)
 
     item_list_t *handler = ioReq->list;
     if (!handler) {
+#ifdef __DEBUG
+        diagArtCancelled++;
+#endif
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -269,6 +306,9 @@ static void cacheLoadImage1(void *data)
     // 不依赖这套单封面冷却，所以显式绕过 cdFramesCount。两条路径都必须响应
     // forceSkipQr（cacheEnd 的退出保护）。
     if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
+#ifdef __DEBUG
+        diagArtCancelled++;
+#endif
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -279,10 +319,23 @@ static void cacheLoadImage1(void *data)
 
     // 加载图片。itemGetImage() 可能已经无法中途取消；结果先留在原槽位，
     // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
+#ifdef __DEBUG
+    diagArtStarted++;
+#endif
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
 
     if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&entry->texture);
+
+#ifdef __DEBUG
+    if (result < 0)
+        diagArtFailed++;
+    else
+        diagArtCompleted++;
+    strncpy(diagLastSuffix, ioReq->cache->suffix, sizeof(diagLastSuffix) - 1);
+    diagLastSuffix[sizeof(diagLastSuffix) - 1] = '\0';
+    diagLastResult = result;
+#endif
 
     // 光标变化会递增 artRequestGeneration；Coverflow 当前可见/预取路径再次
     // 查询仍需要的 active 槽位时，会把 requestGeneration 更新回当前代。
@@ -312,6 +365,9 @@ static void cacheLoadImage1(void *data)
     pthread_mutex_unlock(&texLoadingMutex);
 
     if (!keepResult) {
+#ifdef __DEBUG
+        diagArtStale++;
+#endif
         if (sameEntry && ioReq->trackGeneration)
             cacheClearExpiredItem(entry, ioReq->cacheUID);
         cacheDecreaseLoading();
@@ -402,6 +458,39 @@ void flushBatchRequests(void)
     // 左右切页签强制刷新缓存的变量，需要判断当前游戏所有图片是否都处理完毕
     if (ForceRefreshPrevTexCache > 1)
         ForceRefreshPrevTexCache = 0;
+
+#ifdef __DEBUG
+    // Print a bounded snapshot roughly every two seconds.  This is deliberately
+    // not emitted for every frame/request: UDP logging must not become the cause
+    // of the high-frequency Coverflow failure we are measuring.
+    if (diagNextFrame == 0 || (u32)guiFrameId >= diagNextFrame) {
+        int loading;
+        pthread_mutex_lock(&texLoadingMutex);
+        loading = texLoading;
+        pthread_mutex_unlock(&texLoadingMutex);
+        LOG("[ART_DIAG] frame=%u loading=%d queued=%d active=%d gen=%u force=%d cd=%d "
+            "qalloc=%u qput=%u start=%u done=%u fail=%u cancel=%u rm=%u stale=%u "
+            "bgfb=%u bgmiss=%u last=%s/%d qerr=%d\n",
+            (u32)guiFrameId, loading, ioGetPendingRequestCount(),
+            ioGetActiveRequestType(), artRequestGeneration,
+            ForceRefreshPrevTexCache, cdFramesCount,
+            diagArtQueueAllocFail, diagArtQueuePutFail, diagArtStarted,
+            diagArtCompleted, diagArtFailed, diagArtCancelled, diagArtRemoved,
+            diagArtStale, diagBgFallbackHit, diagBgFallbackMiss,
+            diagLastSuffix, diagLastResult, diagLastQueueError);
+        diagArtQueueAllocFail = 0;
+        diagArtQueuePutFail = 0;
+        diagArtStarted = 0;
+        diagArtCompleted = 0;
+        diagArtFailed = 0;
+        diagArtCancelled = 0;
+        diagArtRemoved = 0;
+        diagArtStale = 0;
+        diagBgFallbackHit = 0;
+        diagBgFallbackMiss = 0;
+        diagNextFrame = (u32)guiFrameId + 120;
+    }
+#endif
 
     // 线程异常时，将线程取消后重新创建(补救措施,大概率没用作用)
     //if (texLoading && !getKeyPressed(KEY_UP) && !getKeyPressed(KEY_DOWN) && !getKeyPressed(KEY_L1) && !getKeyPressed(KEY_R1)) {
@@ -902,6 +991,50 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
 }
 
+// Find the last usable background texture.  PrevCacheID_BG is only a hint:
+// it can point at a slot that was reclaimed after a failed/stale request, and
+// a two-slot cache must still be able to recover the other loaded slot.
+static GSTEXTURE *cacheGetBackgroundFallback(image_cache_t *cache, int excludeId)
+{
+    int fallbackId = -1;
+    u64 fallbackTime = 0;
+    int i;
+
+    if (!cache || !cache->content || ForceRefreshPrevTexCache)
+        return NULL;
+
+    if (PrevCacheID_BG >= 0 && PrevCacheID_BG < cache->count && PrevCacheID_BG != excludeId) {
+        cache_entry_t *entry = &cache->content[PrevCacheID_BG];
+        if (!entry->qr && entry->texFound == 1 && entry->texture.Mem) {
+#ifdef __DEBUG
+            diagBgFallbackHit++;
+#endif
+            return &entry->texture;
+        }
+    }
+
+    // Recover the fallback when the remembered slot was cleared or when the
+    // current request failed.  Prefer the most recently used loaded slot.
+    for (i = 0; i < cache->count; i++) {
+        cache_entry_t *entry = &cache->content[i];
+        if (i == excludeId || entry->qr || entry->texFound != 1 || !entry->texture.Mem)
+            continue;
+        if (fallbackId < 0 || entry->lastUsed >= fallbackTime) {
+            fallbackId = i;
+            fallbackTime = entry->lastUsed;
+        }
+    }
+
+    PrevCacheID_BG = fallbackId;
+#ifdef __DEBUG
+    if (fallbackId < 0)
+        diagBgFallbackMiss++;
+    else
+        diagBgFallbackHit++;
+#endif
+    return fallbackId < 0 ? NULL : &cache->content[fallbackId].texture;
+}
+
 // 只查询现有缓存/回退纹理，不触发新的加载请求。
 // Coverflow 的 BG 在渲染背景阶段只走这里，真正的请求由 drawCoverFlow 在 ICO 请求之后提交。
 GSTEXTURE *cacheGetTextureNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
@@ -910,33 +1043,35 @@ GSTEXTURE *cacheGetTextureNoRequest(image_cache_t *cache, item_list_t *list, int
     (void)value;
     (void)itemId;
 
-    if (!cache || !cache->content || !cacheId || !UID || *cacheId == -2)
+    if (!cache || !cache->content || !cacheId || !UID)
         return NULL;
-
-    int previousId = PrevCacheID_BG;
-    if (ForceRefreshPrevTexCache || previousId < 0 || previousId >= cache->count)
-        previousId = -1;
 
     if (*cacheId >= 0 && *cacheId < cache->count) {
         cache_entry_t *entry = &cache->content[*cacheId];
         if (entry->UID == *UID) {
             if (entry->qr)
-                return previousId < 0 ? NULL : &cache->content[previousId].texture;
+                return cacheGetBackgroundFallback(cache, *cacheId);
 
             if (entry->texFound == 0) {
+                // A failed/missing current BG must not erase the previous
+                // background.  Keep the item marked missing for retry, but
+                // render the other cache slot until a new texture succeeds.
                 *cacheId = -2;
-                return NULL;
+                return cacheGetBackgroundFallback(cache, -1);
             }
 
             if (entry->texFound == 1 && entry->texture.Mem) {
                 PrevCacheID_BG = *cacheId;
+                entry->lastUsed = guiFrameId;
                 return &entry->texture;
             }
         }
         *cacheId = -1;
     }
 
-    return previousId < 0 ? NULL : &cache->content[previousId].texture;
+    // In particular, do not let cache_id == -2 suppress the two-slot fallback:
+    // it only means that this item's own BG was last reported missing.
+    return cacheGetBackgroundFallback(cache, -1);
 }
 
 // Coverflow 专用取图函数。

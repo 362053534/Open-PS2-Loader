@@ -43,6 +43,9 @@ int ioRemoveRequestsWithCleanup(int type, io_request_cleanup_t cleanup);
 /** returns the count of pending requests */
 int ioGetPendingRequestCount(void);
 
+/** returns the type currently being processed by the IO worker, or -1 if idle */
+int ioGetActiveRequestType(void);
+
 /** returns nonzero if there are any pending io requests */
 int ioHasPendingRequests(void);
 
