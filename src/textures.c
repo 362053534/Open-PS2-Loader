@@ -424,6 +424,33 @@ void texFree(GSTEXTURE *texture)
     }
 }
 
+#ifdef __DEBUG
+static const char *diagTexturePath;
+// 最近一次阶段名（指向字符串常量）及调用线程；看门狗无锁读取，
+// 用来判断 worker 停在 texEnd 的哪一步。
+static const char *volatile diagLastStage = "-";
+static volatile int diagLastStageThread = -1;
+
+static void texDiagStage(const char *stage, const char *path)
+{
+    diagLastStage = stage;
+    diagLastStageThread = GetThreadId();
+    LOG("[ART_LOAD] stage=%s path=%s\n", stage, path ? path : "-");
+}
+
+const char *texGetDiagLastStage(int *threadId)
+{
+    if (threadId)
+        *threadId = diagLastStageThread;
+    return diagLastStage;
+}
+
+int texGetFileLockSemaId(void)
+{
+    return fileLockId;
+}
+#endif
+
 static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int status, png_texture_t *pngTexture, GSTEXTURE *texture)
 {
     // All failure paths must release buffers allocated after texPrepare().
@@ -432,15 +459,25 @@ static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int 
     if (texture)
         texFree(texture);
 
+#ifdef __DEBUG
+    // 这三步都会进入 newlib malloc 锁；用于确认 worker 是否卡在 success 之后的释放阶段。
+    texDiagStage("texend_free_file", diagTexturePath);
+#endif
     if (pFileBuffer)
         free(pFileBuffer);
 
+#ifdef __DEBUG
+    texDiagStage("texend_png_destroy", diagTexturePath);
+#endif
     if (infoPtr || pngPtr)
         png_destroy_read_struct(&pngPtr, &infoPtr, (png_infopp)NULL);
 
     if (pngTexture)
         free(pngTexture);
 
+#ifdef __DEBUG
+    texDiagStage("texend_done", diagTexturePath);
+#endif
     return status;
 }
 
@@ -551,14 +588,6 @@ static void texReadPixels32(GSTEXTURE *texture, png_bytep *rowPointers, size_t s
     //SignalSema(fileLockId);
 }
 
-#ifdef __DEBUG
-static const char *diagTexturePath;
-
-static void texDiagStage(const char *stage, const char *path)
-{
-    LOG("[ART_LOAD] stage=%s path=%s\n", stage, path ? path : "-");
-}
-#endif
 
 static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
                        void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture)

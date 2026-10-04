@@ -10,7 +10,7 @@
 - 不要切换、创建或推送其它分支。
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`
-- 当前诊断基线提交：`8437435 debug: trace ART and ATA read stalls`
+- 当前诊断基线提交：`8437435 debug: trace ART and ATA read stalls`；其后新增 newlib 锁停滞看门狗诊断（见 2026-10-05 变更记录）
 - 当前任务：只完善 ART/mass1 永久停止加载的根因诊断，不改变 IO 行为、不通过更换后端绕过问题。
 - 当前工作区：本次交接更新涉及 `HANDOFF.md` 和 `AGENTS.md`；未修改源码、图片或 `temp/` 用户资产。
 
@@ -246,6 +246,17 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+### 2026-10-05 — ART worker newlib 递归锁停滞诊断（仅调试构建）
+
+- 重新分析 `opl-coverflow.log`：停滞请求 `SLPS_254.76 COV` 已完整打印 `read_end`/`close`/`png_done`/`success`，之后再无 `[ART_REQ_BEGIN]` 或 `file_lock_wait`，而 `active_req=1` 永久保持（`diagActiveArt` 只在 `itemGetImage()` 返回后清零）。`success` 之后只剩 `texEnd()` 中的 `free()`/`png_destroy_read_struct()`，此时 ATA 文件已关闭，因此“卡在 ATA 读”的假设被明显削弱。
+- 新的首要假设：个人 ps2sdk fork 的 `ee/libcglue/src/lock.c` 缺少上游 `c9a9e2fc`（`__retarget_lock_acquire_recursive` 竞态）。IO worker 优先级 32，主线程 31（更高）；worker 在 `count++` 与 `WaitSema` 之间被主线程抢占后会永久阻塞在 malloc 锁，而主线程走“递归”分支继续正常 malloc，与日志中主线程仍能重载主题、解码 PNG 完全一致。ps2sdk `master` 已 cherry-pick 上游 `93206ac9`、`c9a9e2fc`（本仓库之外，需重建镜像链后再构建 OPL）。
+- 本次只增加 `__DEBUG` 诊断，不改变 IO 行为：
+  - `texEnd()` 增加 `[ART_LOAD] stage=texend_free_file / texend_png_destroy / texend_done`；`cacheLoadImage1()` 在 `itemGetImage()` 返回后打印 `[ART_REQ_END] ... result=`。
+  - `flushBatchRequests()` 每帧调用 `cacheDiagWatchdog()`：IO worker 有活动请求且进度计数约 300 帧（≈5 秒）不变时输出 `[ART_WD]` 快照，之后每 300 帧重复，恢复后输出 `[ART_WD] recovered`。快照包含 worker/主线程 `ReferThreadStatus`、`__lock___malloc_recursive_mutex`、`__lock___sfp_recursive_mutex`、stdout FILE 锁的 `sem_id/owner_thread/count` 及 `ReferSemaStatus`，以及 IO 队列、ioPrintf、文件锁信号量。
+  - 看门狗输出走新的 `ioDiagPrintfNoLock()`：静态缓冲区 + `vsnprintf` + `write(STDOUT_FILENO)`（EESIO 构建用 `sio_putsn`），不经过 ioPrintf 信号量、stdout FILE 锁或 malloc 锁。
+- 判读：若 `io_thread status=0x04 wait_type=2(sema)` 且 `wait_id` 等于 `lock name=malloc` 的 `sem_id`，同时该锁 `sema_count=0 wait_threads=1`、`count>=1`，即确认 malloc 递归锁停滞；`last_stage` 应为 `texend_*`。
+- 验证：已用旧镜像 `ghcr.io/362053534/ps2homebrew:main`（2026-09-27 构建）在本地 chroot 中完成 `make iopcore_debug` 编译链接，`DEBUG=1 EESIO_DEBUG=1` 和 release 下这三个源文件也能编译；尚未实机验证。
 
 ### 2026-10-04 — ART/mass1 ATA 永久停滞诊断交接
 

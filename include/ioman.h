@@ -61,6 +61,15 @@ int ioIsRunning(void);
 /** Helper thread safe printf */
 int ioPrintf(const char *format, ...);
 
+#ifdef __DEBUG
+/** 诊断专用：不加任何锁读取 IO worker 状态，供主线程看门狗在 worker 卡死时使用。 */
+void ioGetDiagState(int *threadId, int *endSemaId, int *printfSemaId, int *activeType, unsigned int *progress);
+
+/** 诊断专用输出：静态缓冲区 + 直接 write()/sio，不经过 ioPrintf 信号量、
+ * newlib stdout FILE 锁和 malloc 锁，避免看门狗被同一把锁拖死。只能在主线程调用。 */
+int ioDiagPrintfNoLock(const char *format, ...);
+#endif
+
 /** Helper function. Will flush the io operation list
  (wait for all io ops requested to end) and then
  issue a blocking flag that will mean no io

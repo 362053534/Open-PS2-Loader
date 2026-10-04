@@ -56,6 +56,10 @@ static ee_sema_t gQueueSema;
 static volatile int isIOBlocked = 0;
 static volatile int isIORunning = 0;
 static volatile int isIOPending = 0;
+#ifdef __DEBUG
+// worker 每取出/完成一个请求就递增；看门狗据此判断 worker 是否仍在前进。
+static volatile unsigned int gIODiagProgress = 0;
+#endif
 
 // 静态池相关，防止内存碎片化导致死机
 static struct io_request_t gRequestPool[MAX_IO_REQUESTS];
@@ -149,6 +153,9 @@ static void ioWorkerThread(void *arg)
                 gReqEnd = NULL;
             gActiveRequestType = req->type;
             gActiveRequestData = req->data;
+#ifdef __DEBUG
+            gIODiagProgress++;
+#endif
         } else {
             gReqEnd = NULL;   // 队列为空时，保险起见设NULL
             isIOPending = 0;
@@ -163,6 +170,9 @@ static void ioWorkerThread(void *arg)
 
         ioProcessRequest(req);
 
+#ifdef __DEBUG
+        gIODiagProgress++;
+#endif
         WaitSema(gEndSemaId);
         gActiveRequestType = -1;
         gActiveRequestData = NULL;
@@ -453,6 +463,48 @@ int ioPrintf(const char *format, ...)
 
     return ret;
 }
+
+#ifdef __DEBUG
+void ioGetDiagState(int *threadId, int *endSemaId, int *printfSemaId, int *activeType, unsigned int *progress)
+{
+    // 故意不取 gEndSemaId：看门狗必须在 worker 或队列锁异常时仍能读到快照。
+    if (threadId)
+        *threadId = gIOThreadId;
+    if (endSemaId)
+        *endSemaId = gEndSemaId;
+    if (printfSemaId)
+        *printfSemaId = gIOPrintfSemaId;
+    if (activeType)
+        *activeType = gActiveRequestType;
+    if (progress)
+        *progress = gIODiagProgress;
+}
+
+int ioDiagPrintfNoLock(const char *format, ...)
+{
+    // 仅主线程看门狗使用，静态缓冲区无需加锁；只格式化整数/字符串，
+    // newlib 的字符串 vsnprintf 不会获取 FILE 锁，也不会因此调用 malloc。
+    static char diagBuf[512];
+    va_list args;
+    va_start(args, format);
+    int len = vsnprintf(diagBuf, sizeof(diagBuf), format, args);
+    va_end(args);
+
+    if (len < 0)
+        return len;
+    if (len >= (int)sizeof(diagBuf))
+        len = sizeof(diagBuf) - 1;
+
+#ifdef __EESIO_DEBUG
+    sio_putsn(diagBuf);
+#else
+    // 直接写 STDOUT_FILENO（libcglue 映射到 tty0:，UDPTTY 同样会收到），
+    // 绕过 stdout 的 newlib FILE 递归锁。
+    write(STDOUT_FILENO, diagBuf, len);
+#endif
+    return len;
+}
+#endif
 
 int ioBlockOps(int block)
 {

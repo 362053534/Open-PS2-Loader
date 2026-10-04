@@ -7,6 +7,13 @@
 #include "include/renderman.h"
 #include "include/pad.h"
 #include <pthread.h>
+#ifdef __DEBUG
+#include <kernel.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <newlib.h>
+#include <sys/lock.h>
+#endif
 
 extern GSGLOBAL *gsGlobal;
 
@@ -339,6 +346,8 @@ static void cacheLoadImage1(void *data)
 
 #ifdef __DEBUG
     diagActiveArt = 0;
+    LOG("[ART_REQ_END] suffix=%s value=%s item=%d result=%d\n",
+        diagActiveSuffix, diagActiveValue, diagActiveItemId, result);
 #endif
 
     if (result >= 0 && ioReq->compactBackground)
@@ -470,6 +479,139 @@ static void *cacheLoadImage(void *data)
     return NULL;
 }
 
+#ifdef __DEBUG
+// ---- IO worker 停滞看门狗（仅调试构建）----
+// 目的：在旧 SDK 镜像下证明 ART worker 是否卡在 newlib 递归锁（malloc/stdio）上。
+// 全部输出走 ioDiagPrintfNoLock()，不调用 LOG/printf/malloc，避免主线程被同一把锁拖住。
+#define ART_WD_STALL_FRAMES 300 // 约 5 秒（NTSC 60fps；PAL 约 6 秒）
+
+#ifdef _RETARGETABLE_LOCKING
+// 与 ps2sdk ee/libcglue/src/lock.c 中 struct __lock 的布局一致（新旧版本相同）。
+typedef struct
+{
+    int32_t sem_id;
+    int32_t thread_id;
+    int32_t count;
+} art_diag_newlib_lock_t;
+
+extern struct __lock __lock___malloc_recursive_mutex;
+extern struct __lock __lock___sfp_recursive_mutex;
+#endif
+
+static unsigned int wdLastProgress;
+static u32 wdLastChangeFrame;
+static u32 wdNextReportFrame;
+static int wdStalled;
+
+static const char *cacheDiagWaitTypeName(u32 waitType)
+{
+    switch (waitType) {
+        case 0:
+            return "none";
+        case 1:
+            return "sleep";
+        case 2:
+            return "sema";
+        default:
+            return "?";
+    }
+}
+
+static void cacheDiagReportSema(const char *name, int semaId)
+{
+    ee_sema_t sema;
+    memset(&sema, 0, sizeof(sema));
+    int ret = (semaId > 0) ? ReferSemaStatus(semaId, &sema) : -1;
+    ioDiagPrintfNoLock("[ART_WD] sema name=%s id=%d ret=%d count=%d max=%d wait_threads=%d\n",
+                       name, semaId, ret, sema.count, sema.max_count, sema.wait_threads);
+}
+
+#ifdef _RETARGETABLE_LOCKING
+static void cacheDiagReportLock(const char *name, const void *lockPtr)
+{
+    const art_diag_newlib_lock_t *lock = (const art_diag_newlib_lock_t *)lockPtr;
+    if (!lock) {
+        ioDiagPrintfNoLock("[ART_WD] lock name=%s ptr=NULL\n", name);
+        return;
+    }
+    ee_sema_t sema;
+    memset(&sema, 0, sizeof(sema));
+    int ret = (lock->sem_id > 0) ? ReferSemaStatus(lock->sem_id, &sema) : -1;
+    ioDiagPrintfNoLock("[ART_WD] lock name=%s sem_id=%d owner_thread=%d count=%d sema_ret=%d sema_count=%d wait_threads=%d\n",
+                       name, (int)lock->sem_id, (int)lock->thread_id, (int)lock->count,
+                       ret, sema.count, sema.wait_threads);
+}
+#endif
+
+static void cacheDiagReport(u32 frame, u32 stalledFrames, int ioThreadId, int endSemaId,
+                            int printfSemaId, int activeType)
+{
+    ee_thread_status_t ioStatus, mainStatus;
+    int mainThreadId = GetThreadId();
+    int stageThread = -1;
+    const char *stage = texGetDiagLastStage(&stageThread);
+
+    memset(&ioStatus, 0, sizeof(ioStatus));
+    memset(&mainStatus, 0, sizeof(mainStatus));
+    int ioRet = (ioThreadId > 0) ? ReferThreadStatus(ioThreadId, &ioStatus) : -1;
+    int mainRet = ReferThreadStatus(mainThreadId, &mainStatus);
+
+    ioDiagPrintfNoLock("[ART_WD] stall frame=%u stalled_frames=%u active_type=%d active_art=%d req=%s/%s/%d last_stage=%s stage_thread=%d\n",
+                       frame, stalledFrames, activeType, diagActiveArt, diagActiveSuffix,
+                       diagActiveValue, diagActiveItemId, stage ? stage : "-", stageThread);
+    ioDiagPrintfNoLock("[ART_WD] io_thread id=%d ret=%d status=0x%02x wait_type=%u(%s) wait_id=%u cur_prio=%d init_prio=%d wakeup=%u\n",
+                       ioThreadId, ioRet, ioStatus.status, ioStatus.waitType,
+                       cacheDiagWaitTypeName(ioStatus.waitType), ioStatus.waitId,
+                       ioStatus.current_priority, ioStatus.initial_priority, ioStatus.wakeupCount);
+    ioDiagPrintfNoLock("[ART_WD] main_thread id=%d ret=%d status=0x%02x cur_prio=%d\n",
+                       mainThreadId, mainRet, mainStatus.status, mainStatus.current_priority);
+#ifdef _RETARGETABLE_LOCKING
+    cacheDiagReportLock("malloc", &__lock___malloc_recursive_mutex);
+    cacheDiagReportLock("sfp", &__lock___sfp_recursive_mutex);
+#ifndef __SINGLE_THREAD__
+    // stdout 的 FILE 锁在首次使用时由 newlib 分配；尚未初始化时为 NULL。
+    cacheDiagReportLock("stdout", (stdout != NULL) ? (const void *)stdout->_lock : NULL);
+#endif
+#else
+    ioDiagPrintfNoLock("[ART_WD] lock newlib retargetable locking unavailable\n");
+#endif
+    cacheDiagReportSema("io_queue", endSemaId);
+    cacheDiagReportSema("io_printf", printfSemaId);
+    cacheDiagReportSema("file_lock", texGetFileLockSemaId());
+}
+
+// 每帧在主线程调用。worker 正在处理请求、且进度计数超过阈值未变化时输出一次快照，
+// 之后每 ART_WD_STALL_FRAMES 帧重复一次；worker 恢复前进后输出 recovered。
+static void cacheDiagWatchdog(void)
+{
+    int ioThreadId = -1, endSemaId = -1, printfSemaId = -1, activeType = -1;
+    unsigned int progress = 0;
+    u32 frame = (u32)guiFrameId;
+
+    ioGetDiagState(&ioThreadId, &endSemaId, &printfSemaId, &activeType, &progress);
+
+    if (progress != wdLastProgress || activeType < 0) {
+        if (wdStalled)
+            ioDiagPrintfNoLock("[ART_WD] recovered frame=%u stalled_frames=%u progress=%u active_type=%d\n",
+                               frame, frame - wdLastChangeFrame, progress, activeType);
+        wdStalled = 0;
+        wdLastProgress = progress;
+        wdLastChangeFrame = frame;
+        return;
+    }
+
+    u32 stalledFrames = frame - wdLastChangeFrame;
+    if (stalledFrames < ART_WD_STALL_FRAMES)
+        return;
+
+    if (!wdStalled || (s32)(frame - wdNextReportFrame) >= 0) {
+        wdStalled = 1;
+        wdNextReportFrame = frame + ART_WD_STALL_FRAMES;
+        cacheDiagReport(frame, stalledFrames, ioThreadId, endSemaId, printfSemaId, activeType);
+    }
+}
+#endif
+
 void flushBatchRequests(void)
 {
     // 左右切页签强制刷新缓存的变量，需要判断当前游戏所有图片是否都处理完毕
@@ -477,6 +619,8 @@ void flushBatchRequests(void)
         ForceRefreshPrevTexCache = 0;
 
 #ifdef __DEBUG
+    cacheDiagWatchdog();
+
     // Print a bounded snapshot roughly every two seconds.  This is deliberately
     // not emitted for every frame/request: UDP logging must not become the cause
     // of the high-frequency Coverflow failure we are measuring.

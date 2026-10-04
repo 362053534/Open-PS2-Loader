@@ -140,4 +140,11 @@ void texFinish(void);
 void texCompactBackground(GSTEXTURE *texture);
 
 //extern s32 fileLockId;
+
+#ifdef __DEBUG
+// 诊断专用：无锁返回最近一次 [ART_LOAD] 阶段名及其线程 ID。
+const char *texGetDiagLastStage(int *threadId);
+// 诊断专用：返回 texLoadAll 使用的文件锁信号量 ID。
+int texGetFileLockSemaId(void);
+#endif
 #endif
