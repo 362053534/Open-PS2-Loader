@@ -59,6 +59,8 @@ static volatile int isIOPending = 0;
 #ifdef __DEBUG
 // worker 每取出/完成一个请求就递增；看门狗据此判断 worker 是否仍在前进。
 static volatile unsigned int gIODiagProgress = 0;
+volatile int gIODiagWorkerStage = IO_WS_NONE;
+volatile int gIODiagPrintfCallerStage = IO_WS_NONE;
 #endif
 
 // 静态池相关，防止内存碎片化导致死机
@@ -145,7 +147,9 @@ static void ioWorkerThread(void *arg)
     // 2ms 再查——空闲轮询对后台 art 加载延迟可忽略，CPU 占用也极低。
     while (!gIOTerminate) {
         // 队列取头节点(整段在队列锁内完成)
+        IO_DIAG_STAGE(IO_WS_QUEUE_WAIT);
         WaitSema(gEndSemaId);
+        IO_DIAG_STAGE(IO_WS_QUEUE_GOT);
         struct io_request_t *req = gReqList;
         if (req) {
             gReqList = req->next;
@@ -164,19 +168,24 @@ static void ioWorkerThread(void *arg)
 
         if (!req) {
             // 队列为空：短暂休眠后再轮询，避免忙等空转，也不依赖任何唤醒信号。
+            IO_DIAG_STAGE(IO_WS_IDLE_SLEEP);
             usleep(2000); // 2ms
             continue;
         }
 
+        IO_DIAG_STAGE(IO_WS_DISPATCH);
         ioProcessRequest(req);
+        IO_DIAG_STAGE(IO_WS_RETURNED);
 
 #ifdef __DEBUG
         gIODiagProgress++;
 #endif
+        IO_DIAG_STAGE(IO_WS_FINISH_WAIT);
         WaitSema(gEndSemaId);
         gActiveRequestType = -1;
         gActiveRequestData = NULL;
         SignalSema(gEndSemaId);
+        IO_DIAG_STAGE(IO_WS_FINISH_DONE);
         FreeIoRequest(req);
     }
     WaitSema(gEndSemaId);
@@ -445,8 +454,21 @@ static char tbuf[2048];
 
 int ioPrintf(const char *format, ...)
 {
+#ifdef __DEBUG
+    // 只跟踪 worker 自己的 LOG：记录进入前的阶段，返回时恢复。
+    int diagIsWorker = (gIOThreadId > 0 && GetThreadId() == gIOThreadId);
+    int diagPrevStage = gIODiagWorkerStage;
+    if (diagIsWorker) {
+        gIODiagPrintfCallerStage = diagPrevStage;
+        gIODiagWorkerStage = IO_WS_PRINTF_SEMA_WAIT;
+    }
+#endif
     if (isIORunning == 1)
         WaitSema(gIOPrintfSemaId);
+#ifdef __DEBUG
+    if (diagIsWorker)
+        gIODiagWorkerStage = IO_WS_PRINTF_WRITE;
+#endif
 
     va_list args;
     va_start(args, format);
@@ -461,6 +483,10 @@ int ioPrintf(const char *format, ...)
     if (isIORunning == 1)
         SignalSema(gIOPrintfSemaId);
 
+#ifdef __DEBUG
+    if (diagIsWorker)
+        gIODiagWorkerStage = diagPrevStage;
+#endif
     return ret;
 }
 
@@ -484,7 +510,10 @@ int ioDiagPrintfNoLock(const char *format, ...)
 {
     // 仅主线程看门狗使用，静态缓冲区无需加锁；只格式化整数/字符串，
     // newlib 的字符串 vsnprintf 不会获取 FILE 锁，也不会因此调用 malloc。
-    static char diagBuf[512];
+    // 必须 16 字节以上对齐：fioWrite() 会把起始地址未对齐的头部（16 - addr%16 字节）
+    // 放进 RPC 参数单独发送，其余部分由 IOP 侧从对齐地址取。实机日志中每行只收到
+    // 8 字节 "[ART_WD]"，与旧构建里 diagBuf 地址 %16 == 8 完全吻合；对齐后整行一次发送。
+    static char diagBuf[512] ALIGNED(64);
     va_list args;
     va_start(args, format);
     int len = vsnprintf(diagBuf, sizeof(diagBuf), format, args);
@@ -499,10 +528,70 @@ int ioDiagPrintfNoLock(const char *format, ...)
     sio_putsn(diagBuf);
 #else
     // 直接写 STDOUT_FILENO（libcglue 映射到 tty0:，UDPTTY 同样会收到），
-    // 绕过 stdout 的 newlib FILE 递归锁。
-    write(STDOUT_FILENO, diagBuf, len);
+    // 绕过 stdout 的 newlib FILE 递归锁。短写时继续写剩余部分。
+    int written = 0;
+    while (written < len) {
+        int ret = write(STDOUT_FILENO, diagBuf + written, len - written);
+        if (ret <= 0)
+            break;
+        written += ret;
+    }
 #endif
     return len;
+}
+
+const char *ioDiagWorkerStageName(int stage)
+{
+    switch (stage) {
+        case IO_WS_NONE:
+            return "none";
+        case IO_WS_QUEUE_WAIT:
+            return "queue_wait";
+        case IO_WS_QUEUE_GOT:
+            return "queue_got";
+        case IO_WS_IDLE_SLEEP:
+            return "idle_sleep";
+        case IO_WS_DISPATCH:
+            return "dispatch";
+        case IO_WS_RETURNED:
+            return "returned";
+        case IO_WS_FINISH_WAIT:
+            return "finish_wait";
+        case IO_WS_FINISH_DONE:
+            return "finish_done";
+        case IO_WS_PRINTF_SEMA_WAIT:
+            return "printf_sema_wait";
+        case IO_WS_PRINTF_WRITE:
+            return "printf_write";
+        case IO_WS_ART_BEGIN_LOG:
+            return "art_begin_log";
+        case IO_WS_ART_GET_IMAGE:
+            return "art_get_image";
+        case IO_WS_ART_END_LOG:
+            return "art_end_log";
+        case IO_WS_ART_COMPACT:
+            return "art_compact";
+        case IO_WS_ART_COUNTERS:
+            return "art_counters";
+        case IO_WS_ART_MUTEX_WAIT:
+            return "art_mutex_wait";
+        case IO_WS_ART_MUTEX_HELD:
+            return "art_mutex_held";
+        case IO_WS_ART_MUTEX_UNLOCKED:
+            return "art_mutex_unlocked";
+        case IO_WS_ART_STALE_CLEAR:
+            return "art_stale_clear";
+        case IO_WS_ART_DEC_LOADING:
+            return "art_dec_loading";
+        case IO_WS_ART_FREE_REQ:
+            return "art_free_req";
+        case IO_WS_ART_FREE_REQ_DONE:
+            return "art_free_req_done";
+        case IO_WS_ART_EARLY_EXIT:
+            return "art_early_exit";
+        default:
+            return "?";
+    }
 }
 #endif
 

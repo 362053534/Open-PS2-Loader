@@ -68,6 +68,41 @@ void ioGetDiagState(int *threadId, int *endSemaId, int *printfSemaId, int *activ
 /** 诊断专用输出：静态缓冲区 + 直接 write()/sio，不经过 ioPrintf 信号量、
  * newlib stdout FILE 锁和 malloc 锁，避免看门狗被同一把锁拖死。只能在主线程调用。 */
 int ioDiagPrintfNoLock(const char *format, ...);
+
+// 诊断专用：IO worker 当前所处阶段。worker 无锁写入，主线程看门狗无锁读取，
+// 即使 worker 永久阻塞也能知道它停在哪一步。
+enum {
+    IO_WS_NONE = 0,
+    IO_WS_QUEUE_WAIT = 1,    // 取请求前 WaitSema(gEndSemaId)
+    IO_WS_QUEUE_GOT = 2,     // 已取到请求（或队列为空）
+    IO_WS_IDLE_SLEEP = 3,    // 队列为空，usleep 轮询
+    IO_WS_DISPATCH = 4,      // 调用 ioProcessRequest 之前
+    IO_WS_RETURNED = 5,      // ioProcessRequest 已返回
+    IO_WS_FINISH_WAIT = 6,   // 完成后 WaitSema(gEndSemaId)
+    IO_WS_FINISH_DONE = 7,   // 已清 active，准备 FreeIoRequest
+    IO_WS_PRINTF_SEMA_WAIT = 20, // worker 内 ioPrintf：等待 ioPrintf 信号量
+    IO_WS_PRINTF_WRITE = 21,     // worker 内 ioPrintf：vprintf（newlib stdout 锁）
+    IO_WS_ART_BEGIN_LOG = 40,
+    IO_WS_ART_GET_IMAGE = 41,
+    IO_WS_ART_END_LOG = 42,
+    IO_WS_ART_COMPACT = 43,
+    IO_WS_ART_COUNTERS = 44,
+    IO_WS_ART_MUTEX_WAIT = 45,     // 发布结果前等待 texLoadingMutex
+    IO_WS_ART_MUTEX_HELD = 46,
+    IO_WS_ART_MUTEX_UNLOCKED = 47,
+    IO_WS_ART_STALE_CLEAR = 48,    // cacheClearExpiredItem（含 free 纹理）
+    IO_WS_ART_DEC_LOADING = 49,    // cacheDecreaseLoading（texLoadingMutex）
+    IO_WS_ART_FREE_REQ = 50,       // free(ioReq)（newlib malloc 锁）
+    IO_WS_ART_FREE_REQ_DONE = 51,
+    IO_WS_ART_EARLY_EXIT = 52,     // 早退路径（释放槽位/计数/free）
+};
+extern volatile int gIODiagWorkerStage;
+// worker 进入 ioPrintf 时，记录调用前的阶段，便于判断是哪条 LOG 卡住。
+extern volatile int gIODiagPrintfCallerStage;
+#define IO_DIAG_STAGE(s) (gIODiagWorkerStage = (s))
+const char *ioDiagWorkerStageName(int stage);
+#else
+#define IO_DIAG_STAGE(s) ((void)0)
 #endif
 
 /** Helper function. Will flush the io operation list

@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 修正看门狗输出并跟踪 worker 阶段与 texLoadingMutex（仅调试构建）
+
+- `ea621fe7` 实机结果（旧镜像、未修复 SDK）：最后一个请求 `ICO SLAJ_250.30` 已打印 `texend_*` 与 `[ART_REQ_END] result=0`，随后 `[ART_DIAG]` 显示 `done` 已计数、`active_req=0`，之后 `start=0 done=0` 永久停滞、`active=3`。即本次 worker 停在 `diagArtCompleted++` 之后、`ioProcessRequest()` 返回之前（看门狗依据的进度计数未再递增，主线程 `ioGetActiveRequestType()` 仍能取得队列锁）。上一次（23:22 日志）`active_req=1` 且 `done` 少 1，停在 `texEnd()` 内。两次停点不同，但下一步都是 newlib `free()`（这次是 `free(ioReq)` 或 stale 路径的 `cacheClearItem()`），与 malloc 递归锁竞态假设一致；主线程期间仍能反复获取 `texLoadingMutex`，不支持该互斥锁被永久持有。
+- 看门狗每行只收到 8 字节 `[ART_WD]`：`ioDiagPrintfNoLock()` 的静态缓冲区在旧构建中地址 `%16 == 8`，`fioWrite()` 把未对齐的头部 `16 - addr%16 = 8` 字节放进 RPC 参数单独发送，其余部分丢失（每次报告 9 行，每行恰为 8 字节，与之吻合）。现改为 `ALIGNED(64)` 缓冲区，并对短写循环续写。
+- 新增 `gIODiagWorkerStage`：ioman worker 循环（`queue_wait/queue_got/idle_sleep/dispatch/returned/finish_wait/finish_done`）、worker 内 `ioPrintf`（`printf_sema_wait/printf_write`，并记录调用前阶段 `printf_caller_stage`）、`cacheLoadImage1()` 结束阶段（`art_end_log/art_compact/art_counters/art_mutex_wait/art_mutex_held/art_mutex_unlocked/art_stale_clear/art_dec_loading/art_free_req/art_free_req_done/art_early_exit`）。看门狗输出 `[ART_WD] worker_stage=`。
+- 所有 `texLoadingMutex` 加/解锁统一改用 `TEX_LOADING_LOCK()/TEX_LOADING_UNLOCK()`：release 下直接展开为原 `pthread_mutex_lock/unlock`；调试下额外记录持有线程、加锁行号、worker/其它线程正在等待的行号、最近解锁线程与行号。看门狗输出 `[ART_WD] tex_mutex ...`，并按 pthread-embedded `struct pthread_mutex_t_` 布局输出 `[ART_WD] tex_mutex_pte ...`（内部信号量状态）。行号对应本提交的 `src/texcache.c`。
+- 验证限制：box 构建环境本次不可用，未能用旧镜像 chroot 编译；改动已人工审阅，未实机验证。
+
 ### 2026-10-05 — ART worker newlib 递归锁停滞诊断（仅调试构建）
 
 - 重新分析 `opl-coverflow.log`：停滞请求 `SLPS_254.76 COV` 已完整打印 `read_end`/`close`/`png_done`/`success`，之后再无 `[ART_REQ_BEGIN]` 或 `file_lock_wait`，而 `active_req=1` 永久保持（`diagActiveArt` 只在 `itemGetImage()` 返回后清零）。`success` 之后只剩 `texEnd()` 中的 `free()`/`png_destroy_read_struct()`，此时 ATA 文件已关闭，因此“卡在 ATA 读”的假设被明显削弱。

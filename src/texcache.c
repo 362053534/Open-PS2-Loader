@@ -73,6 +73,59 @@ pthread_t tid3;
 pthread_attr_t attr;
 pthread_mutex_t texLoadingMutex = PTHREAD_MUTEX_INITIALIZER;
 
+#ifdef __DEBUG
+// texLoadingMutex 持有者跟踪（仅调试）：记录持有线程、加锁调用点（__LINE__）、
+// worker 与其它线程各自正在等待的调用点，以及最近一次解锁。全部无锁写入，
+// 看门狗无锁读取；锁本身的行为不变。
+static volatile int diagTexMutexOwner = -1;
+static volatile int diagTexMutexOwnerSite;
+static volatile int diagTexMutexWorkerWaitSite;
+static volatile int diagTexMutexOtherWaiter = -1;
+static volatile int diagTexMutexOtherWaitSite;
+static volatile int diagTexMutexLastUnlockThread = -1;
+static volatile int diagTexMutexLastUnlockSite;
+static volatile u32 diagTexMutexLockCount;
+
+static void cacheDiagMutexLock(int site)
+{
+    int tid = GetThreadId();
+    int ioTid = -1;
+    ioGetDiagState(&ioTid, NULL, NULL, NULL, NULL);
+    int isWorker = (tid == ioTid);
+
+    if (isWorker) {
+        diagTexMutexWorkerWaitSite = site;
+    } else {
+        diagTexMutexOtherWaiter = tid;
+        diagTexMutexOtherWaitSite = site;
+    }
+    pthread_mutex_lock(&texLoadingMutex);
+    if (isWorker) {
+        diagTexMutexWorkerWaitSite = 0;
+    } else if (diagTexMutexOtherWaiter == tid) {
+        diagTexMutexOtherWaiter = -1;
+        diagTexMutexOtherWaitSite = 0;
+    }
+    diagTexMutexOwner = tid;
+    diagTexMutexOwnerSite = site;
+    diagTexMutexLockCount++;
+}
+
+static void cacheDiagMutexUnlock(int site)
+{
+    diagTexMutexLastUnlockThread = GetThreadId();
+    diagTexMutexLastUnlockSite = site;
+    diagTexMutexOwner = -1;
+    diagTexMutexOwnerSite = 0;
+    pthread_mutex_unlock(&texLoadingMutex);
+}
+#define TEX_LOADING_LOCK()   cacheDiagMutexLock(__LINE__)
+#define TEX_LOADING_UNLOCK() cacheDiagMutexUnlock(__LINE__)
+#else
+#define TEX_LOADING_LOCK()   pthread_mutex_lock(&texLoadingMutex)
+#define TEX_LOADING_UNLOCK() pthread_mutex_unlock(&texLoadingMutex)
+#endif
+
 // 线程是否已创建
 int pthread_created_BG = 0;
 int pthread_created_COV = 0;
@@ -147,10 +200,10 @@ static void cacheClearItem(cache_entry_t *item, int freeTxt)
 
 static void cacheDecreaseLoading(void)
 {
-    pthread_mutex_lock(&texLoadingMutex);
+    TEX_LOADING_LOCK();
     if (texLoading > 0)
         texLoading--;
-    pthread_mutex_unlock(&texLoadingMutex);
+    TEX_LOADING_UNLOCK();
 }
 
 static int cacheShouldCompactBackground(image_cache_t *cache)
@@ -191,12 +244,12 @@ static void cacheReleaseRequestSlot(load_image_request_t *ioReq)
         return;
 
     cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
-    pthread_mutex_lock(&texLoadingMutex);
+    TEX_LOADING_LOCK();
     if (entry->UID == ioReq->cacheUID && entry->qr) {
         entry->qr = 0;
         entry->requestGeneration = 0;
     }
-    pthread_mutex_unlock(&texLoadingMutex);
+    TEX_LOADING_UNLOCK();
 }
 
 // A stale active request first reserves its slot with a non-zero qr value.
@@ -209,12 +262,12 @@ static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
     if (!entry)
         return;
 
-    pthread_mutex_lock(&texLoadingMutex);
+    TEX_LOADING_LOCK();
     if (entry->UID == cacheUID && entry->qr == 2) {
         entry->qr = 3; // reserved while texture memory is released below
         owned = 1;
     }
-    pthread_mutex_unlock(&texLoadingMutex);
+    TEX_LOADING_UNLOCK();
 
     if (owned)
         cacheClearItem(entry, 1);
@@ -222,12 +275,12 @@ static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
 
 void cacheCancelPendingArtRequests(void)
 {
-    pthread_mutex_lock(&texLoadingMutex);
+    TEX_LOADING_LOCK();
     artRequestGeneration++;
     if (artRequestGeneration == 0)
         artRequestGeneration = 1;
     int wasLoading = texLoading > 0;
-    pthread_mutex_unlock(&texLoadingMutex);
+    TEX_LOADING_UNLOCK();
 
     if (usePthread)
         return;
@@ -267,13 +320,13 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
                              !strncmp(cache->suffix, "BG", 2));
     req->compactBackground = cacheShouldCompactBackground(cache);
 
-    pthread_mutex_lock(&texLoadingMutex);
+    TEX_LOADING_LOCK();
     cache->content[cacheId].requestGeneration = req->trackGeneration ? artRequestGeneration : 0;
     if (texLoading >= 0)
         texLoading++;
     else
         texLoading = 1;
-    pthread_mutex_unlock(&texLoadingMutex);
+    TEX_LOADING_UNLOCK();
 
     // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
     int ioResult = ioPutRequest(IO_CACHE_LOAD_ART, req);
@@ -295,6 +348,7 @@ static void cacheLoadImage1(void *data)
 #ifdef __DEBUG
         diagArtCancelled++;
 #endif
+        IO_DIAG_STAGE(IO_WS_ART_EARLY_EXIT);
         cacheDecreaseLoading();
         free(ioReq);
         return;
@@ -305,6 +359,7 @@ static void cacheLoadImage1(void *data)
 #ifdef __DEBUG
         diagArtCancelled++;
 #endif
+        IO_DIAG_STAGE(IO_WS_ART_EARLY_EXIT);
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -320,6 +375,7 @@ static void cacheLoadImage1(void *data)
 #ifdef __DEBUG
         diagArtCancelled++;
 #endif
+        IO_DIAG_STAGE(IO_WS_ART_EARLY_EXIT);
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -338,21 +394,26 @@ static void cacheLoadImage1(void *data)
     strncpy(diagActiveValue, ioReq->value ? ioReq->value : "-", sizeof(diagActiveValue) - 1);
     diagActiveValue[sizeof(diagActiveValue) - 1] = '\0';
     diagActiveItemId = ioReq->itemId;
+    IO_DIAG_STAGE(IO_WS_ART_BEGIN_LOG);
     LOG("[ART_REQ_BEGIN] suffix=%s value=%s item=%d prefix=%s\n",
         diagActiveSuffix, diagActiveValue, diagActiveItemId,
         ioReq->cache->prefix ? ioReq->cache->prefix : "-");
 #endif
+    IO_DIAG_STAGE(IO_WS_ART_GET_IMAGE);
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
 
 #ifdef __DEBUG
     diagActiveArt = 0;
+    IO_DIAG_STAGE(IO_WS_ART_END_LOG);
     LOG("[ART_REQ_END] suffix=%s value=%s item=%d result=%d\n",
         diagActiveSuffix, diagActiveValue, diagActiveItemId, result);
 #endif
 
+    IO_DIAG_STAGE(IO_WS_ART_COMPACT);
     if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&entry->texture);
 
+    IO_DIAG_STAGE(IO_WS_ART_COUNTERS);
 #ifdef __DEBUG
     if (result < 0)
         diagArtFailed++;
@@ -368,7 +429,9 @@ static void cacheLoadImage1(void *data)
     // 没有被重新查询的旧请求在此处丢弃，不进入 cache，也不会在后续触发 GS bind。
     int keepResult = 0;
     int sameEntry = 0;
-    pthread_mutex_lock(&texLoadingMutex);
+    IO_DIAG_STAGE(IO_WS_ART_MUTEX_WAIT);
+    TEX_LOADING_LOCK();
+    IO_DIAG_STAGE(IO_WS_ART_MUTEX_HELD);
     sameEntry = (entry->UID == ioReq->cacheUID);
     if (sameEntry && entry->qr &&
         (!ioReq->trackGeneration || entry->requestGeneration == artRequestGeneration)) {
@@ -388,23 +451,31 @@ static void cacheLoadImage1(void *data)
     } else if (sameEntry && entry->qr) {
         entry->qr = 2; // 丢弃期间禁止主线程复用此槽位
     }
-    pthread_mutex_unlock(&texLoadingMutex);
+    TEX_LOADING_UNLOCK();
+    IO_DIAG_STAGE(IO_WS_ART_MUTEX_UNLOCKED);
 
     if (!keepResult) {
 #ifdef __DEBUG
         diagArtStale++;
 #endif
+        IO_DIAG_STAGE(IO_WS_ART_STALE_CLEAR);
         if (sameEntry && ioReq->trackGeneration)
             cacheClearExpiredItem(entry, ioReq->cacheUID);
+        IO_DIAG_STAGE(IO_WS_ART_DEC_LOADING);
         cacheDecreaseLoading();
         ioReq->qr = 0;
+        IO_DIAG_STAGE(IO_WS_ART_FREE_REQ);
         free(ioReq);
+        IO_DIAG_STAGE(IO_WS_ART_FREE_REQ_DONE);
         return;
     }
 
+    IO_DIAG_STAGE(IO_WS_ART_DEC_LOADING);
     cacheDecreaseLoading();
     ioReq->qr = 0;
+    IO_DIAG_STAGE(IO_WS_ART_FREE_REQ);
     free(ioReq);
+    IO_DIAG_STAGE(IO_WS_ART_FREE_REQ_DONE);
     return;
 }
 // Io handled action...
@@ -421,10 +492,10 @@ static void *cacheLoadImage(void *data)
 
         // Safeguards...
         if (!ioReq->cache || !ioReq->cache->content) {
-            pthread_mutex_lock(&texLoadingMutex);
+            TEX_LOADING_LOCK();
             if (texLoading > 0)
                 texLoading--;
-            pthread_mutex_unlock(&texLoadingMutex);
+            TEX_LOADING_UNLOCK();
             // 重置状态
             ioReq->qr = 0;
             continue;
@@ -433,10 +504,10 @@ static void *cacheLoadImage(void *data)
         item_list_t *handler = ioReq->list;
         if (!handler) {
             ioReq->cache->content[ioReq->cacheId].qr = 0;
-            pthread_mutex_lock(&texLoadingMutex);
+            TEX_LOADING_LOCK();
             if (texLoading > 0)
                 texLoading--;
-            pthread_mutex_unlock(&texLoadingMutex);
+            TEX_LOADING_UNLOCK();
             // 重置状态
             ioReq->qr = 0;
             continue;
@@ -445,10 +516,10 @@ static void *cacheLoadImage(void *data)
         // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
         if (cdFramesCount || forceSkipQr) {
             ioReq->cache->content[ioReq->cacheId].qr = 0;
-            pthread_mutex_lock(&texLoadingMutex);
+            TEX_LOADING_LOCK();
             if (texLoading > 0)
                 texLoading--;
-            pthread_mutex_unlock(&texLoadingMutex);
+            TEX_LOADING_UNLOCK();
             // 重置状态
             ioReq->qr = 0;
             continue;
@@ -468,10 +539,10 @@ static void *cacheLoadImage(void *data)
             ioReq->cache->content[ioReq->cacheId].lastUsed = guiFrameId;
             ioReq->cache->content[ioReq->cacheId].texFound = 1;
         }
-        pthread_mutex_lock(&texLoadingMutex);
+        TEX_LOADING_LOCK();
         if (texLoading > 0)
             texLoading--;
-        pthread_mutex_unlock(&texLoadingMutex);
+        TEX_LOADING_UNLOCK();
         ioReq->cache->content[ioReq->cacheId].qr = 0;
         // 重置状态
         ioReq->qr = 0;
@@ -543,6 +614,43 @@ static void cacheDiagReportLock(const char *name, const void *lockPtr)
 }
 #endif
 
+// pthread-embedded 的 struct pthread_mutex_t_ 布局（implement.h）：
+// handle(信号量), lock_idx, recursive_count, kind, ownerThread。
+typedef struct
+{
+    int handle;
+    int lock_idx;
+    int recursive_count;
+    int kind;
+    unsigned int ownerThread;
+} art_diag_pte_mutex_t;
+
+static void cacheDiagReportTexMutex(int mainThreadId)
+{
+    ioDiagPrintfNoLock("[ART_WD] tex_mutex owner=%d owner_site=%d worker_wait_site=%d other_waiter=%d other_wait_site=%d last_unlock_thread=%d last_unlock_site=%d locks=%u main_thread=%d\n",
+                       diagTexMutexOwner, diagTexMutexOwnerSite, diagTexMutexWorkerWaitSite,
+                       diagTexMutexOtherWaiter, diagTexMutexOtherWaitSite,
+                       diagTexMutexLastUnlockThread, diagTexMutexLastUnlockSite,
+                       diagTexMutexLockCount, mainThreadId);
+
+    // pthread_mutex_t 在 pthread-embedded 中是指针；若类型不是指针大小则跳过内部状态。
+    const void *mxPtr = NULL;
+    if (sizeof(texLoadingMutex) == sizeof(mxPtr))
+        memcpy(&mxPtr, &texLoadingMutex, sizeof(mxPtr));
+    if (mxPtr == NULL || mxPtr == (const void *)-1) {
+        ioDiagPrintfNoLock("[ART_WD] tex_mutex_pte ptr=0x%08x unavailable size=%u\n",
+                           (unsigned int)(uintptr_t)mxPtr, (unsigned int)sizeof(texLoadingMutex));
+        return;
+    }
+    const art_diag_pte_mutex_t *mx = (const art_diag_pte_mutex_t *)mxPtr;
+    ee_sema_t sema;
+    memset(&sema, 0, sizeof(sema));
+    int ret = (mx->handle > 0) ? ReferSemaStatus(mx->handle, &sema) : -1;
+    ioDiagPrintfNoLock("[ART_WD] tex_mutex_pte ptr=0x%08x handle=%d lock_idx=%d recursive=%d kind=%d owner=%u sema_ret=%d sema_count=%d wait_threads=%d\n",
+                       (unsigned int)(uintptr_t)mxPtr, mx->handle, mx->lock_idx, mx->recursive_count,
+                       mx->kind, mx->ownerThread, ret, sema.count, sema.wait_threads);
+}
+
 static void cacheDiagReport(u32 frame, u32 stalledFrames, int ioThreadId, int endSemaId,
                             int printfSemaId, int activeType)
 {
@@ -565,6 +673,12 @@ static void cacheDiagReport(u32 frame, u32 stalledFrames, int ioThreadId, int en
                        ioStatus.current_priority, ioStatus.initial_priority, ioStatus.wakeupCount);
     ioDiagPrintfNoLock("[ART_WD] main_thread id=%d ret=%d status=0x%02x cur_prio=%d\n",
                        mainThreadId, mainRet, mainStatus.status, mainStatus.current_priority);
+    int workerStage = gIODiagWorkerStage;
+    int printfCaller = gIODiagPrintfCallerStage;
+    ioDiagPrintfNoLock("[ART_WD] worker_stage=%d(%s) printf_caller_stage=%d(%s)\n",
+                       workerStage, ioDiagWorkerStageName(workerStage),
+                       printfCaller, ioDiagWorkerStageName(printfCaller));
+    cacheDiagReportTexMutex(mainThreadId);
 #ifdef _RETARGETABLE_LOCKING
     cacheDiagReportLock("malloc", &__lock___malloc_recursive_mutex);
     cacheDiagReportLock("sfp", &__lock___sfp_recursive_mutex);
@@ -626,9 +740,9 @@ void flushBatchRequests(void)
     // of the high-frequency Coverflow failure we are measuring.
     if (diagNextFrame == 0 || (u32)guiFrameId >= diagNextFrame) {
         int loading;
-        pthread_mutex_lock(&texLoadingMutex);
+        TEX_LOADING_LOCK();
         loading = texLoading;
-        pthread_mutex_unlock(&texLoadingMutex);
+        TEX_LOADING_UNLOCK();
         LOG("[ART_DIAG] frame=%u loading=%d queued=%d active=%d gen=%u force=%d cd=%d "
             "blocked=%d terminating=%d qalloc=%u qput=%u start=%u done=%u fail=%u "
             "cancel=%u rm=%u stale=%u bgfb=%u bgmiss=%u last=%s/%d qerr=%d "
@@ -758,9 +872,9 @@ void cacheEnd()
         // 等待所有线程wait
         int waitTime = 0;
         while (1) {
-            pthread_mutex_lock(&texLoadingMutex);
+            TEX_LOADING_LOCK();
             int loading = texLoading;
-            pthread_mutex_unlock(&texLoadingMutex);
+            TEX_LOADING_UNLOCK();
             if (loading <= 0)
                 break;
             waitTime++;
@@ -1030,12 +1144,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         oldestEntry->UID = *UID;
 
                     //  使用pthread的多线程方法
-                    pthread_mutex_lock(&texLoadingMutex);
+                    TEX_LOADING_LOCK();
                     if (texLoading >= 0)
                         texLoading++;
                     else
                         texLoading = 1;
-                    pthread_mutex_unlock(&texLoadingMutex);
+                    TEX_LOADING_UNLOCK();
                     req1.cache = cache;
                     req1.cacheId = *cacheId;
                     req1.list = list;
@@ -1061,12 +1175,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         oldestEntry->UID = *UID;
 
                     //  使用pthread的多线程方法
-                    pthread_mutex_lock(&texLoadingMutex);
+                    TEX_LOADING_LOCK();
                     if (texLoading >= 0)
                         texLoading++;
                     else
                         texLoading = 1;
-                    pthread_mutex_unlock(&texLoadingMutex);
+                    TEX_LOADING_UNLOCK();
                     req2.cache = cache;
                     req2.cacheId = *cacheId;
                     req2.list = list;
@@ -1091,12 +1205,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         oldestEntry->UID = *UID;
 
                     //  使用pthread的多线程方法
-                    pthread_mutex_lock(&texLoadingMutex);
+                    TEX_LOADING_LOCK();
                     if (texLoading >= 0)
                         texLoading++;
                     else
                         texLoading = 1;
-                    pthread_mutex_unlock(&texLoadingMutex);
+                    TEX_LOADING_UNLOCK();
                     req3.cache = cache;
                     req3.cacheId = *cacheId;
                     req3.list = list;
@@ -1266,9 +1380,9 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                     (!strncmp(cache->suffix, "COV", 3) ||
                      !strncmp(cache->suffix, "ICO", 3) ||
                      !strncmp(cache->suffix, "BG", 2))) {
-                    pthread_mutex_lock(&texLoadingMutex);
+                    TEX_LOADING_LOCK();
                     entry->requestGeneration = artRequestGeneration;
-                    pthread_mutex_unlock(&texLoadingMutex);
+                    TEX_LOADING_UNLOCK();
                 }
                 return NULL; // 正在后台加载
             }
