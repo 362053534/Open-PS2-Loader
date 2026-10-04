@@ -10,7 +10,9 @@
 - 不要切换、创建或推送其它分支。
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`
-- 当前工作区：干净。
+- 当前诊断基线提交：`8437435 debug: trace ART and ATA read stalls`
+- 当前任务：只完善 ART/mass1 永久停止加载的根因诊断，不改变 IO 行为、不通过更换后端绕过问题。
+- 当前工作区：本次交接更新涉及 `HANDOFF.md` 和 `AGENTS.md`；未修改源码、图片或 `temp/` 用户资产。
 
 ## 2. 当前任务重点
 
