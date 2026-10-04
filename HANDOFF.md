@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow 主题详情页禁用翻页与跳首/末项，修复输入锁死
+
+- `647cf154` 实机（新镜像、已修复 SDK）：在详情页按 L1/R1 翻页一次后所有按键无响应，但 `[ART_DIAG]` 仍每 120 帧打印，主循环未卡死。原因：Coverflow 主题下 `menuPrevPage()/menuNextPage()` 会触发 `thmTriggerCoverflowAnimMulti()` 并置 `gCoverflowPageScrollActive=1`，`menuHandleInputInfo()` 每帧先经 `menuTickCoverflowScroll()` 等待动画结束；而 `isAnimating` 只在 `drawCoverFlow()` 中清零，详情页没有 Coverflow 元素，动画标志永远不清，输入（包括返回键）被永久屏蔽。
+- 修复：`src/menusys.c` 的 `menuHandleInputInfo()` 在 `gTheme->coverflow` 非空时不再响应 L1/R1（`menuPrevPage/menuNextPage`）与 L2/R2（`menuFirstPage/menuLastPage`）；确认/返回（Cross/Circle）、左右切换游戏等其它详情页按键不变。非 Coverflow 主题保留原有详情页翻页与跳首/末项。
+- 未改动画超时、BG 加载逻辑或诊断输出。主界面 BG 停止加载的问题仍待进一步诊断。
+
 ### 2026-10-05 — 修正看门狗输出并跟踪 worker 阶段与 texLoadingMutex（仅调试构建）
 
 - `ea621fe7` 实机结果（旧镜像、未修复 SDK）：最后一个请求 `ICO SLAJ_250.30` 已打印 `texend_*` 与 `[ART_REQ_END] result=0`，随后 `[ART_DIAG]` 显示 `done` 已计数、`active_req=0`，之后 `start=0 done=0` 永久停滞、`active=3`。即本次 worker 停在 `diagArtCompleted++` 之后、`ioProcessRequest()` 返回之前（看门狗依据的进度计数未再递增，主线程 `ioGetActiveRequestType()` 仍能取得队列锁）。上一次（23:22 日志）`active_req=1` 且 `done` 少 1，停在 `texEnd()` 内。两次停点不同，但下一步都是 newlib `free()`（这次是 `free(ioReq)` 或 stale 路径的 `cacheClearItem()`），与 malloc 递归锁竞态假设一致；主线程期间仍能反复获取 `texLoadingMutex`，不支持该互斥锁被永久持有。

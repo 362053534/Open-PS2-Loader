@@ -1313,6 +1313,9 @@ void menuHandleInputInfo()
             guiSwitchScreen(GUI_SCREEN_MAIN);
         else
             selected_item->item->execCircle(selected_item->item);
+    } else if (gTheme->coverflow) {
+        // Coverflow 主题：详情页不画 Coverflow，翻页动画标志无法结束会锁死全部输入，
+        // 因此详情页禁用 L1/R1 翻页和 L2/R2 跳首/末项；非 Coverflow 主题保持原有操作。
     } else if (getKey(KEY_L1)) {
         menuPrevPage();
     } else if (getKey(KEY_R1)) {
