@@ -688,16 +688,56 @@ static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item
                                           startup, item->item.id);
 }
 
+#ifdef __DEBUG
+// BG 延迟入队诊断（仅调试构建）：跳过原因按 120 帧限流；实际请求的 item 只在变化时输出。
+static int bgDqLastReason = -1;
+static u32 bgDqLastFrame;
+static u32 bgDqSuppressed;
+static int bgDqLastItem = -2;
+
+static void bgDiagDeferred(const char *reason, int reasonId, submenu_list_t *item)
+{
+    u32 f = (u32)guiFrameId;
+
+    if (reasonId == bgDqLastReason && (u32)(f - bgDqLastFrame) < 120) {
+        bgDqSuppressed++;
+        return;
+    }
+    LOG("[BG_DQ] f=%u reason=%s item=%d deferred_f=%u cache=%d list=%d supp=%u\n",
+        f, reason, item ? item->item.id : -1, (u32)deferredCoverflowBgFrame,
+        deferredCoverflowBgCache ? 1 : 0, deferredCoverflowBgList ? 1 : 0, bgDqSuppressed);
+    bgDqLastReason = reasonId;
+    bgDqLastFrame = f;
+    bgDqSuppressed = 0;
+}
+#endif
+
 static void queueDeferredCoverflowBackground(submenu_list_t *item)
 {
     if (deferredCoverflowBgFrame != guiFrameId) {
+#ifdef __DEBUG
+        bgDiagDeferred("frame_mismatch", 0, item);
+#endif
         deferredCoverflowBgCache = NULL;
         deferredCoverflowBgList = NULL;
         deferredCoverflowBgFrame = 0;
         return;
     }
-    if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item)
+    if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item) {
+#ifdef __DEBUG
+        bgDiagDeferred("null_ptr", 1, item);
+#endif
         return;
+    }
+#ifdef __DEBUG
+    if (item->item.id != bgDqLastItem) {
+        LOG("[BG_DQ] f=%u reason=call item=%d cid=%d uid=%d\n", (u32)guiFrameId, item->item.id,
+            item->item.cache_id[deferredCoverflowBgCache->userId],
+            item->item.cache_uid[deferredCoverflowBgCache->userId]);
+        bgDqLastItem = item->item.id;
+        bgDqLastReason = -1;
+    }
+#endif
 
     coverflowRetryMissing(deferredCoverflowBgCache, &item->item);
     char *startup = deferredCoverflowBgList->itemGetStartup(deferredCoverflowBgList, item->item.id);

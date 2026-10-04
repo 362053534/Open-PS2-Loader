@@ -247,6 +247,17 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 主界面 Coverflow BG 停止入队诊断（仅调试构建）
+
+- 背景：`647cf154` 实机日志中最后一次 BG 请求在 68652 行（SLPM_652.66）成功，之后约 2 万帧再无 BG 入队，COV/ICO 正常；`loading=0 queued=0`。推测为 2 个 BG 槽位中一个受 `PrevCacheID_BG` 保护、另一个 `qr` 泄漏（无请求持有却非 0），但现有日志无法证实。
+- 新增（全部在 `#ifdef __DEBUG` 内，release 无行为变化；`cacheGetBackgroundFallback()` 仅把条件拆开以便计数，返回值不变）：
+  - `[BG_EV]`：BG 槽位每次 `qr` 置位/清零事件，site 取值 `q_alloc/q_nomem/nq_alloc/cancel/cancel_skip/release/release_skip/wk_begin/wk_keep/wk_stale/wk_lost/exp_reserve/exp_skip/clear/pt_clear/destroy`，含 `seq/f/line/c/slot/uid/ref_uid/qr=旧->新/tf/gen/art_gen/item/tid`。事件在关中断下写入 256 项环形缓冲区，由主线程在 `flushBatchRequests()` 每帧用 LOG 输出，不限流；溢出时输出 `[BG_EV] dropped=`。`cacheClearItem` 在调试构建中改为记录调用行号的宏。
+  - `[BG_SLOTS]`：每 120 帧（紧跟 `[ART_DIAG]`）输出每个 BG cache 的 `prev`(PrevCacheID_BG)、`force`、`bgforce`(force=1 时 fallback 被跳过次数)、`loading`、`art_gen`，以及每槽 `qr/uid/tf/lu/gen/mem`。
+  - `[BG_Q]`：quiet 路径 BG 未入队原因 `missing/loading/found_missing/no_request/no_slot`（no_slot 附槽位快照），同原因同 item 120 帧限流，`supp=` 为抑制次数。
+  - `[BG_DQ]`：`queueDeferredCoverflowBackground()` 的 `frame_mismatch/null_ptr`（120 帧限流）与 `call`（item 变化时输出 cid/uid）。
+- 判读：`[BG_SLOTS]` 中 `loading=0` 且某槽 `qr!=0` 即为泄漏，按 uid 回查该槽最后一条 `[BG_EV]` 的 site（例如 `q_alloc` 后无 `wk_begin/cancel` 表示请求丢失，`wk_stale` 后无 `exp_reserve/clear` 表示丢弃路径未清）。若无泄漏而 `[BG_Q] reason=no_slot` 持续，则看 `prev` 与各槽 `lu` 判断是保护槽还是本帧已用。
+- 验证：仅依赖 CI 编译检查，未实机验证。
+
 ### 2026-10-05 — Coverflow 主题详情页禁用翻页与跳首/末项，修复输入锁死
 
 - `647cf154` 实机（新镜像、已修复 SDK）：在详情页按 L1/R1 翻页一次后所有按键无响应，但 `[ART_DIAG]` 仍每 120 帧打印，主循环未卡死。原因：Coverflow 主题下 `menuPrevPage()/menuNextPage()` 会触发 `thmTriggerCoverflowAnimMulti()` 并置 `gCoverflowPageScrollActive=1`，`menuHandleInputInfo()` 每帧先经 `menuTickCoverflowScroll()` 等待动画结束；而 `isAnimating` 只在 `drawCoverFlow()` 中清零，详情页没有 Coverflow 元素，动画标志永远不清，输入（包括返回键）被永久屏蔽。
