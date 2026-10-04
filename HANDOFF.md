@@ -247,6 +247,17 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-04 — ART/mass1 ATA 永久停滞诊断交接
+
+- 用户提供了包含提交 `8437435` 的 `iopcore_debug` ELF 的完整目标机日志；本次日志已读到最后的 `IOP cmd: RESET`、卸载和 `freepad: DMA Busy`。
+- 本次永久停止从约 frame 2997–3117 形成：`active=3` 长期不变，`start=0`、`done=0`；队列中的 ART 请求持续堆积。整个停滞期间 `blocked=0`、`terminating=0`、`qalloc=0`、`qput=0`、`qerr=0`，因此不能归因于 `ioBlockOps()`、`gIOTerminate` 或请求池耗尽，也不能把本次套用成上一阶段的 `qerr=-5` 问题。
+- `active_req=1/COV/SLPS_254.76/128` 长期保持，说明诊断视角中的当前 COV 请求没有退出；但现有 `[ART_LOAD]` 使用共享诊断状态且多线程/多路径输出交错，不能仅凭它确认具体卡在该文件的 open、lseek、分配、read 还是 PNG 阶段。
+- 设备初始化时存在明确的实际 ATA 异常：`status=0x51 error=0x04`，`set_transfer type=0x40 mode=7 result=-503`，随后 ATA 设备仍以 `UDMA0` 注册为 `mass1`。这必须继续调查，但目前不能把它单独认定为 frame 2997 的直接根因，因为此前有大量 `mass1` read/PNG/success 完成记录。
+- 日志完全没有 `[ATA_DIAG]`。已核实当前 Coverflow 的 `mass1:` 路径加载的是 `$(PS2SDK)/iop/irx/ata_bd.irx`，而不是本仓库 `modules/iopcore/cdvdman/atad.c`；后者的诊断代码不会覆盖本次真实运行的 ATA 模块。不得继续在错误的本地 `atad.c` 上追加同类日志并声称已覆盖 BDM ATA。
+- 下一步必须在实际 PS2SDK `ata_bd.irx` 构建来源中增加 read/command 边界诊断：逻辑或物理 LBA、扇区数、命令开始/返回、超时、重试、ATA status/error、DMA/中断状态和最终错误码；同时把 EE 侧 ART 日志改为请求 ID + 请求本地路径，消除共享 `diagTexturePath`/active 字段造成的串线。若 `ata_bd.irx` 源码不在本仓库，应在实际 PS2SDK 依赖/构建链中修改或接入明确的 debug 版本，不再修改无关的 CDVDMAN ATAD 路径。
+- 本地环境仍缺少 `/samples/Makefile.iopglobal` 及完整 PS2SDK/GSKIT 交叉工具链，不能宣称本地目标构建通过；目标机验证仍待接入正确的 `ata_bd.irx` 诊断后进行。
+- 本次更新同时把“每次提交必须同步更新 `HANDOFF.md`”以及 `AGENTS.md` 规则文件的安全提交例外写入 `AGENTS.md`。按现有安全约束，`AGENTS.md` 提交必须单独暂存，不能把 `HANDOFF.md` 或源码/资源混入。
+
 ### 2026-10-01
 
 - 新增本交接文档。
