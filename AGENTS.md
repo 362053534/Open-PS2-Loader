@@ -20,4 +20,6 @@
 - 禁止使用 `git merge -s ours`、ours 策略合并或其它只保留当前文件树的合并方式。它会把第二父提交中的文件历史保留在图中，却静默丢弃其文件内容；曾导致 `48018ee` 中已跟踪的 `temp/SLPM_552.82_BG.png` 在错误的 `84871da`/`0c6ec35` 合并后消失。
 - 未经用户明确要求，不得 `git reset --hard`、rebase、改写远端历史或 force push。需要以某个提交为基线时，先确认基线和远端 SHA，保护并核对未提交文件；只有用户明确要求移除后续历史时，才可以使用带期望旧 SHA 的 `--force-with-lease`。
 - 推送前确认提交只包含本次请求：检查 `git diff <基线>..HEAD --stat`、关键路径是否仍存在，并核对 `git ls-tree -r HEAD -- temp gfx`。推送后再用 `git ls-remote origin <分支>` 和 `git show origin/<分支>:<关键文件>` 验证远端树。
+- 每次提交都必须同步更新 `HANDOFF.md`，在同一提交中记录本次变更、当前状态、验证限制和下一步；仅文档提交也不例外。修改 `AGENTS.md` 时，因规则文件提交必须保持暂存区只包含 `AGENTS.md`，不得把 `HANDOFF.md` 混入该提交；应先单独完成 `HANDOFF.md` 提交，再提交 `AGENTS.md`，并确认交接文档已反映本规则。这是唯一的提交拆分例外，不得把未同步 HANDOFF 当作常规做法。
+- 修改 `AGENTS.md` 后，提交前必须先检查 `git diff -- AGENTS.md`；规则文件提交的暂存区必须只包含 `AGENTS.md`，不得带入源码、图片、`temp/` 或其它用户文件。
 - 每次操作结束都要确认 `git status --short --branch`，并报告保留的用户文件和实际推送的提交；不要把“fetch 已完成”误报为工作树已经更新，`git fetch` 不会移动当前分支。
