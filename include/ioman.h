@@ -46,6 +46,12 @@ int ioGetPendingRequestCount(void);
 /** returns the type currently being processed by the IO worker, or -1 if idle */
 int ioGetActiveRequestType(void);
 
+/** 返回 IO 队列是否被 ioBlockOps() 阻塞 */
+int ioIsBlocked(void);
+
+/** 返回 IO worker 是否已经收到终止请求 */
+int ioIsTerminating(void);
+
 /** returns nonzero if there are any pending io requests */
 int ioHasPendingRequests(void);
 

@@ -619,11 +619,26 @@ int sceAtaDmaTransfer(int device, void *buf, u32 lba, u32 nsectors, int dir)
 int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, int dir)
 {
     USE_SPD_REGS;
+    USE_ATA_REGS;
     int res = 0, retries;
+#ifdef DEV9_DEBUG
+    u32 diagStartLba = (u32)lba;
+    u32 diagStartLbaHigh = (u32)(lba >> 32);
+    u32 diagStartSectors = nsectors;
+#endif
     u16 sector, lcyl, hcyl, select, command, len;
     u32 transfer_len;
 
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] lock_wait lba=%u:%u sectors=%u dir=%s lba48=%d\n",
+             diagStartLbaHigh, diagStartLba, diagStartSectors,
+             dir == ATA_DIR_READ ? "read" : "write", lba_48bit);
+#endif
     WAITIOSEMA(ata_io_sema);
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] lock_acquired lba=%u:%u sectors=%u\n",
+             diagStartLbaHigh, diagStartLba, diagStartSectors);
+#endif
 
     while (res == 0 && nsectors > 0) {
         if (lba_48bit) {
@@ -653,18 +668,34 @@ int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, 
         len = (u16)transfer_len;
 
         for (retries = 3; retries > 0; retries--) {
+#ifdef DEV9_DEBUG
+            M_PRINTF("[ATA_DIAG] cmd_begin lba=%u:%u sectors=%u attempt=%d cmd=0x%02x\n",
+                     (u32)(lba >> 32), (u32)lba, transfer_len,
+                     4 - retries, command);
+#endif
             /* Due to the retry loop, put this call (for the GameStar workaround) here instead of the old location. */
             if (ata_gamestar_workaround)
                 ata_set_dir(dir);
 
-            if ((res = sceAtaExecCmd(buf, transfer_len, 0, len, sector, lcyl, hcyl, select, command)) != 0)
+            if ((res = sceAtaExecCmd(buf, transfer_len, 0, len, sector, lcyl, hcyl, select, command)) != 0) {
+#ifdef DEV9_DEBUG
+                M_PRINTF("[ATA_DIAG] cmd_end phase=exec lba=%u:%u result=%d status=0x%02x error=0x%02x\n",
+                         (u32)(lba >> 32), (u32)lba, res,
+                         ata_hwport->r_status & 0xff, sceAtaGetError());
+#endif
                 break;
+            }
 
             /* Set up (part of) the transfer here. In v1.04, this was called at the top of the outer loop. */
             if (!ata_gamestar_workaround)
                 ata_set_dir(dir);
 
             res = sceAtaWaitResult();
+#ifdef DEV9_DEBUG
+            M_PRINTF("[ATA_DIAG] cmd_end phase=wait lba=%u:%u sectors=%u result=%d status=0x%02x error=0x%02x\n",
+                     (u32)(lba >> 32), (u32)lba, transfer_len, res,
+                     ata_hwport->r_status & 0xff, sceAtaGetError());
+#endif
 
             /* In v1.04, this was not done. Neither was there a mechanism to retry if a non-permanent error occurs. */
             SPD_REG16(SPD_R_IF_CTRL) &= ~SPD_IF_DMA_ENABLE;
@@ -679,6 +710,10 @@ int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, 
     }
 
     SIGNALIOSEMA(ata_io_sema);
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] io_end lba=%u:%u sectors=%u result=%d\n",
+             diagStartLbaHigh, diagStartLba, diagStartSectors, res);
+#endif
 
     return res;
 }
@@ -779,7 +814,13 @@ static unsigned int ata_get_logical_sector_size_2(int device)
 static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 nsectors, int dir, unsigned int sector_size)
 {
     USE_SPD_REGS;
+    USE_ATA_REGS;
     int res = 0, retries;
+#ifdef DEV9_DEBUG
+    u32 diagStartLba = (u32)lba;
+    u32 diagStartLbaHigh = (u32)(lba >> 32);
+    u32 diagStartSectors = nsectors;
+#endif
     u16 sector, lcyl, hcyl, select, command, len;
     u32 dma_blkcount_per_sector;
 
@@ -787,7 +828,16 @@ static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 n
     if (dma_blkcount_per_sector == 0)
         return ATA_RES_ERR_IO;
 
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] lock_wait_4k lba=%u:%u sectors=%u sector_size=%u dir=%s lba48=%d\n",
+             diagStartLbaHigh, diagStartLba, diagStartSectors, sector_size,
+             dir == ATA_DIR_READ ? "read" : "write", lba_48bit);
+#endif
     WAITIOSEMA(ata_io_sema);
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] lock_acquired_4k lba=%u:%u sectors=%u\n",
+             diagStartLbaHigh, diagStartLba, diagStartSectors);
+#endif
 
     while (res == 0 && nsectors > 0) {
         if (lba_48bit) {
@@ -807,11 +857,22 @@ static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 n
         }
 
         for (retries = 3; retries > 0; retries--) {
+#ifdef DEV9_DEBUG
+            M_PRINTF("[ATA_DIAG] cmd_begin_4k lba=%u:%u sectors=%u attempt=%d cmd=0x%02x\n",
+                     (u32)(lba >> 32), (u32)lba, len,
+                     4 - retries, command);
+#endif
             if (ata_gamestar_workaround)
                 ata_set_dir(dir);
 
-            if ((res = sceAtaExecCmd(buf, len, 0, len, sector, lcyl, hcyl, select, command)) != 0)
+            if ((res = sceAtaExecCmd(buf, len, 0, len, sector, lcyl, hcyl, select, command)) != 0) {
+#ifdef DEV9_DEBUG
+                M_PRINTF("[ATA_DIAG] cmd_end_4k phase=exec lba=%u:%u result=%d status=0x%02x error=0x%02x\n",
+                         (u32)(lba >> 32), (u32)lba, res,
+                         ata_hwport->r_status & 0xff, sceAtaGetError());
+#endif
                 break;
+            }
 
             /* The ATA command counts logical sectors, while DEV9 DMA still
                transfers in 512-byte blocks. sceAtaWaitResult() consumes
@@ -823,6 +884,11 @@ static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 n
                 ata_set_dir(dir);
 
             res = sceAtaWaitResult();
+#ifdef DEV9_DEBUG
+            M_PRINTF("[ATA_DIAG] cmd_end_4k phase=wait lba=%u:%u sectors=%u result=%d status=0x%02x error=0x%02x\n",
+                     (u32)(lba >> 32), (u32)lba, len, res,
+                     ata_hwport->r_status & 0xff, sceAtaGetError());
+#endif
             SPD_REG16(SPD_R_IF_CTRL) &= ~SPD_IF_DMA_ENABLE;
 
             if (res != ATA_RES_ERR_ICRC)
@@ -835,6 +901,10 @@ static int ata_device_sector_io_internal_2(int device, void *buf, u64 lba, u32 n
     }
 
     SIGNALIOSEMA(ata_io_sema);
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] io_end_4k lba=%u:%u sectors=%u result=%d\n",
+             diagStartLbaHigh, diagStartLba, diagStartSectors, res);
+#endif
 
     return res;
 }
@@ -870,10 +940,34 @@ static int ata_bd_soft_reset(void)
 
 static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 count)
 {
+#ifdef DEV9_DEBUG
+    int retried = 0;
+    M_PRINTF("[ATA_DIAG] bd_read_begin lba=%u:%u sectors=%u sector_size=%u\n",
+             (u32)(sector >> 32), (u32)sector, count, bd->sectorSize);
+#endif
     int result = ata_bd_io_common(bd, sector, buffer, count, 0);
 
-    if ((result == ATA_RES_ERR_TIMEOUT || result == ATA_RES_ERR_ICRC) && ata_bd_soft_reset() == 0)
-        result = ata_bd_io_common(bd, sector, buffer, count, 0);
+    if (result == ATA_RES_ERR_TIMEOUT || result == ATA_RES_ERR_ICRC) {
+#ifdef DEV9_DEBUG
+        M_PRINTF("[ATA_DIAG] soft_reset_begin lba=%u:%u result=%d\n",
+                 (u32)(sector >> 32), (u32)sector, result);
+#endif
+        int resetResult = ata_bd_soft_reset();
+#ifdef DEV9_DEBUG
+        M_PRINTF("[ATA_DIAG] soft_reset_end lba=%u:%u result=%d\n",
+                 (u32)(sector >> 32), (u32)sector, resetResult);
+#endif
+        if (resetResult == 0) {
+#ifdef DEV9_DEBUG
+            retried = 1;
+#endif
+            result = ata_bd_io_common(bd, sector, buffer, count, 0);
+        }
+    }
+#ifdef DEV9_DEBUG
+    M_PRINTF("[ATA_DIAG] bd_read_end lba=%u:%u sectors=%u result=%d retried=%d\n",
+             (u32)(sector >> 32), (u32)sector, count, result, retried);
+#endif
     if (result != 0)
         return -EIO;
     return count;

@@ -66,11 +66,16 @@ int hddIs48bit(void)
 int hddSetTransferMode(int type, int mode)
 {
     hddAtaSetMode_t *args = (hddAtaSetMode_t *)IOBuffer;
+    int result;
 
     args->type = type;
     args->mode = mode;
 
-    return fileXioDevctl("xhdd0:", ATA_DEVCTL_SET_TRANSFER_MODE, args, sizeof(hddAtaSetMode_t), NULL, 0);
+    result = fileXioDevctl("xhdd0:", ATA_DEVCTL_SET_TRANSFER_MODE, args, sizeof(hddAtaSetMode_t), NULL, 0);
+#ifdef __DEBUG
+    LOG("[ATA_CFG] set_transfer type=0x%02x mode=%d result=%d\n", type, mode, result);
+#endif
+    return result;
 }
 
 //-------------------------------------------------------------------------

@@ -44,6 +44,10 @@ static volatile u32 diagBgFallbackHit;
 static volatile u32 diagBgFallbackMiss;
 static volatile int diagLastResult;
 static volatile int diagLastQueueError;
+static volatile int diagActiveArt;
+static char diagActiveSuffix[8] = "-";
+static char diagActiveValue[128] = "-";
+static int diagActiveItemId;
 static char diagLastSuffix[8] = "-";
 static u32 diagNextFrame;
 #endif
@@ -321,8 +325,21 @@ static void cacheLoadImage1(void *data)
     // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
 #ifdef __DEBUG
     diagArtStarted++;
+    diagActiveArt = 1;
+    strncpy(diagActiveSuffix, ioReq->cache->suffix, sizeof(diagActiveSuffix) - 1);
+    diagActiveSuffix[sizeof(diagActiveSuffix) - 1] = '\0';
+    strncpy(diagActiveValue, ioReq->value ? ioReq->value : "-", sizeof(diagActiveValue) - 1);
+    diagActiveValue[sizeof(diagActiveValue) - 1] = '\0';
+    diagActiveItemId = ioReq->itemId;
+    LOG("[ART_REQ_BEGIN] suffix=%s value=%s item=%d prefix=%s\n",
+        diagActiveSuffix, diagActiveValue, diagActiveItemId,
+        ioReq->cache->prefix ? ioReq->cache->prefix : "-");
 #endif
     int result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
+
+#ifdef __DEBUG
+    diagActiveArt = 0;
+#endif
 
     if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&entry->texture);
@@ -469,15 +486,18 @@ void flushBatchRequests(void)
         loading = texLoading;
         pthread_mutex_unlock(&texLoadingMutex);
         LOG("[ART_DIAG] frame=%u loading=%d queued=%d active=%d gen=%u force=%d cd=%d "
-            "qalloc=%u qput=%u start=%u done=%u fail=%u cancel=%u rm=%u stale=%u "
-            "bgfb=%u bgmiss=%u last=%s/%d qerr=%d\n",
+            "blocked=%d terminating=%d qalloc=%u qput=%u start=%u done=%u fail=%u "
+            "cancel=%u rm=%u stale=%u bgfb=%u bgmiss=%u last=%s/%d qerr=%d "
+            "active_req=%d/%s/%s/%d\n",
             (u32)guiFrameId, loading, ioGetPendingRequestCount(),
             ioGetActiveRequestType(), artRequestGeneration,
             ForceRefreshPrevTexCache, cdFramesCount,
-            diagArtQueueAllocFail, diagArtQueuePutFail, diagArtStarted,
-            diagArtCompleted, diagArtFailed, diagArtCancelled, diagArtRemoved,
-            diagArtStale, diagBgFallbackHit, diagBgFallbackMiss,
-            diagLastSuffix, diagLastResult, diagLastQueueError);
+            ioIsBlocked(), ioIsTerminating(), diagArtQueueAllocFail,
+            diagArtQueuePutFail, diagArtStarted, diagArtCompleted,
+            diagArtFailed, diagArtCancelled, diagArtRemoved, diagArtStale,
+            diagBgFallbackHit, diagBgFallbackMiss, diagLastSuffix,
+            diagLastResult, diagLastQueueError, diagActiveArt,
+            diagActiveSuffix, diagActiveValue, diagActiveItemId);
         diagArtQueueAllocFail = 0;
         diagArtQueuePutFail = 0;
         diagArtStarted = 0;

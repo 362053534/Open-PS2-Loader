@@ -53,7 +53,7 @@ static s32 gIOPrintfSemaId;
 static ee_thread_t gIOThread;
 static ee_sema_t gQueueSema;
 
-static int isIOBlocked = 0;
+static volatile int isIOBlocked = 0;
 static volatile int isIORunning = 0;
 static volatile int isIOPending = 0;
 
@@ -235,8 +235,12 @@ void ioInit(void)
 
 static int ioPutRequestInternal(int type, void *data, int unique)
 {
-    if (isIOBlocked)
+    if (isIOBlocked) {
+#ifdef __DEBUG
+        LOG("[IO_QUEUE_REJECT] reason=blocked type=%d\n", type);
+#endif
         return IO_ERR_IO_BLOCKED;
+    }
 
     // check the type before queueing
     if (!ioGetHandler(type))
@@ -245,6 +249,9 @@ static int ioPutRequestInternal(int type, void *data, int unique)
     WaitSema(gEndSemaId);
     // ==== 在锁区内检查终止状态 ====
     if (gIOTerminate) {
+#ifdef __DEBUG
+        LOG("[IO_QUEUE_REJECT] reason=terminating type=%d\n", type);
+#endif
         SignalSema(gEndSemaId);
         return IO_ERR_IO_BLOCKED; // 自定义错误码
     }
@@ -269,6 +276,9 @@ static int ioPutRequestInternal(int type, void *data, int unique)
     // If it exists, it won't be touched, if it does not exist, it is not being processed
     struct io_request_t *new_req = AllocIoRequest();
     if (!new_req) {
+#ifdef __DEBUG
+        LOG("[IO_QUEUE_REJECT] reason=pool_full type=%d\n", type);
+#endif
         SignalSema(gEndSemaId);
         return IO_ERR_IO_BLOCKED; // 注意定义该错误码
     }
@@ -356,12 +366,26 @@ int ioRemoveRequests(int type)
 
 void ioEnd(void)
 {
+#ifdef __DEBUG
+    LOG("[IO_END] request terminating=%d pending=%d active=%d\n",
+        gIOTerminate, ioHasPendingRequests(), ioGetActiveRequestType());
+#endif
     gIOTerminate = 1;
     // 无需唤醒：worker 轮询循环每轮(最多 2ms)都会检查 gIOTerminate 并自行退出。
 
     // 等待worker线程彻底退出
-    while (isIORunning)
+    unsigned int waitTicks = 0;
+    while (isIORunning) {
+#ifdef __DEBUG
+        if ((++waitTicks % 1000) == 0)
+            LOG("[IO_END_WAIT] pending=%d active=%d\n",
+                ioHasPendingRequests(), ioGetActiveRequestType());
+#endif
         usleep(1000); // 或者YieldCPU(), 可以根据PS2线程API适当替换
+    }
+#ifdef __DEBUG
+    LOG("[IO_END] complete\n");
+#endif
 }
 
 int ioGetPendingRequestCount(void)
@@ -388,6 +412,16 @@ int ioGetActiveRequestType(void)
     SignalSema(gEndSemaId);
 
     return type;
+}
+
+int ioIsBlocked(void)
+{
+    return isIOBlocked;
+}
+
+int ioIsTerminating(void)
+{
+    return gIOTerminate;
 }
 
 int ioHasPendingRequests(void)
@@ -425,6 +459,11 @@ int ioBlockOps(int block)
     ee_thread_status_t status;
     int ThreadID;
 
+#ifdef __DEBUG
+    LOG("[IO_BLOCK] request=%d blocked=%d terminating=%d pending=%d active=%d\n",
+        block, isIOBlocked, gIOTerminate, ioHasPendingRequests(), ioGetActiveRequestType());
+#endif
+
     if (block && !isIOBlocked) {
         isIOBlocked = 1;
 
@@ -432,9 +471,16 @@ int ioBlockOps(int block)
         ReferThreadStatus(ThreadID, &status);
         ChangeThreadPriority(ThreadID, 90);
 
-        // wait for all io to finish
-        while (ioHasPendingRequests())
+        // 等待时每秒记录一次，区分普通清理等待和 worker 永久不返回。
+        unsigned int waitTicks = 0;
+        while (ioHasPendingRequests()) {
+#ifdef __DEBUG
+            if ((++waitTicks % 1000) == 0)
+                LOG("[IO_BLOCK_WAIT] blocked=%d terminating=%d pending=%d active=%d\n",
+                    isIOBlocked, gIOTerminate, ioGetPendingRequestCount(), ioGetActiveRequestType());
+#endif
             usleep(1000);
+        }
 
         ChangeThreadPriority(ThreadID, status.current_priority);
 
@@ -442,6 +488,11 @@ int ioBlockOps(int block)
     } else if (!block && isIOBlocked) {
         isIOBlocked = 0;
     }
+
+#ifdef __DEBUG
+    LOG("[IO_BLOCK] complete=%d blocked=%d terminating=%d pending=%d active=%d\n",
+        block, isIOBlocked, gIOTerminate, ioHasPendingRequests(), ioGetActiveRequestType());
+#endif
 
     return IO_OK;
 }

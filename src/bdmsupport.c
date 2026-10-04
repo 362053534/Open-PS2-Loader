@@ -1140,6 +1140,9 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 {
     // If atad is loaded then xhdd is also loaded, query the hdd to see if it supports LBA48 or not.
     pDeviceData->bdmHddIsLBA48 = fileXioDevctl("xhdd0:", ATA_DEVCTL_IS_48BIT, NULL, 0, NULL, 0);
+#ifdef __DEBUG
+    LOG("[ATA_CFG] mass=%d lba48_query=%d\n", pDeviceData->massDeviceIndex, pDeviceData->bdmHddIsLBA48);
+#endif
     if (pDeviceData->bdmHddIsLBA48 < 0) {
         // Failed to query the LBA limit of the device, fail safe to LBA28.
         LOG("Mass device %d is backed by ATA but failed to get LBA limit %d\n", pDeviceData->massDeviceIndex, pDeviceData->bdmHddIsLBA48);
@@ -1160,11 +1163,23 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 
     // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
     int gDmaMode = -1; // 获取配置失败时，不重设传输模式
+    int dmaType = 0;
+    int dmaMode = -1;
+    int dmaResult = 0;
     configGetInt(configGetByType(CONFIG_GAME), CONFIG_ITEM_DMA, &gDmaMode);
-    if (gDmaMode >= 3 && gDmaMode <= 10)
-        hddSetTransferMode(0x40, gDmaMode - 3);
-    else if(gDmaMode >= 0 && gDmaMode <= 2)
-        hddSetTransferMode(0x20, gDmaMode);
+    if (gDmaMode >= 3 && gDmaMode <= 10) {
+        dmaType = 0x40;
+        dmaMode = gDmaMode - 3;
+        dmaResult = hddSetTransferMode(dmaType, dmaMode);
+    } else if (gDmaMode >= 0 && gDmaMode <= 2) {
+        dmaType = 0x20;
+        dmaMode = gDmaMode;
+        dmaResult = hddSetTransferMode(dmaType, dmaMode);
+    }
+#ifdef __DEBUG
+    LOG("[ATA_CFG] mass=%d configured_dma=%d type=0x%02x mode=%d result=%d\n",
+        pDeviceData->massDeviceIndex, gDmaMode, dmaType, dmaMode, dmaResult);
+#endif
 
     //// debug
     // char debugFileDir[64];
