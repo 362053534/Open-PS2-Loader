@@ -252,7 +252,9 @@ static void cacheReleaseRequestSlot(load_image_request_t *ioReq)
 
 // 丢弃过期/代际失效的 active 请求时：只要 UID 仍匹配且 qr 非 0，就必须清槽并 qr=0。
 // 旧逻辑只接受 qr==2，若状态被打断会永久钉住 qr，触发 BG D2 让步。
-// 注意：cacheClearItem 含 rmUnloadTexture，当前仍在 IO worker 线程执行（与改前相同）。
+// 此路径上的纹理从未发布/绘制（见 HANDOFF）：主线程入队前已 cacheClearItem，
+// keepResult 未置 qr=0，draw 在 qr!=0 时只回 Prev/NULL。故 worker 仅 texFree(EE)，
+// 不调用 rmUnloadTexture / gsKit TexManager（与 upstream worker 一致）。
 static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
 {
     int owned = 0;
@@ -262,13 +264,29 @@ static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
 
     TEX_LOADING_LOCK();
     if (entry->UID == cacheUID && entry->qr) {
-        entry->qr = 3; // reserved while texture memory is released below
+        entry->qr = 3; // reserved while EE texture memory is released below
         owned = 1;
     }
     TEX_LOADING_UNLOCK();
 
-    if (owned)
-        cacheClearItem(entry, 1);
+    if (!owned)
+        return;
+
+    texFree(&entry->texture);
+    memset(entry, 0, sizeof(cache_entry_t));
+    entry->texture.Width = 0;
+    entry->texture.Height = 0;
+    entry->texture.PSM = GS_PSM_CT24;
+    entry->texture.ClutPSM = 0;
+    entry->texture.TBW = 0;
+    entry->texture.Vram = 0;
+    entry->texture.VramClut = 0;
+    entry->texture.Filter = GS_FILTER_LINEAR;
+    entry->texture.Delayed = 1;
+    entry->qr = 0;
+    entry->lastUsed = 0;
+    entry->UID = -1;
+    entry->texFound = -1;
 }
 
 void cacheCancelPendingArtRequests(void)

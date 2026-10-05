@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — stale 丢弃改为 worker 仅 texFree，避免 IO 线程 rmUnloadTexture
+
+- 核实：`cacheClearExpiredItem` 仅在 `cacheLoadImage1` 代际失效且 `sameEntry`（`trackGeneration` 的 CF COV/ICO/BG）时调用；入队前主线程已 `cacheClearItem`；`keepResult` 未发布则 qr 一直非 0；`cacheGetTexture`/`quiet` 在 `qr!=0` 时返回 Prev/NULL 而非当前槽（挑 Prev 槽前会清 Prev）。故该结果从未 bind/TexManager。
+- 变更：worker 侧改为 `texFree` + 槽位复位（保留 UID 匹配且 `qr!=0` 即清的 7fc85f65 规则），不再 `cacheClearItem`/`rmUnloadTexture`。
+- 验证：仅 CI。
+
 ### 2026-10-05 — 修补 ART 槽位 qr 泄漏源；收紧 BG D2 空闲判定
 
 - 按用户批准的最小方案（不恢复未批准的 recover）：
