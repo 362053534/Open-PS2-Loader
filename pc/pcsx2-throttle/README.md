@@ -19,7 +19,7 @@
   USB 1.1 只有 1.0~1.25 MB/s ⇒ 实机上开头就喂不上，1~2 秒内把 0.377 MiB 的预读吃光。
 * 想在模拟器里复现实机的"停住"，就得把这个等效速率压到 1.9 MB/s 以下 —— 这就是本目录补丁做的事。
 
-## 补丁：`pcsx2-cdvd-throttle.patch`
+## 补丁：`pcsx2-cdvd-throttle.diff`
 
 对 `pcsx2/CDVD/CDVD.cpp` 加 2 个**环境变量**（不设就等于原版，行为完全不变）：
 
@@ -85,5 +85,5 @@ $env:PCSX2_CDVD_KBPS = "1024"
 
 | 文件 | 说明 |
 |---|---|
-| `pcsx2-cdvd-throttle.patch` | 对 PCSX2 master（2.8.x）`pcsx2/CDVD/CDVD.cpp` 的补丁，`git apply` 即可 |
+| `pcsx2-cdvd-throttle.diff` | 对 PCSX2 master（2.8.x）`pcsx2/CDVD/CDVD.cpp` 的补丁，`git apply` 即可 |
 | `rate_check.py` | 把"限到 R KB/s"换算成扇区/秒、每扇区耗时，并对照两版 OP 的实测需求给出预测 |
