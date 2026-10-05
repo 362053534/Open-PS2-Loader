@@ -98,6 +98,13 @@ def adapt(text, nl):
 
 
 def main():
+    # Windows 的 cmd/CI 里 stdout 编码可能不是 UTF-8，打印中文会直接抛异常；这里兜底。
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     root = sys.argv[1] if len(sys.argv) > 1 else "pcsx2"
     path = os.path.join(root, "pcsx2", "CDVD", "CDVD.cpp")
     if not os.path.isfile(path):

@@ -66,8 +66,12 @@ jobs:
       - name: 打上光驱限速补丁
         shell: cmd
         run: |
-          python pc\pcsx2-throttle\apply_patch.py pcsx2 || exit /b 1
-          git -C pcsx2 diff --stat
+          set PYTHONIOENCODING=utf-8
+          (python pc\pcsx2-throttle\apply_patch.py pcsx2 || py pc\pcsx2-throttle\apply_patch.py pcsx2) > patch.log 2>&1
+          set RC=%ERRORLEVEL%
+          type patch.log
+          if not %RC%==0 exit /b %RC%
+          findstr /c:"PCSX2_CDVD_KBPS" pcsx2\pcsx2\CDVD\CDVD.cpp >nul || (echo 补丁没有落进 CDVD.cpp & exit /b 1)
 
       - name: Restore deps
         uses: actions/cache/restore@v4
@@ -83,7 +87,10 @@ jobs:
         shell: cmd
         working-directory: pcsx2
         run: |
-          msbuild "PCSX2_qt.slnx" /m /v:m /p:Configuration="Release AVX2" /p:Platform="x64" || exit /b 1
+          msbuild "PCSX2_qt.slnx" /m /v:m /p:Configuration="Release AVX2" /p:Platform="x64" > ..\build.log 2>&1
+          set RC=%ERRORLEVEL%
+          powershell -NoProfile -Command "Get-Content ..\build.log -Tail 60"
+          if not %RC%==0 exit /b %RC%
           del bin\resources\fonts\Twemoji* 2>nul
 
       - name: 检查产物
@@ -92,6 +99,22 @@ jobs:
         run: |
           dir bin\pcsx2-qt.exe
           dir bin\ | findstr /i "qt"
+
+      - name: 失败时把日志写进 Summary（方便排查）
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "### 失败诊断"
+            for f in patch.log build.log; do
+              if [ -f "$f" ]; then
+                echo "#### $f (最后 60 行)"
+                echo '```'
+                tail -60 "$f"
+                echo '```'
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload PCSX2 限速版
         uses: actions/upload-artifact@v4
