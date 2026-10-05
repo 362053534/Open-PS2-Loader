@@ -247,6 +247,13 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 移除 Coverflow 缺图 2.5 秒定时重试（恢复上游行为）
+
+- 删除 `COVERFLOW_MISSING_RETRY_MS`、`gCovMissingRetryAt`、`gCovRetryMissingThisFrame`、`gCovRetryEvalFrame`、`coverflowUpdateRetryWindow()`、`coverflowRetryMissing()` 及全部调用点（COV/ICO/BG）。
+- 恢复上游行为：art 一旦记为缺图（`cache_id=-2`）不再自动重请求，直到游戏列表重建。详情页 BG 显示回退（`fe2ec6f2`）本就跳过 `-2`，不受影响。
+- 历史：`31edcf56` 引入 → `d9395854` 回退 → `8e493c66` 未经用户授权再次加回。**此后未经用户明确批准不得再加回该规则。**
+- 验证：仅 CI，未实机。
+
 ### 2026-10-05 — Coverflow 背景显示回退（不影响槽位选择）
 
 - 在 `318f91e1` 简化后，当前游戏 BG 未就绪时会闪默认/plasma。按用户决定加回**仅显示**回退：`cacheGetCoverflowBgDisplayFallback()` 扫描 BG 缓存中 `qr==0 && texFound==1 && Mem` 的槽，取 `lastUsed` 最大者绘制；不改 `lastUsed`、不保护任何槽、不参与 quiet 选槽。

@@ -623,49 +623,6 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
-// texDiscoverLoad() intentionally reports a missing art file and a transient
-// BDM read error with the same status.  Do not permanently turn that ambiguity
-// into a cache_id == -2 decision while a removable/slow device is recovering.
-// Retry the current Coverflow window (including ICO and BG) at a low rate; a
-// genuinely missing file simply fails again and remains cheap between retries.
-#define COVERFLOW_MISSING_RETRY_MS 2500
-static clock_t gCovMissingRetryAt = 0;
-static int gCovRetryMissingThisFrame = 0;
-static u64 gCovRetryEvalFrame = (u64)-1;
-
-// 每帧只计算一次缺图重试窗口，COV/ICO/BG 共用。BG 元素先于 Coverflow 绘制、
-// 详情页又没有 Coverflow 元素，因此不能只在 drawCoverFlow() 里刷新该标志，
-// 否则详情页会沿用旧的 1，每帧都重新请求缺失的 BG。
-static void coverflowUpdateRetryWindow(void)
-{
-    clock_t now;
-
-    if (gCovRetryEvalFrame == guiFrameId)
-        return;
-    gCovRetryEvalFrame = guiFrameId;
-    gCovRetryMissingThisFrame = 0;
-    now = clock();
-    if (now >= gCovMissingRetryAt) {
-        gCovRetryMissingThisFrame = 1;
-        gCovMissingRetryAt = now +
-                             (clock_t)COVERFLOW_MISSING_RETRY_MS * CLOCKS_PER_SEC / 1000;
-    }
-}
-
-static void coverflowRetryMissing(image_cache_t *cache, struct submenu_item *item)
-{
-    int uid;
-
-    if (!gCovRetryMissingThisFrame || !cache || !item)
-        return;
-
-    uid = cache->userId;
-    if (item->cache_id[uid] == -2) {
-        item->cache_id[uid] = -1;
-        item->cache_uid[uid] = -1;
-    }
-}
-
 // 与 getGameImageTexture() 相同，但走 Coverflow 专用的 quiet 缓存路径，
 // 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
 // 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
@@ -674,7 +631,6 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 {
     if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
-        coverflowRetryMissing(cache, item);
         char *startup = list->itemGetStartup(list, item->id);
         if (allowRequest)
             return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
@@ -691,7 +647,6 @@ static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item
     if (!gTheme || !gTheme->coverflowIcoCache || !list || !item || !gEnableArtICO)
         return NULL;
 
-    coverflowRetryMissing(gTheme->coverflowIcoCache, &item->item);
     char *startup = list->itemGetStartup(list, item->item.id);
     if (allowRequest)
         return cacheGetTextureQuiet(gTheme->coverflowIcoCache, list,
@@ -713,7 +668,6 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
             // Coverflow 主题：BG 与 COV 一样直接走 quiet 路径请求/取图（槽位选择相同）。
             // 当前游戏 BG 尚未就绪时，仅显示回退到其它已加载槽（通常是上一款），
             // 不保护任何槽位、不改 lastUsed；已确认缺图则走默认/plasma。
-            coverflowUpdateRetryWindow();
             texture = getCoverflowTexture(gameImage->cache, support, &item->item, 1);
             if (!(texture && texture->Mem)) {
                 int uid = gameImage->cache->userId;
@@ -1374,9 +1328,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 {
     if (item == NULL)
         return;
-
-    // COV、ICO 与 BG 共用同一个有界重试窗口（每帧只计算一次）。
-    coverflowUpdateRetryWindow();
 
     // 关闭封面图时仍保留 Coverflow 的布局计算和 ICO 绘制；只跳过封面/case 的实际提交。
     // 由于此时没有可见封面动画，ICO 只随当前 item 的变化切换，不等待 Coverflow 动画。
