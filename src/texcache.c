@@ -1393,40 +1393,63 @@ GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list
     return cacheGetTextureQuietInternal(cache, list, cacheId, UID, value, itemId, 0);
 }
 
-// Coverflow 背景显示回退：只读、不影响槽位选择与 LRU。
-// 调用方必须保证当前游戏尚未确认缺图（cache_id != -2）；缺图时应画默认/plasma。
-// 每帧重新扫描：只接受 qr==0 且 texFound==1 且 Mem 非空的槽；不改 lastUsed。
-// ForceRefreshPrevTexCache 非 0 时不回退（页签/列表/进详情后的 1～2 帧），避免画出其它设备的背景。
+// Coverflow 背景“上一帧实际显示”记录（显示回退专用，不影响选槽/LRU）。
+// slot=-2 表示上一帧画的是主题默认/plasma；slot>=0 且 UID 匹配时才可回退到该外部 BG。
+#define COV_BG_DISP_DEFAULT (-2)
+static image_cache_t *covBgDispCache = NULL;
+static int covBgDispSlot = COV_BG_DISP_DEFAULT;
+static int covBgDispUID = -1;
+
+static void cacheCoverflowBgResetDisplayed(void)
+{
+    covBgDispCache = NULL;
+    covBgDispSlot = COV_BG_DISP_DEFAULT;
+    covBgDispUID = -1;
+}
+
+void cacheCoverflowBgNoteDisplayed(image_cache_t *cache, int slot, int uid)
+{
+    // 页签/列表重建/进详情期间强制记为默认，避免跨设备残留。
+    if (ForceRefreshPrevTexCache || !cache) {
+        cacheCoverflowBgResetDisplayed();
+        return;
+    }
+    if (slot < 0) {
+        covBgDispCache = cache;
+        covBgDispSlot = COV_BG_DISP_DEFAULT;
+        covBgDispUID = -1;
+        return;
+    }
+    if (!cache->content || slot >= cache->count)
+        return;
+    covBgDispCache = cache;
+    covBgDispSlot = slot;
+    covBgDispUID = uid;
+}
+
+// Coverflow 背景显示回退：只读、不改 lastUsed、不影响选槽。
+// 仅当上一帧实际画过某外部 BG（非默认）且该槽仍有效时返回其纹理。
 GSTEXTURE *cacheGetCoverflowBgDisplayFallback(image_cache_t *cache)
 {
-    int i;
-    int best = -1;
-    u64 bestUsed = 0;
+    cache_entry_t *e;
 
-    if (!cache || !cache->content || ForceRefreshPrevTexCache)
+    if (!cache || !cache->content || ForceRefreshPrevTexCache) {
+        if (ForceRefreshPrevTexCache)
+            cacheCoverflowBgResetDisplayed();
         return NULL;
-
-    for (i = 0; i < cache->count; i++) {
-        cache_entry_t *e = &cache->content[i];
-        if (e->qr || e->texFound != 1 || !e->texture.Mem)
-            continue;
-        if (best < 0 || e->lastUsed >= bestUsed) {
-            best = i;
-            bestUsed = e->lastUsed;
-        }
     }
 
-    if (best < 0)
+    if (covBgDispCache != cache || covBgDispSlot < 0)
+        return NULL;
+    if (covBgDispSlot >= cache->count)
+        return NULL;
+
+    e = &cache->content[covBgDispSlot];
+    if (e->UID != covBgDispUID || e->qr || e->texFound != 1 || !e->texture.Mem)
         return NULL;
 
 #ifdef __DEBUG
     diagBgDisplayFallback++;
 #endif
-    // 再次确认：若在扫描后该槽被复用（qr!=0）或纹理已释放，立即放弃。
-    {
-        cache_entry_t *e = &cache->content[best];
-        if (e->qr || e->texFound != 1 || !e->texture.Mem)
-            return NULL;
-        return &e->texture;
-    }
+    return &e->texture;
 }

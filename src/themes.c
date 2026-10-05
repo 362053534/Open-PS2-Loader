@@ -664,32 +664,46 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         item_list_t *support = menu->item->userdata;
         GSTEXTURE *texture;
 
+        // Coverflow 背景显示记录：外部命中记 slot+UID；默认/plasma 记默认标记；
+        // 经显示回退画出时不更新（连续快速切换仍保持上一帧真实画面）。
+        int cfBgPath = 0;
+        int cfBgUsedFallback = 0;
+        GSTEXTURE *cfBgCurrentHit = NULL;
+
         if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->cache) {
+            int uid = gameImage->cache->userId;
+            cfBgPath = 1;
             // Coverflow 主题：BG 与 COV 一样直接走 quiet 路径请求/取图（槽位选择相同）。
-            // 当前游戏 BG 尚未就绪时，仅显示回退到其它已加载槽（通常是上一款），
-            // 不保护任何槽位、不改 lastUsed；已确认缺图则走默认/plasma。
-            texture = getCoverflowTexture(gameImage->cache, support, &item->item, 1);
+            // 未就绪时回退到“上一帧实际画过的”外部 BG；缺图或上一帧是默认则画默认/plasma。
+            cfBgCurrentHit = getCoverflowTexture(gameImage->cache, support, &item->item, 1);
+            texture = cfBgCurrentHit;
             if (!(texture && texture->Mem)) {
-                int uid = gameImage->cache->userId;
-                // 缺图（-2）显示默认/plasma，不借用其它游戏的背景，避免张冠李戴。
-                if (item->item.cache_id[uid] != -2)
+                // 缺图（-2）显示默认/plasma，不借用其它游戏的背景。
+                if (item->item.cache_id[uid] != -2) {
                     texture = cacheGetCoverflowBgDisplayFallback(gameImage->cache);
+                    if (texture && texture->Mem)
+                        cfBgUsedFallback = 1;
+                }
             }
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
-        // 是否真正取到"当前游戏的背景图/封面"本身（区别于回退到默认兜底贴图）。
-        // 显示回退的上一款 BG 不算当前游戏 art，遮罩仍可叠加以保持压暗效果一致。
+        // 是否真正取到游戏外部背景/封面贴图（含显示回退），区别于默认/plasma。
         int drewGameArt = (texture && texture->Mem);
         if (!drewGameArt) {
             // 封面/光碟关掉时，连默认模板和卡带框都不画
-            if (artHideDefaultTemplate(gameImage->cache))
+            if (artHideDefaultTemplate(gameImage->cache)) {
+                if (cfBgPath)
+                    cacheCoverflowBgNoteDisplayed(gameImage->cache, -2, -1);
                 return;
+            }
             if (gameImage->defaultTexture)
                 texture = &gameImage->defaultTexture->source;
             else {
                 if (elem->type == ELEM_TYPE_BACKGROUND)
                     guiDrawBGPlasma();
+                if (cfBgPath)
+                    cacheCoverflowBgNoteDisplayed(gameImage->cache, -2, -1);
                 return;
             }
         }
@@ -701,10 +715,24 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         } else
             rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
-        // 仅当真正画出当前游戏背景图时，才在其上叠加 alpha 遮罩压暗背景；
+        // 仅当真正画出游戏外部背景图时，才在其上叠加 alpha 遮罩压暗背景；
         // 回退到兜底默认背景时不叠加，避免遮罩影响兜底背景图。
         if (drewGameArt && gameImage->maskTexture)
             rmDrawPixmap(&gameImage->maskTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+
+        if (cfBgPath) {
+            if (cfBgUsedFallback) {
+                // 显示回退：保持上一帧记录不变。
+            } else if (cfBgCurrentHit && cfBgCurrentHit->Mem) {
+                int uid = gameImage->cache->userId;
+                cacheCoverflowBgNoteDisplayed(gameImage->cache,
+                                              item->item.cache_id[uid],
+                                              item->item.cache_uid[uid]);
+            } else {
+                // 画的是主题默认（defaultTexture）或等价路径。
+                cacheCoverflowBgNoteDisplayed(gameImage->cache, -2, -1);
+            }
+        }
 
     } else if (elem->type == ELEM_TYPE_BACKGROUND) {
         if (gameImage->defaultTexture)

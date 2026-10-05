@@ -247,6 +247,13 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow BG 显示回退改为“上一帧实际画面”
+
+- 问题：`cacheGetCoverflowBgDisplayFallback` 按 `lastUsed` 最高的已加载槽回退；若上一款游戏无 BG（画的是默认），缓存里仍留着更早游戏的外部 BG，切到下一款加载中时会闪出那张旧图，而不是上一帧的默认底。
+- 修复：Coverflow `drawGameImage` BG 路径记录上一帧实际显示——外部命中记 `slot+UID`，默认/plasma（含 `-2`、ForceRefresh、无有效槽）记默认标记；经回退路径画出时不更新记录。回退只在记录为有效 `slot+UID` 且槽仍 `UID` 匹配/`qr==0`/`texFound==1`/`Mem` 时返回，否则 NULL→默认。ForceRefresh 将记录重置为默认。
+- 保留：当前项 `-2` 不走回退；回退不改 `lastUsed`；`bgfb` 仅在真正画出回退时计数；quiet BG 选槽偏好不变；无槽位保护/不拦请求。
+- 验证：仅 CI。实机：A 有外部 BG → B 无 BG（应持续默认）→ C 加载中应仍为默认，不应闪 A。
+
 ### 2026-10-05 — 修复 Coverflow BG 显示回退：ForceRefresh 老化 + BG 选槽偏好
 
 - 根因：`cacheGetCoverflowBgDisplayFallback()` 在 `ForceRefreshPrevTexCache!=0` 时直接返回 NULL；该标志在列表重建/切页签/进详情时置 1，本应由 `cacheGetTexture()` 加到 2 再由 `flushBatchRequests` 清 0。Coverflow 主界面只走 quiet 路径，标志永久停在 1，显示回退从未生效（`bgfb` 恒为 0），切换游戏时只能画主题默认 BG。
