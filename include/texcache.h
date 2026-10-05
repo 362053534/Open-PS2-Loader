@@ -68,6 +68,11 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
 // Coverflow 翻页动画期间：只查询命中缓存或已有请求，不分配新槽位、不创建新加载请求。
 GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId);
 
+// Coverflow 背景专用：仅用于绘制，不影响槽位选择/LRU。
+// 在当前游戏的 BG 尚未加载完成时，返回另一个已加载完成的 BG 槽位纹理（优先最近使用的）；
+// 若当前游戏已确认缺图（cache_id==-2）则不应调用本函数。
+GSTEXTURE *cacheGetCoverflowBgDisplayFallback(image_cache_t *cache);
+
 extern int ForceRefreshPrevTexCache;
 extern int forceSkipQr;
 extern int texLoading;

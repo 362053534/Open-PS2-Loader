@@ -47,6 +47,7 @@ static volatile u32 diagArtFailed;
 static volatile u32 diagArtCancelled;
 static volatile u32 diagArtRemoved;
 static volatile u32 diagArtStale;
+static volatile u32 diagBgDisplayFallback; // Coverflow BG 显示回退命中次数（不影响槽位）
 static volatile int diagLastResult;
 static volatile int diagLastQueueError;
 static volatile int diagActiveArt;
@@ -743,7 +744,7 @@ void flushBatchRequests(void)
         TEX_LOADING_UNLOCK();
         LOG("[ART_DIAG] frame=%u loading=%d queued=%d active=%d gen=%u force=%d cd=%d "
             "blocked=%d terminating=%d qalloc=%u qput=%u start=%u done=%u fail=%u "
-            "cancel=%u rm=%u stale=%u last=%s/%d qerr=%d "
+            "cancel=%u rm=%u stale=%u bgfb=%u last=%s/%d qerr=%d "
             "active_req=%d/%s/%s/%d\n",
             (u32)guiFrameId, loading, ioGetPendingRequestCount(),
             ioGetActiveRequestType(), artRequestGeneration,
@@ -751,7 +752,7 @@ void flushBatchRequests(void)
             ioIsBlocked(), ioIsTerminating(), diagArtQueueAllocFail,
             diagArtQueuePutFail, diagArtStarted, diagArtCompleted,
             diagArtFailed, diagArtCancelled, diagArtRemoved, diagArtStale,
-            diagLastSuffix,
+            diagBgDisplayFallback, diagLastSuffix,
             diagLastResult, diagLastQueueError, diagActiveArt,
             diagActiveSuffix, diagActiveValue, diagActiveItemId);
         diagArtQueueAllocFail = 0;
@@ -762,6 +763,7 @@ void flushBatchRequests(void)
         diagArtCancelled = 0;
         diagArtRemoved = 0;
         diagArtStale = 0;
+        diagBgDisplayFallback = 0;
         diagNextFrame = (u32)guiFrameId + 120;
     }
 #endif
@@ -1351,4 +1353,42 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
 GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
 {
     return cacheGetTextureQuietInternal(cache, list, cacheId, UID, value, itemId, 0);
+}
+
+// Coverflow 背景显示回退：只读、不影响槽位选择与 LRU。
+// 调用方必须保证当前游戏尚未确认缺图（cache_id != -2）；缺图时应画默认/plasma。
+// 每帧重新扫描：只接受 qr==0 且 texFound==1 且 Mem 非空的槽；不改 lastUsed。
+// 切换设备页签强制刷新时不回退，避免短暂画出上一设备的背景。
+GSTEXTURE *cacheGetCoverflowBgDisplayFallback(image_cache_t *cache)
+{
+    int i;
+    int best = -1;
+    u64 bestUsed = 0;
+
+    if (!cache || !cache->content || ForceRefreshPrevTexCache)
+        return NULL;
+
+    for (i = 0; i < cache->count; i++) {
+        cache_entry_t *e = &cache->content[i];
+        if (e->qr || e->texFound != 1 || !e->texture.Mem)
+            continue;
+        if (best < 0 || e->lastUsed >= bestUsed) {
+            best = i;
+            bestUsed = e->lastUsed;
+        }
+    }
+
+    if (best < 0)
+        return NULL;
+
+#ifdef __DEBUG
+    diagBgDisplayFallback++;
+#endif
+    // 再次确认：若在扫描后该槽被复用（qr!=0）或纹理已释放，立即放弃。
+    {
+        cache_entry_t *e = &cache->content[best];
+        if (e->qr || e->texFound != 1 || !e->texture.Mem)
+            return NULL;
+        return &e->texture;
+    }
 }

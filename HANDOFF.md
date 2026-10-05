@@ -247,6 +247,13 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow 背景显示回退（不影响槽位选择）
+
+- 在 `318f91e1` 简化后，当前游戏 BG 未就绪时会闪默认/plasma。按用户决定加回**仅显示**回退：`cacheGetCoverflowBgDisplayFallback()` 扫描 BG 缓存中 `qr==0 && texFound==1 && Mem` 的槽，取 `lastUsed` 最大者绘制；不改 `lastUsed`、不保护任何槽、不参与 quiet 选槽。
+- 缺图（`cache_id==-2`）仍画默认/plasma，不借用其它游戏背景，避免张冠李戴；与上游列表主题行为一致。强制刷新页签时（`ForceRefreshPrevTexCache`）也不回退。
+- `[ART_DIAG]` 增加 `bgfb=` 计数（每 120 帧窗口内显示回退命中次数）。`8839c837` 详情页按键屏蔽不变。
+- 验证：仅 CI，未实机。
+
 ### 2026-10-05 — Coverflow 主题 BG 改为与 COV 相同的普通请求，移除 BG 专用规则
 
 - 背景：`b49ef627` 加诊断后长时间实机测试未再复现“BG 永久不入队”，概率很低；按用户决定直接简化，去掉 CF 专用的 BG 特殊处理。

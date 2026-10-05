@@ -710,14 +710,22 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         GSTEXTURE *texture;
 
         if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->cache) {
-            // Coverflow 主题：BG 与 COV 一样直接走 quiet 缓存路径请求/取图，
-            // 不再延后入队，也没有额外的槽位保护或回退规则；未加载完成时按原逻辑画默认背景。
+            // Coverflow 主题：BG 与 COV 一样直接走 quiet 路径请求/取图（槽位选择相同）。
+            // 当前游戏 BG 尚未就绪时，仅显示回退到其它已加载槽（通常是上一款），
+            // 不保护任何槽位、不改 lastUsed；已确认缺图则走默认/plasma。
             coverflowUpdateRetryWindow();
             texture = getCoverflowTexture(gameImage->cache, support, &item->item, 1);
+            if (!(texture && texture->Mem)) {
+                int uid = gameImage->cache->userId;
+                // 缺图（-2）显示默认/plasma，不借用其它游戏的背景，避免张冠李戴。
+                if (item->item.cache_id[uid] != -2)
+                    texture = cacheGetCoverflowBgDisplayFallback(gameImage->cache);
+            }
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
         // 是否真正取到"当前游戏的背景图/封面"本身（区别于回退到默认兜底贴图）。
+        // 显示回退的上一款 BG 不算当前游戏 art，遮罩仍可叠加以保持压暗效果一致。
         int drewGameArt = (texture && texture->Mem);
         if (!drewGameArt) {
             // 封面/光碟关掉时，连默认模板和卡带框都不画
