@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 移植 RiptOPL hires 清屏 PrimAlphaEnable 修复
+
+- 仅改 `renderman.c`：在唯一的 `gsKit_hires_init_screen` 调用前后将 `PrimAlphaEnable` 置 OFF 再恢复 ON，避免烘焙进各 pass 的 clear 在 ABE 开启时变成空操作，导致 720p/1080i 残留花屏。
+- 不改纹理压力、反射、BG compact、texcache。
+- 验证：仅 CI。
+
 ### 2026-10-05 — stale 丢弃改为 worker 仅 texFree，避免 IO 线程 rmUnloadTexture
 
 - 核实：`cacheClearExpiredItem` 仅在 `cacheLoadImage1` 代际失效且 `sameEntry`（`trackGeneration` 的 CF COV/ICO/BG）时调用；入队前主线程已 `cacheClearItem`；`keepResult` 未发布则 qr 一直非 0；`cacheGetTexture`/`quiet` 在 `qr!=0` 时返回 Prev/NULL 而非当前槽（挑 Prev 槽前会清 Prev）。故该结果从未 bind/TexManager。

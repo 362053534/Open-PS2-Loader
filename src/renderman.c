@@ -224,7 +224,17 @@ int rmSetMode(int force)
         gsGlobal->OffsetY = ((4096 - gsGlobal->Height) / 2) * 16;
 
         if (hires) {
+            // PrimAlphaEnable MUST be OFF across this call (RiptOPL / NathanNeurotic).
+            // gsKit_hires_init_screen -> _gsKit_create_passes bakes a gsKit_clear into each
+            // pass's PERSISTENT queue — the only erase of a hires frame (rmStartFrame skips
+            // clear when hires). That clear samples PrimAlphaEnable at creation time and uses
+            // colour alpha 0. With PrimAlphaEnable ON and source-over blend, As=0 keeps Cd:
+            // the "clear" is a no-op, so missed pass deadlines show stale pixels that persist.
+            // Bake with ABE=0 so the clear writes opaque black; restore ON afterward (only
+            // sampled when primitives are created; none are created inside init_screen).
+            gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
             gsKit_hires_init_screen(gsGlobal, rm_mode_table[vmode].passes);
+            gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
         } else {
             gsKit_init_screen(gsGlobal);
             gsKit_mode_switch(gsGlobal, GS_ONESHOT);
