@@ -1388,9 +1388,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 同屏封面数：已规范化到 1/3/5/7/9；翻页动画需要的临时槽位另用
     // COVERFLOW_RENDER_MAX，避免多格移动时数组越界。
     int coverCount = getCoverflowDisplayCount();
-    // 720p/1080i：仅夹紧同屏封面数为 3（花屏排查：1 张无花屏；已恢复其余 Phase-0 关闭项）。
-    if (rmIsHiresExtreme())
-        coverCount = 3;
     int centerIndex = coverCount / 2;
 
     // ——封面主图为主、case 外壳逆向适配——
@@ -1484,10 +1481,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
         effNonCenterScale = bestScale;
     }
-
-    // 测试：关闭中心放大/侧栏缩小及翻页时的尺寸插值动画，全部封面统一为中心尺寸。
-    // （仅消除 coverScale 随 centerFactor 变化；与 hires 封面数夹紧独立。）
-    effNonCenterScale = gCoverflowCenterScale;
 
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (nonInlayW < 1.0f)
@@ -2454,9 +2447,6 @@ static void thmLoad(const char *themePath)
     gCoverflowCount = normalizeCoverflowCount(gCoverflowCount);
     if (gCoverflowPreload < 0)
         gCoverflowPreload = 0;
-    // 720p/1080i：仅强制 coverflow_count=3（已恢复 BG/倒影/case/ICO/mask/preload；480 仍读 cfg）。
-    if (rmIsHiresExtreme())
-        gCoverflowCount = 3;
     // 封面基准尺寸挡非法值（drawCoverFlow 会用 CoverH 作除数、用 CoverW/H 算比例）。
     if (gCoverflowAppsCoverW < 1)
         gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;

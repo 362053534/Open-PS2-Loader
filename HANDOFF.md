@@ -247,42 +247,13 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
-### 2026-10-06 — 恢复 Phase-0 关闭的 CF 功能；hi-res 仍夹紧 3 封面
+### 2026-10-06 — 按用户要求回退到 92a5b972 源码树
 
-- 撤销 hi-res 下对外部 BG、倒影、case 外壳、preload、ICO、alphamask 的门控，恢复原绘制/入队行为。
-- **保留**：`rmIsHiresExtreme` 下 `coverflow_count`/`coverCount`=3；保留统一封面尺寸（`effNonCenterScale = gCoverflowCenterScale`）。
-- 验证：仅 CI。
-
-### 2026-10-06 — 720p/1080i Phase-0：封面数夹紧从 1 改为 3
-
-- 硬件：hi-res 下 1 张封面无花屏。继续阶梯：将 `rmIsHiresExtreme` 下的 `gCoverflowCount`/`coverCount` 从 1 改为 3。
-- 其它门控与统一尺寸测试不变；480 不变。
-- 验证：仅 CI。
-
-### 2026-10-05 — 720p/1080i Phase-0：Coverflow 强制 1 张封面
-
-- 在 `rmIsHiresExtreme` 下将 `gCoverflowCount` 夹紧为 1（主题加载），并在 `drawCoverFlow` 再夹紧 `coverCount=1`。
-- 其它 Phase-0 门控（无外部 BG/倒影/case/ICO/mask、preload=0）与统一尺寸测试保持不变；480 不变。
-- 验证：仅 CI。
-
-### 2026-10-05 — 测试：关闭 Coverflow 中心/侧栏尺寸差与缩放动画
-
-- Phase-0 花屏未缓解，怀疑另有根因。为排查绘制路径：在 `drawCoverFlow` 布局算出 `effNonCenterScale` 之后强制 `effNonCenterScale = gCoverflowCenterScale`，使全部封面统一尺寸，翻页时不再有中心放大/侧栏缩小插值。
-- Phase-0 hires 门控保持不动。
-- 验证：仅 CI。
-
-### 2026-10-05 — Coverflow 720p/1080i Phase-0 VRAM 减压（保留 5 封面）
-
-- 新增 `rmIsHiresExtreme()`（`passes>=3` 或 `width>=1280`）；仅该模式下生效，480/2-pass hires 不变。
-- Phase-0（按用户批准，**保持 coverflow_count=5**）：无外部 BG、无倒影、无 case 外壳、preload=0、无 ICO、无 alphamask。
-- 门控在 `themes.c`；无 texcache 改动。用于确认无花屏后再逐步加回功能。
-- 验证：仅 CI。
-
-### 2026-10-05 — 移植 RiptOPL hires 清屏 PrimAlphaEnable 修复
-
-- 仅改 `renderman.c`：在唯一的 `gsKit_hires_init_screen` 调用前后将 `PrimAlphaEnable` 置 OFF 再恢复 ON，避免烘焙进各 pass 的 clear 在 ABE 开启时变成空操作，导致 720p/1080i 残留花屏。
-- 不改纹理压力、反射、BG compact、texcache。
-- 验证：仅 CI。
+- 新建提交使工作树与 92a5b972（stale ART 仅 worker texFree）一致；**不** force-push / 不改写历史。
+- 一并回退的区间 f71f419..4fd3bbac（用户确认的排查结论）：
+  - f71f419 hires PrimAlphaEnable 清屏修复、Phase-0 VRAM 减压、统一封面尺寸、封面数夹紧等试验。
+  - **结论**：减压/mask/统一缩放均未消除花屏；**hi-res 下 1 张封面无花屏**（多封面仍花）。
+- 本文件在 92a5b972 内容之上追加本条说明。
 
 ### 2026-10-05 — stale 丢弃改为 worker 仅 texFree，避免 IO 线程 rmUnloadTexture
 
