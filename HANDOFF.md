@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 按用户要求重新开启 Coverflow 非中心压暗
+
+- 内置主题 `misc/conf_theme_coverflow.cfg`：`coverflow_dim_covers` 改回 `1`（撤销 e990e8ff 的关闭）。
+- 按用户要求恢复翻页时按 `centerFactor` 在 `COVERFLOW_DIM_RGB(0x66)`↔`0x80` 插值压暗。
+- 仅改 CFG，源码路径不变。验证：推送并查 CI。
+
 ### 2026-10-06 — 关闭 Coverflow 翻页明暗插值（恒定亮度）
 
 - 内置主题 `misc/conf_theme_coverflow.cfg`：`coverflow_dim_covers=0`（原为 1）。
