@@ -1,0 +1,111 @@
+name: PCSX2-限速版构建
+
+# 给 PCSX2 打上「光驱限速」补丁（见 pc/pcsx2-throttle/），在 GitHub 上直接产出 Windows 便携版。
+# 产物 artifact：PCSX2-throttle-win-x64-avx2（解压后就是 PCSX2 的 bin 目录，直接跑 pcsx2-qt.exe）。
+#
+# 用法（解压后）：
+#   cmd:        set PCSX2_CDVD_KBPS=1024  &&  set PCSX2_CDVD_CMD_US=1500  &&  pcsx2-qt.exe --iso "汉化版.iso"
+#   PowerShell: $env:PCSX2_CDVD_KBPS="1024"; $env:PCSX2_CDVD_CMD_US="1500"; .\pcsx2-qt.exe --iso "汉化版.iso"
+#
+# 构建步骤照抄 PCSX2 上游 .github/workflows/windows_build_qt.yml（MSVC x64 AVX2）：
+#   1) 先建 deps（Qt/ffmpeg 等，缓存到 Actions cache，第二次起很快）
+#   2) 再 msbuild PCSX2_qt.slnx
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/01a101c3-open-ps2-loader
+    paths:
+      - 'pc/pcsx2-throttle/**'
+      - '.github/workflows/pcsx2-throttle.yml'
+
+jobs:
+  deps:
+    name: "PCSX2 依赖 (缓存)"
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    env:
+      DEBUG: 0
+    steps:
+      - name: Checkout PCSX2
+        uses: actions/checkout@v6
+        with:
+          repository: PCSX2/pcsx2
+          ref: master
+          path: pcsx2
+
+      - name: Cache deps
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: pcsx2/deps
+          key: pcsx2-deps-${{ hashFiles('pcsx2/.github/workflows/scripts/windows/build-dependencies.bat', 'pcsx2/.github/workflows/scripts/common/*.patch') }}
+
+      - name: Build dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        working-directory: pcsx2
+        run: .github/workflows/scripts/windows/build-dependencies.bat
+
+  build:
+    name: "PCSX2 限速版 (MSVC AVX2)"
+    needs: [deps]
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 90
+    steps:
+      - name: Checkout 本仓库（拿补丁）
+        uses: actions/checkout@v6
+
+      - name: Checkout PCSX2
+        uses: actions/checkout@v6
+        with:
+          repository: PCSX2/pcsx2
+          ref: master
+          path: pcsx2
+
+      - name: 打上光驱限速补丁
+        shell: bash
+        working-directory: pcsx2
+        run: |
+          git apply --verbose ../pc/pcsx2-throttle/pcsx2-cdvd-throttle.patch.txt
+          git diff --stat
+          grep -n "PCSX2_CDVD_KBPS" CDVD/CDVD.cpp | head -5
+
+      - name: Restore deps
+        uses: actions/cache/restore@v4
+        with:
+          path: pcsx2/deps
+          key: pcsx2-deps-${{ hashFiles('pcsx2/.github/workflows/scripts/windows/build-dependencies.bat', 'pcsx2/.github/workflows/scripts/common/*.patch') }}
+          fail-on-cache-miss: true
+
+      - name: Setup msbuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build PCSX2
+        shell: cmd
+        working-directory: pcsx2
+        run: |
+          msbuild "PCSX2_qt.slnx" /m /v:m /p:Configuration="Release AVX2" /p:Platform="x64" || exit /b 1
+          del bin\resources\fonts\Twemoji* 2>nul
+
+      - name: 检查产物
+        shell: cmd
+        working-directory: pcsx2
+        run: |
+          dir bin\pcsx2-qt.exe
+          dir bin\ | findstr /i "qt"
+
+      - name: Upload PCSX2 限速版
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCSX2-throttle-win-x64-avx2
+          if-no-files-found: error
+          path: |
+            pcsx2/bin
+            !pcsx2/bin/**/*.bsc
+            !pcsx2/bin/**/*.exp
+            !pcsx2/bin/**/*.ilk
+            !pcsx2/bin/**/*.iobj
+            !pcsx2/bin/**/*.ipdb
+            !pcsx2/bin/**/*.pdb
+            !pcsx2/bin/**/*.lib
