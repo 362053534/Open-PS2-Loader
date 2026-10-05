@@ -1493,6 +1493,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         effNonCenterScale = bestScale;
     }
 
+    // 测试：关闭中心放大/侧栏缩小及翻页时的尺寸插值动画，全部封面统一为中心尺寸。
+    // （Phase-0 hires 门控保持不变；仅消除 coverScale 随 centerFactor 变化。）
+    effNonCenterScale = gCoverflowCenterScale;
+
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (nonInlayW < 1.0f)
         nonInlayW = 1.0f;

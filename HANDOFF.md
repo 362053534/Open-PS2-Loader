@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 测试：关闭 Coverflow 中心/侧栏尺寸差与缩放动画
+
+- Phase-0 花屏未缓解，怀疑另有根因。为排查绘制路径：在 `drawCoverFlow` 布局算出 `effNonCenterScale` 之后强制 `effNonCenterScale = gCoverflowCenterScale`，使全部封面统一尺寸，翻页时不再有中心放大/侧栏缩小插值。
+- Phase-0 hires 门控保持不动。
+- 验证：仅 CI。
+
 ### 2026-10-05 — Coverflow 720p/1080i Phase-0 VRAM 减压（保留 5 封面）
 
 - 新增 `rmIsHiresExtreme()`（`passes>=3` 或 `width>=1280`）；仅该模式下生效，480/2-pass hires 不变。
