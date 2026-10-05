@@ -44,6 +44,12 @@ static const char **guiThemesNames = NULL;
 // Global data
 theme_t *gTheme;
 
+// Coverflow 主界面：BG 入队延后到 drawCoverFlow 预取 COV 之后（仅改顺序）。
+// 详情页等没有 Coverflow 元素的画面仍在背景绘制时立即入队，行为与改前一致。
+static image_cache_t *deferredCoverflowBgCache = NULL;
+static item_list_t *deferredCoverflowBgList = NULL;
+static u64 deferredCoverflowBgFrame = 0;
+
 typedef struct retired_theme {
     theme_t *theme;
     struct retired_theme *next;
@@ -642,6 +648,36 @@ static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struc
 
 // Coverflow 停止后才请求当前游戏的 ICO；光标变化时调用方会重置专用槽位，
 // 因此这里不会把上一款游戏的光碟图带到新游戏上。
+static void armDeferredCoverflowBackground(image_cache_t *cache, item_list_t *list)
+{
+    deferredCoverflowBgCache = cache;
+    deferredCoverflowBgList = list;
+    deferredCoverflowBgFrame = guiFrameId;
+}
+
+static void flushDeferredCoverflowBackground(submenu_list_t *item)
+{
+    if (deferredCoverflowBgFrame != guiFrameId) {
+        deferredCoverflowBgCache = NULL;
+        deferredCoverflowBgList = NULL;
+        deferredCoverflowBgFrame = 0;
+        return;
+    }
+    if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item) {
+        deferredCoverflowBgCache = NULL;
+        deferredCoverflowBgList = NULL;
+        deferredCoverflowBgFrame = 0;
+        return;
+    }
+
+    // 仅入队；显示与回退已在背景元素绘制阶段完成。
+    getCoverflowTexture(deferredCoverflowBgCache, deferredCoverflowBgList, &item->item, 1);
+
+    deferredCoverflowBgCache = NULL;
+    deferredCoverflowBgList = NULL;
+    deferredCoverflowBgFrame = 0;
+}
+
 static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item, int allowRequest)
 {
     if (!gTheme || !gTheme->coverflowIcoCache || !list || !item || !gEnableArtICO)
@@ -672,10 +708,11 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
 
         if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->cache) {
             int uid = gameImage->cache->userId;
+            // 主界面有 Coverflow：本处只显示/回退，BG 请求延后到预取 COV 之后；
+            // 其它画面（如详情页）没有 Coverflow，仍立即入队，避免漏请求。
+            int deferBg = (guiGetScreen() == GUI_SCREEN_MAIN);
             cfBgPath = 1;
-            // Coverflow 主题：BG 与 COV 一样直接走 quiet 路径请求/取图（槽位选择相同）。
-            // 未就绪时回退到“上一帧实际画过的”外部 BG；缺图或上一帧是默认则画默认/plasma。
-            cfBgCurrentHit = getCoverflowTexture(gameImage->cache, support, &item->item, 1);
+            cfBgCurrentHit = getCoverflowTexture(gameImage->cache, support, &item->item, deferBg ? 0 : 1);
             texture = cfBgCurrentHit;
             if (!(texture && texture->Mem)) {
                 // 缺图（-2）显示默认/plasma，不借用其它游戏的背景。
@@ -685,6 +722,8 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
                         cfBgUsedFallback = 1;
                 }
             }
+            if (deferBg)
+                armDeferredCoverflowBackground(gameImage->cache, support);
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
@@ -1354,8 +1393,10 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float
 
 static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
-    if (item == NULL)
+    if (item == NULL) {
+        flushDeferredCoverflowBackground(NULL);
         return;
+    }
 
     // 关闭封面图时仍保留 Coverflow 的布局计算和 ICO 绘制；只跳过封面/case 的实际提交。
     // 由于此时没有可见封面动画，ICO 只随当前 item 的变化切换，不等待 Coverflow 动画。
@@ -1923,10 +1964,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         }
     }
 
-    // 所有 Coverflow 预取请求已经按顺序入队后，才为当前停留项创建 ICO 请求。
-    // 不再等待 texLoading == 0：ICO 会直接排在已经入队的封面/预取请求之后，
-    // 随后 BG 再紧跟其后入队。ICO 不存在时也只会得到一次失败结果，BG 不等待
-    // coverflowIcoLoaded，而是继续在 ICO 请求之后提交。
+    // 预取 COV 入队之后立刻入队当前项 BG（仅调整相对 COV 的顺序；ICO 仍在其后）。
+    flushDeferredCoverflowBackground(item);
+
+    // 所有 Coverflow 预取与 BG 请求入队后，再为当前停留项创建 ICO 请求。
     if (!isAnimating && gEnableArtICO && (!icoTexture || !icoTexture->Mem)) {
         GSTEXTURE *requestedIco = getCoverflowIcoTexture(sourceList, item, 1);
         if (requestedIco && requestedIco->Mem && !gTheme->coverflowIcoLoaded) {

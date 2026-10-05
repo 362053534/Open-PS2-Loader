@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow 主界面 BG 入队改到预取 COV 之后
+
+- 按用户要求：仅调整 CF 主题背景图入队时机到「预取 COV 入队之后、紧接着入队」。
+- 主界面（`GUI_SCREEN_MAIN`）：背景元素只显示/回退（`allowRequest=0`），`drawCoverFlow` 在预取 COV 循环之后、ICO 之前调用 `flushDeferredCoverflowBackground()` 入队 BG。
+- 详情页等无 Coverflow 元素的画面：仍在背景绘制时立即入队，避免漏请求或打乱 SCR 等顺序。
+- 不新增保护/重试/延迟规则；`5921aecf` 的显示回退与记录逻辑不变。
+- 验证：仅 CI。实机可看 ART 日志：可见 COV → 预取 COV → BG → ICO。
+
 ### 2026-10-05 — Coverflow BG 显示回退改为“上一帧实际画面”
 
 - 问题：`cacheGetCoverflowBgDisplayFallback` 按 `lastUsed` 最高的已加载槽回退；若上一款游戏无 BG（画的是默认），缓存里仍留着更早游戏的外部 BG，切到下一款加载中时会闪出那张旧图，而不是上一帧的默认底。

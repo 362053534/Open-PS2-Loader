@@ -1947,6 +1947,11 @@ void guiSetFrameHook(gui_callback_t cback)
     gFrameHook = cback;
 }
 
+int guiGetScreen(void)
+{
+    return (int)(screenHandler - screenHandlers);
+}
+
 void guiSwitchScreen(int target)
 {
     // Only initiate the transition once or else we could get stuck in an infinite loop.
