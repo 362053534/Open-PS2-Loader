@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 720p/1080i Phase-0：Coverflow 强制 1 张封面
+
+- 在 `rmIsHiresExtreme` 下将 `gCoverflowCount` 夹紧为 1（主题加载），并在 `drawCoverFlow` 再夹紧 `coverCount=1`。
+- 其它 Phase-0 门控（无外部 BG/倒影/case/ICO/mask、preload=0）与统一尺寸测试保持不变；480 不变。
+- 验证：仅 CI。
+
 ### 2026-10-05 — 测试：关闭 Coverflow 中心/侧栏尺寸差与缩放动画
 
 - Phase-0 花屏未缓解，怀疑另有根因。为排查绘制路径：在 `drawCoverFlow` 布局算出 `effNonCenterScale` 之后强制 `effNonCenterScale = gCoverflowCenterScale`，使全部封面统一尺寸，翻页时不再有中心放大/侧栏缩小插值。
