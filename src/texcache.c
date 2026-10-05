@@ -727,9 +727,15 @@ static void cacheDiagWatchdog(void)
 
 void flushBatchRequests(void)
 {
-    // 左右切页签强制刷新缓存的变量，需要判断当前游戏所有图片是否都处理完毕
+    // ForceRefreshPrevTexCache：设备页签/列表重建/进详情时置 1，禁止本帧显示回退到“上一张”。
+    // 非 Coverflow 路径里 cacheGetTexture() 会把它从 1 加到 2，并清 PrevCacheID_*；本函数再清 0。
+    // Coverflow 主界面只走 quiet 路径、不会触发上述 ++，旧逻辑会让标志永久停在 1，显示回退失效。
+    // 因此在帧末若仍为 1 则老化为 2，下一帧再清 0——仍保证切换后至少 1～2 帧不显示其它设备的 BG，
+    // 且不影响非 Coverflow 对 PrevCacheID_BG 的既有行为（仍由 cacheGetTexture 在标志非 0 时重置）。
     if (ForceRefreshPrevTexCache > 1)
         ForceRefreshPrevTexCache = 0;
+    else if (ForceRefreshPrevTexCache == 1)
+        ForceRefreshPrevTexCache = 2;
 
 #ifdef __DEBUG
     cacheDiagWatchdog();
@@ -1318,17 +1324,49 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
     if (!queueRequest)
         return NULL;
 
-    // 需要加载：挑一个空闲/最旧、且未在加载中的槽
+    // 需要加载：挑一个空闲/最旧、且未在加载中的槽。
+    // BG：优先选不可显示的槽（texFound!=1 或 Mem 空），再按 lastUsed 最旧；
+    // 若只剩已显示的上一张 BG 可选，仍然占用它（偏好，不是禁令，保证总能入队）。
+    // COV/ICO：保持原 lastUsed LRU，不受影响。
     cache_entry_t *oldest = NULL;
     int slot = -1;
     u64 rtime = guiFrameId;
     int i;
+    int preferEmpty = !strncmp(cache->suffix, "BG", 2);
+    int bestIsDisplayable = 0;
+
     for (i = 0; i < cache->count; i++) {
         cache_entry_t *e = &cache->content[i];
-        if (!e->qr && e->lastUsed < rtime) {
+        int displayable;
+
+        if (e->qr || e->lastUsed >= guiFrameId)
+            continue;
+
+        displayable = (e->texFound == 1 && e->texture.Mem) ? 1 : 0;
+        if (!oldest) {
             oldest = e;
             rtime = e->lastUsed;
             slot = i;
+            bestIsDisplayable = displayable;
+            continue;
+        }
+        if (preferEmpty) {
+            // 不可显示优先于可显示；同档再比 lastUsed。
+            if (displayable != bestIsDisplayable) {
+                if (!displayable && bestIsDisplayable) {
+                    oldest = e;
+                    rtime = e->lastUsed;
+                    slot = i;
+                    bestIsDisplayable = 0;
+                }
+                continue;
+            }
+        }
+        if (e->lastUsed < rtime) {
+            oldest = e;
+            rtime = e->lastUsed;
+            slot = i;
+            bestIsDisplayable = displayable;
         }
     }
     if (oldest) {
@@ -1358,7 +1396,7 @@ GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list
 // Coverflow 背景显示回退：只读、不影响槽位选择与 LRU。
 // 调用方必须保证当前游戏尚未确认缺图（cache_id != -2）；缺图时应画默认/plasma。
 // 每帧重新扫描：只接受 qr==0 且 texFound==1 且 Mem 非空的槽；不改 lastUsed。
-// 切换设备页签强制刷新时不回退，避免短暂画出上一设备的背景。
+// ForceRefreshPrevTexCache 非 0 时不回退（页签/列表/进详情后的 1～2 帧），避免画出其它设备的背景。
 GSTEXTURE *cacheGetCoverflowBgDisplayFallback(image_cache_t *cache)
 {
     int i;

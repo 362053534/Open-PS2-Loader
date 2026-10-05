@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 修复 Coverflow BG 显示回退：ForceRefresh 老化 + BG 选槽偏好
+
+- 根因：`cacheGetCoverflowBgDisplayFallback()` 在 `ForceRefreshPrevTexCache!=0` 时直接返回 NULL；该标志在列表重建/切页签/进详情时置 1，本应由 `cacheGetTexture()` 加到 2 再由 `flushBatchRequests` 清 0。Coverflow 主界面只走 quiet 路径，标志永久停在 1，显示回退从未生效（`bgfb` 恒为 0），切换游戏时只能画主题默认 BG。
+- 修复 1：`flushBatchRequests` 在标志仍为 1 时老化为 2，下一帧清 0。切换后仍有 1～2 帧不显示其它设备 BG；非 Coverflow 的 `PrevCacheID_*` 重置仍由 `cacheGetTexture` 在标志非 0 时完成，行为不变。
+- 修复 2：quiet 选槽对 BG 优先挑不可显示槽（`texFound!=1` 或无 Mem），再按 `lastUsed` 最旧；若只剩上一张已显示 BG 仍可占用（偏好非禁令）。COV/ICO 选槽不变。
+- 保留：缺图 `-2`→默认/plasma；显示回退不改 `lastUsed`；`bgfb` 计数。
+- 验证：仅 CI；实机看切换游戏时上一张 BG 是否保持，以及 `[ART_DIAG] bgfb=` 在 BG 加载窗口内是否 >0。
+
 ### 2026-10-05 — 移除 Coverflow 缺图 2.5 秒定时重试（恢复上游行为）
 
 - 删除 `COVERFLOW_MISSING_RETRY_MS`、`gCovMissingRetryAt`、`gCovRetryMissingThisFrame`、`gCovRetryEvalFrame`、`coverflowUpdateRetryWindow()`、`coverflowRetryMissing()` 及全部调用点（COV/ICO/BG）。
