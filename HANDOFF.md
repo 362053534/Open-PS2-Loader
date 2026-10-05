@@ -247,6 +247,18 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow 主题 BG 改为与 COV 相同的普通请求，移除 BG 专用规则
+
+- 背景：`b49ef627` 加诊断后长时间实机测试未再复现“BG 永久不入队”，概率很低；按用户决定直接简化，去掉 CF 专用的 BG 特殊处理。
+- 移除：
+  - `fa80d1c7`：背景元素在 CF 下只走 `cacheGetTextureNoRequest()`、真正请求延后到 `drawCoverFlow()` 末尾的 `queueDeferredCoverflowBackground()`（排在 ICO 之后）；quiet 路径选槽时对 `PrevCacheID_BG` 的保护（`protectedId`）。
+  - `f9951840` 及后续：`cacheGetBackgroundFallback()`（双槽 BG 回退）、`[ART_DIAG]` 的 `bgfb/bgmiss` 计数。
+  - `b49ef627`：全部 BG 诊断（`[BG_EV]/[BG_SLOTS]/[BG_Q]/[BG_DQ]`、`cacheClearItem` 诊断宏）。通用 `[ART_DIAG]`/看门狗保留。
+- 现在：CF 主题的背景元素在 `drawGameImage()` 中直接调用 `getCoverflowTexture(...,1)`，与 COV 走同一 quiet 路径（同样的代际/取消/缺图重试规则）；未加载完成或缺图时按原逻辑画主题默认背景或 plasma，不再显示上一张 BG。详情页背景也由背景元素直接请求，不再依赖 `drawCoverFlow()`。
+- 缺图重试窗口改为 `coverflowUpdateRetryWindow()` 每帧计算一次（COV/ICO/BG 共用），避免详情页没有 Coverflow 元素时沿用旧标志、每帧重新请求缺失 BG。
+- 保留：非 CF 主题的 `cacheGetTexture()`/`PrevCacheID_BG` 原逻辑、BG 2 槽（`59da56b0`）、低分辨率 BG 压缩（`5136b567`，对所有主题生效，非 CF 专用）、`8839c837` 详情页按键屏蔽。
+- 验证：仅 CI 编译，未实机验证。
+
 ### 2026-10-05 — 主界面 Coverflow BG 停止入队诊断（仅调试构建）
 
 - 背景：`647cf154` 实机日志中最后一次 BG 请求在 68652 行（SLPM_652.66）成功，之后约 2 万帧再无 BG 入队，COV/ICO 正常；`loading=0 queued=0`。推测为 2 个 BG 槽位中一个受 `PrevCacheID_BG` 保护、另一个 `qr` 泄漏（无请求持有却非 0），但现有日志无法证实。

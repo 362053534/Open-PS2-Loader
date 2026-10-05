@@ -44,12 +44,6 @@ static const char **guiThemesNames = NULL;
 // Global data
 theme_t *gTheme;
 
-// Coverflow 背景在背景元素绘制阶段只查询已有纹理，真正的 BG 请求延后到
-// drawCoverFlow() 中，在 ICO 请求之后提交，避免普通背景绘制抢在 ICO 前入队。
-static image_cache_t *deferredCoverflowBgCache = NULL;
-static item_list_t *deferredCoverflowBgList = NULL;
-static u64 deferredCoverflowBgFrame = 0;
-
 typedef struct retired_theme {
     theme_t *theme;
     struct retired_theme *next;
@@ -637,6 +631,26 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
 #define COVERFLOW_MISSING_RETRY_MS 2500
 static clock_t gCovMissingRetryAt = 0;
 static int gCovRetryMissingThisFrame = 0;
+static u64 gCovRetryEvalFrame = (u64)-1;
+
+// 每帧只计算一次缺图重试窗口，COV/ICO/BG 共用。BG 元素先于 Coverflow 绘制、
+// 详情页又没有 Coverflow 元素，因此不能只在 drawCoverFlow() 里刷新该标志，
+// 否则详情页会沿用旧的 1，每帧都重新请求缺失的 BG。
+static void coverflowUpdateRetryWindow(void)
+{
+    clock_t now;
+
+    if (gCovRetryEvalFrame == guiFrameId)
+        return;
+    gCovRetryEvalFrame = guiFrameId;
+    gCovRetryMissingThisFrame = 0;
+    now = clock();
+    if (now >= gCovMissingRetryAt) {
+        gCovRetryMissingThisFrame = 1;
+        gCovMissingRetryAt = now +
+                             (clock_t)COVERFLOW_MISSING_RETRY_MS * CLOCKS_PER_SEC / 1000;
+    }
+}
 
 static void coverflowRetryMissing(image_cache_t *cache, struct submenu_item *item)
 {
@@ -688,71 +702,6 @@ static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item
                                           startup, item->item.id);
 }
 
-#ifdef __DEBUG
-// BG 延迟入队诊断（仅调试构建）：跳过原因按 120 帧限流；实际请求的 item 只在变化时输出。
-static int bgDqLastReason = -1;
-static u32 bgDqLastFrame;
-static u32 bgDqSuppressed;
-static int bgDqLastItem = -2;
-
-static void bgDiagDeferred(const char *reason, int reasonId, submenu_list_t *item)
-{
-    u32 f = (u32)guiFrameId;
-
-    if (reasonId == bgDqLastReason && (u32)(f - bgDqLastFrame) < 120) {
-        bgDqSuppressed++;
-        return;
-    }
-    LOG("[BG_DQ] f=%u reason=%s item=%d deferred_f=%u cache=%d list=%d supp=%u\n",
-        f, reason, item ? item->item.id : -1, (u32)deferredCoverflowBgFrame,
-        deferredCoverflowBgCache ? 1 : 0, deferredCoverflowBgList ? 1 : 0, bgDqSuppressed);
-    bgDqLastReason = reasonId;
-    bgDqLastFrame = f;
-    bgDqSuppressed = 0;
-}
-#endif
-
-static void queueDeferredCoverflowBackground(submenu_list_t *item)
-{
-    if (deferredCoverflowBgFrame != guiFrameId) {
-#ifdef __DEBUG
-        bgDiagDeferred("frame_mismatch", 0, item);
-#endif
-        deferredCoverflowBgCache = NULL;
-        deferredCoverflowBgList = NULL;
-        deferredCoverflowBgFrame = 0;
-        return;
-    }
-    if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item) {
-#ifdef __DEBUG
-        bgDiagDeferred("null_ptr", 1, item);
-#endif
-        return;
-    }
-#ifdef __DEBUG
-    if (item->item.id != bgDqLastItem) {
-        LOG("[BG_DQ] f=%u reason=call item=%d cid=%d uid=%d\n", (u32)guiFrameId, item->item.id,
-            item->item.cache_id[deferredCoverflowBgCache->userId],
-            item->item.cache_uid[deferredCoverflowBgCache->userId]);
-        bgDqLastItem = item->item.id;
-        bgDqLastReason = -1;
-    }
-#endif
-
-    coverflowRetryMissing(deferredCoverflowBgCache, &item->item);
-    char *startup = deferredCoverflowBgList->itemGetStartup(deferredCoverflowBgList, item->item.id);
-    // quiet 路径不受普通列表的 cdFrames/skipQr 状态影响；此调用发生在
-    // ICO 入队之后，因此 BG 的 IO 队列顺序始终落在 ICO 后面。
-    cacheGetTextureQuiet(deferredCoverflowBgCache, deferredCoverflowBgList,
-                         &item->item.cache_id[deferredCoverflowBgCache->userId],
-                         &item->item.cache_uid[deferredCoverflowBgCache->userId],
-                         startup, item->item.id);
-
-    deferredCoverflowBgCache = NULL;
-    deferredCoverflowBgList = NULL;
-    deferredCoverflowBgFrame = 0;
-}
-
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
@@ -760,17 +709,11 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         item_list_t *support = menu->item->userdata;
         GSTEXTURE *texture;
 
-        if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow &&
-            gameImage->cache && artEnabledForCache(gameImage->cache)) {
-            // 先画已加载的 BG/fallback；新的 BG 请求留到 drawCoverFlow，
-            // 这样它可以紧跟在 ICO 请求之后入队。
-            deferredCoverflowBgCache = gameImage->cache;
-            deferredCoverflowBgList = support;
-            deferredCoverflowBgFrame = guiFrameId;
-            texture = cacheGetTextureNoRequest(gameImage->cache, support,
-                                                &item->item.cache_id[gameImage->cache->userId],
-                                                &item->item.cache_uid[gameImage->cache->userId],
-                                                support->itemGetStartup(support, item->item.id), item->item.id);
+        if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->cache) {
+            // Coverflow 主题：BG 与 COV 一样直接走 quiet 缓存路径请求/取图，
+            // 不再延后入队，也没有额外的槽位保护或回退规则；未加载完成时按原逻辑画默认背景。
+            coverflowUpdateRetryWindow();
+            texture = getCoverflowTexture(gameImage->cache, support, &item->item, 1);
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
@@ -1424,17 +1367,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (item == NULL)
         return;
 
-    // One bounded retry window covers COV, ICO and BG.  The flag is consumed
-    // only while this frame queries the current Coverflow target.
-    gCovRetryMissingThisFrame = 0;
-    {
-        clock_t now = clock();
-        if (now >= gCovMissingRetryAt) {
-            gCovRetryMissingThisFrame = 1;
-            gCovMissingRetryAt = now +
-                                 (clock_t)COVERFLOW_MISSING_RETRY_MS * CLOCKS_PER_SEC / 1000;
-        }
-    }
+    // COV、ICO 与 BG 共用同一个有界重试窗口（每帧只计算一次）。
+    coverflowUpdateRetryWindow();
 
     // 关闭封面图时仍保留 Coverflow 的布局计算和 ICO 绘制；只跳过封面/case 的实际提交。
     // 由于此时没有可见封面动画，ICO 只随当前 item 的变化切换，不等待 Coverflow 动画。
@@ -2014,10 +1948,6 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             gTheme->coverflowIcoPopupStartTime = (u64)clock();
         }
     }
-
-    // CF 背景在这里才真正入队，因此当 ICO 开启且尚未确认不存在时，
-    // BG 的队列位置一定在 ICO 之后；ICO 关闭或已标记不存在时不会阻塞 BG。
-    queueDeferredCoverflowBackground(item);
 }
 
 static void initCoverflow(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, int count, const char *texture, const char *overlay)

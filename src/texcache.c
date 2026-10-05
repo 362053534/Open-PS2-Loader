@@ -47,8 +47,6 @@ static volatile u32 diagArtFailed;
 static volatile u32 diagArtCancelled;
 static volatile u32 diagArtRemoved;
 static volatile u32 diagArtStale;
-static volatile u32 diagBgFallbackHit;
-static volatile u32 diagBgFallbackMiss;
 static volatile int diagLastResult;
 static volatile int diagLastQueueError;
 static volatile int diagActiveArt;
@@ -162,235 +160,7 @@ load_image_request_t req1 = {0};
 load_image_request_t req2 = {0};
 load_image_request_t req3 = {0};
 
-#ifdef __DEBUG
-// ---- BG 槽位诊断（仅调试构建，不改变任何行为）----
-// 目的：定位主界面 Coverflow BG 永久不再入队的原因（qr 泄漏 / 保护槽 / 无空闲槽）。
-// qr 置位/清零事件先写入环形缓冲区（关中断保护，worker 与主线程都可调用，
-// 不调用 printf/malloc），再由主线程在 flushBatchRequests() 中逐条用 LOG 输出，
-// 因此 BG 槽位的 qr 事件不做限流、不会丢失（缓冲区溢出时输出 dropped 计数）。
-#define BG_DIAG_MAX_CACHES 4
-#define BG_DIAG_MAX_SLOTS 4
-#define BG_DIAG_RING 256
-#define BG_DIAG_RATE_FRAMES 120
-
-enum BG_DIAG_SITE {
-    BGS_Q_ALLOC = 0,  // quiet 路径分配槽位并置 qr=1
-    BGS_Q_NOMEM,      // cacheQueueImageRequest 中 calloc 失败，qr=0
-    BGS_NQ_ALLOC,     // 非 quiet 路径分配槽位并置 qr=1
-    BGS_CANCEL,       // cacheCancelImageRequest：UID 一致，qr=0
-    BGS_CANCEL_SKIP,  // cacheCancelImageRequest：UID 不一致，未改槽位
-    BGS_RELEASE,      // cacheReleaseRequestSlot：清 qr
-    BGS_RELEASE_SKIP, // cacheReleaseRequestSlot：UID 不一致或 qr 已为 0，未改槽位
-    BGS_WK_BEGIN,     // worker 开始加载
-    BGS_WK_KEEP,      // worker 发布结果，qr=0
-    BGS_WK_STALE,     // worker 丢弃过期结果，qr=2
-    BGS_WK_LOST,      // worker 完成时槽位已不属于本请求，未改槽位
-    BGS_EXP_RESERVE,  // cacheClearExpiredItem 拿到槽位，qr=3
-    BGS_EXP_SKIP,     // cacheClearExpiredItem 未拿到槽位
-    BGS_CLEAR,        // cacheClearItem：memset，qr=0、UID=-1
-    BGS_PT_CLEAR,     // pthread 加载路径清 qr
-    BGS_DESTROY,      // BG cache 销毁
-    BGS_COUNT
-};
-
-static const char *bgDiagSiteNames[BGS_COUNT] = {
-    "q_alloc", "q_nomem", "nq_alloc", "cancel", "cancel_skip", "release",
-    "release_skip", "wk_begin", "wk_keep", "wk_stale", "wk_lost",
-    "exp_reserve", "exp_skip", "clear", "pt_clear", "destroy"};
-
-// BG 请求未入队的原因
-enum BG_DIAG_QREASON {
-    BGQ_MISSING = 0,   // item 的 cacheId 为 -2（已确认缺图）
-    BGQ_LOADING,       // item 自己的槽位 qr!=0（正在加载/丢弃中）
-    BGQ_FOUND_MISSING, // 槽位 texFound=0，本次刚标记为 -2
-    BGQ_NO_REQUEST,    // queueRequest=0
-    BGQ_NO_SLOT,       // 没有可用槽位（全部 qr!=0、受 PrevCacheID_BG 保护或本帧已用）
-    BGQ_COUNT
-};
-
-static const char *bgDiagQReasonNames[BGQ_COUNT] = {
-    "missing", "loading", "found_missing", "no_request", "no_slot"};
-
-typedef struct
-{
-    u32 seq;
-    u32 frame;
-    int site;
-    int line;
-    int cacheIdx;
-    int slot;
-    int uid;
-    int refUid;
-    int qrOld;
-    int qrNew;
-    int texFound;
-    int item;
-    int tid;
-    u32 gen;
-    u32 artGen;
-} bg_diag_event_t;
-
-static image_cache_t *bgDiagCaches[BG_DIAG_MAX_CACHES];
-static bg_diag_event_t bgDiagRing[BG_DIAG_RING];
-static volatile u32 bgDiagHead;
-static volatile u32 bgDiagTail;
-static volatile u32 bgDiagSeq;
-static volatile u32 bgDiagDropped;
-static volatile u32 diagBgFallbackForce; // force=1 时 fallback 被直接跳过的次数
-static int bgQLastReason = -1;
-static int bgQLastItem = -2;
-static u32 bgQLastFrame;
-static u32 bgQSuppressed;
-
-static int bgDiagSlotOf(const cache_entry_t *entry, int *cacheIdx)
-{
-    int i;
-
-    if (!entry)
-        return -1;
-    for (i = 0; i < BG_DIAG_MAX_CACHES; i++) {
-        image_cache_t *c = bgDiagCaches[i];
-        if (c && c->content && entry >= c->content && entry < c->content + c->count) {
-            if (cacheIdx)
-                *cacheIdx = i;
-            return (int)(entry - c->content);
-        }
-    }
-    return -1;
-}
-
-// 记录一次 BG 槽位事件；entry 不属于 BG cache 时直接返回（destroy 除外）。
-// refUid：请求持有的 UID，或清除前的 UID；qrOld：修改前的 qr。
-static void bgDiagEvent(int site, int line, const cache_entry_t *entry, int refUid, int qrOld, int item)
-{
-    int cacheIdx = -1;
-    int slot = bgDiagSlotOf(entry, &cacheIdx);
-    int tid;
-    int intr;
-
-    if (slot < 0 && site != BGS_DESTROY)
-        return;
-
-    tid = GetThreadId();
-    intr = DIntr();
-    u32 seq = bgDiagSeq++;
-    if ((u32)(bgDiagHead - bgDiagTail) >= BG_DIAG_RING) {
-        bgDiagDropped++;
-    } else {
-        bg_diag_event_t *ev = &bgDiagRing[bgDiagHead % BG_DIAG_RING];
-        ev->seq = seq;
-        ev->frame = (u32)guiFrameId;
-        ev->site = site;
-        ev->line = line;
-        ev->cacheIdx = cacheIdx;
-        ev->slot = slot;
-        ev->uid = entry ? entry->UID : -1;
-        ev->refUid = refUid;
-        ev->qrOld = qrOld;
-        ev->qrNew = entry ? entry->qr : -1;
-        ev->texFound = entry ? entry->texFound : -9;
-        ev->item = item;
-        ev->tid = tid;
-        ev->gen = entry ? entry->requestGeneration : 0;
-        ev->artGen = artRequestGeneration;
-        bgDiagHead++;
-    }
-    if (intr)
-        EIntr();
-}
-
-// 仅主线程调用：输出环形缓冲区中积累的全部 BG 事件。
-static void bgDiagFlushEvents(void)
-{
-    while (bgDiagTail != bgDiagHead) {
-        bg_diag_event_t ev;
-        __asm__ __volatile__("" ::: "memory");
-        ev = bgDiagRing[bgDiagTail % BG_DIAG_RING];
-        __asm__ __volatile__("" ::: "memory");
-        bgDiagTail++;
-        LOG("[BG_EV] seq=%u f=%u site=%s line=%d c=%d slot=%d uid=%d ref_uid=%d qr=%d->%d tf=%d gen=%u art_gen=%u item=%d tid=%d\n",
-            ev.seq, ev.frame, (ev.site >= 0 && ev.site < BGS_COUNT) ? bgDiagSiteNames[ev.site] : "?",
-            ev.line, ev.cacheIdx, ev.slot, ev.uid, ev.refUid, ev.qrOld, ev.qrNew, ev.texFound,
-            ev.gen, ev.artGen, ev.item, ev.tid);
-    }
-    if (bgDiagDropped) {
-        u32 dropped = bgDiagDropped;
-        bgDiagDropped = 0;
-        LOG("[BG_EV] dropped=%u\n", dropped);
-    }
-}
-
-static void bgDiagFormatEntries(char *buf, int size, const cache_entry_t *entries, int count)
-{
-    int i;
-    int len = 0;
-
-    buf[0] = '\0';
-    for (i = 0; i < count && i < BG_DIAG_MAX_SLOTS; i++) {
-        const cache_entry_t *e = &entries[i];
-        int w = snprintf(buf + len, size - len, " s%d=qr:%d,uid:%d,tf:%d,lu:%u,gen:%u,mem:%d",
-                         i, e->qr, e->UID, e->texFound, (u32)e->lastUsed, e->requestGeneration,
-                         e->texture.Mem ? 1 : 0);
-        if (w < 0 || w >= size - len)
-            break;
-        len += w;
-    }
-}
-
-// 仅主线程调用：BG 请求未入队时输出原因。相同原因+相同 item 在 120 帧内只输出一次，
-// 被抑制的次数在下一行 supp= 中给出。
-static void bgDiagQueueSkip(image_cache_t *cache, int reason, int itemId, int cidIn, int uidIn, int cid, int qr, int tf)
-{
-    u32 f = (u32)guiFrameId;
-    char slots[256];
-
-    if (reason == bgQLastReason && itemId == bgQLastItem && (u32)(f - bgQLastFrame) < BG_DIAG_RATE_FRAMES) {
-        bgQSuppressed++;
-        return;
-    }
-
-    slots[0] = '\0';
-    if (reason == BGQ_NO_SLOT && cache && cache->content)
-        bgDiagFormatEntries(slots, sizeof(slots), cache->content, cache->count);
-    LOG("[BG_Q] f=%u item=%d reason=%s cid_in=%d uid_in=%d cid=%d prev=%d qr=%d tf=%d force=%d art_gen=%u supp=%u%s\n",
-        f, itemId, (reason >= 0 && reason < BGQ_COUNT) ? bgDiagQReasonNames[reason] : "?",
-        cidIn, uidIn, cid, PrevCacheID_BG, qr, tf, ForceRefreshPrevTexCache, artRequestGeneration,
-        bgQSuppressed, slots);
-    bgQLastReason = reason;
-    bgQLastItem = itemId;
-    bgQLastFrame = f;
-    bgQSuppressed = 0;
-}
-
-// 仅主线程调用：每 120 帧输出一次全部 BG cache 槽位快照。
-static void bgDiagReportSlots(void)
-{
-    int c;
-
-    for (c = 0; c < BG_DIAG_MAX_CACHES; c++) {
-        image_cache_t *cache = bgDiagCaches[c];
-        cache_entry_t snap[BG_DIAG_MAX_SLOTS];
-        char slots[256];
-        int n, i, loading;
-
-        if (!cache || !cache->content)
-            continue;
-        n = cache->count < BG_DIAG_MAX_SLOTS ? cache->count : BG_DIAG_MAX_SLOTS;
-        TEX_LOADING_LOCK();
-        for (i = 0; i < n; i++)
-            snap[i] = cache->content[i];
-        loading = texLoading;
-        TEX_LOADING_UNLOCK();
-        bgDiagFormatEntries(slots, sizeof(slots), snap, n);
-        LOG("[BG_SLOTS] f=%u c=%d count=%d prev=%d force=%d bgforce=%u loading=%d art_gen=%u%s\n",
-            (u32)guiFrameId, c, cache->count, PrevCacheID_BG, ForceRefreshPrevTexCache,
-            diagBgFallbackForce, loading, artRequestGeneration, slots);
-    }
-    diagBgFallbackForce = 0;
-}
-#endif
-
-static void cacheClearItemImpl(cache_entry_t *item, int freeTxt)
+static void cacheClearItem(cache_entry_t *item, int freeTxt)
 {
     if (!item)
         return;
@@ -426,30 +196,6 @@ static void cacheClearItemImpl(cache_entry_t *item, int freeTxt)
     item->texFound = -1;
 }
 
-#ifdef __DEBUG
-static void cacheClearItemDiag(cache_entry_t *item, int freeTxt, int line)
-{
-    int qrOld = item ? item->qr : 0;
-    int uidOld = item ? item->UID : -1;
-
-    cacheClearItemImpl(item, freeTxt);
-    bgDiagEvent(BGS_CLEAR, line, item, uidOld, qrOld, -1);
-}
-// 调试构建记录调用行号；release 构建直接调用原函数。
-#define cacheClearItem(item, freeTxt) cacheClearItemDiag((item), (freeTxt), __LINE__)
-#define BG_DIAG_PT_CLEAR_QR(req)                                                       \
-    do {                                                                               \
-        cache_entry_t *bgDiagEntry_ = &(req)->cache->content[(req)->cacheId];          \
-        int bgDiagQrOld_ = bgDiagEntry_->qr;                                           \
-        bgDiagEntry_->qr = 0;                                                          \
-        bgDiagEvent(BGS_PT_CLEAR, __LINE__, bgDiagEntry_, bgDiagEntry_->UID, bgDiagQrOld_, \
-                    (req)->itemId);                                                    \
-    } while (0)
-#else
-#define cacheClearItem(item, freeTxt) cacheClearItemImpl((item), (freeTxt))
-#define BG_DIAG_PT_CLEAR_QR(req)      ((req)->cache->content[(req)->cacheId].qr = 0)
-#endif
-
 static void cacheDecreaseLoading(void)
 {
     TEX_LOADING_LOCK();
@@ -472,10 +218,6 @@ static void cacheCancelImageRequest(void *data)
 
     if (ioReq->cache && ioReq->cache->content && ioReq->cacheId >= 0 && ioReq->cacheId < ioReq->cache->count) {
         cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
-#ifdef __DEBUG
-        int bgQrOld = entry->qr;
-        int bgOwned = (entry->UID == ioReq->cacheUID);
-#endif
 
         // UID一致才允许释放槽位，避免旧请求清掉后来复用该槽位的新请求。
         if (entry->UID == ioReq->cacheUID) {
@@ -484,9 +226,6 @@ static void cacheCancelImageRequest(void *data)
             entry->requestGeneration = 0;
             entry->texFound = -1;
         }
-#ifdef __DEBUG
-        bgDiagEvent(bgOwned ? BGS_CANCEL : BGS_CANCEL_SKIP, __LINE__, entry, ioReq->cacheUID, bgQrOld, ioReq->itemId);
-#endif
     }
 
     cacheDecreaseLoading();
@@ -504,17 +243,10 @@ static void cacheReleaseRequestSlot(load_image_request_t *ioReq)
 
     cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
     TEX_LOADING_LOCK();
-#ifdef __DEBUG
-    int bgQrOld = entry->qr;
-    int bgOwned = (entry->UID == ioReq->cacheUID && entry->qr);
-#endif
     if (entry->UID == ioReq->cacheUID && entry->qr) {
         entry->qr = 0;
         entry->requestGeneration = 0;
     }
-#ifdef __DEBUG
-    bgDiagEvent(bgOwned ? BGS_RELEASE : BGS_RELEASE_SKIP, __LINE__, entry, ioReq->cacheUID, bgQrOld, ioReq->itemId);
-#endif
     TEX_LOADING_UNLOCK();
 }
 
@@ -532,14 +264,7 @@ static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
     if (entry->UID == cacheUID && entry->qr == 2) {
         entry->qr = 3; // reserved while texture memory is released below
         owned = 1;
-#ifdef __DEBUG
-        bgDiagEvent(BGS_EXP_RESERVE, __LINE__, entry, cacheUID, 2, -1);
-#endif
     }
-#ifdef __DEBUG
-    else
-        bgDiagEvent(BGS_EXP_SKIP, __LINE__, entry, cacheUID, entry->qr, -1);
-#endif
     TEX_LOADING_UNLOCK();
 
     if (owned)
@@ -576,9 +301,6 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
         diagArtQueueAllocFail++;
 #endif
         cache->content[cacheId].qr = 0;
-#ifdef __DEBUG
-        bgDiagEvent(BGS_Q_NOMEM, __LINE__, &cache->content[cacheId], cache->content[cacheId].UID, 1, itemId);
-#endif
         return;
     }
 
@@ -659,9 +381,6 @@ static void cacheLoadImage1(void *data)
     }
 
     cache_entry_t *entry = &ioReq->cache->content[ioReq->cacheId];
-#ifdef __DEBUG
-    bgDiagEvent(BGS_WK_BEGIN, __LINE__, entry, ioReq->cacheUID, entry->qr, ioReq->itemId);
-#endif
 
     // 加载图片。itemGetImage() 可能已经无法中途取消；结果先留在原槽位，
     // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
@@ -712,9 +431,6 @@ static void cacheLoadImage1(void *data)
     TEX_LOADING_LOCK();
     IO_DIAG_STAGE(IO_WS_ART_MUTEX_HELD);
     sameEntry = (entry->UID == ioReq->cacheUID);
-#ifdef __DEBUG
-    int bgQrOld = entry->qr;
-#endif
     if (sameEntry && entry->qr &&
         (!ioReq->trackGeneration || entry->requestGeneration == artRequestGeneration)) {
         // 普通列表请求保持原有发布规则；Coverflow 的 COV/ICO/BG 请求
@@ -730,19 +446,9 @@ static void cacheLoadImage1(void *data)
         }
         entry->requestGeneration = 0;
         entry->qr = 0;
-#ifdef __DEBUG
-        bgDiagEvent(BGS_WK_KEEP, __LINE__, entry, ioReq->cacheUID, bgQrOld, ioReq->itemId);
-#endif
     } else if (sameEntry && entry->qr) {
         entry->qr = 2; // 丢弃期间禁止主线程复用此槽位
-#ifdef __DEBUG
-        bgDiagEvent(BGS_WK_STALE, __LINE__, entry, ioReq->cacheUID, bgQrOld, ioReq->itemId);
-#endif
     }
-#ifdef __DEBUG
-    else
-        bgDiagEvent(BGS_WK_LOST, __LINE__, entry, ioReq->cacheUID, bgQrOld, ioReq->itemId);
-#endif
     TEX_LOADING_UNLOCK();
     IO_DIAG_STAGE(IO_WS_ART_MUTEX_UNLOCKED);
 
@@ -795,7 +501,7 @@ static void *cacheLoadImage(void *data)
 
         item_list_t *handler = ioReq->list;
         if (!handler) {
-            BG_DIAG_PT_CLEAR_QR(ioReq);
+            ioReq->cache->content[ioReq->cacheId].qr = 0;
             TEX_LOADING_LOCK();
             if (texLoading > 0)
                 texLoading--;
@@ -807,7 +513,7 @@ static void *cacheLoadImage(void *data)
 
         // 光标指向的游戏ID和后台加载的art图片不符时，或者已经处于CD(按住和快速点击)时，停止加载图片，避免卡顿
         if (cdFramesCount || forceSkipQr) {
-            BG_DIAG_PT_CLEAR_QR(ioReq);
+            ioReq->cache->content[ioReq->cacheId].qr = 0;
             TEX_LOADING_LOCK();
             if (texLoading > 0)
                 texLoading--;
@@ -835,7 +541,7 @@ static void *cacheLoadImage(void *data)
         if (texLoading > 0)
             texLoading--;
         TEX_LOADING_UNLOCK();
-        BG_DIAG_PT_CLEAR_QR(ioReq);
+        ioReq->cache->content[ioReq->cacheId].qr = 0;
         // 重置状态
         ioReq->qr = 0;
     }
@@ -1026,7 +732,6 @@ void flushBatchRequests(void)
 
 #ifdef __DEBUG
     cacheDiagWatchdog();
-    bgDiagFlushEvents();
 
     // Print a bounded snapshot roughly every two seconds.  This is deliberately
     // not emitted for every frame/request: UDP logging must not become the cause
@@ -1038,7 +743,7 @@ void flushBatchRequests(void)
         TEX_LOADING_UNLOCK();
         LOG("[ART_DIAG] frame=%u loading=%d queued=%d active=%d gen=%u force=%d cd=%d "
             "blocked=%d terminating=%d qalloc=%u qput=%u start=%u done=%u fail=%u "
-            "cancel=%u rm=%u stale=%u bgfb=%u bgmiss=%u last=%s/%d qerr=%d "
+            "cancel=%u rm=%u stale=%u last=%s/%d qerr=%d "
             "active_req=%d/%s/%s/%d\n",
             (u32)guiFrameId, loading, ioGetPendingRequestCount(),
             ioGetActiveRequestType(), artRequestGeneration,
@@ -1046,7 +751,7 @@ void flushBatchRequests(void)
             ioIsBlocked(), ioIsTerminating(), diagArtQueueAllocFail,
             diagArtQueuePutFail, diagArtStarted, diagArtCompleted,
             diagArtFailed, diagArtCancelled, diagArtRemoved, diagArtStale,
-            diagBgFallbackHit, diagBgFallbackMiss, diagLastSuffix,
+            diagLastSuffix,
             diagLastResult, diagLastQueueError, diagActiveArt,
             diagActiveSuffix, diagActiveValue, diagActiveItemId);
         diagArtQueueAllocFail = 0;
@@ -1057,10 +762,7 @@ void flushBatchRequests(void)
         diagArtCancelled = 0;
         diagArtRemoved = 0;
         diagArtStale = 0;
-        diagBgFallbackHit = 0;
-        diagBgFallbackMiss = 0;
         diagNextFrame = (u32)guiFrameId + 120;
-        bgDiagReportSlots();
     }
 #endif
 
@@ -1225,41 +927,15 @@ image_cache_t *cacheInitCache(int userId, const char *prefix, int isPrefixRelati
     for (i = 0; i < count; ++i)
         cacheClearItem(&cache->content[i], 0);
 
-#ifdef __DEBUG
-    // 登记 BG cache，供槽位诊断识别 BG 槽位
-    if (!strncmp(cache->suffix, "BG", 2)) {
-        for (i = 0; i < BG_DIAG_MAX_CACHES; i++) {
-            if (!bgDiagCaches[i]) {
-                bgDiagCaches[i] = cache;
-                LOG("[BG_EV] register c=%d count=%d\n", i, count);
-                break;
-            }
-        }
-    }
-#endif
-
     return cache;
 }
 
 void cacheDestroyCache(image_cache_t *cache)
 {
     int i;
-#ifdef __DEBUG
-    int bgDiagIdx = -1;
-    for (i = 0; i < BG_DIAG_MAX_CACHES; i++) {
-        if (bgDiagCaches[i] == cache)
-            bgDiagIdx = i;
-    }
-    if (bgDiagIdx >= 0)
-        bgDiagEvent(BGS_DESTROY, __LINE__, NULL, bgDiagIdx, 0, -1);
-#endif
     for (i = 0; i < cache->count; ++i) {
         cacheClearItem(&cache->content[i], 1);
     }
-#ifdef __DEBUG
-    if (bgDiagIdx >= 0)
-        bgDiagCaches[bgDiagIdx] = NULL;
-#endif
 
     free(cache->prefix);
     free(cache->suffix);
@@ -1449,9 +1125,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             else
                 oldestEntry->UID = *UID;
 
-#ifdef __DEBUG
-            bgDiagEvent(BGS_NQ_ALLOC, __LINE__, oldestEntry, *UID, 0, itemId);
-#endif
             cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0); // quiet=0：常规单封面路径
         } else {
             //  加载图片
@@ -1465,9 +1138,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         oldestEntry->UID = *UID = cache->nextUID++;
                     else
                         oldestEntry->UID = *UID;
-#ifdef __DEBUG
-                    bgDiagEvent(BGS_NQ_ALLOC, __LINE__, oldestEntry, *UID, 0, itemId);
-#endif
 
                     //  使用pthread的多线程方法
                     TEX_LOADING_LOCK();
@@ -1499,9 +1169,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         oldestEntry->UID = *UID = cache->nextUID++;
                     else
                         oldestEntry->UID = *UID;
-#ifdef __DEBUG
-                    bgDiagEvent(BGS_NQ_ALLOC, __LINE__, oldestEntry, *UID, 0, itemId);
-#endif
 
                     //  使用pthread的多线程方法
                     TEX_LOADING_LOCK();
@@ -1532,9 +1199,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                         oldestEntry->UID = *UID = cache->nextUID++;
                     else
                         oldestEntry->UID = *UID;
-#ifdef __DEBUG
-                    bgDiagEvent(BGS_NQ_ALLOC, __LINE__, oldestEntry, *UID, 0, itemId);
-#endif
 
                     //  使用pthread的多线程方法
                     TEX_LOADING_LOCK();
@@ -1601,95 +1265,6 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     return PrevCacheID < 0 ? NULL : &cache->content[PrevCacheID].texture;
 }
 
-// Find the last usable background texture.  PrevCacheID_BG is only a hint:
-// it can point at a slot that was reclaimed after a failed/stale request, and
-// a two-slot cache must still be able to recover the other loaded slot.
-static GSTEXTURE *cacheGetBackgroundFallback(image_cache_t *cache, int excludeId)
-{
-    int fallbackId = -1;
-    u64 fallbackTime = 0;
-    int i;
-
-    if (!cache || !cache->content)
-        return NULL;
-    if (ForceRefreshPrevTexCache) {
-#ifdef __DEBUG
-        diagBgFallbackForce++;
-#endif
-        return NULL;
-    }
-
-    if (PrevCacheID_BG >= 0 && PrevCacheID_BG < cache->count && PrevCacheID_BG != excludeId) {
-        cache_entry_t *entry = &cache->content[PrevCacheID_BG];
-        if (!entry->qr && entry->texFound == 1 && entry->texture.Mem) {
-#ifdef __DEBUG
-            diagBgFallbackHit++;
-#endif
-            return &entry->texture;
-        }
-    }
-
-    // Recover the fallback when the remembered slot was cleared or when the
-    // current request failed.  Prefer the most recently used loaded slot.
-    for (i = 0; i < cache->count; i++) {
-        cache_entry_t *entry = &cache->content[i];
-        if (i == excludeId || entry->qr || entry->texFound != 1 || !entry->texture.Mem)
-            continue;
-        if (fallbackId < 0 || entry->lastUsed >= fallbackTime) {
-            fallbackId = i;
-            fallbackTime = entry->lastUsed;
-        }
-    }
-
-    PrevCacheID_BG = fallbackId;
-#ifdef __DEBUG
-    if (fallbackId < 0)
-        diagBgFallbackMiss++;
-    else
-        diagBgFallbackHit++;
-#endif
-    return fallbackId < 0 ? NULL : &cache->content[fallbackId].texture;
-}
-
-// 只查询现有缓存/回退纹理，不触发新的加载请求。
-// Coverflow 的 BG 在渲染背景阶段只走这里，真正的请求由 drawCoverFlow 在 ICO 请求之后提交。
-GSTEXTURE *cacheGetTextureNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
-{
-    (void)list;
-    (void)value;
-    (void)itemId;
-
-    if (!cache || !cache->content || !cacheId || !UID)
-        return NULL;
-
-    if (*cacheId >= 0 && *cacheId < cache->count) {
-        cache_entry_t *entry = &cache->content[*cacheId];
-        if (entry->UID == *UID) {
-            if (entry->qr)
-                return cacheGetBackgroundFallback(cache, *cacheId);
-
-            if (entry->texFound == 0) {
-                // A failed/missing current BG must not erase the previous
-                // background.  Keep the item marked missing for retry, but
-                // render the other cache slot until a new texture succeeds.
-                *cacheId = -2;
-                return cacheGetBackgroundFallback(cache, -1);
-            }
-
-            if (entry->texFound == 1 && entry->texture.Mem) {
-                PrevCacheID_BG = *cacheId;
-                entry->lastUsed = guiFrameId;
-                return &entry->texture;
-            }
-        }
-        *cacheId = -1;
-    }
-
-    // In particular, do not let cache_id == -2 suppress the two-slot fallback:
-    // it only means that this item's own BG was last reported missing.
-    return cacheGetBackgroundFallback(cache, -1);
-}
-
 // Coverflow 专用取图函数。
 // 常规的 cacheGetTexture() 依赖 curStartUp / skipQr / cdFramesCount / PrevCacheID_*
 // 等一整套"每帧只取选中项这一张封面"的全局状态；Coverflow 每帧需要为多张封面取图，
@@ -1701,20 +1276,10 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
 {
     if (!cache || !cache->content || !value)
         return NULL;
-#ifdef __DEBUG
-    int bgDiag = !strncmp(cache->suffix, "BG", 2);
-    int bgCidIn = *cacheId;
-    int bgUidIn = *UID;
-#endif
 
     // 已确认该项没有对应 art 文件：直接返回，避免反复排队
-    if (*cacheId == -2) {
-#ifdef __DEBUG
-        if (bgDiag)
-            bgDiagQueueSkip(cache, BGQ_MISSING, itemId, bgCidIn, bgUidIn, *cacheId, -1, -1);
-#endif
+    if (*cacheId == -2)
         return NULL;
-    }
 
     // 已分配槽位：检查是否命中。动画期间即使不允许新请求，已经在队列中的
     // 请求仍然通过 qr 路径正常等待，已经加载的纹理也继续续期。
@@ -1732,10 +1297,6 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                     entry->requestGeneration = artRequestGeneration;
                     TEX_LOADING_UNLOCK();
                 }
-#ifdef __DEBUG
-                if (bgDiag)
-                    bgDiagQueueSkip(cache, BGQ_LOADING, itemId, bgCidIn, bgUidIn, *cacheId, entry->qr, entry->texFound);
-#endif
                 return NULL; // 正在后台加载
             }
             if (entry->texFound == 1 && entry->texture.Mem) {
@@ -1744,10 +1305,6 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
             }
             if (entry->texFound == 0) {
                 *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
-#ifdef __DEBUG
-                if (bgDiag)
-                    bgDiagQueueSkip(cache, BGQ_FOUND_MISSING, itemId, bgCidIn, bgUidIn, *cacheId, entry->qr, entry->texFound);
-#endif
                 return NULL;
             }
             // texFound == -1：上次加载被 CD/skipQr 中断，只有允许请求时才能重试
@@ -1756,26 +1313,17 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
     }
 
     // Coverflow 翻页/单步动画期间只允许查询已有缓存，不分配新槽位，也不入队。
-    if (!queueRequest) {
-#ifdef __DEBUG
-        if (bgDiag)
-            bgDiagQueueSkip(cache, BGQ_NO_REQUEST, itemId, bgCidIn, bgUidIn, *cacheId, -1, -1);
-#endif
+    if (!queueRequest)
         return NULL;
-    }
 
     // 需要加载：挑一个空闲/最旧、且未在加载中的槽
     cache_entry_t *oldest = NULL;
     int slot = -1;
-    int protectedId = -1;
     u64 rtime = guiFrameId;
     int i;
-    if (!strncmp(cache->suffix, "BG", 2))
-        protectedId = PrevCacheID_BG;
-
     for (i = 0; i < cache->count; i++) {
         cache_entry_t *e = &cache->content[i];
-        if (!e->qr && i != protectedId && e->lastUsed < rtime) {
+        if (!e->qr && e->lastUsed < rtime) {
             oldest = e;
             rtime = e->lastUsed;
             slot = i;
@@ -1790,17 +1338,8 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
         else
             oldest->UID = *UID;
         oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
-#ifdef __DEBUG
-        bgDiagEvent(BGS_Q_ALLOC, __LINE__, oldest, bgUidIn, 0, itemId);
-        if (bgDiag)
-            bgQLastReason = -1;
-#endif
         cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // quiet=1：Coverflow 路径
     }
-#ifdef __DEBUG
-    else if (bgDiag)
-        bgDiagQueueSkip(cache, BGQ_NO_SLOT, itemId, bgCidIn, bgUidIn, *cacheId, -1, -1);
-#endif
     return NULL;
 }
 
