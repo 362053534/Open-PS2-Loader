@@ -64,12 +64,10 @@ jobs:
           path: pcsx2
 
       - name: 打上光驱限速补丁
-        shell: bash
-        working-directory: pcsx2
+        shell: cmd
         run: |
-          git apply --verbose ../pc/pcsx2-throttle/pcsx2-cdvd-throttle.patch.txt
-          git diff --stat
-          grep -n "PCSX2_CDVD_KBPS" CDVD/CDVD.cpp | head -5
+          python pc\pcsx2-throttle\apply_patch.py pcsx2 || exit /b 1
+          git -C pcsx2 diff --stat
 
       - name: Restore deps
         uses: actions/cache/restore@v4
