@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 关闭 Coverflow 翻页明暗插值（恒定亮度）
+
+- 内置主题 `misc/conf_theme_coverflow.cfg`：`coverflow_dim_covers=0`（原为 1）。
+- 效果：翻页动画中封面不再按 `centerFactor` 在 `COVERFLOW_DIM_RGB(0x66)`↔`0x80` 间插值压暗；恒为 `gDefaultCol` 全亮。引擎开关与插值代码保留，第三方主题仍可自行开启。
+- 验证：提交后推送并查 CI。
+
 ### 2026-10-06 — 按用户要求回退到 92a5b972 源码树
 
 - 新建提交使工作树与 92a5b972（stale ART 仅 worker texFree）一致；**不** force-push / 不改写历史。
