@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 720p/1080i Phase-0：封面数夹紧从 1 改为 3
+
+- 硬件：hi-res 下 1 张封面无花屏。继续阶梯：将 `rmIsHiresExtreme` 下的 `gCoverflowCount`/`coverCount` 从 1 改为 3。
+- 其它门控与统一尺寸测试不变；480 不变。
+- 验证：仅 CI。
+
 ### 2026-10-05 — 720p/1080i Phase-0：Coverflow 强制 1 张封面
 
 - 在 `rmIsHiresExtreme` 下将 `gCoverflowCount` 夹紧为 1（主题加载），并在 `drawCoverFlow` 再夹紧 `coverCount=1`。
