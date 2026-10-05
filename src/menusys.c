@@ -425,6 +425,11 @@ void refreshMenuPosition(void)
 
 void submenuRebuildCache(submenu_list_t *submenu)
 {
+    // 重建前先取消仍在队列中的 ART，避免 worker 持有即将释放的 list/startup 指针。
+    // 不在此直接改缓存槽 qr；进行中的请求仍靠代际/UID 与 stale 清槽。
+    if (submenu && submenu->item.cache_id)
+        cacheCancelPendingArtRequests();
+
     while (submenu) {
         if (submenu->item.cache_id)
             free(submenu->item.cache_id);
@@ -483,6 +488,7 @@ submenu_list_t *submenuAppendItem(submenu_list_t **submenu, int icon_id, char *t
 
 static void submenuDestroyItem(submenu_list_t *submenu)
 {
+    // 调用方须已 cacheCancelPendingArtRequests（见 submenuDestroy / RemoveItem）。
     free(submenu->item.cache_id);
     free(submenu->item.cache_uid);
 
@@ -493,6 +499,10 @@ void submenuRemoveItem(submenu_list_t **submenu, int id)
 {
     submenu_list_t *cur = *submenu;
     submenu_list_t *prev = NULL;
+
+    // 释放项指针前取消排队中的 ART 请求。
+    if (*submenu)
+        cacheCancelPendingArtRequests();
 
     while (cur) {
         if (cur->item.id == id) {
@@ -518,6 +528,10 @@ void submenuDestroy(submenu_list_t **submenu)
 {
     // destroy sub menu
     submenu_list_t *cur = *submenu;
+
+    // 整表销毁前取消排队 ART，避免 UAF list/value。
+    if (cur)
+        cacheCancelPendingArtRequests();
 
     while (cur) {
         submenu_list_t *td = cur;

@@ -247,6 +247,15 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — 修补 ART 槽位 qr 泄漏源；收紧 BG D2 空闲判定
+
+- 按用户批准的最小方案（不恢复未批准的 recover）：
+  1. `cacheClearExpiredItem`：UID 匹配且 `qr!=0` 即清槽（不再要求 `qr==2`），消除 stale 丢弃后 qr 永久钉住。仍在 IO worker 上调用 `rmUnloadTexture`（与改前相同，未加重）。
+  2. 请求取消逻辑保持不变。
+  3. `submenuRebuildCache`（仅当已有 cache_id）、`submenuDestroy`、`submenuRemoveItem`：在释放 list 项指针之前 `cacheCancelPendingArtRequests()`；不在重建路径上直接改槽位 qr。
+  4. BG D2 让步额外要求 `ioGetActiveRequestType() < 0`；不做 recover。
+- 验证：仅 CI。
+
 ### 2026-10-05 — Coverflow BG 改回列表式 PrevCacheID_BG（含保护）并删除 CF 专用显示回退
 
 - 按用户决定：删除 `cacheGetCoverflowBgDisplayFallback` / `cacheCoverflowBgNoteDisplayed` / `covBgDisp*` / `bgfb` 及 themes 中 CF 专用回退记账；CF 背景只走 `getCoverflowTexture`（主界面仍 defer 到预取 COV 后入队）。

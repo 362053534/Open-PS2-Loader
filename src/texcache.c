@@ -250,9 +250,9 @@ static void cacheReleaseRequestSlot(load_image_request_t *ioReq)
     TEX_LOADING_UNLOCK();
 }
 
-// A stale active request first reserves its slot with a non-zero qr value.
-// Keep the final clear conditional as well, so a future cache change cannot
-// make an old worker free a slot that it no longer owns.
+// 丢弃过期/代际失效的 active 请求时：只要 UID 仍匹配且 qr 非 0，就必须清槽并 qr=0。
+// 旧逻辑只接受 qr==2，若状态被打断会永久钉住 qr，触发 BG D2 让步。
+// 注意：cacheClearItem 含 rmUnloadTexture，当前仍在 IO worker 线程执行（与改前相同）。
 static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
 {
     int owned = 0;
@@ -261,7 +261,7 @@ static void cacheClearExpiredItem(cache_entry_t *entry, int cacheUID)
         return;
 
     TEX_LOADING_LOCK();
-    if (entry->UID == cacheUID && entry->qr == 2) {
+    if (entry->UID == cacheUID && entry->qr) {
         entry->qr = 3; // reserved while texture memory is released below
         owned = 1;
     }
@@ -1428,7 +1428,8 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
             TEX_LOADING_LOCK();
             loading = texLoading;
             TEX_LOADING_UNLOCK();
-            if (anyOther && allOthersQr && loading == 0 && !ioHasPendingRequests())
+            if (anyOther && allOthersQr && loading == 0 && !ioHasPendingRequests() &&
+                ioGetActiveRequestType() < 0)
                 yieldProtected = 1;
             else
                 break;
