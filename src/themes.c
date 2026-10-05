@@ -703,15 +703,10 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->cache) {
             // 主界面：只取图/PrevCacheID 保持（allowRequest=0），入队延后到预取 COV 之后；
             // 详情等无 Coverflow 的画面仍立即入队。quiet BG 路径自带列表式 PrevCacheID_BG。
-            // 720p/1080i Phase-0：禁用外部 BG，只走 settings_bg/plasma，减轻全屏贴图上传。
-            if (rmIsHiresExtreme()) {
-                texture = NULL;
-            } else {
-                int deferBg = (guiGetScreen() == GUI_SCREEN_MAIN);
-                texture = getCoverflowTexture(gameImage->cache, support, &item->item, deferBg ? 0 : 1);
-                if (deferBg)
-                    armDeferredCoverflowBackground(gameImage->cache, support);
-            }
+            int deferBg = (guiGetScreen() == GUI_SCREEN_MAIN);
+            texture = getCoverflowTexture(gameImage->cache, support, &item->item, deferBg ? 0 : 1);
+            if (deferBg)
+                armDeferredCoverflowBackground(gameImage->cache, support);
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
@@ -739,8 +734,7 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
 
         // 仅当真正画出游戏外部背景图时，才在其上叠加 alpha 遮罩压暗背景；
         // 回退到兜底默认背景时不叠加，避免遮罩影响兜底背景图。
-        // 720p/1080i Phase-0：关掉 alphamask（外部 BG 已关时本就不会走到，这里显式跳过）。
-        if (drewGameArt && gameImage->maskTexture && !rmIsHiresExtreme())
+        if (drewGameArt && gameImage->maskTexture)
             rmDrawPixmap(&gameImage->maskTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
     } else if (elem->type == ELEM_TYPE_BACKGROUND) {
@@ -1318,12 +1312,7 @@ int thmGetCoverflowJumpCount(void)
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
 static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float x, float y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
 {
-    // 720p/1080i Phase-0：无 case 外壳、无倒影（减每帧大贴图 bind）。
-    int extreme = rmIsHiresExtreme();
-    if (extreme)
-        reflection = 0;
-
-    if (img->overlayTexture && !extreme) {
+    if (img->overlayTexture) {
         image_texture_t *ov = img->overlayTexture;
 
         // NULL 保护：rmDrawOverlayPixmap*Frac 会直接解引用 inlay 指针（无 NULL 检查）。
@@ -1399,7 +1388,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 同屏封面数：已规范化到 1/3/5/7/9；翻页动画需要的临时槽位另用
     // COVERFLOW_RENDER_MAX，避免多格移动时数组越界。
     int coverCount = getCoverflowDisplayCount();
-    // 720p/1080i Phase-0 阶梯：夹紧同屏封面数（与主题加载处一致；1 张已确认无花屏，现试 3）。
+    // 720p/1080i：仅夹紧同屏封面数为 3（花屏排查：1 张无花屏；已恢复其余 Phase-0 关闭项）。
     if (rmIsHiresExtreme())
         coverCount = 3;
     int centerIndex = coverCount / 2;
@@ -1497,7 +1486,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     }
 
     // 测试：关闭中心放大/侧栏缩小及翻页时的尺寸插值动画，全部封面统一为中心尺寸。
-    // （Phase-0 hires 门控保持不变；仅消除 coverScale 随 centerFactor 变化。）
+    // （仅消除 coverScale 随 centerFactor 变化；与 hires 封面数夹紧独立。）
     effNonCenterScale = gCoverflowCenterScale;
 
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
@@ -1759,8 +1748,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
     // 只有 Coverflow 移动动画或当前中心条目变化，才让旧 ICO 立即失效。
     // 其它 ART（包括背景图）加载期间不改变 ICO 的显示和弹出动画状态。
-    // 720p/1080i Phase-0：禁用 ICO 弹出（少一张 128² + 倒影 bind）。
-    if (isAnimating || !gEnableArtICO || rmIsHiresExtreme()) {
+    if (isAnimating || !gEnableArtICO) {
         gTheme->coverflowIcoLoaded = 0;
         gTheme->coverflowIcoPopupActive = 0;
     } else {
@@ -1910,8 +1898,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
-    // 720p/1080i Phase-0：preload=0（不预取屏外 COV）。
-    if (img->cache && gCoverflowPreload > 0 && !rmIsHiresExtreme()) {
+    if (img->cache && gCoverflowPreload > 0) {
         int preloadPerSide = gCoverflowPreload;
 
         submenu_list_t *head = menu->item->submenu;
@@ -1952,7 +1939,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     flushDeferredCoverflowBackground(item);
 
     // 所有 Coverflow 预取与 BG 请求入队后，再为当前停留项创建 ICO 请求。
-    if (!isAnimating && gEnableArtICO && !rmIsHiresExtreme() && (!icoTexture || !icoTexture->Mem)) {
+    if (!isAnimating && gEnableArtICO && (!icoTexture || !icoTexture->Mem)) {
         GSTEXTURE *requestedIco = getCoverflowIcoTexture(sourceList, item, 1);
         if (requestedIco && requestedIco->Mem && !gTheme->coverflowIcoLoaded) {
             gTheme->coverflowIcoLoaded = 1;
@@ -2467,11 +2454,9 @@ static void thmLoad(const char *themePath)
     gCoverflowCount = normalizeCoverflowCount(gCoverflowCount);
     if (gCoverflowPreload < 0)
         gCoverflowPreload = 0;
-    // 720p/1080i Phase-0：强制 preload=0、coverflow_count=3（1 张无花屏；主题重载随分辨率切换，480 仍读 cfg）。
-    if (rmIsHiresExtreme()) {
-        gCoverflowPreload = 0;
+    // 720p/1080i：仅强制 coverflow_count=3（已恢复 BG/倒影/case/ICO/mask/preload；480 仍读 cfg）。
+    if (rmIsHiresExtreme())
         gCoverflowCount = 3;
-    }
     // 封面基准尺寸挡非法值（drawCoverFlow 会用 CoverH 作除数、用 CoverW/H 算比例）。
     if (gCoverflowAppsCoverW < 1)
         gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;

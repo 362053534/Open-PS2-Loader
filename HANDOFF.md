@@ -247,6 +247,12 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 恢复 Phase-0 关闭的 CF 功能；hi-res 仍夹紧 3 封面
+
+- 撤销 hi-res 下对外部 BG、倒影、case 外壳、preload、ICO、alphamask 的门控，恢复原绘制/入队行为。
+- **保留**：`rmIsHiresExtreme` 下 `coverflow_count`/`coverCount`=3；保留统一封面尺寸（`effNonCenterScale = gCoverflowCenterScale`）。
+- 验证：仅 CI。
+
 ### 2026-10-06 — 720p/1080i Phase-0：封面数夹紧从 1 改为 3
 
 - 硬件：hi-res 下 1 张封面无花屏。继续阶梯：将 `rmIsHiresExtreme` 下的 `gCoverflowCount`/`coverCount` 从 1 改为 3。
