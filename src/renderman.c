@@ -1076,6 +1076,19 @@ int rmGetInterlacedFrameMode()
     return 0;
 }
 
+int rmIsHiresExtreme(void)
+{
+    // Phase-0 CF VRAM ladder: only true 720p/1080i-class (3-pass or >=1280 wide).
+    // 2-pass 704 hires stays full-featured. Safe before rmSetMode (vmode<0 / !gsGlobal).
+    if (!hires || vmode < 0 || vmode >= NUM_RM_VMODES || !gsGlobal)
+        return 0;
+    if (rm_mode_table[vmode].passes >= 3)
+        return 1;
+    if (gsGlobal->Width >= 1280)
+        return 1;
+    return 0;
+}
+
 int rmScaleX(int x)
 {
     return X_SCALE(x);

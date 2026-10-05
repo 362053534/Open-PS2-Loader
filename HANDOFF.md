@@ -247,6 +247,13 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow 720p/1080i Phase-0 VRAM 减压（保留 5 封面）
+
+- 新增 `rmIsHiresExtreme()`（`passes>=3` 或 `width>=1280`）；仅该模式下生效，480/2-pass hires 不变。
+- Phase-0（按用户批准，**保持 coverflow_count=5**）：无外部 BG、无倒影、无 case 外壳、preload=0、无 ICO、无 alphamask。
+- 门控在 `themes.c`；无 texcache 改动。用于确认无花屏后再逐步加回功能。
+- 验证：仅 CI。
+
 ### 2026-10-05 — 移植 RiptOPL hires 清屏 PrimAlphaEnable 修复
 
 - 仅改 `renderman.c`：在唯一的 `gsKit_hires_init_screen` 调用前后将 `PrimAlphaEnable` 置 OFF 再恢复 ON，避免烘焙进各 pass 的 clear 在 ABE 开启时变成空操作，导致 720p/1080i 残留花屏。

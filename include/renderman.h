@@ -158,6 +158,9 @@ float rmGetPAR();
 /** Get interfaced frame mode */
 int rmGetInterlacedFrameMode();
 
+/** 720p/1080i-class modes (passes>=3 or width>=1280): CF Phase-0 VRAM relief gate. */
+int rmIsHiresExtreme(void);
+
 /** Scale x from 640 to native resolution */
 int rmScaleX(int x);
 
