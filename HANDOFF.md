@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-05 — Coverflow BG 改回列表式 PrevCacheID_BG（含保护）并删除 CF 专用显示回退
+
+- 按用户决定：删除 `cacheGetCoverflowBgDisplayFallback` / `cacheCoverflowBgNoteDisplayed` / `covBgDisp*` / `bgfb` 及 themes 中 CF 专用回退记账；CF 背景只走 `getCoverflowTexture`（主界面仍 defer 到预取 COV 后入队）。
+- quiet BG 路径对齐列表 `PrevCacheID_BG`：ForceRefresh→记 -2 且不保持；当前 -2/缺图→记 -2；命中→记槽并返回；加载中或暂不入队→若 Prev≥0 返回该槽纹理（原始列表风格、不做额外 UID/Mem 校验）；选槽 `count>1` 时保护 `i != PrevCacheID_BG`，候选内仍 preferEmpty 再最旧 lastUsed；若占用的恰是 Prev 槽则先置 Prev=-2 再清空。
+- 卡死让步仅 D2：保护下无候选、其它槽均 `qr!=0`、且 `texLoading==0` 且 `!ioHasPendingRequests()` 时，本轮允许占用 Prev 槽，并先 Prev=-2（显示回落默认）。无时间阈值。
+- 保留：预取后入队、ForceRefresh 老化、`gEnableArtBG` 关闭→默认背景。
+- 验证：仅 CI。实机重点：背景关固定默认；切换游戏保持上一张；A 有图→B 无图→C 加载中为默认。
+
 ### 2026-10-05 — Coverflow 主界面 BG 入队改到预取 COV 之后
 
 - 按用户要求：仅调整 CF 主题背景图入队时机到「预取 COV 入队之后、紧接着入队」。

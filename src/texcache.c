@@ -47,7 +47,6 @@ static volatile u32 diagArtFailed;
 static volatile u32 diagArtCancelled;
 static volatile u32 diagArtRemoved;
 static volatile u32 diagArtStale;
-static volatile u32 diagBgDisplayFallback; // Coverflow BG 显示回退命中次数（不影响槽位）
 static volatile int diagLastResult;
 static volatile int diagLastQueueError;
 static volatile int diagActiveArt;
@@ -750,7 +749,7 @@ void flushBatchRequests(void)
         TEX_LOADING_UNLOCK();
         LOG("[ART_DIAG] frame=%u loading=%d queued=%d active=%d gen=%u force=%d cd=%d "
             "blocked=%d terminating=%d qalloc=%u qput=%u start=%u done=%u fail=%u "
-            "cancel=%u rm=%u stale=%u bgfb=%u last=%s/%d qerr=%d "
+            "cancel=%u rm=%u stale=%u last=%s/%d qerr=%d "
             "active_req=%d/%s/%s/%d\n",
             (u32)guiFrameId, loading, ioGetPendingRequestCount(),
             ioGetActiveRequestType(), artRequestGeneration,
@@ -758,7 +757,7 @@ void flushBatchRequests(void)
             ioIsBlocked(), ioIsTerminating(), diagArtQueueAllocFail,
             diagArtQueuePutFail, diagArtStarted, diagArtCompleted,
             diagArtFailed, diagArtCancelled, diagArtRemoved, diagArtStale,
-            diagBgDisplayFallback, diagLastSuffix,
+            diagLastSuffix,
             diagLastResult, diagLastQueueError, diagActiveArt,
             diagActiveSuffix, diagActiveValue, diagActiveItemId);
         diagArtQueueAllocFail = 0;
@@ -769,7 +768,6 @@ void flushBatchRequests(void)
         diagArtCancelled = 0;
         diagArtRemoved = 0;
         diagArtStale = 0;
-        diagBgDisplayFallback = 0;
         diagNextFrame = (u32)guiFrameId + 120;
     }
 #endif
@@ -1280,14 +1278,33 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
 // 本函数刻意不触碰上述任何全局状态，改用与通用分支相同的 cacheQueueImageRequest()
 // 多请求加载路径，因此可在同一帧安全地为多张封面并行取图/排队加载。
 // 命中返回纹理；未命中则按 queueRequest 决定是否排队后台加载并返回 NULL。
+// Coverflow BG：列表式 PrevCacheID_BG 显示保持（原始索引，不做额外校验）。
+static GSTEXTURE *cacheQuietBgPrevTexture(image_cache_t *cache)
+{
+    if (PrevCacheID_BG < 0 || PrevCacheID_BG >= cache->count)
+        return NULL;
+    return &cache->content[PrevCacheID_BG].texture;
+}
+
 static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId, int queueRequest)
 {
+    int isBg;
+
     if (!cache || !cache->content || !value)
         return NULL;
 
+    isBg = !strncmp(cache->suffix, "BG", 2);
+
+    // Coverflow BG 与列表一致：ForceRefresh 时丢掉上一张保持。
+    if (isBg && ForceRefreshPrevTexCache)
+        PrevCacheID_BG = -2;
+
     // 已确认该项没有对应 art 文件：直接返回，避免反复排队
-    if (*cacheId == -2)
+    if (*cacheId == -2) {
+        if (isBg)
+            PrevCacheID_BG = -2;
         return NULL;
+    }
 
     // 已分配槽位：检查是否命中。动画期间即使不允许新请求，已经在队列中的
     // 请求仍然通过 qr 路径正常等待，已经加载的纹理也继续续期。
@@ -1300,19 +1317,26 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                 if (queueRequest &&
                     (!strncmp(cache->suffix, "COV", 3) ||
                      !strncmp(cache->suffix, "ICO", 3) ||
-                     !strncmp(cache->suffix, "BG", 2))) {
+                     isBg)) {
                     TEX_LOADING_LOCK();
                     entry->requestGeneration = artRequestGeneration;
                     TEX_LOADING_UNLOCK();
                 }
-                return NULL; // 正在后台加载
+                // BG：加载中保持上一张（与 cacheGetTexture 一致）；COV/ICO 仍返回 NULL。
+                if (isBg)
+                    return cacheQuietBgPrevTexture(cache);
+                return NULL;
             }
             if (entry->texFound == 1 && entry->texture.Mem) {
                 entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
+                if (isBg)
+                    PrevCacheID_BG = *cacheId;
                 return &entry->texture;
             }
             if (entry->texFound == 0) {
                 *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
+                if (isBg)
+                    PrevCacheID_BG = -2;
                 return NULL;
             }
             // texFound == -1：上次加载被 CD/skipQr 中断，只有允许请求时才能重试
@@ -1320,56 +1344,101 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
         *cacheId = -1; // UID 不匹配（槽被别的封面抢走）→ 重新查找
     }
 
-    // Coverflow 翻页/单步动画期间只允许查询已有缓存，不分配新槽位，也不入队。
-    if (!queueRequest)
+    // 不允许新请求：BG 仍可返回上一张；COV/ICO 到此结束。
+    if (!queueRequest) {
+        if (isBg)
+            return cacheQuietBgPrevTexture(cache);
         return NULL;
+    }
 
     // 需要加载：挑一个空闲/最旧、且未在加载中的槽。
-    // BG：优先选不可显示的槽（texFound!=1 或 Mem 空），再按 lastUsed 最旧；
-    // 若只剩已显示的上一张 BG 可选，仍然占用它（偏好，不是禁令，保证总能入队）。
-    // COV/ICO：保持原 lastUsed LRU，不受影响。
+    // BG：与列表相同保护 PrevCacheID_BG（count>1 时 i != PrevCacheID）；
+    // 候选集内再 preferEmpty、然后最旧 lastUsed。COV/ICO：原 lastUsed LRU。
+    // D2：无候选且其它槽均 qr、worker 空闲、ART 队列空时，允许本轮占用 PrevCacheID_BG。
     cache_entry_t *oldest = NULL;
     int slot = -1;
     u64 rtime = guiFrameId;
     int i;
-    int preferEmpty = !strncmp(cache->suffix, "BG", 2);
+    int preferEmpty = isBg;
     int bestIsDisplayable = 0;
+    int yieldProtected = 0;
+    int pass;
 
-    for (i = 0; i < cache->count; i++) {
-        cache_entry_t *e = &cache->content[i];
-        int displayable;
+    for (pass = 0; pass < 2; pass++) {
+        oldest = NULL;
+        slot = -1;
+        rtime = guiFrameId;
+        bestIsDisplayable = 0;
 
-        if (e->qr || e->lastUsed >= guiFrameId)
-            continue;
+        for (i = 0; i < cache->count; i++) {
+            cache_entry_t *e = &cache->content[i];
+            int displayable;
 
-        displayable = (e->texFound == 1 && e->texture.Mem) ? 1 : 0;
-        if (!oldest) {
-            oldest = e;
-            rtime = e->lastUsed;
-            slot = i;
-            bestIsDisplayable = displayable;
-            continue;
-        }
-        if (preferEmpty) {
-            // 不可显示优先于可显示；同档再比 lastUsed。
-            if (displayable != bestIsDisplayable) {
-                if (!displayable && bestIsDisplayable) {
-                    oldest = e;
-                    rtime = e->lastUsed;
-                    slot = i;
-                    bestIsDisplayable = 0;
-                }
+            if (e->qr || e->lastUsed >= guiFrameId)
+                continue;
+            // 列表式保护；单槽或 D2 让步时不跳过 PrevCacheID_BG
+            if (isBg && cache->count > 1 && !yieldProtected && i == PrevCacheID_BG)
+                continue;
+
+            displayable = (e->texFound == 1 && e->texture.Mem) ? 1 : 0;
+            if (!oldest) {
+                oldest = e;
+                rtime = e->lastUsed;
+                slot = i;
+                bestIsDisplayable = displayable;
                 continue;
             }
+            if (preferEmpty) {
+                if (displayable != bestIsDisplayable) {
+                    if (!displayable && bestIsDisplayable) {
+                        oldest = e;
+                        rtime = e->lastUsed;
+                        slot = i;
+                        bestIsDisplayable = 0;
+                    }
+                    continue;
+                }
+            }
+            if (e->lastUsed < rtime) {
+                oldest = e;
+                rtime = e->lastUsed;
+                slot = i;
+                bestIsDisplayable = displayable;
+            }
         }
-        if (e->lastUsed < rtime) {
-            oldest = e;
-            rtime = e->lastUsed;
-            slot = i;
-            bestIsDisplayable = displayable;
+
+        if (oldest || !isBg || yieldProtected || cache->count <= 1 || PrevCacheID_BG < 0)
+            break;
+
+        // D2：保护下无候选；其它槽均在 qr，且 texLoading==0、无挂起 IO → 让步
+        {
+            int loading;
+            int allOthersQr = 1;
+            int anyOther = 0;
+
+            for (i = 0; i < cache->count; i++) {
+                if (i == PrevCacheID_BG)
+                    continue;
+                anyOther = 1;
+                if (!cache->content[i].qr) {
+                    allOthersQr = 0;
+                    break;
+                }
+            }
+            TEX_LOADING_LOCK();
+            loading = texLoading;
+            TEX_LOADING_UNLOCK();
+            if (anyOther && allOthersQr && loading == 0 && !ioHasPendingRequests())
+                yieldProtected = 1;
+            else
+                break;
         }
     }
+
     if (oldest) {
+        // 占用保持槽时先丢掉 Prev，显示回落到默认（与列表单槽清空保持一致）
+        if (isBg && slot == PrevCacheID_BG)
+            PrevCacheID_BG = -2;
         *cacheId = slot;
         cacheClearItem(oldest, 1); // 注意：会把 qr 清 0、texFound 置 -1
         oldest->qr = 1;
@@ -1379,6 +1448,10 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
             oldest->UID = *UID;
         oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
         cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // quiet=1：Coverflow 路径
+        if (isBg)
+            return cacheQuietBgPrevTexture(cache);
+    } else if (isBg) {
+        return cacheQuietBgPrevTexture(cache);
     }
     return NULL;
 }
@@ -1391,65 +1464,4 @@ GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *ca
 GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
 {
     return cacheGetTextureQuietInternal(cache, list, cacheId, UID, value, itemId, 0);
-}
-
-// Coverflow 背景“上一帧实际显示”记录（显示回退专用，不影响选槽/LRU）。
-// slot=-2 表示上一帧画的是主题默认/plasma；slot>=0 且 UID 匹配时才可回退到该外部 BG。
-#define COV_BG_DISP_DEFAULT (-2)
-static image_cache_t *covBgDispCache = NULL;
-static int covBgDispSlot = COV_BG_DISP_DEFAULT;
-static int covBgDispUID = -1;
-
-static void cacheCoverflowBgResetDisplayed(void)
-{
-    covBgDispCache = NULL;
-    covBgDispSlot = COV_BG_DISP_DEFAULT;
-    covBgDispUID = -1;
-}
-
-void cacheCoverflowBgNoteDisplayed(image_cache_t *cache, int slot, int uid)
-{
-    // 页签/列表重建/进详情期间强制记为默认，避免跨设备残留。
-    if (ForceRefreshPrevTexCache || !cache) {
-        cacheCoverflowBgResetDisplayed();
-        return;
-    }
-    if (slot < 0) {
-        covBgDispCache = cache;
-        covBgDispSlot = COV_BG_DISP_DEFAULT;
-        covBgDispUID = -1;
-        return;
-    }
-    if (!cache->content || slot >= cache->count)
-        return;
-    covBgDispCache = cache;
-    covBgDispSlot = slot;
-    covBgDispUID = uid;
-}
-
-// Coverflow 背景显示回退：只读、不改 lastUsed、不影响选槽。
-// 仅当上一帧实际画过某外部 BG（非默认）且该槽仍有效时返回其纹理。
-GSTEXTURE *cacheGetCoverflowBgDisplayFallback(image_cache_t *cache)
-{
-    cache_entry_t *e;
-
-    if (!cache || !cache->content || ForceRefreshPrevTexCache) {
-        if (ForceRefreshPrevTexCache)
-            cacheCoverflowBgResetDisplayed();
-        return NULL;
-    }
-
-    if (covBgDispCache != cache || covBgDispSlot < 0)
-        return NULL;
-    if (covBgDispSlot >= cache->count)
-        return NULL;
-
-    e = &cache->content[covBgDispSlot];
-    if (e->UID != covBgDispUID || e->qr || e->texFound != 1 || !e->texture.Mem)
-        return NULL;
-
-#ifdef __DEBUG
-    diagBgDisplayFallback++;
-#endif
-    return &e->texture;
 }
