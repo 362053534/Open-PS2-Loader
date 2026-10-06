@@ -210,7 +210,6 @@ temp = !temp
 - 不要把游戏和 APPS 的非中心垂直偏移合并成一个不可区分的值。
 - 不要用 `texLoading > 0` 隐藏或重置当前未变化游戏的 ICO。
 - 未完成完整构建和 PS2 实机验证前，不要继续提交未经验证的 hires 裁切方案。
-- 升级 gsKit（ps2sdk-ports `build-cmakelibs.sh:104`）时必须重新核对并移植 `362053534/gsKit` `texmanager-1.3.8` 分支上的 `gsTexManager.c` 补丁（本帧已绑定纹理不驱逐）；gsKit ≥1.4.0 还需在 OPL 中初始化 `ClutStorageMode` 并把 `rmOnVSync` 改为 `int (int cause)`。
 - 不要把大型 RGB 背景恢复为低分辨率路径中的长期 CT24 常驻纹理，也不要把 Background cache 恢复为 3 个槽；这会重新触发 NTSC 448i 的 VRAM 工作集抖动。
 - 不要恢复“带 alpha 的 CT32 背景不压缩”；用户决定 CT32 背景也无条件压缩为不透明 CT16S（不逐像素检查是否全不透明）。
 - 不要执行会生成大量无关文件的完整 `make clean release`；当前环境也没有有效的 PS2SDK/GSKIT 交叉工具链。
@@ -247,6 +246,20 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+### 2026-10-06 — 两套内置主题的 1 像素 alphamask 改为只压暗游戏背景图，不压暗默认背景
+
+- 用户要求：列表主题和 CF 主题的 1 像素 alphamask 只影响游戏背景图，不影响默认背景图 settings_bg。
+- 做法：复用 Background 元素已有的 `mask=` 属性（`src/themes.c` `initMutableImage()` 读取 `<元素>_mask`；`drawGameImage()` 仅在 `drewGameArt`（真正取到游戏 BG 美术，含切换时暂显的上一张 BG）时紧接背景画遮罩，回退 settings_bg/plasma 或无选中项时不画）。无 C 代码改动。
+  - `misc/conf_theme_OPL.cfg`：`main0` 加 `mask=alphamask`；删除全屏 StaticImage `main1`（alphamask）；原 main2–main9 → main1–main8，appsMain4/5/6 → appsMain3/4/5。
+  - `misc/conf_theme_coverflow.cfg`：同样处理；原 main2–main9 → main1–main8，appsMain4/9 → appsMain3/8。结果与 a92b8e71 之前的元素定义一致，仅注释改写（新注释不含 ASCII `:`/`=`）。
+  - 必须顺延编号：元素按 main0、main1… 依次读取，遇到第一个缺号就停止（`src/themes.c` `thmLoad()`）；C 代码只引用 `"main0"`。
+- 撤销 a92b8e71 中“alphamask 每帧都画、同时压暗 settings_bg”的规则。显示游戏背景图时观感不变：遮罩绘制参数相同（0,0、ALIGN_NONE、全屏宽高、SCALING_NONE、`gDefaultCol`，与原 StaticImage 的 `aligned=0`、`scaled=0`、`DIM_INF` 等价，保留 778af6d5 的宽屏修复），顺序仍是紧接背景、在其它元素之前。兜底 settings_bg 不再压暗（CF 木纹平均灰度约 8.8 → 17.6）。
+- `conf_theme_coverflow_sample.cfg` 本来就是 `main0` + `mask=alphamask`，未改；详情页 info 元素、第三方主题不受影响。
+- 显存：alphamask 为 1x1 CT32（256 B）；mask 纹理不在元素间共享，游戏/应用列表各一份（最多 512 B），每帧只画其中一个；兜底背景时不再绑定。
+- HANDOFF §7：删除 b6966c37 加的“升级 gsKit 需移植补丁/ClutStorageMode/rmOnVSync”常驻规则（§10 中的 gsKit 记录保留）。
+- 未改：C 代码、`HIRES_PASS_DIAG=1`、其它资源。
+- 验证：CI 编译检查；需实机确认游戏背景图压暗正常、settings_bg 不压暗。
 
 ### 2026-10-06 — CI 镜像的 gsKit 改为 v1.3.8 + “本帧已绑定纹理不驱逐”补丁（仅文档，本提交用于触发 CI）
 
