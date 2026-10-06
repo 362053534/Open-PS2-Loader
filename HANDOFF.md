@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — Coverflow 主界面去掉 settings_bg 兜底，无 BG 美术时回退 plasma
+
+- 用户要求：删除 `misc/conf_theme_coverflow.cfg` 中 `main0`（Background）的 `default=settings_bg`（原第 24 行），并同步改第 18、20 行注释（原写“回退到 settings_bg”）。其余 cfg 不动。
+- 效果：`main0` 无默认图，`defaultTexture` 为 NULL，9f7f8307 加的 `cfBaseLayer` 恒为假，`drawGameImage()` 走原来的二选一：取到 BG 美术（且背景开关开启）就画 BG，并照旧叠加 `mask=alphamask`（遮罩加载与 default 无关，只在真正画出 BG 时叠加）；否则（无 BG、背景开关关、尚未加载、或无选中项）画 `guiDrawBGPlasma()`。
+- 未改：9f7f8307 的 C 代码保留（对 Coverflow 已无作用，但若以后再配 default 仍按“底层+叠加”生效）；`gfx/settings_bg.png`（f34ba74e 中灰图）保留，列表主题 `conf_theme_OPL.cfg` 仍以它兜底；`HIRES_PASS_DIAG=1`、`coverflow_dim_covers=1`、详情页 `info0`、`texcache.c` 均不变。
+- 注意：Coverflow 主界面不再加载 `settings_bg`（列表主题仍会用），VRAM 中不再有这 525,312 B；无 BG 时改为 plasma。快速翻页时 BG 与 plasma 会交替出现。
+- 验证：仅依赖 CI 编译检查，未实机验证。
+
 ### 2026-10-06 — settings_bg 美术换回之前的 background.png（约 85KB 的中灰底图）
 
 - 用户要求：“把settings_bg换回之前约85KB的background.png的美术资源”。用户在候选中选定 blob `f34ba74e`：即 `0fff90c6`（2025-07-09）引入、一直用到 `54cda759`（2026-09-28，被当时的 settings_bg 木纹黑底覆盖）为止的 `gfx/background.png`（88,600 B，中灰，平均 RGB 约 73）。
