@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 降低 hires 显存压力：cover.png 改 8 位调色板；1080i 字体去掉 2 倍纵向超采样（对齐 RiptOPL #615）
+
+- 背景：HIRES_PASS_DIAG 日志（1080i，9f7f8307 与 9f6387ca 两次启动）显示花屏来自 gsKit TexManager 在同一帧内驱逐本帧已绘制、只绑定一次的纹理（BG、plank、alphamask、settings_bg），hires 3-pass 重放时第 2/3 pass 读到新纹理。9f6387ca 中占位封面 `cover.png`（256x256 CT24）是头号“覆盖者”（29/76 次），字体 atlas 也占用大量显存。本次只降低显存压力，不改 gsKit 驱逐规则。
+- `gfx/cover.png`：原 256x256 RGB（451 色，1,598 B）→ 256x256 8 位调色板 PNG（256 色，2,091 B，无 tRNS），Pillow MAXCOVERAGE 量化、不抖动（试过 Floyd–Steinberg，PSNR 反而更低）；与原图最大通道误差 3/255，PSNR 71.2 dB，肉眼无差别。加载器按 T8 + CT32 CLUT 载入，VRAM 由 262,144 B 降为 66,560 B（省 195,584 B）。CLUT alpha 为 0x80，封面压暗颜色 alpha 也固定 0x80，仍不透明；与现有 T8 游戏封面走同一路径。Coverflow `main3`/`appsMain3` 与列表主题 ItemCover 的 `default=cover` 都用这张图。
+- `src/fntsys.c`：移植 RiptOPL 提交 `48ee173b`（PR #682，issue #615），逐行一致：删除 `fntUpdateAspectRatio()` 中隔行 FRAME 模式的 `hs *= 2`，以及 `fntRenderGlyph()` 中 `oy/2`、`height/2` 的绘制端压缩。原因：atlas 用 `GS_FILTER_NEAREST` 采样，2:1 纵向缩小只是丢掉一半字形行；FRAME 模式本来也只能显示一半行数，超采样没有收益。本仓库只有 1080i 是隔行 FRAME 模式（480i/576i 为 FIELD），所以只影响 1080i（列表主题同样受影响），屏上字形几何不变、可能略锐利；字形位图高度减半，每个 96x96 atlas 能放约两倍字形，字体显存约减半（估算）。RiptOPL 对 renderman.c 的注释改动针对本仓库没有的 480i/576i flicker-free 行，未移植。
+- 未改：`HIRES_PASS_DIAG=1`、全部 cfg、9f7f8307 的 themes.c 代码、gsKit。
+- 验证：仅依赖 CI 编译检查，未实机验证；需在 1080i 实机确认字体与占位封面观感。
+
 ### 2026-10-06 — Coverflow 主界面去掉 settings_bg 兜底，无 BG 美术时回退 plasma
 
 - 用户要求：删除 `misc/conf_theme_coverflow.cfg` 中 `main0`（Background）的 `default=settings_bg`（原第 24 行），并同步改第 18、20 行注释（原写“回退到 settings_bg”）。其余 cfg 不动。
