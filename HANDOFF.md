@@ -247,6 +247,15 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — Coverflow 主界面背景改为“settings_bg 常驻底层 + BG 美术叠加”（不再二选一）
+
+- 原因：CF 主界面 `main0`（Background，`pattern=BG`、`default=settings_bg`、`mask=alphamask`）原来是二选一：取到游戏 BG 美术就只画 BG（+遮罩），否则只画 `settings_bg`。快速翻页时 `settings_bg`（1024x512 T8，约 525 KB）与约 329 KB 的 BG 轮流进出 VRAM，配合 hires 3-pass 重放的同帧 VRAM 别名，是中间横带花屏的主要来源之一。
+- 改动（用户已批准，仅此一项）：`src/themes.c` `drawGameImage()` 中，当元素为 Background、当前为 Coverflow 主题且配置了默认图时，每帧先画默认图 `settings_bg` 作底层；取到 BG 美术时再在同帧画 BG，并照旧仅在画出 BG 时叠加 `alphamask`；未取到 BG（或背景开关关闭）时只画 `settings_bg`，不再走默认图/plasma 分支。
+- 为什么改 C 而不是只改 cfg：RiptOPL（`rebuild/main` 的 `misc/theme_coverflow.cfg`）是 `main0` Background（`pattern=BG`，无 default）+ `main1` StaticImage `incebtion` 全屏常驻；但它的静态层画在 BG 之上（半透明压暗），顺序与本次要求相反。本仓库 Background 元素只能是第一个（`themes.c` 解析处 “Background elem can only be the first one”，否则会自动插入一个 BG 背景到最前），`mask` 也只对 Background 生效，所以 cfg 无法表达“静态底层在下、BG 在上且带遮罩”，只能在 Background 绘制里加最小改动。
+- 未改：`misc/conf_theme_coverflow.cfg`、列表主题 `conf_theme_OPL.cfg`（它同样是 `default=settings_bg` 的二选一，本次未动）、`coverflow_dim_covers=1`、封面默认图、`texcache.c` 的 `PrevCacheID_BG`、详情页 `info0`（无 default）、`HIRES_PASS_DIAG` 诊断（仍为 1）。
+- 注意：有 BG 时 VRAM 工作集同时包含 `settings_bg` 和 BG（不再轮换）；外观上 BG 为不透明全屏图时与原来一致，BG 带透明区域时会透出 `settings_bg`（原来透出黑色清屏）。
+- 验证：仅依赖 CI 编译检查，未实机验证。
+
 ### 2026-10-06 — hires 中间横条花屏诊断：pass 分界线 + 同帧显存别名日志（HIRES_PASS_DIAG，默认开启）
 
 - 目的：用户反馈 720p/1080i 快速翻页时花屏总是屏幕中间一条横带（静止正常，1 张封面不花）。gsKit hires 每帧把同一个 draw queue（含 TexManager 队列内纹理上传）按 pass 重放 3 次；怀疑本帧早先绘制、当时未上传而直接用 VRAM 旧内容的纹理，被本帧稍后的新上传覆盖，导致第 2/3 个 pass 读到错误纹理（假设 1），或中间 pass 超时（假设 2）。本次只加诊断，不改任何渲染/缓存行为。

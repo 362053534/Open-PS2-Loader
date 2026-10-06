@@ -710,9 +710,16 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
+        // Coverflow 主界面背景：默认图（settings_bg）每帧先画作底层，BG 美术只叠加在其上，
+        // 两者不再二选一交替（参照 RiptOPL：常驻静态层 + Background 层同帧都画）。列表主题不变。
+        int cfBaseLayer = (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->defaultTexture);
+        if (cfBaseLayer)
+            rmDrawPixmap(&gameImage->defaultTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
         // 是否真正取到游戏外部背景/封面贴图，区别于默认/plasma。
         int drewGameArt = (texture && texture->Mem);
         if (!drewGameArt) {
+            if (cfBaseLayer)
+                return; // 底层已画，无 BG 美术时不再重复画默认图
             // 封面/光碟关掉时，连默认模板和卡带框都不画
             if (artHideDefaultTemplate(gameImage->cache))
                 return;
