@@ -70,7 +70,7 @@
 
 ```ini
 main3:
-    y=262
+    y=261
 
 appsMain3:
     y=309
@@ -563,7 +563,7 @@ git log -1 --oneline
 - 当前最新代码提交：`791c279 fix: enable colors for built-in list theme`。
 - 修复两个内置主题共享颜色配置时，非 CF 内置主题颜色控件灰显且无法保存的问题。
 - ICO 当前逻辑尺寸为 `128×138`（448 下约 `128×128`），弹出距离为 `13` 像素。
-- 当前内置 Coverflow CFG 使用 `main3 y=262`、`appsMain3 y=309`；代码公共基准为 `169`，APPS 专用偏移为 `-50`。
+- 当前内置 Coverflow CFG 使用 `main3 y=261`、`appsMain3 y=309`；代码公共基准为 `169`，APPS 专用偏移为 `-50`。
 - 对比 `origin/362053534-patch-1` 时发现 `cacheLoadImage1()` 的全局冷却移除会改变普通列表的光标切换行为；已改为仅 Coverflow quiet 请求绕过 `cdFramesCount`，普通请求恢复 worker 侧旧请求丢弃保护。
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。
 - Coverflow 垂直动画曾改为围绕反推的 `verticalScalePivotY` 缩放并取消独立的 `centerFactor`→Y 位移曲线；该方案已在 2026-10-02 改为中心封面底边锚点与中心线对齐方案。
