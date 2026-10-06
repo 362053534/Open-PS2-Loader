@@ -247,6 +247,15 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 列表主题封面外壳 case.png 改为 8 位调色板（T8 + tRNS），每帧省 195,584 B 显存
+
+- 背景：列表主题游戏封面 `main3` 的 `overlay=case`（`misc/conf_theme_OPL.cfg`）每帧都绑定。`gfx/case.png` 自 7c6cb73a（2025-06-04 校正封面位置）起是 256x256 RGBA，按 CT32 载入占 262,144 B；1080i 列表页（约 1 MB 字体 atlas + 真彩 BG 压缩后 655,360 B）估算会超过 1,982,464 B 纹理池。Coverflow 的 `cf_case.png`、列表主题的 `apps_case.png` 和上游的 `case.png` 本来就是 8 位调色板。
+- 做法：只换图，不改代码/cfg。pngquant 2.18（`256 --nofs --speed 1 --strip`）量化为 256 色调色板 + tRNS（177 项），尺寸、几何、外壳内框坐标不变；去掉 sRGB/gAMA 块，与 `apps_case.png` 一致（IHDR/PLTE/tRNS/IDAT/IEND）。`textures.c` 调色板 8 位分支按 T8 + CT32 CLUT 载入（alpha = tRNS>>1，无 tRNS 项为 0x80）。
+- 显存：262,144 B → 66,560 B（含 1,024 B CLUT），省 195,584 B（约 1080i 纹理池的 9.9%）。文件 16,022 B → 7,500 B。
+- 质量（对原图）：alpha 最大误差 15/255、平均 0.071；换算到 GS 0–128 alpha 最大 8、平均 0.07；完全透明像素（alpha=0）逐像素一致（外壳窗口仍完全透明，ATEST NOTEQUAL 0 行为不变）；预乘 PSNR 53.6 dB（Pillow FASTOCTREE 仅 34.4 dB）；叠在暗/木纹/亮背景上 PSNR 52.9–54.4 dB，套在封面上（列表主题位置）59.5 dB，肉眼无差别。对比图在工作箱 `/workspace/rv/case_compare/`。
+- 未改：`apps_case.png`、`cf_case.png`、全部 cfg 与代码、第三方主题。
+- 验证：CI 编译检查；需实机确认列表主题封面外壳观感正常。
+
 ### 2026-10-06 — 关闭 hires 诊断：HIRES_PASS_DIAG 改为 0（去掉洋红分界线与 [HIRES_ALIAS]/[HIRES_TEX] 日志）
 
 - 用户要求：花屏已在电视上确认消失（64539981 + gsKit v1.3.8 补丁实机日志 0 条 `[HIRES_ALIAS]`），关掉诊断日志和诊断用的洋红分割线。
