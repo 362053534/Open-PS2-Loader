@@ -247,6 +247,29 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — settings_bg 恢复旧木纹图（512x256 16 色）；CF 的 alphamask 规则改成与列表主题一致
+
+- 用户要求：
+  - 兜底背景 `gfx/settings_bg.png` 换回旧的近黑木纹图（blob `b9cc8513`，1024x512 8 位调色板，28 级灰），按用户指定缩成 512x256、16 色 4 位调色板、无 tRNS；
+  - 默认 CF 主题的 1 像素 alphamask 改成和列表主题一样：在 CFG 里配置、持续驻留，作为默认背景图和游戏背景图的遮罩层。
+- `gfx/settings_bg.png`：Lanczos 缩到 512x256，再用 Lloyd 算法从原 28 级灰里优化出 16 级灰调色板（6–26），不抖动。对比过 box/Lanczos/最近邻 × 无抖动/有序抖动/FS 抖动，Lanczos 无抖动在全屏双线性拉伸后最接近原图（抖动没有收益）：
+  - 平均灰度 17.58（与原图相同），标准差 4.47（原 4.65）；
+  - PSNR 48.7 dB（640x448、1280x720、1920x1080 一致），木纹细节相关系数 0.87/0.79/0.61；
+  - 缩到一半分辨率后，细纹理对比度低于原图（640x448 下 1.36 vs 1.80）；
+  - 叠 50% 遮罩后 PSNR 54.7 dB。
+  - VRAM 525,312 B（原 1024x512 T8）→ 65,792 B（512x256 T4，含 256 B CLUT），与上一版中灰图相同。列表主题 `conf_theme_OPL.cfg` 同样用这张图兜底。
+- `misc/conf_theme_coverflow.cfg`：照搬列表主题 `conf_theme_OPL.cfg` main1 的做法。
+  - 新增 `main1`：StaticImage，`default=alphamask`，`aligned=0`、`scaled=0`、`width/height=DIM_INF`，全屏，每帧都画；
+  - 删除 `main0` 的 `mask=alphamask`；
+  - 原 main1–main8 顺延为 main2–main9，appsMain3/appsMain8 顺延为 appsMain4/appsMain9。元素按 main0、main1… 顺序读取和绘制，插入只能顺延编号；C 代码只引用 `"main0"`。
+  - 绘制顺序：背景 → alphamask → ItemsList → plank → Coverflow → MenuIcon → HintText → BdmIndex → LoadingIcon → ItemText。
+  - alphamask 是 1x1 黑色、PNG alpha 128（GS alpha 64 = 50%）。现在无论画的是游戏背景图还是 settings_bg 都会压暗 50%：游戏背景图观感不变（以前也压暗），settings_bg 木纹平均灰度约 17.6 → 8.8。
+  - 详情页与列表主题一致：info0 背景无遮罩，info1 为全屏 info 图，未改。
+  - C 里的 `<元素>_mask` 机制保留给第三方主题；`conf_theme_coverflow_sample.cfg` 未改（仍用 `mask=alphamask`）。
+  - alphamask 每帧只绑定一次，VRAM 压力大时仍可能被驱逐，与列表主题相同，重传只有 256 B。
+- 未改：`HIRES_PASS_DIAG=1`、C 代码、`plank.png`、`cover.png`、其它 cfg。对比图：工作箱 `/workspace/woodbg/compare.png`。
+- 验证：仅依赖 CI 编译检查，需实机确认木纹兜底背景压暗 50% 后的观感。
+
 ### 2026-10-06 — 降低 VRAM 占用：settings_bg 缩小、plank 缩小、真彩 BG 压缩改为全模式
 
 - 原因：HIRES_PASS_DIAG 日志显示 hires（720p/1080i）花屏来自同帧 VRAM 驱逐，剩余事件都与 plank 和真彩 BG 有关（SLPM_552.82 的 640x480 RGB BG 在 hires 下按 CT24 占 1,228,800 B，约为 1080i 纹理池 1,982,464 B 的 62%，导致连续 33 帧整体抖动）。本次只降低显存占用，不改 gsKit 驱逐规则。用户确认三项一起提交。
