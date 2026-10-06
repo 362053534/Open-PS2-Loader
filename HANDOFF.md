@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — settings_bg 美术换回之前的 background.png（约 85KB 的中灰底图）
+
+- 用户要求：“把settings_bg换回之前约85KB的background.png的美术资源”。用户在候选中选定 blob `f34ba74e`：即 `0fff90c6`（2025-07-09）引入、一直用到 `54cda759`（2026-09-28，被当时的 settings_bg 木纹黑底覆盖）为止的 `gfx/background.png`（88,600 B，中灰，平均 RGB 约 73）。
+- 改动：仅用该 blob 原样覆盖 `gfx/settings_bg.png`（`git hash-object` = `f34ba74e…`），文件名/纹理 ID/cfg/Makefile 均不变。旧文件 `b9cc8513` 为 91,321 B（近黑木纹，28 色）。
+- 格式：1024x512、8 位调色板（256 色）PNG，加载为 T8 + CT32 CLUT，通过 `texSizeValidate`。VRAM 占用不变：524,288 B 像素 + 1,024 B CLUT = 525,312 B（与旧图相同，只换外观）。
+- 影响范围：列表主题 `conf_theme_OPL.cfg` 的 `main0` 同样 `default=settings_bg`，因此列表主题的兜底背景也会变成这张中灰图；Coverflow 按 9f7f8307 的逻辑仍每帧先画它作底层、有 BG 美术时叠加在上。其他（`HIRES_PASS_DIAG=1` 等）不变。
+- 验证：仅依赖 CI 编译检查，未实机验证。
+
 ### 2026-10-06 — Coverflow 主界面背景改为“settings_bg 常驻底层 + BG 美术叠加”（不再二选一）
 
 - 原因：CF 主界面 `main0`（Background，`pattern=BG`、`default=settings_bg`、`mask=alphamask`）原来是二选一：取到游戏 BG 美术就只画 BG（+遮罩），否则只画 `settings_bg`。快速翻页时 `settings_bg`（1024x512 T8，约 525 KB）与约 329 KB 的 BG 轮流进出 VRAM，配合 hires 3-pass 重放的同帧 VRAM 别名，是中间横带花屏的主要来源之一。
