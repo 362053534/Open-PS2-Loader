@@ -1179,14 +1179,15 @@ static clock_t animationStartTime = 0;
 // 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
-#define COVERFLOW_ICO_SIZE 138
+#define COVERFLOW_ICO_W 128
+#define COVERFLOW_ICO_H 138
 #define COVERFLOW_ICO_POPUP_GAP 13
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 150
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -40 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-40=非中心宽100；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
 // 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
 // 7/9张仍以该间距为基准反推较小的非中心封面，3张则保持5张大小并反算更大的间距。
 // 语义同下面的间距%：间隙 = 5张基线非中心封面基准宽 × 此值/100。
@@ -1856,9 +1857,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
             icoTexture->Mem && gTheme->coverflowIcoLoaded) {
             // Coverflow 的横向坐标在宽屏下已经按 4:3 逻辑坐标压缩；ICO 也必须
-            // 只压缩横向宽度、右边缘和弹出间距，保持经过电视横向拉伸后的 ICO
-            // 仍为 128×128，且最终间距仍为 30 个逻辑像素。
-            float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_SIZE);
+            // 只压缩横向宽度、右边缘和弹出间距；逻辑宽 COVERFLOW_ICO_W、高 COVERFLOW_ICO_H，
+            // 448 下整数 X_SCALE/Y_SCALE 后约 128×128（宽屏再经电视横向拉伸）。
+            float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_W);
             float icoPopupGap = rmWideScaleF((float)COVERFLOW_ICO_POPUP_GAP);
             float popupStartRight = centerIcoLeft + icoWidth;
             float popupTargetRight = centerIcoLeft - icoPopupGap;
@@ -1867,7 +1868,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             icoTexture->Filter = GS_FILTER_LINEAR;
             rmDrawPixmapReflect(icoTexture, (int)(popupRight + 0.5f),
                                 (int)(centerIcoBottom + 0.5f),
-                                ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth, COVERFLOW_ICO_SIZE,
+                                ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth, COVERFLOW_ICO_H,
                                 SCALING_NONE, gDefaultCol);
         }
 
