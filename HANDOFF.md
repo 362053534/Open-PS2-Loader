@@ -247,6 +247,14 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 关闭 hires 诊断：HIRES_PASS_DIAG 改为 0（去掉洋红分界线与 [HIRES_ALIAS]/[HIRES_TEX] 日志）
+
+- 用户要求：花屏已在电视上确认消失（64539981 + gsKit v1.3.8 补丁实机日志 0 条 `[HIRES_ALIAS]`），关掉诊断日志和诊断用的洋红分割线。
+- 做法：仅把 `src/renderman.c` 的 `#define HIRES_PASS_DIAG 1` 改为 `0`，诊断代码保留在 `#if HIRES_PASS_DIAG` 内备用（需要时改回 1 或编译加 `-DHIRES_PASS_DIAG=1`）。
+  - 关闭后不再编译：`hiresDiagDrawPassSeams()`（洋红 2 行横线，release/debug 都有）、`hiresDiagRecordBind()`/`hiresDiagEndFrame()`（`[HIRES_ALIAS]`/`[HIRES_TEX]`，仅调试构建输出）及其约 3.6 KB 静态数组；`rmTexBind()` 只剩直接调用 `gsKit_TexManager_bind`，渲染与纹理行为不变。
+- 未改：`__DEBUG` 下的 `[ART_LOAD]`/`[ART_REQ_*]`/`[ART_DIAG]`/`[IO_END]` 与 IO worker 阶段诊断（来自 2026-10-04/05 的 ART 停滞调查，与本次 hires 诊断无关，release 构建本来就没有）、gsKit、cfg、其它代码。
+- 验证：工作箱 CI 镜像 chroot 中 release（`make all`）与调试（`DEBUG=1 IOPCORE_DEBUG=1`）构建均通过，renderman.c 无新增警告，ELF 中无 `HIRES_` 字符串；CI 编译检查；实机确认洋红线消失。
+
 ### 2026-10-06 — 两套内置主题的 1 像素 alphamask 改为只压暗游戏背景图，不压暗默认背景
 
 - 用户要求：列表主题和 CF 主题的 1 像素 alphamask 只影响游戏背景图，不影响默认背景图 settings_bg。

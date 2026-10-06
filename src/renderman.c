@@ -100,7 +100,7 @@ const u64 gDefaultAlpha = GS_SETREG_ALPHA(0, 1, 0, 1, 0);
 //    [HIRES_ALIAS]，帧末有上传/重叠/溢出时输出 [HIRES_TEX]（LOG 仅调试构建有输出）。
 // 诊断结束后把下面的 1 改为 0（或编译时 -DHIRES_PASS_DIAG=0）即可完全关闭。
 #ifndef HIRES_PASS_DIAG
-#define HIRES_PASS_DIAG 1
+#define HIRES_PASS_DIAG 0
 #endif
 
 #if HIRES_PASS_DIAG
