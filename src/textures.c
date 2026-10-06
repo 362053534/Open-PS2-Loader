@@ -329,10 +329,10 @@ static void texPrepare(GSTEXTURE *texture)
     texture->Delayed = 1;
 }
 
-// 大型 RGB 背景在 CT24 下会独占低分辨率纹理池的大部分空间。保留 CT24
+// 大型真彩背景在 CT24/CT32 下会独占纹理池的大部分空间。保留原格式
 // 会让 gsKit 在背景、plank、case 和 Coverflow 封面之间反复驱逐/重新上传。
-// 只压缩无 alpha 的 CT24 图，保持 RGBA 背景的 alpha 语义不变；失败时不破坏
-// 原始纹理，调用方仍可按原路径绘制。
+// CT24 与带 alpha 的 CT32 背景都压缩；CT32 的 alpha 被忽略，全部写成不透明
+// （原来半透明/透明处透出的只是帧清屏黑色）。失败时不破坏原始纹理，调用方仍可按原路径绘制。
 #define TEX_BACKGROUND_COMPACT_THRESHOLD (512 * 1024)
 void texCompactBackground(GSTEXTURE *texture)
 {
@@ -342,9 +342,10 @@ void texCompactBackground(GSTEXTURE *texture)
     u8 *pixels24;
     size_t pixelCount;
     size_t size;
+    int bytesPerPixel;
     int x, y;
 
-    if (!texture || !texture->Mem || texture->PSM != GS_PSM_CT24)
+    if (!texture || !texture->Mem || (texture->PSM != GS_PSM_CT24 && texture->PSM != GS_PSM_CT32))
         return;
     if (gsKit_texture_size(texture->Width, texture->Height, texture->PSM) <= TEX_BACKGROUND_COMPACT_THRESHOLD)
         return;
@@ -355,14 +356,16 @@ void texCompactBackground(GSTEXTURE *texture)
     if (!pixels16)
         return;
 
+    // CT24 为 R,G,B；CT32 为 R,G,B,A（A 不读取）。
+    bytesPerPixel = (texture->PSM == GS_PSM_CT32) ? 4 : 3;
     pixels24 = (u8 *)texture->Mem;
     for (y = 0; y < texture->Height; y++) {
         for (x = 0; x < texture->Width; x++) {
             int index = y * texture->Width + x;
             int dither = ditherMatrix[(y & 3) * 4 + (x & 3)];
-            int red = pixels24[index * 3 + 0] + dither;
-            int green = pixels24[index * 3 + 1] + dither;
-            int blue = pixels24[index * 3 + 2] + dither;
+            int red = pixels24[index * bytesPerPixel + 0] + dither;
+            int green = pixels24[index * bytesPerPixel + 1] + dither;
+            int blue = pixels24[index * bytesPerPixel + 2] + dither;
 
             if (red < 0) red = 0;
             if (red > 255) red = 255;
@@ -371,7 +374,8 @@ void texCompactBackground(GSTEXTURE *texture)
             if (blue < 0) blue = 0;
             if (blue > 255) blue = 255;
 
-            // CT16S: opaque A1 B5 G5 R5. CT24 has no alpha, so A=1 is exact.
+            // CT16S: opaque A1 B5 G5 R5. A=1 is exact for CT24; for CT32 the
+            // source alpha is dropped on purpose so the whole image stays visible.
             pixels16[index] = 0x8000 | ((blue >> 3) << 10) |
                               ((green >> 3) << 5) | (red >> 3);
         }

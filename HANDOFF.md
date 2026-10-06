@@ -170,14 +170,14 @@ temp = !temp
 - `misc/conf_theme_coverflow.cfg`：内置 Coverflow 主题 CFG，由 Makefile 的 `bin2c` 规则嵌入。
 - `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑。
 - `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测。
-- `src/textures.c`、`include/textures.h`：大型无 alpha 背景的 CT24→CT16S 压缩，降低低分辨率纹理池争用。
+- `src/textures.c`、`include/textures.h`：大型背景（CT24 与带 alpha 的 CT32）的 CT16S 压缩，降低纹理池争用。
 
 ### 低分辨率大背景卡顿的根因与处理
 
 - 测试图 `temp/SLPM_552.82_BG.png` 是 `640×480` RGB PNG。CT24 在 gsKit 中按约 `1,228,800` bytes 占用 VRAM。
 - NTSC 448i 普通双缓冲的纹理池约为 `1,900,544` bytes；再扣除 plank、case 和当前 Coverflow 封面后，背景会迫使 gsKit TexManager 在每帧反复驱逐/重新上传纹理。这是 VRAM 工作集抖动，不是 PNG worker 与 BG 擦除之间的直接竞态。
 - Background cache 统一保持两个槽位，不区分普通列表、Coverflow 或 GS 分辨率；切换游戏时保留上一张完整背景作为 fallback。
-- 仅在当前显示为 CT24 且启用双缓冲的低分辨率路径中，将加载成功的大型 RGB/CT24 背景在进入 cache 前转换为带抖动的 CT16S；RGBA/带 alpha 的 CT32 背景不转换，保持 alpha 语义。framebuffer、双缓冲、坐标和普通主题绘制路径不变。
+- 所有视频模式下，加载成功的大型背景（>512KB 的 CT24，以及带 alpha 的 CT32）在进入 cache 前转换为带抖动的 CT16S；CT32 的 alpha 被忽略，结果全部不透明（原来透明/半透明处透出的是帧清屏黑色，现在显示该像素存储的 RGB）。framebuffer、双缓冲、坐标和普通主题绘制路径不变。
 - 静态检查当前默认 `usePthread = 0` 的生命周期：待处理请求由 `ioRemoveRequestsWithCleanup()` 移除并通过 UID 校验，正在执行的请求不在队列中；cache 选择只复用 `qr == 0` 的槽，因此取消请求不会把活动槽交给下一张图。`rmEndFrame()` 先执行 `gsKit_finish()`，随后才允许 `texFree()`/`rmUnloadTexture()` 复用纹理管理器 block，未发现渲染线程过早释放的直接路径。
 - 是否压缩 BG 在渲染线程入队时记录到请求中，IO worker 不直接解引用模式切换中的 `gsGlobal`；这也覆盖了默认队列和备用 pthread 加载路径。
 
@@ -211,7 +211,7 @@ temp = !temp
 - 不要用 `texLoading > 0` 隐藏或重置当前未变化游戏的 ICO。
 - 未完成完整构建和 PS2 实机验证前，不要继续提交未经验证的 hires 裁切方案。
 - 不要把大型 RGB 背景恢复为低分辨率路径中的长期 CT24 常驻纹理，也不要把 Background cache 恢复为 3 个槽；这会重新触发 NTSC 448i 的 VRAM 工作集抖动。
-- 不要对 CT32/RGBA 背景强制使用 CT16S；当前压缩只针对无 alpha 的 CT24 背景。
+- 不要恢复“带 alpha 的 CT32 背景不压缩”；用户决定 CT32 背景也无条件压缩为不透明 CT16S（不逐像素检查是否全不透明）。
 - 不要执行会生成大量无关文件的完整 `make clean release`；当前环境也没有有效的 PS2SDK/GSKIT 交叉工具链。
 
 ## 8. 验证限制
@@ -246,6 +246,19 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+### 2026-10-06 — 带 alpha 的 CT32 背景也无条件压缩为 CT16S（全部不透明）
+
+- 用户要求：带 alpha 的 BG 也压缩，不逐像素检查是否全不透明。
+- `src/textures.c` `texCompactBackground()`：除 CT24 外也接受 CT32（每像素 4 字节，只读 R/G/B，忽略 A），阈值（>512KB）和 4x4 有序抖动不变，所有像素都写 alpha 位（0x8000）。
+  - gsKit 的 TEXA 为 `(TA0=0x00, AEM=0, TA1=0x80)`，A 位为 1 即 alpha 0x80（完全不透明）；`rmDrawQuad()` 对 CT16S 关闭 alpha 混合，整张图完整可见。
+  - 原来 CT32 BG 开 alpha 混合（ATEST 恒通过），BG 是 main0、第一个绘制，下面只有帧清屏黑色（非 hires `gColBlack`，hires 每个 pass 清成黑色），不是 settings_bg。所以：原来半透明处压暗/透明处显示黑色，现在半透明像素变成不透明，全透明像素显示 PNG 中存储的 RGB（通常是黑色，但不保证）。
+  - 640x480 RGBA BG（如 SLUS_217.76）：VRAM 1,228,800 B → 655,360 B（省 573,440 B），EE 内存 1,228,800 B → 614,400 B。上次日志中 CF 的 42 次同帧别名有 41 次来自这张未压缩的 RGBA BG。
+- `include/textures.h`、`src/texcache.c`：只改注释。
+- HANDOFF §6/§7：删掉“RGBA/CT32 背景不压缩”的描述和禁止项，§6 背景压缩说明同步为当前状态（所有视频模式）。
+- gsKit TexManager 驱逐修复（不驱逐本帧已绑定的纹理）暂缓：用户将另行审阅直接修改上游 gsKit 的补丁，本次不包含任何 gsKit 相关改动。
+- 未改：`HIRES_PASS_DIAG=1`、其它代码与资源。
+- 验证：CI 编译检查；需实机确认 RGBA BG 显示是否正常（原透明区域的颜色）。
 
 ### 2026-10-06 — settings_bg 恢复旧木纹图（512x256 16 色）；CF 的 alphamask 规则改成与列表主题一致
 

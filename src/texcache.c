@@ -206,7 +206,7 @@ static void cacheDecreaseLoading(void)
 static int cacheShouldCompactBackground(image_cache_t *cache)
 {
     // 所有视频模式都压缩（含 720p/1080i，其 framebuffer 本身就是 CT16S）；
-    // 是否真正转换由 texCompactBackground() 判断：仅 >512KB 的无 alpha CT24 图。
+    // 是否真正转换由 texCompactBackground() 判断：仅 >512KB 的 CT24/CT32 图（CT32 的 alpha 被忽略）。
     return cache && !strncmp(cache->suffix, "BG", 2);
 }
 
