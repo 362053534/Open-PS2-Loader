@@ -81,16 +81,16 @@ appsMain3:
 文件：`src/themes.c`
 
 ```c
-#define COVERFLOW_BASELINE_YOFFSET 169
+#define COVERFLOW_BASELINE_YOFFSET 165
 #define COVERFLOW_APPS_YOFFSET -60
 #define COVERFLOW_APPS_CENTER_YOFFSET 1
 ```
 
 这些值的意图：
 
-- CFG 以外的公共基准相对之前下移 `8` 像素；
-- 内置 CFG 的游戏/APPS Coverflow 元素各上移 `8` 像素进行抵消；
-- 因此内置主题的最终位置保持原来的视觉位置；
+- CFG 以外的公共基准相对原 161 下移 `4` 像素（`COVERFLOW_BASELINE_YOFFSET=165`；曾为下移 8 / 169，2026-10-07 再上移 4）；
+- 内置 CFG 的游戏/APPS Coverflow 元素曾各上移 `8` 像素，用以抵消当时代码侧的下移 8；
+- 本次只改代码基准、未再改 CFG y，故内置主题封面相对改前视觉位置上移 4 像素；
 - 外部 Coverflow 主题如果没有相同的 CFG 补偿，会使用新的代码基准。
 
 APPS 的 `COVERFLOW_APPS_YOFFSET` 为 `-60`，相对原 `-50` 上移 10 像素；游戏和 APPS 的共同下移由 `COVERFLOW_BASELINE_YOFFSET` 负责。`COVERFLOW_APPS_CENTER_YOFFSET` 只作为 APPS 中心封面底边锚点的微调；非中心封面不再使用独立的 Y 偏移。
@@ -247,6 +247,13 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+### 2026-10-07 · Coverflow 整排基线再上移 4 像素（BASELINE 169→165）
+
+- 用户要求：游戏与 APPS 封面模块整体再上移 4 像素（基线校准）。
+- `src/themes.c`：`COVERFLOW_BASELINE_YOFFSET` 169→165（正值下移；相对原 161 现为再下移 4）。游戏与 APPS 共用该偏移；`COVERFLOW_APPS_YOFFSET` / `COVERFLOW_APPS_CENTER_YOFFSET`、cfg 的 Coverflow `y`、BdmIndex、ItemText、MenuIcon 未改。碟片 ICO 锚定封面底边，随封面一起上移、相对位置不变。
+- 未改：`misc/conf_theme_coverflow.cfg`（基线刻意不靠 cfg y；改一处宏即可同时覆盖游戏+APPS）。
+- 已提交。
 
 ### 2026-10-07 — Coverflow 非中心封面略缩小（scale -36→-40）；CF BdmIndex 下移 6 像素；L1/R1 翻页动画 2.5×→2.0×；ICO 128→138
 
