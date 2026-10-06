@@ -11,7 +11,7 @@
 #include "include/utf8.h"
 #include "include/util.h"
 #include "include/atlas.h"
-#include "include/lang.h"
+#include "include/themes.h"
 
 #include <sys/types.h>
 #include <ft2build.h>
@@ -592,29 +592,50 @@ static void fntRenderGlyph(fnt_glyph_cache_entry_t *glyph, int pen_x, int pen_y)
     }
 }
 
-// 手动刷新字体缓存
+// 当前主题主字体（theme->fonts[0]）对应的 fntSys 槽。gTheme 未就绪或句柄非法时返回 NULL。
+static font_t *fntGuiPrimaryFont(void)
+{
+    int id;
+
+    if (!gTheme)
+        return NULL;
+    id = gTheme->fonts[0];
+    if (id < 0 || id >= FNT_MAX_COUNT)
+        return NULL;
+    if (!fonts[id].isValid)
+        return NULL;
+    return &fonts[id];
+}
+
+// 手动刷新字体缓存（刷新当前主题实际用于绘制的主字体，而非语言序号）。
 void fntRefreshCache()
 {
-    if (gVMode == 10 || gVMode == 11) {
-        if (fonts[lngGetGuiValue()].isValid) {
-            WaitSema(gFontSemaId);
-            fntCacheFlush(&fonts[lngGetGuiValue()]);
-            SignalSema(gFontSemaId);
-        }
-    }
+    font_t *font;
+
+    if (!(gVMode == 10 || gVMode == 11))
+        return;
+    font = fntGuiPrimaryFont();
+    if (!font)
+        return;
+    WaitSema(gFontSemaId);
+    fntCacheFlush(font);
+    SignalSema(gFontSemaId);
 }
 
 // 只有当前字体耗尽下一条 Coverflow 标题的保守余量时才刷新。
 // 必须从上一帧结束后的输入处理阶段调用，不能从 fntCacheGlyph() 内部调用。
 void fntRefreshCacheIfPending()
 {
-    if (gVMode == 10 || gVMode == 11) {
-        if (fntIsRefreshPending(&fonts[lngGetGuiValue()])) {
-            WaitSema(gFontSemaId);
-            fntCacheFlush(&fonts[lngGetGuiValue()]);
-            SignalSema(gFontSemaId);
-        }
-    }
+    font_t *font;
+
+    if (!(gVMode == 10 || gVMode == 11))
+        return;
+    font = fntGuiPrimaryFont();
+    if (!font || !fntIsRefreshPending(font))
+        return;
+    WaitSema(gFontSemaId);
+    fntCacheFlush(font);
+    SignalSema(gFontSemaId);
 }
 
 #ifndef __RTL

@@ -247,6 +247,13 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-07 — 修复 fntRefreshCache / IfPending 误用语言序号当字体槽（改刷 gTheme->fonts[0]）
+
+- 背景：自 f5ecc1a5（2025-07-07）起，`fntRefreshCache()` 用 `fonts[lngGetGuiValue()]` 刷新字模；语言序号与 fntSys 字体槽不是同一索引。内置主题绘制句柄是 `theme->fonts[0]`（通常为槽 0，`fntLoadDefault` 也写槽 0）。`guiLangID != 0`（繁中/日/韩及显式选中的外挂简中等）时刷新落到空槽，翻页/切设备/界面过渡的字模清空变成空操作，42 个 atlas 用尽后新字空白，直到改分辨率/语言/设置触发 `fntUpdateAspectRatio`。4f55b526 的 Coverflow `fntRefreshCacheIfPending()` 复用了同一错误索引，pending 打在绘制字体上却检查语言槽，条件刷新永不触发。本问题早于 Coverflow（列表主题 1080i 缺字排查时引入）。
+- 做法：两函数改为刷新/检查 `gTheme->fonts[0]` 对应槽；`gTheme == NULL`、句柄越界或 `!isValid` 时直接返回。仍仅在 720p/1080i（`gVMode == 10 || 11`）生效。抽出 `fntGuiPrimaryFont()`，`#include "include/lang.h"` 改为 `"include/themes.h"`。不刷全部字体、不改 atlas/导航调用点。
+- 未改：`fntUpdateAspectRatio`、主题加载、`thmLoadFonts`、cfg。
+- 验证：工作箱交叉编译；需在非默认语言 + 720p/1080i 下确认列表翻页与 Coverflow 滑过大量标题后不再缺字。
+
 ### 2026-10-06 — 列表主题封面外壳 case.png 改为 8 位调色板（T8 + tRNS），每帧省 195,584 B 显存
 
 - 背景：列表主题游戏封面 `main3` 的 `overlay=case`（`misc/conf_theme_OPL.cfg`）每帧都绑定。`gfx/case.png` 自 7c6cb73a（2025-06-04 校正封面位置）起是 256x256 RGBA，按 CT32 载入占 262,144 B；1080i 列表页（约 1 MB 字体 atlas + 真彩 BG 压缩后 655,360 B）估算会超过 1,982,464 B 纹理池。Coverflow 的 `cf_case.png`、列表主题的 `apps_case.png` 和上游的 `case.png` 本来就是 8 位调色板。
