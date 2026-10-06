@@ -23,7 +23,7 @@
 参数位于 `src/themes.c`：
 
 ```c
-#define COVERFLOW_ICO_SIZE 128
+#define COVERFLOW_ICO_SIZE 138
 #define COVERFLOW_ICO_POPUP_GAP 13
 ```
 
@@ -31,7 +31,7 @@
 
 - ICO 只在 Coverflow 绘制路径中显示。
 - ICO 使用独立的 ICO cache，不挤占 Coverflow 封面 cache。
-- ICO 固定尺寸为 `128×128`。
+- ICO 固定逻辑尺寸为 `138×138`（448 下整数 Y_SCALE 后屏高 128）。
 - 正常显示封面时，ICO 从中心封面背后向左弹出。
 - ICO 最终右边缘距离中心封面左边缘 `13` 个逻辑像素。
 - ICO 底边与中心封面底边对齐。
@@ -246,6 +246,14 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+### 2026-10-07 — Coverflow 非中心封面略缩小（scale -36→-40）；CF BdmIndex 下移 6 像素；L1/R1 翻页动画 2.5×→2.0×；ICO 128→138
+
+- 用户要求：非中心封面定稿 scale -40；CF 主题 BdmIndex 再下移至 y=420（相对原 414 下移 6）；L1/R1 整页翻页动画时长由单步的 2.5 倍改为 2.0 倍；碟片 ICO 逻辑边长 128→138，使 448 下整数 Y_SCALE 得满 128 屏线（128→119）。游戏与 APPS 共用同一非中心 scale。
+- `src/themes.c`：`COVERFLOW_DEFAULT_NONCENTER_SCALE` -36→-40（5 张基线非中心主图宽 104→100；高按比例：游戏约 159→152.9，APPS 约 111→107.1）。`thmTriggerCoverflowAnimMulti` 内 `gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed * 2.5f` 改为 `* 2.0f`（默认单步 200ms → 翻页 400ms，原为 500ms）；注释同步。`COVERFLOW_ICO_SIZE` 128→138（仍走 `rmDrawPixmapReflect`→整数 `Y_SCALE`：`(138*448)/480=128`；128 时为 119）。
+- `misc/conf_theme_coverflow.cfg`：`main6` BdmIndex `y` 414→420。未改列表主题。
+- 未改：中心 scale、封面基准、单步动画时长、`COVERFLOW_ICO_POPUP_GAP`、其它 cfg。
+- 验证：CI；需实机看非中心封面、BdmIndex、翻页动画速度与中心碟片 ICO 尺寸。
 
 ### 2026-10-07 — 修复 fntRefreshCache / IfPending 误用语言序号当字体槽（改刷 gTheme->fonts[0]）
 
@@ -541,7 +549,7 @@ git log -1 --oneline
 - 新增本交接文档。
 - 当前最新代码提交：`791c279 fix: enable colors for built-in list theme`。
 - 修复两个内置主题共享颜色配置时，非 CF 内置主题颜色控件灰显且无法保存的问题。
-- ICO 当前尺寸为 `128×128`，弹出距离为 `13` 像素。
+- ICO 当前逻辑尺寸为 `138×138`（448 下屏高 128），弹出距离为 `13` 像素。
 - 当前内置 Coverflow CFG 使用 `main3 y=262`、`appsMain3 y=309`；代码公共基准为 `169`，APPS 专用偏移为 `-50`。
 - 对比 `origin/362053534-patch-1` 时发现 `cacheLoadImage1()` 的全局冷却移除会改变普通列表的光标切换行为；已改为仅 Coverflow quiet 请求绕过 `cdFramesCount`，普通请求恢复 worker 侧旧请求丢弃保护。
 - 修复 Coverflow overscan 偏移重复应用：`rmBuildCoverTransform()` 保持未加 render offset 的坐标，Case、封面和倒影各只在提交阶段加一次偏移。

@@ -1179,14 +1179,14 @@ static clock_t animationStartTime = 0;
 // 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
-#define COVERFLOW_ICO_SIZE 128
+#define COVERFLOW_ICO_SIZE 138
 #define COVERFLOW_ICO_POPUP_GAP 13
 // APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
 // 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 150
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -40 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-40=非中心宽100；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
 // 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
 // 7/9张仍以该间距为基准反推较小的非中心封面，3张则保持5张大小并反算更大的间距。
 // 语义同下面的间距%：间隙 = 5张基线非中心封面基准宽 × 此值/100。
@@ -1224,7 +1224,7 @@ static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（�
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
 // 本次滑动实际使用的时长（毫秒）。普通单步使用 gCoverflowAnimSpeed，
-// L1/R1 翻页使用 gCoverflowAnimSpeed * 2.5。
+// L1/R1 翻页使用 gCoverflowAnimSpeed * 2.0。
 static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
 
 void thmTriggerCoverflowAnim(int direction)
@@ -1256,7 +1256,7 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
     animationSteps = steps;
     animationStartItem = startItem;
     animationStartTime = clock();
-    gCoverflowActiveAnimSpeed = (int)(gCoverflowAnimSpeed * 2.5f);
+    gCoverflowActiveAnimSpeed = (int)(gCoverflowAnimSpeed * 2.0f);
 }
 
 // 当前是否正处于 Coverflow 滑动动画中（供 menusys 判断“上一步走完没有”）。
