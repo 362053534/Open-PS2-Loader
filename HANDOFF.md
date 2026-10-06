@@ -247,6 +247,17 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 降低 VRAM 占用：settings_bg 缩小、plank 缩小、真彩 BG 压缩改为全模式
+
+- 原因：HIRES_PASS_DIAG 日志显示 hires（720p/1080i）花屏来自同帧 VRAM 驱逐，剩余事件都与 plank 和真彩 BG 有关（SLPM_552.82 的 640x480 RGB BG 在 hires 下按 CT24 占 1,228,800 B，约为 1080i 纹理池 1,982,464 B 的 62%，导致连续 33 帧整体抖动）。本次只降低显存占用，不改 gsKit 驱逐规则。用户确认三项一起提交。
+- `gfx/settings_bg.png`：1024x512 T8（525,312 B）→ 512x256 4 位调色板 T4（65,792 B，含 256 B CLUT），省 459,520 B。取原图每隔一个像素、保留原 5 级灰色调色板（PNG 调色板补齐为 16 项，无 tRNS）。Background 元素恒为 640x480 主题坐标并整图拉伸（themes.c initBasic 用 screenWidth/screenHeight，renderman.c rmSetupQuad uv 取整张纹理，LINEAR 过滤），所以两套内置主题、各分辨率下仍铺满全屏；模拟拉伸后平均灰度 72.69（原 72.70），颗粒标准差 1.9（原 2.2），肉眼无差别。T4 加载路径已被 info.png/screen.png 使用。
+- `gfx/plank.png`：1024x256 T8（263,168 B）→ 256x256 T8（66,560 B），省 196,608 B。只缩宽度（考虑 alpha 的 box 缩放），256 行全部保留，高光线和阴影 alpha 不变；像素映射回原 85 项 RGBA 调色板（含 tRNS）。plank 由内置 CF 主题 main2（StaticImage，width=DIM_INF，height=124）整图拉伸；三种分辨率下与原图逐像素误差 ≤2/255。缩高度（1024x128/512x128）会把高光线糊掉（误差 8–18/255），未采用。
+- `src/texcache.c` `cacheShouldCompactBackground()`：去掉 `gsGlobal->DoubleBuffering == ON && gsGlobal->PSM == CT24` 条件，所有视频模式的 BG 请求都标记压缩；是否真正转换仍由 `texCompactBackground()` 决定（仅 >512KB 的无 alpha CT24 图，抖动转 CT16S，失败保留原图），在加载线程执行，每张 BG 一次。原条件来自 2d564ed1（只针对 NTSC 448i 低分辨率问题，未写排除 hires 的技术原因）；由于双缓冲恒开、≤704x576 的模式 framebuffer 都是 CT24，原条件实际等于“非 720p/1080i”。720p/1080i 的 framebuffer 本身就是 CT16S，压缩不损失可见色深。640x480 真彩 BG：1,228,800 B → 655,360 B（省 573,440 B），EE 内存净省 307,200 B（转换时临时多占 614,400 B）。列表主题 main0、详情页 info0、CF 延迟 BG/PrevCacheID_BG 都走同一个 BG cache 和入队函数；除 rmDrawQuad 的 alpha 判断（CT16S 与 CT24 同样关 alpha）外没有代码依赖 BG 的 PSM。带 alpha 的 RGBA（CT32）BG 仍不压缩（保持 alpha 语义），仍占 1,228,800 B。
+- 合计：settings_bg + plank 常驻占用 788,480 B → 132,352 B，固定省 656,128 B（约 1080i 纹理池的 33%）；有真彩 BG 时在 720p/1080i 再省 573,440 B，SLPM_552.82 场景 BG + plank 由 1,491,968 B（池的 75%）降到 721,920 B（36%）。
+- 风险：第三方主题若在 StaticImage 等元素里引用内置 `plank`/`settings_bg` 却不写 width/height（DIM_UNDEF 按纹理原尺寸绘制），显示尺寸会从 1024x256/1024x512 变为 256x256/512x256；Background 元素以及内置/示例 cfg 都写了尺寸，不受影响；自带 plank.png/settings_bg.png 的主题也不受影响。settings_bg 颗粒略柔和。
+- 未改：`HIRES_PASS_DIAG=1`、`src/fntsys.c`、`gfx/cover.png`、全部 cfg、gsKit。对比图在工作箱 `/workspace/bgsmall/compare.png`、`/workspace/plank/compare.png`。
+- 验证：仅依赖 CI 编译检查，未实机验证；需实机确认背景/plank 观感及 hires 花屏情况。
+
 ### 2026-10-06 — 回退三项改动：Coverflow 底层绘制、main0 default、1080i 字体（用户决定）
 
 - 原因：用户实机反馈 bc065c68 的 1080i 字体改动（去掉 2 倍纵向超采样）让文字发虚/变软，决定回退；同时回退 Coverflow 背景相关的两项改动，恢复原行为。直接恢复文件内容，未用 `git revert`，上面的历史记录保留。

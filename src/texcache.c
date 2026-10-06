@@ -152,8 +152,7 @@ typedef struct
     // 只有 Coverflow 专用的 COV/ICO/BG 请求参与目标代际判断；
     // 普通列表请求保持原有生命周期。
     int trackGeneration;
-    // 在渲染线程入队时决定是否压缩低分辨率 BG，worker 不直接读取可能
-    // 正在切换的 gsGlobal 指针。
+    // 在渲染线程入队时决定是否压缩 BG（与视频模式无关），worker 只读取这个标志。
     int compactBackground;
 } load_image_request_t;
 load_image_request_t req1 = {0};
@@ -206,8 +205,9 @@ static void cacheDecreaseLoading(void)
 
 static int cacheShouldCompactBackground(image_cache_t *cache)
 {
-    return cache && !strncmp(cache->suffix, "BG", 2) && gsGlobal &&
-           gsGlobal->DoubleBuffering == GS_SETTING_ON && gsGlobal->PSM == GS_PSM_CT24;
+    // 所有视频模式都压缩（含 720p/1080i，其 framebuffer 本身就是 CT16S）；
+    // 是否真正转换由 texCompactBackground() 判断：仅 >512KB 的无 alpha CT24 图。
+    return cache && !strncmp(cache->suffix, "BG", 2);
 }
 
 static void cacheCancelImageRequest(void *data)
