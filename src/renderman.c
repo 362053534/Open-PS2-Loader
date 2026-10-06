@@ -91,6 +91,195 @@ const u64 gColFocus = GS_SETREG_RGBA(0xFF, 0xFF, 0xFF, 0x50);  // Alpha 0x50 -> 
 const u64 gDefaultCol = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80); // Special color for texture multiplication
 const u64 gDefaultAlpha = GS_SETREG_ALPHA(0, 1, 0, 1, 0);
 
+// ---------------------------------------------------------------------------
+// HIRES_PASS_DIAG：hires 中间横条花屏诊断（只可视化 + 只日志，不改渲染/缓存行为）。
+// 1) rmEndFrame 的 hires 分支在 gsKit_hires_sync 之前，用帧缓冲坐标画出 pass 分界线
+//    （洋红色，2 行高：分界线上方 pass 的最后一行 + 下方 pass 的第一行）。
+// 2) 所有 gsKit_TexManager_bind 改走 rmTexBind()，hires 下记录每次绑定的纹理、显存
+//    范围与是否上传；本帧一次上传覆盖了本帧更早绑定、且当时未上传的纹理时输出
+//    [HIRES_ALIAS]，帧末有上传/重叠/溢出时输出 [HIRES_TEX]（LOG 仅调试构建有输出）。
+// 诊断结束后把下面的 1 改为 0（或编译时 -DHIRES_PASS_DIAG=0）即可完全关闭。
+#ifndef HIRES_PASS_DIAG
+#define HIRES_PASS_DIAG 1
+#endif
+
+#if HIRES_PASS_DIAG
+#define HIRES_DIAG_MAX_BINDS        128
+#define HIRES_DIAG_MAX_ALIAS_LOGS   8
+
+typedef struct
+{
+    GSTEXTURE *tex;
+    u32 vram;     // tex->Vram（绑定后）
+    u32 tsize;    // 纹理本体字节数（与 gsKit_TexManager_bind 相同算法）
+    u32 vramClut; // tex->VramClut（绑定后，无 CLUT 时为 0）
+    u32 csize;    // CLUT 字节数（无 CLUT 时为 0）
+    u16 width;
+    u16 height;
+    u8 psm;
+    u8 uploaded; // gsKit_TexManager_bind 返回值非 0：本次在队列里插入了上传
+} hires_diag_bind_t;
+
+static hires_diag_bind_t hiresDiagBinds[HIRES_DIAG_MAX_BINDS];
+static int hiresDiagBindCount = 0;
+static u32 hiresDiagBindDropped = 0;
+static u32 hiresDiagUploads = 0;
+static u32 hiresDiagUploadBytes = 0;
+static u32 hiresDiagAliasCount = 0;
+static u32 hiresDiagAliasLogged = 0;
+static u32 hiresDiagFrame = 0;
+
+static int hiresDiagRangesOverlap(u32 a0, u32 aSize, u32 b0, u32 bSize)
+{
+    if (aSize == 0 || bSize == 0)
+        return 0;
+    return (a0 < b0 + bSize) && (b0 < a0 + aSize);
+}
+
+// 早先的绑定 i 在其之前是否已在本帧、同一地址上传过同一纹理（若是，则 3 个 pass
+// 回放时该纹理在被覆盖前总会先被重新上传，不构成跨 pass 别名）。
+static int hiresDiagUploadedEarlier(int i)
+{
+    int j;
+    for (j = 0; j < i; j++) {
+        if (hiresDiagBinds[j].tex == hiresDiagBinds[i].tex && hiresDiagBinds[j].uploaded &&
+            hiresDiagBinds[j].vram == hiresDiagBinds[i].vram)
+            return 1;
+    }
+    return 0;
+}
+
+static void hiresDiagRecordBind(GSTEXTURE *tex, unsigned int uploaded)
+{
+    hires_diag_bind_t *cur;
+    u32 csize = 0;
+    int i;
+
+    if (hiresDiagBindCount >= HIRES_DIAG_MAX_BINDS) {
+        hiresDiagBindDropped++;
+        return;
+    }
+
+    if (tex->Clut != NULL) {
+        int cwidth = (tex->PSM == GS_PSM_T8) ? 16 : 8;
+        int cheight = (tex->PSM == GS_PSM_T8) ? 16 : 2;
+        csize = gsKit_texture_size(cwidth, cheight, tex->ClutPSM);
+    }
+
+    cur = &hiresDiagBinds[hiresDiagBindCount];
+    cur->tex = tex;
+    cur->vram = tex->Vram;
+    cur->tsize = gsKit_texture_size(tex->Width, tex->Height, tex->PSM);
+    cur->vramClut = (tex->Clut != NULL) ? tex->VramClut : 0;
+    cur->csize = csize;
+    cur->width = tex->Width;
+    cur->height = tex->Height;
+    cur->psm = tex->PSM;
+    cur->uploaded = uploaded ? 1 : 0;
+
+    if (cur->uploaded) {
+        hiresDiagUploads++;
+        hiresDiagUploadBytes += cur->tsize + cur->csize;
+
+        // 新上传的范围是否覆盖了本帧更早、当时未上传就直接使用 VRAM 旧内容的纹理。
+        for (i = 0; i < hiresDiagBindCount; i++) {
+            hires_diag_bind_t *old = &hiresDiagBinds[i];
+            if (old->tex == tex || old->uploaded)
+                continue;
+            if (!hiresDiagRangesOverlap(cur->vram, cur->tsize, old->vram, old->tsize) &&
+                !hiresDiagRangesOverlap(cur->vram, cur->tsize, old->vramClut, old->csize) &&
+                !hiresDiagRangesOverlap(cur->vramClut, cur->csize, old->vram, old->tsize) &&
+                !hiresDiagRangesOverlap(cur->vramClut, cur->csize, old->vramClut, old->csize))
+                continue;
+            if (hiresDiagUploadedEarlier(i))
+                continue;
+
+            hiresDiagAliasCount++;
+            if (hiresDiagAliasLogged < HIRES_DIAG_MAX_ALIAS_LOGS) {
+                hiresDiagAliasLogged++;
+                LOG("[HIRES_ALIAS] f=%u new#%d=%08x %ux%u psm=%u vram=%08x+%u clut=%08x+%u over old#%d=%08x %ux%u psm=%u vram=%08x+%u clut=%08x+%u\n",
+                    (unsigned int)hiresDiagFrame,
+                    hiresDiagBindCount, (unsigned int)tex, cur->width, cur->height, cur->psm,
+                    (unsigned int)cur->vram, (unsigned int)cur->tsize, (unsigned int)cur->vramClut, (unsigned int)cur->csize,
+                    i, (unsigned int)old->tex, old->width, old->height, old->psm,
+                    (unsigned int)old->vram, (unsigned int)old->tsize, (unsigned int)old->vramClut, (unsigned int)old->csize);
+            }
+        }
+    }
+
+    hiresDiagBindCount++;
+}
+
+static void hiresDiagEndFrame(void)
+{
+    if (hiresDiagUploads || hiresDiagAliasCount || hiresDiagBindDropped) {
+        LOG("[HIRES_TEX] f=%u binds=%d uploads=%u bytes=%u alias=%u alias_logged=%u dropped=%u\n",
+            (unsigned int)hiresDiagFrame, hiresDiagBindCount, (unsigned int)hiresDiagUploads,
+            (unsigned int)hiresDiagUploadBytes, (unsigned int)hiresDiagAliasCount,
+            (unsigned int)hiresDiagAliasLogged, (unsigned int)hiresDiagBindDropped);
+    }
+
+    hiresDiagBindCount = 0;
+    hiresDiagBindDropped = 0;
+    hiresDiagUploads = 0;
+    hiresDiagUploadBytes = 0;
+    hiresDiagAliasCount = 0;
+    hiresDiagAliasLogged = 0;
+    hiresDiagFrame++;
+}
+
+// 按 gsKit_hires_init_screen 的同一算法计算 pass 高度并画分界线：
+//   passCount 限制在 2..4；CT32/CT24 按 32 行对齐，其余（CT16S）按 64 行对齐；
+//   passHeight = ceil(Height / passCount) 向上对齐。
+// 720p：Height=720、3 pass → 256，分界在第 256/512 行；
+// 1080i（FRAME 模式 Height 已减半为 540）：3 pass → 192，分界在缓冲第 192/384 行。
+// 坐标直接用帧缓冲坐标（不加 fRender*Off 的 overscan/半像素偏移）；gsKit_prim_sprite
+// 会自行加 gsGlobal->OffsetX/Y，而每个 pass 的 XYOFFSET = Offset + bufferline_begin*16，
+// 所以这里的 y 就是帧缓冲行号。直接走 gsKit_prim_sprite，不经过 CPU 裁剪。
+static void hiresDiagDrawPassSeams(void)
+{
+    const u64 seamColor = GS_SETREG_RGBAQ(0xFF, 0x00, 0xFF, 0x80, 0x00);
+    int passCount, heightAlign, passHeight, pass;
+    u8 prevAlphaEnable;
+
+    if (vmode < 0)
+        return;
+
+    passCount = rm_mode_table[vmode].passes;
+    if (passCount < 2)
+        passCount = 2;
+    if (passCount > 4)
+        passCount = 4;
+
+    heightAlign = ((gsGlobal->PSM == GS_PSM_CT32) || (gsGlobal->PSM == GS_PSM_CT24)) ? 32 : 64;
+    passHeight = (gsGlobal->Height + (passCount - 1)) / passCount;
+    passHeight = (passHeight + (heightAlign - 1)) & ~(heightAlign - 1);
+
+    // 不透明绘制；只改 gsGlobal 软件状态（决定本图元 PRIM.ABE），用完恢复，
+    // 不向队列写 ALPHA/TEST/SCISSOR 等寄存器。
+    prevAlphaEnable = gsGlobal->PrimAlphaEnable;
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+    for (pass = 1; pass < passCount; pass++) {
+        int y = pass * passHeight;
+        if (y >= gsGlobal->Height)
+            break;
+        gsKit_prim_sprite(gsGlobal, 0.0f, (float)(y - 1), (float)gsGlobal->Width, (float)(y + 1), order, seamColor);
+    }
+    gsGlobal->PrimAlphaEnable = prevAlphaEnable;
+}
+#endif
+
+// 所有 TexManager 绑定统一走这里；语义与直接调用 gsKit_TexManager_bind 完全相同。
+static unsigned int rmTexBind(GSTEXTURE *tex)
+{
+    unsigned int uploaded = gsKit_TexManager_bind(gsGlobal, tex);
+#if HIRES_PASS_DIAG
+    if (hires)
+        hiresDiagRecordBind(tex, uploaded);
+#endif
+    return uploaded;
+}
+
 void rmInvalidateTexture(GSTEXTURE *txt)
 {
     gsKit_TexManager_invalidate(gsGlobal, txt);
@@ -112,6 +301,10 @@ void rmStartFrame(void)
 void rmEndFrame(void)
 {
     if (hires) {
+#if HIRES_PASS_DIAG
+        // 最后一个入队的图元，画在本帧所有内容之上。
+        hiresDiagDrawPassSeams();
+#endif
         gsKit_hires_sync(gsGlobal);
         gsKit_hires_flip(gsGlobal);
     } else {
@@ -137,6 +330,9 @@ void rmEndFrame(void)
     }
 
     gsKit_TexManager_nextFrame(gsGlobal);
+#if HIRES_PASS_DIAG
+    hiresDiagEndFrame();
+#endif
 }
 
 static int rmOnVSync(void)
@@ -487,7 +683,7 @@ void rmDrawQuad(rm_quad_t *q)
         gsKit_set_test(gsGlobal, GS_ATEST_OFF);
     }
 
-    gsKit_TexManager_bind(gsGlobal, q->txt);
+    rmTexBind(q->txt);
     if (rmSubmitSpriteTexture(q->txt,
                               q->ul.x + fRenderXOff, q->ul.y + fRenderYOff,
                               q->ul.u, q->ul.v,
@@ -522,7 +718,7 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
+    rmTexBind(inlay);
     // 内嵌图(inlay，如 Coverflow 的封面主图)与外壳(overlay)共用同一个调制色 color。
     // 原先此处写死 gDefaultCol，导致压暗外壳时封面主图仍是满亮度、两者不一致。
     // 改用传入的 color 后：所有现有调用者传的都是 gDefaultCol（效果不变），
@@ -566,7 +762,7 @@ static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 colo
     float screenBottom = screenTop + reflectionHeight;
 
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-    gsKit_TexManager_bind(gsGlobal, txt);
+    rmTexBind(txt);
     if (rmSubmitGoraudQuadTexture(txt,
                                    quad->ul.x + fRenderXOff, screenTop,
                                    quad->ul.u, texTop,
@@ -633,7 +829,7 @@ void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned,
         float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
         float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
 
-        gsKit_TexManager_bind(gsGlobal, inlay);
+        rmTexBind(inlay);
         gsKit_prim_quad_texture(gsGlobal, inlay,
                                 quad.ul.x + ulx + fRenderXOff, screenTop,
                                 0.0f, texTop,
@@ -650,7 +846,7 @@ void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned,
         texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
         texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
 
-        gsKit_TexManager_bind(gsGlobal, overlay);
+        rmTexBind(overlay);
         gsKit_prim_sprite_texture(gsGlobal, overlay,
                                   quad.ul.x + fRenderXOff, screenTop,
                                   quad.ul.u, texTop,
@@ -894,7 +1090,7 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
+    rmTexBind(inlay);
     // 这是直接 quad 提交，不会经过 rmDrawQuad()；在这里补上与普通 sprite
     // 相同的 fRender*Off，避免套上 case 后主图又回到整数采样相位。
     // 四个屏幕顶点与 overlay 的四个内框顶点一一对应。
@@ -943,7 +1139,7 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
     float texTop = inlay->Height;
     float texBottom = ((totalHeight - reflectionHeight) / totalHeight) * inlay->Height;
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
+    rmTexBind(inlay);
     if (rmSubmitGoraudQuadTexture(inlay,
                                   transform->inlayLeft + fRenderXOff, screenTop, 0.0f, texTop,
                                   transform->inlayRight + fRenderXOff, screenBottom, inlay->Width, texBottom,
@@ -952,7 +1148,7 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
 
     texTop = overlay->Height;
     texBottom = ((totalHeight - reflectionHeight) / totalHeight) * overlay->Height;
-    gsKit_TexManager_bind(gsGlobal, overlay);
+    rmTexBind(overlay);
     if (rmSubmitGoraudQuadTexture(overlay,
                                   transform->caseLeft + fRenderXOff, screenTop,
                                   transform->caseQuad.ul.u, texTop,

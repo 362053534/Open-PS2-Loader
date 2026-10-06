@@ -247,6 +247,20 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — hires 中间横条花屏诊断：pass 分界线 + 同帧显存别名日志（HIRES_PASS_DIAG，默认开启）
+
+- 目的：用户反馈 720p/1080i 快速翻页时花屏总是屏幕中间一条横带（静止正常，1 张封面不花）。gsKit hires 每帧把同一个 draw queue（含 TexManager 队列内纹理上传）按 pass 重放 3 次；怀疑本帧早先绘制、当时未上传而直接用 VRAM 旧内容的纹理，被本帧稍后的新上传覆盖，导致第 2/3 个 pass 读到错误纹理（假设 1），或中间 pass 超时（假设 2）。本次只加诊断，不改任何渲染/缓存行为。
+- 开关：`src/renderman.c` 顶部 `HIRES_PASS_DIAG`，本次默认 `1`。诊断结束后改为 `0`（或编译加 `-DHIRES_PASS_DIAG=0`）即完全移除，`rmTexBind()` 退化为直接调用 `gsKit_TexManager_bind`。
+- 实验 1（只可视化，release/debug 都有）：`rmEndFrame()` hires 分支在 `gsKit_hires_sync` 之前调用 `hiresDiagDrawPassSeams()`，用 `gsKit_prim_sprite` 按帧缓冲坐标画洋红色 2 行高横线（分界线上一 pass 的最后一行 + 下一 pass 的第一行）。pass 高度按 gsKit `gsKit_hires_init_screen` 同一算法：passCount 限 2..4，CT32/CT24 按 32 行、CT16S 按 64 行对齐，`ceil(Height/passCount)` 向上对齐。720p 分界在第 256/512 行（屏幕高度约 35.6%/71.1%）；1080i（FRAME 模式 Height 减半为 540）分界在缓冲第 192/384 行，即实际画面第 384/768 行；480i/480p/576 hires（2 pass、CT24）各 1 条线。不加 overscan 偏移，不经过 CPU 裁剪；只临时关闭 `PrimAlphaEnable`（仅影响该图元 PRIM.ABE）并恢复，不写 ALPHA/TEST/SCISSOR 等寄存器。非 hires 不画。
+- 实验 2（只日志，仅调试构建有输出，例如 CI `OPNPS2LD-DEBUG` 里的 `opl-iopcore_debug-*.elf` / `opl-ingame_debug-*.elf`，UDPTTY 用 ps2client 抓）：renderman.c 中全部 8 处 `gsKit_TexManager_bind` 改为 `rmTexBind()`（返回值、调用顺序不变）。hires 下每次绑定记录纹理指针、尺寸、PSM、`Vram`+本体大小、`VramClut`+CLUT 大小，以及 `gsKit_TexManager_bind` 返回值（非 0 表示本次在队列里插入了上传）。固定 128 项数组，满了停止记录并计 `dropped`，帧末清空。
+  - `[HIRES_ALIAS] f=帧号 new#序号=指针 宽x高 psm vram=地址+字节 clut=地址+字节 over old#序号=...`：本帧一次上传的 VRAM 范围覆盖了本帧更早绑定、当时未上传（且之前未在同地址重新上传）的纹理。每帧最多输出 8 行，总数见 `alias=`。
+  - `[HIRES_TEX] f=帧号 binds= uploads= bytes= alias= alias_logged= dropped=`：仅当本帧有上传、别名或溢出时输出。
+- 判读：
+  - 花屏横带的上沿/下沿与洋红线重合 → 与 pass 有关；只有线以下（第 2/3 个 pass）花、线以上同一封面正常 → 支持假设 1；花区边界跟着封面轮廓走、与线无关 → 更像 EE 内存生命周期问题（假设 3）。
+  - 花屏那一帧附近出现 `[HIRES_ALIAS]` → 假设 1 基本确认，按 old/new 尺寸可判断被覆盖的是背景、遮罩、木板还是封面；只看到大量 `uploads/bytes` 而无 alias → 偏向假设 2（中间 pass 超时）。
+  - 注意 UDP 日志本身耗时，可能略微改变时序；洋红线每帧多 2 个无纹理 sprite，影响可忽略。
+- 验证：仅依赖 CI 编译检查，未实机验证。
+
 ### 2026-10-06 — 按用户要求重新开启 Coverflow 非中心压暗
 
 - 内置主题 `misc/conf_theme_coverflow.cfg`：`coverflow_dim_covers` 改回 `1`（撤销 e990e8ff 的关闭）。
