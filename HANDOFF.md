@@ -247,6 +247,15 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — 回退三项改动：Coverflow 底层绘制、main0 default、1080i 字体（用户决定）
+
+- 原因：用户实机反馈 bc065c68 的 1080i 字体改动（去掉 2 倍纵向超采样）让文字发虚/变软，决定回退；同时回退 Coverflow 背景相关的两项改动，恢复原行为。直接恢复文件内容，未用 `git revert`，上面的历史记录保留。
+- `src/themes.c`：删除 9f7f8307 在 `drawGameImage()` 中加的 `cfBaseLayer` 底层绘制代码，恢复原来的二选一：有 BG 美术画 BG（照旧叠 `mask=alphamask`），否则画默认图，再否则画 plasma。与 f952227f 完全一致（`git diff f952227f -- src/themes.c` 为空）。
+- `misc/conf_theme_coverflow.cfg`：`main0` 恢复 `default=settings_bg`，第 18、20 行注释恢复为 9f6387ca 之前的原文（回退到 settings_bg）。与 59ec1f60 完全一致。
+- `src/fntsys.c`：恢复 1080i（隔行 FRAME 模式）的 `hs *= 2` 纵向超采样，以及 `fntRenderGlyph()` 中 `oy/2`、`height/2` 的绘制端压缩。与 9f6387ca 完全一致（即撤销 RiptOPL #615 移植）。字体 atlas 显存恢复到原来水平。
+- 保留不变：`gfx/cover.png`（8 位调色板 T8，66,560 B）、`gfx/settings_bg.png`（f34ba74e 中灰图，Coverflow 无 BG 美术时再次用它兜底）、`HIRES_PASS_DIAG=1`。
+- 验证：仅依赖 CI 编译检查，需实机确认 1080i 字体清晰度与 Coverflow 背景兜底。
+
 ### 2026-10-06 — 降低 hires 显存压力：cover.png 改 8 位调色板；1080i 字体去掉 2 倍纵向超采样（对齐 RiptOPL #615）
 
 - 背景：HIRES_PASS_DIAG 日志（1080i，9f7f8307 与 9f6387ca 两次启动）显示花屏来自 gsKit TexManager 在同一帧内驱逐本帧已绘制、只绑定一次的纹理（BG、plank、alphamask、settings_bg），hires 3-pass 重放时第 2/3 pass 读到新纹理。9f6387ca 中占位封面 `cover.png`（256x256 CT24）是头号“覆盖者”（29/76 次），字体 atlas 也占用大量显存。本次只降低显存压力，不改 gsKit 驱逐规则。
