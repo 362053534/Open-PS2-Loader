@@ -210,6 +210,7 @@ temp = !temp
 - 不要把游戏和 APPS 的非中心垂直偏移合并成一个不可区分的值。
 - 不要用 `texLoading > 0` 隐藏或重置当前未变化游戏的 ICO。
 - 未完成完整构建和 PS2 实机验证前，不要继续提交未经验证的 hires 裁切方案。
+- 升级 gsKit（ps2sdk-ports `build-cmakelibs.sh:104`）时必须重新核对并移植 `362053534/gsKit` `texmanager-1.3.8` 分支上的 `gsTexManager.c` 补丁（本帧已绑定纹理不驱逐）；gsKit ≥1.4.0 还需在 OPL 中初始化 `ClutStorageMode` 并把 `rmOnVSync` 改为 `int (int cause)`。
 - 不要把大型 RGB 背景恢复为低分辨率路径中的长期 CT24 常驻纹理，也不要把 Background cache 恢复为 3 个槽；这会重新触发 NTSC 448i 的 VRAM 工作集抖动。
 - 不要恢复“带 alpha 的 CT32 背景不压缩”；用户决定 CT32 背景也无条件压缩为不透明 CT16S（不逐像素检查是否全不透明）。
 - 不要执行会生成大量无关文件的完整 `make clean release`；当前环境也没有有效的 PS2SDK/GSKIT 交叉工具链。
@@ -247,12 +248,21 @@ git log -1 --oneline
 
 ## 10. 变更记录
 
+### 2026-10-06 — CI 镜像的 gsKit 改为 v1.3.8 + “本帧已绑定纹理不驱逐”补丁（仅文档，本提交用于触发 CI）
+
+- 来源：gsKit 现在来自 `362053534/gsKit` 分支 `texmanager-1.3.8` @ `db2858a6`（基于 tag v1.3.8，只改 `ee/gs/src/gsTexManager.c`，+54 行），由 `362053534/ps2sdk-ports` 提交 `efcfc707` 的 `build-cmakelibs.sh:104` 固定到完整 SHA：`$FETCH db2858a675f04b2d47fc53cef26283178d0eadf6 https://github.com/362053534/gsKit.git &`。镜像链 ps2sdk-ports → ps2dev → ps2homebrew（`ghcr.io/362053534/ps2homebrew:main`）已自动重建，新镜像的 `libgskit.a` 含新函数 `_blockAllocUnusedThisFrame`。
+- 原因：hires（720p/1080i）每帧把整个绘制队列（含 inline 纹理上传）按 pass 重放 2~3 次。gsKit 原 `_blockAlloc()` 按权重驱逐时偏向“本帧已画完”的纹理（权重 = 上帧次数，低于“本帧还要画”的 2 倍），被驱逐的地址在同一帧被新上传覆盖，第 2/3 个 pass 读到错误内容，即 HIRES_PASS_DIAG 记录的 `[HIRES_ALIAS]` 同帧显存别名（中间横带花屏）。
+- 补丁行为：分配显存时先检查只腾出“本帧尚未绑定”（`iUseCount == 0`，由 `gsKit_TexManager_nextFrame()` 每帧清零，OPL 在 `rmEndFrame()` 的 hires sync/flip 之后调用，按帧而非按 pass）的块能否凑出连续空间；能则只驱逐这些块（仍按原权重顺序），否则什么都不动、走 gsKit 原逻辑，因此不会比原来更差。一帧所需纹理本身超过纹理池时，仍可能经回退路径出现别名。
+- OPL 侧：无代码改动，不复制 gsKit 源码；`HIRES_PASS_DIAG=1` 保持，诊断只读 `tex->Vram`，与补丁无关，预期 `[HIRES_ALIAS]` 大幅减少，需实机日志确认。
+- 升级 gsKit 时必须重新核对并移植此补丁（见 §7）；直接换成 gsKit master/v1.5.1 还需 ps2sdk-ports 加 `-DBUILD_EXAMPLES=`（libpng/zlib pkg-config 问题）以及 OPL 的 `ClutStorageMode`/`rmOnVSync` 兼容改动。
+- 同时更正上一条（9fefcf35）的措辞：OPL 的 alpha 测试为 `ATST=NOTEQUAL`、`AREF=0`（`src/renderman.c:410-412`），只跳过完全透明像素，并非“恒通过”；结论不变。
+
 ### 2026-10-06 — 带 alpha 的 CT32 背景也无条件压缩为 CT16S（全部不透明）
 
 - 用户要求：带 alpha 的 BG 也压缩，不逐像素检查是否全不透明。
 - `src/textures.c` `texCompactBackground()`：除 CT24 外也接受 CT32（每像素 4 字节，只读 R/G/B，忽略 A），阈值（>512KB）和 4x4 有序抖动不变，所有像素都写 alpha 位（0x8000）。
   - gsKit 的 TEXA 为 `(TA0=0x00, AEM=0, TA1=0x80)`，A 位为 1 即 alpha 0x80（完全不透明）；`rmDrawQuad()` 对 CT16S 关闭 alpha 混合，整张图完整可见。
-  - 原来 CT32 BG 开 alpha 混合（ATEST 恒通过），BG 是 main0、第一个绘制，下面只有帧清屏黑色（非 hires `gColBlack`，hires 每个 pass 清成黑色），不是 settings_bg。所以：原来半透明处压暗/透明处显示黑色，现在半透明像素变成不透明，全透明像素显示 PNG 中存储的 RGB（通常是黑色，但不保证）。
+  - 原来 CT32 BG 开 alpha 混合；OPL 的 alpha 测试为 `ATST=NOTEQUAL`、`AREF=0`（`src/renderman.c:410-412`），只跳过完全透明（alpha 0）的像素，并非恒通过（2026-10-06 后续提交更正）。BG 是 main0、第一个绘制，下面只有帧清屏黑色（非 hires `gColBlack`，hires 每个 pass 清成黑色），不是 settings_bg。所以：原来半透明处压暗/透明处显示黑色，现在半透明像素变成不透明，全透明像素显示 PNG 中存储的 RGB（通常是黑色，但不保证）。
   - 640x480 RGBA BG（如 SLUS_217.76）：VRAM 1,228,800 B → 655,360 B（省 573,440 B），EE 内存 1,228,800 B → 614,400 B。上次日志中 CF 的 42 次同帧别名有 41 次来自这张未压缩的 RGBA BG。
 - `include/textures.h`、`src/texcache.c`：只改注释。
 - HANDOFF §6/§7：删掉“RGBA/CT32 背景不压缩”的描述和禁止项，§6 背景压缩说明同步为当前状态（所有视频模式）。
