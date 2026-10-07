@@ -306,21 +306,6 @@ static void hddLoadModulesInternal(int bdmAsync)
     LOG("HDDSUPPORT LoadModules done\n");
 }
 
-static void hddReleaseModuleReference(void)
-{
-    if (hddModulesLoadCount > 0) {
-        hddModulesLoadCount--;
-        if (hddModulesLoadCount == 0) {
-            // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
-            // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
-            hddSetIdleImmediate();
-        }
-
-        // Release the DEV9 reference owned by this HDD module user.
-        sysShutdownDev9();
-    }
-}
-
 void hddLoadModules(void)
 {
     hddLoadModulesInternal(0);
@@ -333,7 +318,17 @@ void hddLoadModulesBDM(void)
 
 void hddReleaseModulesBDM(void)
 {
-    hddReleaseModuleReference();
+    if (hddModulesLoadCount > 0) {
+        hddModulesLoadCount--;
+        if (hddModulesLoadCount == 0) {
+            // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
+            // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
+            hddSetIdleImmediate();
+        }
+
+        // Only shut down dev9 from here, if it was initialized from here before.
+        sysShutdownDev9();
+    }
 }
 
 // Returns 1 for MBR/GPT, 0 for APA, and -1 if an error occured
@@ -1439,7 +1434,17 @@ static void hddShutdown(item_list_t *itemList)
         hddSupportModulesLoaded = 0;
     }
 
-    hddReleaseModuleReference();
+    if (hddModulesLoadCount > 0) {
+        hddModulesLoadCount -= 1;
+        if (hddModulesLoadCount == 0) {
+            // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
+            // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
+            hddSetIdleImmediate();
+        }
+
+        // Only shut down dev9 from here, if it was initialized from here before.
+        sysShutdownDev9();
+    }
 }
 
 static int hddLoadGameListCache(hdl_games_list_t *cache)
