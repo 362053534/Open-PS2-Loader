@@ -1375,9 +1375,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 
-    // 448i/p、512i/p 使用低分辨率专用高度；Auto 也只会落到 PAL/NTSC 的
-    // 512/448 模式，因此归入此分支。其它分辨率继续使用现有宏高度。
-    int isLowRes = (gVMode >= 0 && gVMode <= 4);
+    // 448i/p、512i/p、224p、256p 使用低分辨率专用高度；Auto 也只会落到
+    // PAL/NTSC 的 512/448 模式，因此归入此分支。其它分辨率继续使用现有宏高度。
+    int isLowRes = (gVMode >= 0 && gVMode <= 4) || (gVMode >= 12 && gVMode <= 13);
     int baseCoverW = gCoverflowCoverW;
     int baseCoverH = isLowRes ? COVERFLOW_COVER_H_LOWRES : gCoverflowCoverH;
     int isApps = (sourceList && sourceList->mode == APP_MODE);
