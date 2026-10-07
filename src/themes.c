@@ -1174,18 +1174,18 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_MAX 9             // 同屏封面数的硬上限（只允许 1/3/5/7/9）
 #define COVERFLOW_RENDER_MAX (COVERFLOW_MAX * 2) // 多格翻页时：可见窗口 + 最长翻页距离
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值（也是尺寸/间距基线）
-// 封面主图基准尺寸：以 448 高度模式为基线，逻辑坐标经过 nativeHeight/480 映射后，
-// 游戏封面在 448 下得到约 140×200。高度 214 = 200×480/448 的整数近似值；宽度保持140，
-// 因此各分辨率下封面在整个屏幕中的宽高占比保持一致（不再做运行时高度补偿）。
+// 封面主图基准尺寸：普通分辨率沿用现有的 480 逻辑坐标高度；448i/p、512i/p
+// 使用单独的低分辨率高度宏。宽度保持 140，其他布局计算仍使用选出的高度。
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
+#define COVERFLOW_COVER_H_LOWRES 200
 #define COVERFLOW_ICO_W 128
 #define COVERFLOW_ICO_H 138
+#define COVERFLOW_ICO_H_LOWRES 128
 #define COVERFLOW_ICO_POPUP_GAP 13
-// APPS 页签同样以 448 为基线：逻辑高度 150 = 140×480/448，448 下得到 140×140。
-// 宽度仍为 140；用来反推 APPS 的 case(cf_apps_case)。
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 150
+#define COVERFLOW_APPS_COVER_H_LOWRES 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
 // 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
@@ -1375,15 +1375,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     mutable_image_t *img = (mutable_image_t *)elem->extended;
     item_list_t *sourceList = menu->item->userdata;
 
-    // 封面主图基准尺寸：游戏使用 140×214、APPS 使用 140×150（均为 448 基线换算到
-    // 640×480 逻辑坐标后的尺寸）。这里选定的 baseCoverW/H 会贯穿布局(Block A)与逐封面
-    // 绘制(Block B)，case 外壳按 overlay 内框占比逆向适配该基准。
+    // 448i/p、512i/p 使用低分辨率专用高度；Auto 也只会落到 PAL/NTSC 的
+    // 512/448 模式，因此归入此分支。其它分辨率继续使用现有宏高度。
+    int isLowRes = (gVMode >= 0 && gVMode <= 4);
     int baseCoverW = gCoverflowCoverW;
-    int baseCoverH = gCoverflowCoverH;
+    int baseCoverH = isLowRes ? COVERFLOW_COVER_H_LOWRES : gCoverflowCoverH;
     int isApps = (sourceList && sourceList->mode == APP_MODE);
     if (isApps) {
         baseCoverW = gCoverflowAppsCoverW;
-        baseCoverH = gCoverflowAppsCoverH;
+        baseCoverH = isLowRes ? COVERFLOW_APPS_COVER_H_LOWRES : gCoverflowAppsCoverH;
     }
 
     // 同屏封面数：已规范化到 1/3/5/7/9；翻页动画需要的临时槽位另用
@@ -1728,8 +1728,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 整个主题元素列表已经在 menuRenderElements() 中设置了可见显示区域的 scissor；
     // Coverflow、case、封面和倒影因此与木板等普通主题素材共用同一裁切范围。
 
-    // 这里不再读取 native 分辨率做封面高度补偿或过滤判断；封面尺寸统一由 448 基线
-    // 逻辑尺寸决定，渲染器只负责把整套布局按当前屏幕同比缩放。
+    // 高度只在上面按 448i/p、512i/p 选择低分辨率宏；其它布局计算和渲染器
+    // 的缩放行为保持不变。
 
     GSTEXTURE *icoTexture = NULL;
     if (gTheme->coverflowIcoItem != item) {
@@ -1857,8 +1857,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
             icoTexture->Mem && gTheme->coverflowIcoLoaded) {
             // Coverflow 的横向坐标在宽屏下已经按 4:3 逻辑坐标压缩；ICO 也必须
-            // 只压缩横向宽度、右边缘和弹出间距；逻辑宽 COVERFLOW_ICO_W、高 COVERFLOW_ICO_H，
-            // 448 下整数 X_SCALE/Y_SCALE 后约 128×128（宽屏再经电视横向拉伸）。
+            // 只压缩横向宽度、右边缘和弹出间距；宽度保持 COVERFLOW_ICO_W，
+            // 高度使用当前分辨率对应的宏值（448i/p、512i/p 为 LOWRES 值）。
             float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_W);
             float icoPopupGap = rmWideScaleF((float)COVERFLOW_ICO_POPUP_GAP);
             float popupStartRight = centerIcoLeft + icoWidth;
@@ -1868,7 +1868,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             icoTexture->Filter = GS_FILTER_LINEAR;
             rmDrawPixmapReflect(icoTexture, (int)(popupRight + 0.5f),
                                 (int)(centerIcoBottom + 0.5f),
-                                ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth, COVERFLOW_ICO_H,
+                                ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth,
+                                isLowRes ? COVERFLOW_ICO_H_LOWRES : COVERFLOW_ICO_H,
                                 SCALING_NONE, gDefaultCol);
         }
 
