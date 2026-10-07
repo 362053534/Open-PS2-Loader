@@ -632,3 +632,10 @@ git log -1 --oneline
 - 本次未改 COV/ICO、普通列表 cache 选择、纹理加载或 fallback 规则。
 - 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译和实机验证。
 - 下一步：实机验证普通列表刷新、设备页签切换、Coverflow BG 刷新及详情页切换，确认 Force 状态和上一张 BG fallback 均按预期清理。
+
+### 2026-10-08 — 按分辨率选择 Coverflow 高度宏
+
+- 448i/p、512i/p（包括 Auto 对应的 PAL/NTSC 默认模式）使用低分辨率高度：ICO `128`、游戏 COV `200`、APPS COV `140`。
+- 其它分辨率继续使用原高度宏：ICO `138`、游戏 COV `214`、APPS COV `150`。
+- 仅替换 `drawCoverFlow()` 选择的高度输入，不改其它布局和尺寸计算。
+- 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译和实机验证。
