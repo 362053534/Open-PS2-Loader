@@ -178,6 +178,9 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
 // 当前是否正处于 Coverflow 滑动动画中。
 int thmCoverflowIsAnimating(void);
 
+// 刷新列表前由主线程调用：取消旧 Coverflow 动画，避免旧 submenu 指针和旧封面继续参与绘制。
+void thmCancelCoverflowAnimation(void);
+
 // Coverflow 动画是否启用（主题配置滑动时长 >0）。
 int thmCoverflowAnimEnabled(void);
 

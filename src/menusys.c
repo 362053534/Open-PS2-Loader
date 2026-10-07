@@ -1246,6 +1246,11 @@ static void menuRenderElements(theme_element_t *elem)
 
 static void menuCheckArtCursorChanged(void)
 {
+    // ForceRefresh 由刷新 worker 或输入路径置位；在主线程真正开始绘制前取消旧动画，
+    // 避免 worker 线程直接修改 Coverflow 动画状态。
+    if (ForceRefreshPrevTexCache)
+        thmCancelCoverflowAnimation();
+
     if (!selected_item || !selected_item->item)
         return;
 

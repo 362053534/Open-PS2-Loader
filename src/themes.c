@@ -711,6 +711,14 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         } else {
             texture = getGameImageTexture(gameImage->cache, support, &item->item);
         }
+
+        // 刷新请求先在 worker 中置位，GUI 延迟操作可能要到本帧绘制后才执行。
+        // 此时 item 仍可能属于即将被销毁的旧列表；cacheGetTexture() 即使已经清掉
+        // PrevCacheID，也会把该 item 自身命中的旧纹理直接返回。请求仍照常进行，
+        // 这里只禁止把刷新窗口中的结果画出来，避免普通列表主题也闪回上一张封面。
+        if (ForceRefreshPrevTexCache)
+            texture = NULL;
+
         // 是否真正取到游戏外部背景/封面贴图，区别于默认/plasma。
         int drewGameArt = (texture && texture->Mem);
         if (!drewGameArt) {
@@ -791,6 +799,10 @@ static void drawAttributeImage(struct menu_list *menu, struct submenu_list *item
             } else {
                 int posZ = 0;
                 GSTEXTURE *texture = cacheGetTexture(attributeImage->cache, menu->item->userdata, &posZ, &attributeImage->currentUid, attributeImage->currentValue, -1);
+                // ForceRefresh 期间仍允许 cacheGetTexture() 继续维护/加载请求，但不
+                // 把刷新前的命中结果绘制到当前帧。
+                if (ForceRefreshPrevTexCache)
+                    texture = NULL;
                 if (texture && texture->Mem) {
                     if (attributeImage->overlayTexture) {
                         rmDrawOverlayPixmap(&attributeImage->overlayTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,
@@ -1071,6 +1083,8 @@ static void drawItemsList(struct menu_list *menu, struct submenu_list *item, con
 
             if (itemsList->decoratorImage) {
                 GSTEXTURE *itemIconTex = getGameImageTexture(itemsList->decoratorImage->cache, menu->item->userdata, &ps->item);
+                if (ForceRefreshPrevTexCache)
+                    itemIconTex = NULL;
                 if (itemIconTex && itemIconTex->Mem)
                     rmDrawPixmap(itemIconTex, posX, posY, elem->aligned, DECORATOR_SIZE, DECORATOR_SIZE, elem->scaled, gDefaultCol);
                 else {
@@ -1278,6 +1292,27 @@ int thmCoverflowIsAnimating(void)
     if (!gTheme || gTheme->coverflow == NULL)
         return 0;
     return isAnimating;
+}
+
+void thmCancelCoverflowAnimation(void)
+{
+    // 刷新会释放并重建 submenu；动画起点若继续保留会变成悬空指针，且可能把旧封面再画一帧。
+    isAnimating = 0;
+    animationDirection = 0;
+    animationSteps = 1;
+    animationStartItem = NULL;
+    animationStartTime = 0;
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
+
+    // 新列表可能复用旧 submenu 的地址，不能只靠指针比较判断 ICO 是否仍属于当前游戏。
+    if (gTheme) {
+        gTheme->coverflowIcoItem = NULL;
+        gTheme->coverflowIcoCacheId = -1;
+        gTheme->coverflowIcoCacheUID = -1;
+        gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
+        gTheme->coverflowIcoPopupStartTime = 0;
+    }
 }
 
 // Coverflow 动画是否启用（主题配置时长 >0）。关闭时翻页应直接硬跳，尊重用户设置。
@@ -1747,6 +1782,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 #ifdef __DEBUG
         gCoverflowDiagTexturePhase = 3;
 #endif
+        // 与普通列表的 drawGameImage() 相同：刷新窗口内允许继续查找/加载，
+        // 但不能把仍挂在旧 submenu 上的命中纹理画出来。
+        if (ForceRefreshPrevTexCache)
+            covers[idx].texture = NULL;
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
@@ -1783,7 +1822,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     if (isAnimating || !gEnableArtICO) {
         gTheme->coverflowIcoLoaded = 0;
         gTheme->coverflowIcoPopupActive = 0;
-    } else {
+    } else if (!ForceRefreshPrevTexCache) {
         // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的新请求仍放到
         // 本帧所有 Coverflow 预取完成之后，避免 ICO 与封面争抢当前帧的加载队列。
         // 即使 texLoading > 0，也必须查询并继续使用已经加载好的当前 ICO。
@@ -1798,6 +1837,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             gTheme->coverflowIcoLoaded = 0;
             gTheme->coverflowIcoPopupActive = 0;
         }
+    } else {
+        // 刷新期间不能让旧列表的 ICO 通过专用缓存命中并闪回。
+        icoTexture = NULL;
+        gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
     }
 
     float icoPopupEased = 1.0f;
