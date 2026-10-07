@@ -618,3 +618,9 @@ git log -1 --oneline
 - 主题切换不再直接销毁可能仍被 worker 使用的旧 cache：旧 theme 会先进入 deferred-retired 列表，只有 `ioHasPendingRequests()==0` 后才回收；因此切主题不会因等待一个异常 BDM `open/read` 而再次锁死主界面，也不会让旧结果写入已释放 cache。JPG 文件发现也纳入 `fileLockId`，避免主题构建与 IO worker 并发访问 BDM/SMB 文件。
 - 静态审计仍确认：`texLoading` 正常入队、队列清理和 worker 出口配平；本轮未启用看门狗或强制置零。已核实外部修复已经进入个人仓库目标分支：`362053534/FatFs-PS2OPL` 的 `iop-r0.15` 为 `33bf38c9b4bc`（`FF_FS_LOCK=0` 时 `f_close/f_closedir` 出错也清除 `obj.fs`），`362053534/ps2sdk` 的 `master` 为 `e3049eb40a52`（BDM `fs_close/fs_dclose`）并包含 `52421dd2ac2f`（SMB `smb_close`）。实际构建链也已核对：ps2sdk 的 `download_dependencies.sh` 固定从该 FatFs fork 的 `iop-r0.15` 拉取，`iop/fs/bdmfs_fatfs/Makefile` 以 `source/include` 为头文件目录并把 `ff.o` 等 FatFs 对象编入 IRX。因此本 OPL 分支不再保留三份临时 patch 文件；重新构建 SDK/FatFs 生成的 IRX 才会携带这些修复。本提交仍只负责 EE 侧目录探测压力、cache 所有权和 UAF 防护。
 - 当前环境仍无 PS2SDK/GSKIT 交叉编译器、实机或模拟器，因此本轮完成 `git diff --check` 和静态控制流检查，未宣称目标平台构建或实机验证。
+
+### 2026-10-07 — 撤回刷新旧 ART 修复
+
+- 用户实测 `cd5f4fa` 对刷新后闪回上一张 BG 的问题没有效果，已按要求撤回。
+- 当前暂不提出新的代码修复；待先确认 `7e2debc9deae5db7c939b86f65783593fc054e03` 引入的回归根因后再处理。
+- 本次仅撤回上一修复及其说明，不改变其它 Coverflow、普通列表或诊断提交。
