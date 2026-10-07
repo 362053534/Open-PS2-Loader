@@ -13,7 +13,7 @@
 - 当前诊断基线提交：`91ccccf5a041eddc1c1e4e81595f0ca4deeff661`；本次在该基线上增加 Coverflow 随机死机的 debug-only 看门狗与阶段快照。
 - 当前任务：定位 Coverflow 随机完全死机的最后执行阶段，不改变 Coverflow 功能、渲染后端、纹理缓存行为或正常构建路径。
 - 当前工作区：本次源码改动与本文同步提交；未修改图片、CFG、`temp/` 用户资产或 `AGENTS.md`。
-- 验证状态：已完成静态 diff 检查；当前环境没有 PS2SDK/GSKIT/交叉编译器，未完成 debug 构建和实机验证。
+- 验证状态：已完成静态 diff 检查。外部 `make iopcore_debug --trace` 已进入源码编译，但首轮在 `src/menusys.c` 发现 `theme_element_t` 没有 `name` 字段；已改为记录 `coverflow`/`theme_element` 分类标签，等待重新跑完整 debug 构建和实机验证。
 
 ## 2. 当前任务重点
 
@@ -259,7 +259,7 @@ git log -1 --oneline
 - `include/debugdiag.h` 定义仅 `__DEBUG` 编译的阶段快照：GUI 帧心跳、GUI 锁等待、`menuSemaId` 等待/持有、主题元素、Coverflow 封面纹理请求/提交/预取/ICO、普通 gsKit queue/finish、hires sync/flip、TexManager bind/nextFrame、输入和 frame hook。
 - `src/ioman.c` 在 debug 构建启动独立 kernel 看门狗线程；主线程约 3 秒没有推进帧心跳时，通过独立静态缓冲区和直接 `write()`/SIO 路径输出 `[GUI_WD]`、`[CF_DIAG]` 快照。快照包含主/IO 线程状态、IO worker stage/progress/队列标志、IO printf/file lock、GUI/menu 信号量状态、视频模式、当前游戏 ID/文字/光标、Coverflow 动画起点/目标/步数/当前绘制槽位，以及纹理请求、ART 解码阶段、pthread 和纹理 mutex 状态。
 - `src/gui.c`、`src/menusys.c`、`src/themes.c`、`src/renderman.c` 只写无锁 volatile 诊断字段；release 构建不增加看门狗线程、日志、锁或阶段路径。
-- 当前只完成静态检查。尝试 debug 编译时确认环境没有 PS2SDK/GSKIT/`mips64r5900el-ps2-elf-gcc`，因此未完成交叉编译和实机验证；下一步是在可用工具链下编译 debug 版本并复现一次，收集死机前最后一组 `[GUI_WD]`/`[CF_DIAG]` 日志。
+- 首轮外部 `make iopcore_debug --trace` 已确认 PS2 交叉工具链可用，并成功编译到本次修改的 `src/renderman.c` 后进入 `src/menusys.c`；错误原因是诊断代码误用了不存在的 `theme_element_t.name` 字段，现已改为稳定的元素分类标签。尚未完成重新构建和实机验证；下一步重跑 debug 构建，复现一次死机并收集死机前最后一组 `[GUI_WD]`/`[CF_DIAG]` 日志。
 
 ### 2026-10-07 · Coverflow 整排基线再上移 4 像素（BASELINE 169→165）
 

@@ -130,7 +130,7 @@ static void menuDiagSnapshot(theme_element_t *elem)
         ((char *)gMenuDiagCurrentText)[0] = '-';
         ((char *)gMenuDiagCurrentText)[1] = '\0';
     }
-    gGuiDiagElementName = (elem && elem->name) ? elem->name : "-";
+    gGuiDiagElementName = (elem && gTheme && elem == gTheme->coverflow) ? "coverflow" : "theme_element";
 }
 #endif
 
@@ -1226,7 +1226,7 @@ static void menuRenderElements(theme_element_t *elem)
 
     while (elem) {
 #ifdef __DEBUG
-        gGuiDiagElementName = elem->name ? elem->name : "-";
+        gGuiDiagElementName = (gTheme && elem == gTheme->coverflow) ? "coverflow" : "theme_element";
         GUI_DIAG_STAGE((gTheme && elem == gTheme->coverflow) ? GUI_DIAG_COVERFLOW : GUI_DIAG_THEME_ELEMENT);
 #endif
         if (elem->drawElem)
