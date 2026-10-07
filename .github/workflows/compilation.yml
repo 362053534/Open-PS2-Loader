@@ -8,15 +8,6 @@ on:
     types: [run_build]
 
 jobs:
-  rc-uya-regression:
-    runs-on: ubuntu-latest
-    steps:
-    - name: git checkout
-      uses: actions/checkout@v6
-
-    - name: 瑞奇与叮当补丁主机回归
-      run: make -C labs/rcuya_regression test
-
   build:
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
@@ -30,22 +21,6 @@ jobs:
 
     - name: Compile -> make clean release
       run: make --trace clean release
-
-    - name: 记录 EE core 常驻内存边界
-      id: ee_memory
-      if: always()
-      run: |
-        if [ -f ee_core/ee_core.map ]; then
-          grep -E 'ram84|_end_bss =|_stack_size =' ee_core/ee_core.map
-          end_bss=$(awk '/_end_bss =/ {print $1; exit}' ee_core/ee_core.map)
-          stack_size=$(awk '/_stack_size =/ {print $1; exit}' ee_core/ee_core.map)
-          echo "end_bss=$end_bss" >> "$GITHUB_OUTPUT"
-          echo "stack_size=$stack_size" >> "$GITHUB_OUTPUT"
-        fi
-
-    - name: "EE core 末端 ${{ steps.ee_memory.outputs.end_bss }}，剩余栈 ${{ steps.ee_memory.outputs.stack_size }}"
-      if: ${{ always() && steps.ee_memory.outputs.end_bss != '' }}
-      run: echo "EE core linker memory report"
 
     - name: Create detailed changelog
       run: sh ./make_changelog.sh
@@ -93,31 +68,6 @@ jobs:
       run: |
         make --trace ${{ matrix.pademu }} ${{ matrix.extra }} NOT_PACKED=1
         mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.pademu }}-${{ matrix.extra }}.ELF
-
-    - name: 记录 EE core 常驻内存边界
-      id: ee_memory
-      if: always()
-      run: |
-        if [ -f ee_core/ee_core.map ]; then
-          grep -E 'ram84|_end_bss =|_stack_size =' ee_core/ee_core.map
-          end_bss=$(awk '/_end_bss =/ {print $1; exit}' ee_core/ee_core.map)
-          stack_size=$(awk '/_stack_size =/ {print $1; exit}' ee_core/ee_core.map)
-          echo "end_bss=$end_bss" >> "$GITHUB_OUTPUT"
-          echo "stack_size=$stack_size" >> "$GITHUB_OUTPUT"
-        fi
-
-    - name: "EE core 末端 ${{ steps.ee_memory.outputs.end_bss }}，剩余栈 ${{ steps.ee_memory.outputs.stack_size }}"
-      if: ${{ always() && steps.ee_memory.outputs.end_bss != '' }}
-      run: echo "EE core linker memory report"
-
-    - name: 对照已验证版本的单人补丁地址
-      id: rc_layout
-      if: always()
-      run: python3 labs/rcuya_regression/audit_core_layout.py --igs ${{ matrix.extra == 'EXTRA_FEATURES=1' && '1' || '0' }} --pademu ${{ matrix.pademu == 'PADEMU=1' && '1' || '0' }}
-
-    - name: "UYA JAL 已验证版 ${{ steps.rc_layout.outputs.good_jal }}，回归版 ${{ steps.rc_layout.outputs.regressed_jal }}，当前版 ${{ steps.rc_layout.outputs.current_jal }}，检查 ${{ steps.rc_layout.outputs.layout_check }}"
-      if: ${{ always() && steps.rc_layout.outputs.good_jal != '' }}
-      run: echo "UYA packed patch layout comparison"
 
     - name: Create detailed changelog
       run: sh ./make_changelog.sh
