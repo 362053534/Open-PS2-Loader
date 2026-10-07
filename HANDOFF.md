@@ -639,3 +639,10 @@ git log -1 --oneline
 - 其它分辨率继续使用原高度宏：ICO `138`、游戏 COV `214`、APPS COV `150`。
 - 仅替换 `drawCoverFlow()` 选择的高度输入，不改其它布局和尺寸计算。
 - 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译和实机验证。
+
+### 2026-10-08 — 将 224p/256p 纳入低分辨率 Coverflow 高度
+
+- 在已有 Auto、448i/p、512i/p 低分辨率分支基础上，新增 `gVMode` 12/13，即 PAL 640×256p 和 NTSC 640×224p。
+- 这两个模式同样使用 ICO `128`、游戏 COV `200`、APPS COV `140`；其它分辨率高度不变。
+- 本次只扩展低分辨率判断条件，不修改其它 Coverflow 尺寸计算。
+- 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译和实机验证。
