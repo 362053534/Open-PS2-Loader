@@ -1142,17 +1142,13 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             } else if (entry->texFound == 1) {
                 if (entry->texture.Mem) {
                     // entry->lastUsed = guiFrameId;
-                    // 刷新窗口内可能仍命中旧 item 自身的槽位；该结果由渲染层丢弃，
-                    // 同时不能再把它写回 PrevCacheID，否则 Force 清零后的下一帧又会
-                    // 通过 fallback 路径把旧封面带回来。
-                    if (!ForceRefreshPrevTexCache) {
-                        if (!strncmp("BG", cache->suffix, 2))
-                            PrevCacheID_BG = *cacheId;
-                        else if (!strncmp("COV", cache->suffix, 3))
-                            PrevCacheID_COV = *cacheId;
-                        else if (!strncmp("ICO", cache->suffix, 3))
-                            PrevCacheID_ICO = *cacheId;
-                    }
+                    //  根据图像类型，将缓存分类保存，替代NULL时的默认图(防止闪烁)
+                    if (!strncmp("BG", cache->suffix, 2))
+                        PrevCacheID_BG = *cacheId;
+                    else if (!strncmp("COV", cache->suffix, 3))
+                        PrevCacheID_COV = *cacheId;
+                    else if (!strncmp("ICO", cache->suffix, 3))
+                        PrevCacheID_ICO = *cacheId;
                     return &entry->texture;
                 }
             }
@@ -1369,17 +1365,9 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
 
     isBg = !strncmp(cache->suffix, "BG", 2);
 
-    // 刷新期间禁止所有类型继续引用上一张显示纹理；Coverflow 的 COV/ICO
-    // 虽然通常不走 Prev 回退，仍要清掉索引，避免和普通路径或槽位复用交叉污染。
-    if (ForceRefreshPrevTexCache) {
-        PrevCacheID = -2;
-        if (isBg)
-            PrevCacheID_BG = -2;
-        else if (!strncmp(cache->suffix, "COV", 3))
-            PrevCacheID_COV = -2;
-        else if (!strncmp(cache->suffix, "ICO", 3))
-            PrevCacheID_ICO = -2;
-    }
+    // Coverflow BG 与列表一致：ForceRefresh 时丢掉上一张保持。
+    if (isBg && ForceRefreshPrevTexCache)
+        PrevCacheID_BG = -2;
 
     // 已确认该项没有对应 art 文件：直接返回，避免反复排队
     if (*cacheId == -2) {
@@ -1411,9 +1399,7 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
             }
             if (entry->texFound == 1 && entry->texture.Mem) {
                 entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
-                // ForceRefresh 期间命中的旧槽位只允许继续维持缓存生命周期，
-                // 不能重新成为刷新结束后的 BG fallback。
-                if (isBg && !ForceRefreshPrevTexCache)
+                if (isBg)
                     PrevCacheID_BG = *cacheId;
                 return &entry->texture;
             }
