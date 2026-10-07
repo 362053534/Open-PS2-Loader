@@ -745,14 +745,11 @@ static void cacheDiagWatchdog(void)
 void flushBatchRequests(void)
 {
     // ForceRefreshPrevTexCache：设备页签/列表重建/进详情时置 1，禁止本帧显示回退到“上一张”。
-    // 非 Coverflow 路径里 cacheGetTexture() 会把它从 1 加到 2，并清 PrevCacheID_*；本函数再清 0。
-    // Coverflow 主界面只走 quiet 路径、不会触发上述 ++，旧逻辑会让标志永久停在 1，显示回退失效。
-    // 因此在帧末若仍为 1 则老化为 2，下一帧再清 0——仍保证切换后至少 1～2 帧不显示其它设备的 BG，
-    // 且不影响非 Coverflow 对 PrevCacheID_BG 的既有行为（仍由 cacheGetTexture 在标志非 0 时重置）。
+    // 普通列表的 cacheGetTexture() 会把它从 1 加到 2，并清 PrevCacheID_*；Coverflow
+    // 的 quiet BG 路径在 cacheGetTextureQuietInternal() 中完成同样的推进。本函数只负责
+    // 清理已经被对应取图路径消费过的状态，避免在普通列表没有取图的帧里提前清掉保护。
     if (ForceRefreshPrevTexCache > 1)
         ForceRefreshPrevTexCache = 0;
-    else if (ForceRefreshPrevTexCache == 1)
-        ForceRefreshPrevTexCache = 2;
 
 #ifdef __DEBUG
     cacheDiagWatchdog();
@@ -1313,9 +1310,13 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
 
     isBg = !strncmp(cache->suffix, "BG", 2);
 
-    // Coverflow BG 与列表一致：ForceRefresh 时丢掉上一张保持。
-    if (isBg && ForceRefreshPrevTexCache)
+    // Coverflow 只有 BG quiet 路径使用 ForceRefresh：刷新/切换页签时丢掉上一张
+    // fallback，并把标志推进到 2，交给帧末统一清零。使用赋值而不是 ++，因为
+    // 同一帧可能会查询两次 BG（背景绘制和 deferred enqueue）。
+    if (isBg && ForceRefreshPrevTexCache) {
         PrevCacheID_BG = -2;
+        ForceRefreshPrevTexCache = 2;
+    }
 
     // 已确认该项没有对应 art 文件：直接返回，避免反复排队
     if (*cacheId == -2) {
