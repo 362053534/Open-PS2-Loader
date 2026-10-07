@@ -1024,6 +1024,11 @@ static void bdmShutdown(item_list_t *itemList)
     // As required by some (typically 2.5") HDDs, issue the SCSI STOP UNIT command to avoid causing an emergency park.
     fileXioDevctl(path, USBMASS_DEVCTL_STOP_ALL, NULL, 0, NULL, 0);
 
+    // BDMHDD acquired one HDD/DEV9 reference through hddLoadModulesBDM().
+    // Release it only when this ATA-backed BDM slot is no longer the selected source.
+    if (pDeviceData != NULL && pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+        hddReleaseModulesBDM();
+
     if (itemList->enabled) {
         LOG("BDMSUPPORT Shutdown free data\n");
 

@@ -11,9 +11,10 @@
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`
 - 当前诊断基线提交：`91ccccf5a041eddc1c1e4e81595f0ca4deeff661`；本次在该基线上增加 Coverflow 随机死机的 debug-only 看门狗与阶段快照。
-- 当前任务：定位 Coverflow 随机完全死机的最后执行阶段，不改变 Coverflow 功能、渲染后端、纹理缓存行为或正常构建路径。
-- 当前工作区：本次源码改动与本文同步提交；未修改图片、CFG、`temp/` 用户资产或 `AGENTS.md`。
-- 验证状态：已完成静态 diff 检查。外部 `make iopcore_debug --trace` 已进入源码编译，但首轮在 `src/menusys.c` 发现 `theme_element_t` 没有 `name` 字段；已改为记录 `coverflow`/`theme_element` 分类标签，等待重新跑完整 debug 构建和实机验证。
+- 当前任务：修复 BDMHDD 切换到非 DEV9 链路时未释放 HDD/DEV9 引用、导致网卡继续上电的问题。
+- 当前工作区：本次 BDMHDD/DEV9 引用计数修复与本文同步提交；未修改图片、CFG、`temp/` 用户资产或 `AGENTS.md`。
+- 当前修复：BDMHDD 通过 `hddLoadModulesBDM()` 获取的 HDD/DEV9 引用，在非 ATA BDM 目标启动时由 `bdmShutdown()` 对 ATA 槽调用 `hddReleaseModulesBDM()` 释放；普通 HDD 的释放逻辑复用同一内部 helper。
+- 验证状态：已完成静态 diff 检查和 `git diff --check`；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台构建或实机验证。
 
 ## 2. 当前任务重点
 
@@ -653,3 +654,10 @@ git log -1 --oneline
 - `src/gui.c`：`gBackgroundTex.Mem` 分配后先用不透明黑色完整初始化 32×32 CT32 缓冲；Plasma 仍按原逻辑每帧逐行生成，未生成行不再读取随机 EE 内存。
 - 未修改 `guiRenderGreeting()` 的淡出 alpha，也未改变正常淡出时底层 Plasma 透出的行为。
 - 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译、逐分辨率启动或实机验证。
+
+### 2026-10-08 — 修复 BDMHDD 切换到非 DEV9 链路时的 DEV9 引用泄漏
+
+- `src/hddsupport.c`：抽取 `hddReleaseModuleReference()`，同时减少 `hddModulesLoadCount`、在最后一个 HDD 引用释放时执行 `hddSetIdleImmediate()`，并调用 `sysShutdownDev9()`；普通 HDD 清理复用该 helper。
+- `include/hddsupport.h`：新增 `hddReleaseModulesBDM()` 接口。
+- `src/bdmsupport.c`：`bdmShutdown()` 仅在被关闭的 BDM 槽类型为 `BDM_TYPE_ATA` 时释放 BDMHDD 的 HDD/DEV9 引用。这样关闭 BDMHDD 开关后再启动 USB、i.Link、MX4SIO 或其它非 ATA 链路时，会在非目标 ATA 槽的 shutdown 阶段自然释放引用；未在 `bdmCleanUp()` 中释放，以保留 BDMHDD 作为当前应用来源时的读取能力。
+- 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译或实机验证。
