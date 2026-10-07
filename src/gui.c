@@ -154,6 +154,17 @@ void guiInit(void)
     gBackgroundTex.Width = PLASMA_W;
     gBackgroundTex.Height = PLASMA_H;
     gBackgroundTex.Mem = memalign(128, PLASMA_W * PLASMA_H * 4);
+    if (gBackgroundTex.Mem) {
+        u32 *pixels = (u32 *)gBackgroundTex.Mem;
+        u32 initialColor = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
+        int pixelCount = PLASMA_W * PLASMA_H;
+        int i;
+
+        // Plasma is generated incrementally (only a few rows per frame). Fill the
+        // untouched rows with deterministic opaque black instead of allocator data.
+        for (i = 0; i < pixelCount; i++)
+            pixels[i] = initialColor;
+    }
     gBackgroundTex.PSM = GS_PSM_CT32;
     gBackgroundTex.Filter = GS_FILTER_LINEAR;
     gBackgroundTex.Vram = 0;
