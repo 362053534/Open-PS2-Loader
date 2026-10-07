@@ -316,6 +316,21 @@ void hddLoadModulesBDM(void)
     hddLoadModulesInternal(1);
 }
 
+void hddReleaseModulesBDM(void)
+{
+    if (hddModulesLoadCount > 0) {
+        hddModulesLoadCount--;
+        if (hddModulesLoadCount == 0) {
+            // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
+            // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
+            hddSetIdleImmediate();
+        }
+
+        // Only shut down dev9 from here, if it was initialized from here before.
+        sysShutdownDev9();
+    }
+}
+
 // Returns 1 for MBR/GPT, 0 for APA, and -1 if an error occured
 int hddDetectNonSonyFileSystem()
 {
