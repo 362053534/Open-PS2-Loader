@@ -646,3 +646,10 @@ git log -1 --oneline
 - 这两个模式同样使用 ICO `128`、游戏 COV `200`、APPS COV `140`；其它分辨率高度不变。
 - 本次只扩展低分辨率判断条件，不修改其它 Coverflow 尺寸计算。
 - 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译和实机验证。
+
+### 2026-10-08 — 稳定 Intro 底色的 HIRES 与 Plasma 初始化
+
+- `src/renderman.c`：在 `gsKit_hires_init_screen()` 创建 HIRES pass 的持久化清屏命令时临时关闭 `PrimAlphaEnable`，完成后恢复开启，避免透明 clear 无法覆盖旧 framebuffer。
+- `src/gui.c`：`gBackgroundTex.Mem` 分配后先用不透明黑色完整初始化 32×32 CT32 缓冲；Plasma 仍按原逻辑每帧逐行生成，未生成行不再读取随机 EE 内存。
+- 未修改 `guiRenderGreeting()` 的淡出 alpha，也未改变正常淡出时底层 Plasma 透出的行为。
+- 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译、逐分辨率启动或实机验证。

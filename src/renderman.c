@@ -455,7 +455,12 @@ int rmSetMode(int force)
         gsGlobal->OffsetY = ((4096 - gsGlobal->Height) / 2) * 16;
 
         if (hires) {
+            // gsKit_hires_init_screen() bakes the persistent per-pass clear commands.
+            // Build those clears with ABE disabled so their transparent clear color
+            // still overwrites stale framebuffer contents.
+            gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
             gsKit_hires_init_screen(gsGlobal, rm_mode_table[vmode].passes);
+            gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
         } else {
             gsKit_init_screen(gsGlobal);
             gsKit_mode_switch(gsGlobal, GS_ONESHOT);
