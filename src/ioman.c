@@ -255,6 +255,8 @@ static void guiDiagReportStall(unsigned int stalledTicks)
     ioDiagPrintfMonitorNoLock("[GUI_WD] io_sema=%d gui_queue=%d gui_lock=%d menu=%d menu_list=%d\n",
                               ioEndSemaId, guiQueueSemaId, guiLockSemaId, menuSemaId, menuListSemaId);
     ioDiagReportSema("io_queue", ioEndSemaId);
+    ioDiagReportSema("io_printf", ioPrintfSemaId);
+    ioDiagReportSema("file_lock", texGetFileLockSemaId());
     ioDiagReportSema("gui_queue", guiQueueSemaId);
     ioDiagReportSema("gui_lock", guiLockSemaId);
     ioDiagReportSema("menu", menuSemaId);
