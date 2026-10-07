@@ -1,5 +1,7 @@
 #include "include/opl.h"
 #include "include/ioman.h"
+#include "include/debugdiag.h"
+#include "include/textures.h"
 #include <kernel.h>
 #include <string.h>
 #include <malloc.h>
@@ -61,6 +63,16 @@ static volatile int isIOPending = 0;
 static volatile unsigned int gIODiagProgress = 0;
 volatile int gIODiagWorkerStage = IO_WS_NONE;
 volatile int gIODiagPrintfCallerStage = IO_WS_NONE;
+
+// 独立看门狗不依赖主线程或 IO worker 的调用链，才能报告主线程停在渲染锁/GS 等待的情况。
+#define GUI_DIAG_WATCHDOG_STACK_SIZE (16 * 1024)
+#define GUI_DIAG_WATCHDOG_INTERVAL_US 20000
+#define GUI_DIAG_WATCHDOG_STALL_TICKS 150
+static u8 guiDiagWatchdogStack[GUI_DIAG_WATCHDOG_STACK_SIZE] ALIGNED(16);
+static ee_thread_t guiDiagWatchdogThreadDef;
+static s32 guiDiagWatchdogThreadId = -1;
+static volatile int guiDiagWatchdogTerminate;
+static volatile int guiDiagWatchdogRunning;
 #endif
 
 // 静态池相关，防止内存碎片化导致死机
@@ -139,6 +151,170 @@ static void ioProcessRequest(struct io_request_t *req)
     if (hlr)
         hlr(req->data);
 }
+
+#ifdef __DEBUG
+static const char *ioDiagWaitTypeName(u32 waitType)
+{
+    switch (waitType) {
+        case 0:
+            return "none";
+        case 1:
+            return "sleep";
+        case 2:
+            return "sema";
+        default:
+            return "?";
+    }
+}
+
+static void ioDiagReportSema(const char *name, int semaId)
+{
+    ee_sema_t sema;
+    memset(&sema, 0, sizeof(sema));
+    int ret = (semaId > 0) ? ReferSemaStatus(semaId, &sema) : -1;
+    ioDiagPrintfMonitorNoLock("[GUI_WD] sema name=%s id=%d ret=%d count=%d max=%d wait_threads=%d\n",
+                              name, semaId, ret, sema.count, sema.max_count, sema.wait_threads);
+}
+
+static void guiDiagReportStall(unsigned int stalledTicks)
+{
+    int ioThreadId = -1;
+    int ioEndSemaId = -1;
+    int ioPrintfSemaId = -1;
+    int activeType = -1;
+    unsigned int progress = 0;
+    int pending = ioDiagGetPendingNoLock();
+    int mainThreadId = gGuiDiagStageThread;
+    int guiQueueSemaId = -1;
+    int guiLockSemaId = -1;
+    int menuSemaId = -1;
+    int menuListSemaId = -1;
+    int isHires = 0;
+    int videoMode = -1;
+    int width = 0;
+    int height = 0;
+    int activeBuffer = -1;
+    int texLoading = 0;
+    int activeArt = 0;
+    int activeArtItem = -1;
+    const char *activeSuffix = "-";
+    const char *activeValue = "-";
+    const char *texStage;
+    int texStageThread = -1;
+    int mutexOwner = -1;
+    int mutexOwnerSite = 0;
+    int mutexWorkerWait = 0;
+    int mutexOtherWaiter = -1;
+    int mutexOtherWaitSite = 0;
+    int mutexLastUnlockThread = -1;
+    int mutexLastUnlockSite = 0;
+    unsigned int mutexLocks = 0;
+    int pthreadBG = 0;
+    int pthreadCOV = 0;
+    int pthreadICO = 0;
+    ee_thread_status_t mainStatus;
+    ee_thread_status_t ioStatus;
+
+    ioGetDiagState(&ioThreadId, &ioEndSemaId, &ioPrintfSemaId, &activeType, &progress);
+    guiDiagGetSemaIds(&guiQueueSemaId, &guiLockSemaId);
+    menuDiagGetSemaIds(&menuSemaId, &menuListSemaId);
+    rmDiagGetState(&isHires, &videoMode, &width, &height, &activeBuffer);
+    texDiagGetRequestState(&texLoading, &activeArt, &activeSuffix, &activeValue, &activeArtItem);
+    texDiagGetMutexState(&mutexOwner, &mutexOwnerSite, &mutexWorkerWait, &mutexOtherWaiter,
+                         &mutexOtherWaitSite, &mutexLastUnlockThread, &mutexLastUnlockSite, &mutexLocks);
+    texDiagGetThreadState(&pthreadBG, &pthreadCOV, &pthreadICO);
+    texStage = texGetDiagLastStage(&texStageThread);
+
+    // 先写出阶段和 Coverflow 快照，再调用可能依赖 IOP 的线程状态查询。
+    ioDiagPrintfMonitorNoLock("[GUI_WD] stall frame=%u heartbeat=%u stagnant_ticks=%u stage=%d(%s) stage_frame=%u stage_thread=%d element=%s\n",
+                              (unsigned int)gGuiDiagFrame, (unsigned int)gGuiDiagHeartbeat, stalledTicks,
+                              gGuiDiagStage, guiDiagStageName(gGuiDiagStage), (unsigned int)gGuiDiagStageFrame,
+                              gGuiDiagStageThread, gGuiDiagElementName ? (const char *)gGuiDiagElementName : "-");
+    ioDiagPrintfMonitorNoLock("[GUI_WD] menu game_id=%d cursor=%d/%d mode=%d coverflow=%d text=%s\n",
+                              gMenuDiagCurrentId, gMenuDiagCursor, gMenuDiagItemCount, gMenuDiagMenuMode,
+                              gMenuDiagIsCoverflow, (const char *)gMenuDiagCurrentText);
+    ioDiagPrintfMonitorNoLock("[CF_DIAG] current=%d start=%d dir=%d steps=%d render=%d center=%d tex_phase=%d tex_item=%d\n",
+                              gCoverflowDiagCurrentId, gCoverflowDiagStartId, gCoverflowDiagDirection,
+                              gCoverflowDiagSteps, gCoverflowDiagRenderCount, gCoverflowDiagRenderIndex,
+                              gCoverflowDiagTexturePhase, gCoverflowDiagTextureItemId);
+
+    memset(&mainStatus, 0, sizeof(mainStatus));
+    memset(&ioStatus, 0, sizeof(ioStatus));
+    int mainRet = (mainThreadId > 0) ? ReferThreadStatus(mainThreadId, &mainStatus) : -1;
+    int ioRet = (ioThreadId > 0) ? ReferThreadStatus(ioThreadId, &ioStatus) : -1;
+
+    ioDiagPrintfMonitorNoLock("[GUI_WD] main id=%d ret=%d status=0x%02x wait_type=%u(%s) wait_id=%u cur_prio=%d\n",
+                              mainThreadId, mainRet, mainStatus.status, mainStatus.waitType,
+                              ioDiagWaitTypeName(mainStatus.waitType), mainStatus.waitId,
+                              mainStatus.current_priority);
+    ioDiagPrintfMonitorNoLock("[GUI_WD] io id=%d ret=%d status=0x%02x wait_type=%u(%s) wait_id=%u cur_prio=%d active=%d pending=%d progress=%u worker_stage=%d(%s)\n",
+                              ioThreadId, ioRet, ioStatus.status, ioStatus.waitType,
+                              ioDiagWaitTypeName(ioStatus.waitType), ioStatus.waitId,
+                              ioStatus.current_priority, activeType, pending, progress,
+                              gIODiagWorkerStage, ioDiagWorkerStageName(gIODiagWorkerStage));
+    ioDiagPrintfMonitorNoLock("[GUI_WD] io_sema=%d gui_queue=%d gui_lock=%d menu=%d menu_list=%d\n",
+                              ioEndSemaId, guiQueueSemaId, guiLockSemaId, menuSemaId, menuListSemaId);
+    ioDiagReportSema("io_queue", ioEndSemaId);
+    ioDiagReportSema("gui_queue", guiQueueSemaId);
+    ioDiagReportSema("gui_lock", guiLockSemaId);
+    ioDiagReportSema("menu", menuSemaId);
+    ioDiagReportSema("menu_list", menuListSemaId);
+    ioDiagPrintfMonitorNoLock("[GUI_WD] rm hires=%d vmode=%d size=%dx%d active_buffer=%d\n",
+                              isHires, videoMode, width, height, activeBuffer);
+    ioDiagPrintfMonitorNoLock("[GUI_WD] tex loading=%d active=%d suffix=%s item=%d value=%s stage=%s stage_thread=%d pthread_bg=%d pthread_cov=%d pthread_ico=%d\n",
+                              texLoading, activeArt, activeSuffix ? activeSuffix : "-", activeArtItem,
+                              activeValue ? activeValue : "-", texStage ? texStage : "-", texStageThread,
+                              pthreadBG, pthreadCOV, pthreadICO);
+    ioDiagPrintfMonitorNoLock("[GUI_WD] tex_mutex owner=%d owner_site=%d worker_wait_site=%d other_waiter=%d other_wait_site=%d last_unlock=%d/%d locks=%u\n",
+                              mutexOwner, mutexOwnerSite, mutexWorkerWait, mutexOtherWaiter,
+                              mutexOtherWaitSite, mutexLastUnlockThread, mutexLastUnlockSite, mutexLocks);
+}
+
+static void guiDiagWatchdogThread(void *arg)
+{
+    unsigned int lastHeartbeat = 0;
+    unsigned int stagnantTicks = 0;
+    unsigned int lastReport = 0;
+    int reported = 0;
+
+    (void)arg;
+    guiDiagWatchdogRunning = 1;
+    while (!guiDiagWatchdogTerminate) {
+        usleep(GUI_DIAG_WATCHDOG_INTERVAL_US);
+
+        if (!gGuiDiagEnabled) {
+            lastHeartbeat = gGuiDiagHeartbeat;
+            stagnantTicks = 0;
+            reported = 0;
+            continue;
+        }
+
+        unsigned int heartbeat = gGuiDiagHeartbeat;
+        if (heartbeat != lastHeartbeat) {
+            if (reported)
+                ioDiagPrintfMonitorNoLock("[GUI_WD] recovered frame=%u heartbeat=%u\n",
+                                          (unsigned int)gGuiDiagFrame, heartbeat);
+            lastHeartbeat = heartbeat;
+            stagnantTicks = 0;
+            lastReport = 0;
+            reported = 0;
+            continue;
+        }
+
+        if (stagnantTicks < 0xFFFFFFFFU)
+            stagnantTicks++;
+        if (stagnantTicks >= GUI_DIAG_WATCHDOG_STALL_TICKS &&
+            (!reported || stagnantTicks - lastReport >= GUI_DIAG_WATCHDOG_STALL_TICKS)) {
+            lastReport = stagnantTicks;
+            reported = 1;
+            guiDiagReportStall(stagnantTicks);
+        }
+    }
+
+    guiDiagWatchdogRunning = 0;
+    ExitDeleteThread();
+}
+#endif
 
 static void ioWorkerThread(void *arg)
 {
@@ -250,6 +426,20 @@ void ioInit(void)
     isIOPending = 0;
     gIOThreadId = CreateThread(&gIOThread);
     StartThread(gIOThreadId, NULL);
+
+#ifdef __DEBUG
+    guiDiagWatchdogTerminate = 0;
+    guiDiagWatchdogRunning = 0;
+    guiDiagWatchdogThreadDef.attr = 0;
+    guiDiagWatchdogThreadDef.stack_size = GUI_DIAG_WATCHDOG_STACK_SIZE;
+    guiDiagWatchdogThreadDef.gp_reg = &_gp;
+    guiDiagWatchdogThreadDef.func = &guiDiagWatchdogThread;
+    guiDiagWatchdogThreadDef.stack = guiDiagWatchdogStack;
+    // 比 GUI 主线程略高，主线程忙等而未进入 sleep 时也能产生停顿快照。
+    guiDiagWatchdogThreadDef.initial_priority = 30;
+    guiDiagWatchdogThreadId = CreateThread(&guiDiagWatchdogThreadDef);
+    StartThread(guiDiagWatchdogThreadId, NULL);
+#endif
 }
 
 static int ioPutRequestInternal(int type, void *data, int unique)
@@ -389,6 +579,12 @@ void ioEnd(void)
     LOG("[IO_END] request terminating=%d pending=%d active=%d\n",
         gIOTerminate, ioHasPendingRequests(), ioGetActiveRequestType());
 #endif
+#ifdef __DEBUG
+    guiDiagWatchdogTerminate = 1;
+    while (guiDiagWatchdogRunning)
+        usleep(1000);
+    guiDiagWatchdogThreadId = -1;
+#endif
     gIOTerminate = 1;
     // 无需唤醒：worker 轮询循环每轮(最多 2ms)都会检查 gIOTerminate 并自行退出。
 
@@ -506,6 +702,11 @@ void ioGetDiagState(int *threadId, int *endSemaId, int *printfSemaId, int *activ
         *progress = gIODiagProgress;
 }
 
+int ioDiagGetPendingNoLock(void)
+{
+    return isIOPending;
+}
+
 int ioDiagPrintfNoLock(const char *format, ...)
 {
     // 仅主线程看门狗使用，静态缓冲区无需加锁；只格式化整数/字符串，
@@ -532,6 +733,34 @@ int ioDiagPrintfNoLock(const char *format, ...)
     int written = 0;
     while (written < len) {
         int ret = write(STDOUT_FILENO, diagBuf + written, len - written);
+        if (ret <= 0)
+            break;
+        written += ret;
+    }
+#endif
+    return len;
+}
+
+int ioDiagPrintfMonitorNoLock(const char *format, ...)
+{
+    // 看门狗线程不能与主线程共享诊断缓冲区，否则停顿快照可能互相覆盖。
+    static char diagMonitorBuf[768] ALIGNED(64);
+    va_list args;
+    va_start(args, format);
+    int len = vsnprintf(diagMonitorBuf, sizeof(diagMonitorBuf), format, args);
+    va_end(args);
+
+    if (len < 0)
+        return len;
+    if (len >= (int)sizeof(diagMonitorBuf))
+        len = sizeof(diagMonitorBuf) - 1;
+
+#ifdef __EESIO_DEBUG
+    sio_putsn(diagMonitorBuf);
+#else
+    int written = 0;
+    while (written < len) {
+        int ret = write(STDOUT_FILENO, diagMonitorBuf + written, len - written);
         if (ret <= 0)
             break;
         written += ret;

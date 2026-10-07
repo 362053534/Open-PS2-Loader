@@ -72,6 +72,21 @@ pthread_attr_t attr;
 pthread_mutex_t texLoadingMutex = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef __DEBUG
+void texDiagGetThreadState(int *bgCreated, int *covCreated, int *icoCreated)
+{
+    extern int pthread_created_BG;
+    extern int pthread_created_COV;
+    extern int pthread_created_ICO;
+    if (bgCreated)
+        *bgCreated = pthread_created_BG;
+    if (covCreated)
+        *covCreated = pthread_created_COV;
+    if (icoCreated)
+        *icoCreated = pthread_created_ICO;
+}
+#endif
+
+#ifdef __DEBUG
 // texLoadingMutex 持有者跟踪（仅调试）：记录持有线程、加锁调用点（__LINE__）、
 // worker 与其它线程各自正在等待的调用点，以及最近一次解锁。全部无锁写入，
 // 看门狗无锁读取；锁本身的行为不变。
@@ -122,6 +137,43 @@ static void cacheDiagMutexUnlock(int site)
 #else
 #define TEX_LOADING_LOCK()   pthread_mutex_lock(&texLoadingMutex)
 #define TEX_LOADING_UNLOCK() pthread_mutex_unlock(&texLoadingMutex)
+#endif
+
+#ifdef __DEBUG
+void texDiagGetRequestState(int *loading, int *active, const char **suffix, const char **value, int *itemId)
+{
+    if (loading)
+        *loading = texLoading;
+    if (active)
+        *active = diagActiveArt;
+    if (suffix)
+        *suffix = diagActiveSuffix;
+    if (value)
+        *value = diagActiveValue;
+    if (itemId)
+        *itemId = diagActiveItemId;
+}
+
+void texDiagGetMutexState(int *owner, int *ownerSite, int *workerWaitSite, int *otherWaiter, int *otherWaitSite,
+                          int *lastUnlockThread, int *lastUnlockSite, unsigned int *lockCount)
+{
+    if (owner)
+        *owner = diagTexMutexOwner;
+    if (ownerSite)
+        *ownerSite = diagTexMutexOwnerSite;
+    if (workerWaitSite)
+        *workerWaitSite = diagTexMutexWorkerWaitSite;
+    if (otherWaiter)
+        *otherWaiter = diagTexMutexOtherWaiter;
+    if (otherWaitSite)
+        *otherWaitSite = diagTexMutexOtherWaitSite;
+    if (lastUnlockThread)
+        *lastUnlockThread = diagTexMutexLastUnlockThread;
+    if (lastUnlockSite)
+        *lastUnlockSite = diagTexMutexLastUnlockSite;
+    if (lockCount)
+        *lockCount = diagTexMutexLockCount;
+}
 #endif
 
 // 线程是否已创建

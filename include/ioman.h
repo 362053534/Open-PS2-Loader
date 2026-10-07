@@ -64,10 +64,13 @@ int ioPrintf(const char *format, ...);
 #ifdef __DEBUG
 /** 诊断专用：不加任何锁读取 IO worker 状态，供主线程看门狗在 worker 卡死时使用。 */
 void ioGetDiagState(int *threadId, int *endSemaId, int *printfSemaId, int *activeType, unsigned int *progress);
+int ioDiagGetPendingNoLock(void);
 
 /** 诊断专用输出：静态缓冲区 + 直接 write()/sio，不经过 ioPrintf 信号量、
  * newlib stdout FILE 锁和 malloc 锁，避免看门狗被同一把锁拖死。只能在主线程调用。 */
 int ioDiagPrintfNoLock(const char *format, ...);
+// 独立看门狗线程使用独立缓冲区，避免与主线程看门狗共用静态缓冲区。
+int ioDiagPrintfMonitorNoLock(const char *format, ...);
 
 // 诊断专用：IO worker 当前所处阶段。worker 无锁写入，主线程看门狗无锁读取，
 // 即使 worker 永久阻塞也能知道它停在哪一步。

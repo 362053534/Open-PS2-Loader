@@ -9,6 +9,7 @@
 #include "include/lang.h"
 #include "include/pad.h"
 #include "include/sound.h"
+#include "include/debugdiag.h"
 
 #include <time.h>
 
@@ -1228,6 +1229,17 @@ static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外�
 // L1/R1 翻页使用 gCoverflowAnimSpeed * 2.0。
 static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
 
+#ifdef __DEBUG
+volatile int gCoverflowDiagCurrentId = -1;
+volatile int gCoverflowDiagStartId = -1;
+volatile int gCoverflowDiagDirection;
+volatile int gCoverflowDiagSteps;
+volatile int gCoverflowDiagRenderCount;
+volatile int gCoverflowDiagRenderIndex;
+volatile int gCoverflowDiagTexturePhase;
+volatile int gCoverflowDiagTextureItemId = -1;
+#endif
+
 void thmTriggerCoverflowAnim(int direction)
 {
     // 仅当启用了 Coverflow 主题时才生效，因此不影响列表主题下的导航。
@@ -1358,6 +1370,17 @@ static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float
 
 static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW);
+    gCoverflowDiagCurrentId = item ? item->item.id : -1;
+    gCoverflowDiagStartId = animationStartItem ? animationStartItem->item.id : -1;
+    gCoverflowDiagDirection = animationDirection;
+    gCoverflowDiagSteps = animationSteps;
+    gCoverflowDiagRenderCount = 0;
+    gCoverflowDiagRenderIndex = -1;
+    gCoverflowDiagTexturePhase = 1;
+    gCoverflowDiagTextureItemId = -1;
+#endif
     if (item == NULL) {
         flushDeferredCoverflowBackground(NULL);
         return;
@@ -1570,6 +1593,13 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
     }
 
+#ifdef __DEBUG
+    gCoverflowDiagStartId = animationStartItem ? animationStartItem->item.id : -1;
+    gCoverflowDiagSteps = animationSteps;
+    gCoverflowDiagRenderCount = renderCount;
+    gCoverflowDiagRenderIndex = renderCenterIndex;
+#endif
+
     struct
     {
         submenu_list_t *game;
@@ -1706,9 +1736,17 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
              idx > renderCenterIndex + centerIndex))
             requestTargetWindow = 0;
 
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW_TEXTURE);
+        gCoverflowDiagTexturePhase = 2;
+        gCoverflowDiagTextureItemId = covers[idx].game->item.id;
+#endif
         covers[idx].texture = getCoverflowTexture(img->cache, sourceList,
                                                    &covers[idx].game->item,
                                                    requestTargetWindow);
+#ifdef __DEBUG
+        gCoverflowDiagTexturePhase = 3;
+#endif
         if (!covers[idx].texture || !covers[idx].texture->Mem)
             covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
     }
@@ -1785,6 +1823,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int oi;
     for (oi = 0; oi < drawCount; oi++) {
         i = drawOrder[oi];
+#ifdef __DEBUG
+        gCoverflowDiagRenderIndex = i;
+#endif
 
         if (covers[i].game == NULL)
             continue;
@@ -1856,6 +1897,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 会把 ICO 的起始部分遮住，形成“从中心封面背后向左弹出”的层级关系。
         if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
             icoTexture->Mem && gTheme->coverflowIcoLoaded) {
+#ifdef __DEBUG
+            GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW_ICO);
+            gCoverflowDiagTexturePhase = 6;
+            gCoverflowDiagTextureItemId = item ? item->item.id : -1;
+#endif
             // Coverflow 的横向坐标在宽屏下已经按 4:3 逻辑坐标压缩；ICO 也必须
             // 只压缩横向宽度、右边缘和弹出间距；逻辑宽 COVERFLOW_ICO_W、高 COVERFLOW_ICO_H，
             // 448 下整数 X_SCALE/Y_SCALE 后约 128×128（宽屏再经电视横向拉伸）。
@@ -1875,10 +1921,18 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
         // drawBottomY 来自固定缩放中心，而不是独立的垂直移动曲线；Case、封面和倒影
         // 因而由同一个缩放变换自然展开。尺寸、物理像素模式和 448/480/512 的比例规则不变。
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW_SUBMIT);
+        gCoverflowDiagTexturePhase = 4;
+        gCoverflowDiagTextureItemId = covers[i].game ? covers[i].game->item.id : -1;
+#endif
         if (gEnableArtCOV)
             coverflowDrawTexture(covers[i].texture, img, renderPosX, drawBottomY,
-                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight, coverColor,
-                                 elem->reflection, elem->width, elem->height);
+                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight,
+                                 coverColor, elem->reflection, elem->width, elem->height);
+#ifdef __DEBUG
+        gCoverflowDiagTexturePhase = 5;
+#endif
     }
 
     // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载，动画期间也不暂停。
@@ -1892,6 +1946,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
     //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
     // 封面也提前加载好，环绕跳转时才不会露出占位图。
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW_PREFETCH);
+    gCoverflowDiagTexturePhase = 7;
+#endif
     if (img->cache && gCoverflowPreload > 0) {
         int preloadPerSide = gCoverflowPreload;
 
@@ -1912,6 +1970,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             }
             if (prev == NULL || prev == item)
                 break; // 空列表，或列表太短已绕回中心项，停止
+#ifdef __DEBUG
+            gCoverflowDiagTextureItemId = prev->item.id;
+#endif
             getCoverflowTexture(img->cache, sourceList, &prev->item, 1);
             pcur = prev;
         }
@@ -1924,16 +1985,29 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
                 next = head; // 环绕到列表头
             if (next == NULL || next == item)
                 break;
+#ifdef __DEBUG
+            gCoverflowDiagTextureItemId = next->item.id;
+#endif
             getCoverflowTexture(img->cache, sourceList, &next->item, 1);
             pcur = next;
         }
     }
 
     // 预取 COV 入队之后立刻入队当前项 BG（仅调整相对 COV 的顺序；ICO 仍在其后）。
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW_PREFETCH);
+    gCoverflowDiagTexturePhase = 8;
+    gCoverflowDiagTextureItemId = item ? item->item.id : -1;
+#endif
     flushDeferredCoverflowBackground(item);
 
     // 所有 Coverflow 预取与 BG 请求入队后，再为当前停留项创建 ICO 请求。
     if (!isAnimating && gEnableArtICO && (!icoTexture || !icoTexture->Mem)) {
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_COVERFLOW_ICO);
+        gCoverflowDiagTexturePhase = 9;
+        gCoverflowDiagTextureItemId = item ? item->item.id : -1;
+#endif
         GSTEXTURE *requestedIco = getCoverflowIcoTexture(sourceList, item, 1);
         if (requestedIco && requestedIco->Mem && !gTheme->coverflowIcoLoaded) {
             gTheme->coverflowIcoLoaded = 1;

@@ -24,6 +24,7 @@
 #include "include/sound.h"
 #include "include/guigame.h"
 #include "include/texcache.h"
+#include "include/debugdiag.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -81,6 +82,31 @@ extern GSGLOBAL *gsGlobal;
 u64 guiInactiveFrames;
 u64 guiFrameId;
 
+#ifdef __DEBUG
+// 看门狗只观察这些无锁快照；正式构建不增加任何数据或执行路径。
+volatile u32 gGuiDiagHeartbeat;
+volatile u32 gGuiDiagFrame;
+volatile u32 gGuiDiagStageFrame;
+volatile int gGuiDiagStage = GUI_DIAG_NONE;
+volatile int gGuiDiagStageThread = -1;
+volatile int gGuiDiagEnabled;
+const char *volatile gGuiDiagElementName = "-";
+
+const char *guiDiagStageName(int stage)
+{
+    static const char *const names[GUI_DIAG_COUNT] = {
+        "none", "frame_begin", "gui_lock_wait", "gui_lock_held", "rm_start", "frame_active",
+        "gui_show", "menu_lock_wait", "menu_lock_held", "menu_unlock", "theme_element", "coverflow", "coverflow_texture",
+        "coverflow_submit", "tex_bind", "coverflow_prefetch", "coverflow_ico", "art_flush", "greeting", "overlay",
+        "deferred", "gui_end", "rm_end", "hires_sync", "hires_flip", "queue_exec", "gs_finish",
+        "tex_manager_next_frame", "gui_unlock", "input", "frame_hook", "intro", "msgbox"};
+
+    if (stage < 0 || stage >= GUI_DIAG_COUNT)
+        return "?";
+    return names[stage];
+}
+#endif
+
 struct gui_update_list_t
 {
     struct gui_update_t *item;
@@ -131,6 +157,15 @@ void guiInit(void)
 {
     guiFrameId = 0;
     guiInactiveFrames = 1;
+#ifdef __DEBUG
+    gGuiDiagHeartbeat = 0;
+    gGuiDiagFrame = 0;
+    gGuiDiagStageFrame = 0;
+    gGuiDiagStage = GUI_DIAG_NONE;
+    gGuiDiagStageThread = -1;
+    gGuiDiagEnabled = 0;
+    gGuiDiagElementName = "-";
+#endif
 
     gFrameHook = NULL;
     gTerminate = 0;
@@ -175,8 +210,21 @@ void guiInit(void)
     }
 }
 
+#ifdef __DEBUG
+void guiDiagGetSemaIds(int *queueSemaId, int *guiLockSemaId)
+{
+    if (queueSemaId)
+        *queueSemaId = gSemaId;
+    if (guiLockSemaId)
+        *guiLockSemaId = gGUILockSemaId;
+}
+#endif
+
 void guiEnd()
 {
+#ifdef __DEBUG
+    gGuiDiagEnabled = 0;
+#endif
     if (gBackgroundTex.Mem)
         free(gBackgroundTex.Mem);
 
@@ -196,20 +244,45 @@ void guiUnlock(void)
 
 void guiStartFrame(void)
 {
+#ifdef __DEBUG
+    gGuiDiagEnabled = 1;
+    gGuiDiagHeartbeat++;
+    GUI_DIAG_STAGE(GUI_DIAG_FRAME_BEGIN);
+    GUI_DIAG_STAGE(GUI_DIAG_GUI_LOCK_WAIT);
+#endif
     guiLock();
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_GUI_LOCK_HELD);
+    GUI_DIAG_STAGE(GUI_DIAG_RM_START);
+#endif
     rmStartFrame();
+#ifdef __DEBUG
+    // 保持 guiFrameId 原有的递增时机，避免诊断改变缓存的帧龄判断。
     guiFrameId++;
+    gGuiDiagFrame = (u32)guiFrameId;
+    GUI_DIAG_STAGE(GUI_DIAG_FRAME_ACTIVE);
+#else
+    guiFrameId++;
+#endif
 }
 
 void guiEndFrame(void)
 {
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_GUI_END);
+    GUI_DIAG_STAGE(GUI_DIAG_RM_END);
+#endif
     rmEndFrame();
 #ifdef __DEBUG
     // Measure time directly after vsync
     prevtime = curtime;
     curtime = clock();
+    GUI_DIAG_STAGE(GUI_DIAG_GUI_UNLOCK);
 #endif
     guiUnlock();
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_GUI_UNLOCK);
+#endif
 }
 
 void guiShowAbout()
@@ -1683,6 +1756,9 @@ void guiIntroLoop(void)
 
     while (!endIntro) {
         guiStartFrame();
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_INTRO);
+#endif
 
         guiRenderGreeting(0x80);
 
@@ -1887,13 +1963,26 @@ void guiMainLoop(void)
         guiStartFrame();
 
         //  handle inputs and render screen
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_GUI_SHOW);
+#endif
         guiShow();
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_ART_FLUSH);
+#endif
         flushBatchRequests(); // 推送ART图到ioPutQuest
 
-        if (greetingAlpha > 0x00)
+        if (greetingAlpha > 0x00) {
+#ifdef __DEBUG
+            GUI_DIAG_STAGE(GUI_DIAG_GREETING);
+#endif
             guiRenderGreeting(greetingAlpha);
+        }
 
         // Render overlaying gui thingies :)
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_OVERLAY);
+#endif
         guiDrawOverlays();
 
         if (mainScreenInitDone) {
@@ -1926,6 +2015,9 @@ void guiMainLoop(void)
             guiShowNotifications();
 
         // handle deferred operations
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_DEFERRED);
+#endif
         guiHandleDeferredOps();
 
         guiEndFrame();
@@ -1934,11 +2026,19 @@ void guiMainLoop(void)
         // done here so we can use renderman if needed
         // 须等ART预载结束且欢迎页淡出完毕再处理输入：
         // init()里为检测START曾readPads，若当时按住方向键，在未再读键时handleInput会让getKeyOn每帧恒为真，造成欢迎结束后集中爆发
-        if (!screenHandlerTarget && screenHandler && mainScreenInitDone && artLoadDelayTime <= 0 && greetingAlpha <= 0)
+        if (!screenHandlerTarget && screenHandler && mainScreenInitDone && artLoadDelayTime <= 0 && greetingAlpha <= 0) {
+#ifdef __DEBUG
+            GUI_DIAG_STAGE(GUI_DIAG_INPUT);
+#endif
             screenHandler->handleInput();
+        }
 
-        if (gFrameHook)
+        if (gFrameHook) {
+#ifdef __DEBUG
+            GUI_DIAG_STAGE(GUI_DIAG_FRAME_HOOK);
+#endif
             gFrameHook();
+        }
     }
 }
 

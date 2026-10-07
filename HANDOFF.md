@@ -10,9 +10,10 @@
 - 不要切换、创建或推送其它分支。
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`
-- 当前诊断基线提交：`8437435 debug: trace ART and ATA read stalls`；其后新增 newlib 锁停滞看门狗诊断（见 2026-10-05 变更记录）
-- 当前任务：只完善 ART/mass1 永久停止加载的根因诊断，不改变 IO 行为、不通过更换后端绕过问题。
-- 当前工作区：本次交接更新涉及 `HANDOFF.md` 和 `AGENTS.md`；未修改源码、图片或 `temp/` 用户资产。
+- 当前诊断基线提交：`91ccccf5a041eddc1c1e4e81595f0ca4deeff661`；本次在该基线上增加 Coverflow 随机死机的 debug-only 看门狗与阶段快照。
+- 当前任务：定位 Coverflow 随机完全死机的最后执行阶段，不改变 Coverflow 功能、渲染后端、纹理缓存行为或正常构建路径。
+- 当前工作区：本次源码改动与本文同步提交；未修改图片、CFG、`temp/` 用户资产或 `AGENTS.md`。
+- 验证状态：已完成静态 diff 检查；当前环境没有 PS2SDK/GSKIT/交叉编译器，未完成 debug 构建和实机验证。
 
 ## 2. 当前任务重点
 
@@ -169,9 +170,13 @@ temp = !temp
 - `include/renderman.h`：渲染器接口。
 - `src/texcache.c`：ART 异步 cache 和请求队列；ICO 继续复用这里的机制。
 - `misc/conf_theme_coverflow.cfg`：内置 Coverflow 主题 CFG，由 Makefile 的 `bin2c` 规则嵌入。
-- `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑。
-- `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测。
-- `src/textures.c`、`include/textures.h`：大型背景（CT24 与带 alpha 的 CT32）的 CT16S 压缩，降低纹理池争用。
+- `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑；debug 构建记录 GUI 帧心跳、输入/菜单/绘制边界。
+- `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测；debug 构建快照 `menuSemaId`、光标和当前游戏。
+- `src/textures.c`、`include/textures.h`：大型背景（CT24 与带 alpha 的 CT32）的 CT16S 压缩，降低纹理池争用；已有 ART 解码阶段供看门狗读取。
+- `include/debugdiag.h`：仅 `__DEBUG` 生效的阶段、Coverflow 上下文和跨模块诊断接口。
+- `src/ioman.c`：debug 构建独立 kernel 看门狗线程；停顿后通过独立静态缓冲区直写诊断快照。
+- `src/renderman.c`：debug 构建记录 hires sync/flip、普通 queue/finish、TexManager bind/nextFrame 边界。
+- `src/texcache.c`：debug 构建提供 texture loading、活动 ART、pthread 创建状态和 `texLoadingMutex` 无锁快照。
 
 ### 低分辨率大背景卡顿的根因与处理
 
@@ -247,6 +252,14 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+### 2026-10-07 · 增加 Coverflow 随机死机的 debug-only 定位看门狗
+
+- 用户确认 ART worker 停滞和 720p/1080i 花屏问题已解决；本次只定位 Coverflow 浏览时随机完全死机，不以减少 Coverflow 功能、切换后端或改变正常渲染/缓存行为规避问题。
+- `include/debugdiag.h` 定义仅 `__DEBUG` 编译的阶段快照：GUI 帧心跳、GUI 锁等待、`menuSemaId` 等待/持有、主题元素、Coverflow 封面纹理请求/提交/预取/ICO、普通 gsKit queue/finish、hires sync/flip、TexManager bind/nextFrame、输入和 frame hook。
+- `src/ioman.c` 在 debug 构建启动独立 kernel 看门狗线程；主线程约 3 秒没有推进帧心跳时，通过独立静态缓冲区和直接 `write()`/SIO 路径输出 `[GUI_WD]`、`[CF_DIAG]` 快照。快照包含主/IO 线程状态、IO worker stage/progress/队列标志、GUI/menu 信号量状态、视频模式、当前游戏 ID/文字/光标、Coverflow 动画起点/目标/步数/当前绘制槽位，以及纹理请求、ART 解码阶段、pthread 和纹理 mutex 状态。
+- `src/gui.c`、`src/menusys.c`、`src/themes.c`、`src/renderman.c` 只写无锁 volatile 诊断字段；release 构建不增加看门狗线程、日志、锁或阶段路径。
+- 当前只完成静态检查。尝试 debug 编译时确认环境没有 PS2SDK/GSKIT/`mips64r5900el-ps2-elf-gcc`，因此未完成交叉编译和实机验证；下一步是在可用工具链下编译 debug 版本并复现一次，收集死机前最后一组 `[GUI_WD]`/`[CF_DIAG]` 日志。
 
 ### 2026-10-07 · Coverflow 整排基线再上移 4 像素（BASELINE 169→165）
 

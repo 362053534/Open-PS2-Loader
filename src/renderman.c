@@ -10,6 +10,7 @@
 #include "include/opl.h"
 #include "include/renderman.h"
 #include "include/ioman.h"
+#include "include/debugdiag.h"
 
 // Allocateable space in vram, as indicated in GsKit's code
 #define __VRAM_SIZE 4194304
@@ -272,6 +273,9 @@ static void hiresDiagDrawPassSeams(void)
 // 所有 TexManager 绑定统一走这里；语义与直接调用 gsKit_TexManager_bind 完全相同。
 static unsigned int rmTexBind(GSTEXTURE *tex)
 {
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_TEX_BIND);
+#endif
     unsigned int uploaded = gsKit_TexManager_bind(gsGlobal, tex);
 #if HIRES_PASS_DIAG
     if (hires)
@@ -298,6 +302,22 @@ void rmStartFrame(void)
     order = 0;
 }
 
+#ifdef __DEBUG
+void rmDiagGetState(int *isHires, int *videoMode, int *width, int *height, int *activeBuffer)
+{
+    if (isHires)
+        *isHires = hires;
+    if (videoMode)
+        *videoMode = vmode;
+    if (width)
+        *width = gsGlobal ? gsGlobal->Width : 0;
+    if (height)
+        *height = gsGlobal ? gsGlobal->Height : 0;
+    if (activeBuffer)
+        *activeBuffer = gsGlobal ? gsGlobal->ActiveBuffer : -1;
+}
+#endif
+
 void rmEndFrame(void)
 {
     if (hires) {
@@ -305,13 +325,25 @@ void rmEndFrame(void)
         // 最后一个入队的图元，画在本帧所有内容之上。
         hiresDiagDrawPassSeams();
 #endif
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_HIRES_SYNC);
+#endif
         gsKit_hires_sync(gsGlobal);
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_HIRES_FLIP);
+#endif
         gsKit_hires_flip(gsGlobal);
     } else {
         gsKit_set_finish(gsGlobal);
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_QUEUE_EXEC);
+#endif
         gsKit_queue_exec(gsGlobal);
 
         // Wait for draw ops to finish
+#ifdef __DEBUG
+        GUI_DIAG_STAGE(GUI_DIAG_GS_FINISH);
+#endif
         gsKit_finish();
 
         if (!gsGlobal->FirstFrame) {
@@ -329,6 +361,9 @@ void rmEndFrame(void)
         gsKit_setactive(gsGlobal);
     }
 
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_TEX_MANAGER_NEXT_FRAME);
+#endif
     gsKit_TexManager_nextFrame(gsGlobal);
 #if HIRES_PASS_DIAG
     hiresDiagEndFrame();

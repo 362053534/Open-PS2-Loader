@@ -18,6 +18,7 @@
 #include "include/ioman.h"
 #include "include/sound.h"
 #include "include/texcache.h"
+#include "include/debugdiag.h"
 #include <assert.h>
 
 //#define NEWLIB_PORT_AWARE
@@ -84,6 +85,54 @@ static submenu_list_t *appMenuCurrent;
 static s32 menuSemaId;
 static s32 menuListSemaId = -1;
 static ee_sema_t menuSema;
+
+#ifdef __DEBUG
+volatile int gMenuDiagCurrentId = -1;
+volatile int gMenuDiagCursor = -1;
+volatile int gMenuDiagItemCount;
+volatile int gMenuDiagMenuMode = -1;
+volatile int gMenuDiagIsCoverflow;
+volatile char gMenuDiagCurrentText[128] = "-";
+
+void menuDiagGetSemaIds(int *menuSemaIdOut, int *menuListSemaIdOut)
+{
+    if (menuSemaIdOut)
+        *menuSemaIdOut = menuSemaId;
+    if (menuListSemaIdOut)
+        *menuListSemaIdOut = menuListSemaId;
+}
+
+static void menuDiagSnapshot(theme_element_t *elem)
+{
+    menu_item_t *currentMenu = (selected_item != NULL) ? selected_item->item : NULL;
+    submenu_list_t *current = currentMenu ? currentMenu->current : NULL;
+    submenu_list_t *it;
+    int cursor = -1;
+    int count = 0;
+
+    if (currentMenu) {
+        for (it = currentMenu->submenu; it; it = it->next) {
+            if (it == current)
+                cursor = count;
+            count++;
+        }
+    }
+
+    gMenuDiagCurrentId = current ? current->item.id : -1;
+    gMenuDiagCursor = cursor;
+    gMenuDiagItemCount = count;
+    gMenuDiagMenuMode = (currentMenu && currentMenu->userdata) ? ((item_list_t *)currentMenu->userdata)->mode : -1;
+    gMenuDiagIsCoverflow = (gTheme && gTheme->coverflow) ? 1 : 0;
+    if (current && current->item.text) {
+        strncpy((char *)gMenuDiagCurrentText, current->item.text, sizeof(gMenuDiagCurrentText) - 1);
+        ((char *)gMenuDiagCurrentText)[sizeof(gMenuDiagCurrentText) - 1] = '\0';
+    } else {
+        ((char *)gMenuDiagCurrentText)[0] = '-';
+        ((char *)gMenuDiagCurrentText)[1] = '\0';
+    }
+    gGuiDiagElementName = (elem && elem->name) ? elem->name : "-";
+}
+#endif
 
 static int infoScreen = 0;
 
@@ -1159,7 +1208,14 @@ static void menuRenderElements(theme_element_t *elem)
     //// selected_item can't be NULL here as we only allow to switch to "Main" rendering when there is at least one device activated
     //_menuRequestConfig();
 
+#ifdef __DEBUG
+    menuDiagSnapshot(elem);
+    GUI_DIAG_STAGE(GUI_DIAG_MENU_LOCK_WAIT);
+#endif
     WaitSema(menuSemaId);
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_MENU_LOCK_HELD);
+#endif
 
     // Only Coverflow needs the extra visible-display clipping: its animated outer
     // covers can intentionally move outside the theme panel. Keep the legacy path
@@ -1169,6 +1225,10 @@ static void menuRenderElements(theme_element_t *elem)
         rmSetScissorDisplay();
 
     while (elem) {
+#ifdef __DEBUG
+        gGuiDiagElementName = elem->name ? elem->name : "-";
+        GUI_DIAG_STAGE((gTheme && elem == gTheme->coverflow) ? GUI_DIAG_COVERFLOW : GUI_DIAG_THEME_ELEMENT);
+#endif
         if (elem->drawElem)
             elem->drawElem(selected_item, selected_item->item->current, itemConfig, elem);
 
@@ -1178,6 +1238,9 @@ static void menuRenderElements(theme_element_t *elem)
     // Do not leak the Coverflow scissor into other GUI drawing paths.
     if (coverflowScissor)
         rmResetScissor();
+#ifdef __DEBUG
+    GUI_DIAG_STAGE(GUI_DIAG_MENU_UNLOCK);
+#endif
     SignalSema(menuSemaId);
 }
 
