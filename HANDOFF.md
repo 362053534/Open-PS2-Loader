@@ -624,3 +624,11 @@ git log -1 --oneline
 - 用户实测 `cd5f4fa` 对刷新后闪回上一张 BG 的问题没有效果，已按要求撤回。
 - 当前暂不提出新的代码修复；待先确认 `7e2debc9deae5db7c939b86f65783593fc054e03` 引入的回归根因后再处理。
 - 本次仅撤回上一修复及其说明，不改变其它 Coverflow、普通列表或诊断提交。
+
+### 2026-10-07 — 将 ForceRefresh 推进限制在实际取图路径
+
+- 按确认方案撤销 `flushBatchRequests()` 中对 `ForceRefreshPrevTexCache == 1` 的公共自动推进，避免普通列表在没有调用 `cacheGetTexture()` 的刷新帧提前清掉保护状态。
+- Coverflow 的 `cacheGetTextureQuietInternal()` 仅在 BG 路径检测到 Force 时清除 `PrevCacheID_BG`，并幂等地将 Force 设为 2；帧末沿用原有 `>1` 清零逻辑。使用赋值而非递增，避免同一帧背景绘制和 deferred enqueue 重复推进。
+- 本次未改 COV/ICO、普通列表 cache 选择、纹理加载或 fallback 规则。
+- 验证：`git diff --check` 通过；当前环境没有 PS2SDK/GSKIT 交叉编译工具链，尚未完成目标平台编译和实机验证。
+- 下一步：实机验证普通列表刷新、设备页签切换、Coverflow BG 刷新及详情页切换，确认 Force 状态和上一张 BG fallback 均按预期清理。
