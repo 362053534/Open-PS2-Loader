@@ -2266,7 +2266,7 @@ void guiManageCheats(void)
 
     while (cheatCount < MAX_CODES && strlen(gCheats[cheatCount].name) > 0)
         cheatCount++;
-
+    fntRefreshCache(); // 刷新字模缓存
     sfxPlay(SFX_MESSAGE);
 
     while (!terminate) {
@@ -2329,6 +2329,6 @@ void guiManageCheats(void)
 
         guiEndFrame();
     }
-
+    fntRefreshCache(); // 刷新字模缓存
     sfxPlay(SFX_CONFIRM);
 }
