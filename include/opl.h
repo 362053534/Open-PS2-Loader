@@ -232,6 +232,7 @@ extern int gPS2Logo;
 
 // Default device
 extern int gDefaultDevice;
+extern int gAutoMode1;
 
 extern int gEnableWrite;
 
