@@ -10,6 +10,9 @@ static int AllocBank(void **pointer);
 static int ReadSectors(int maxcount, void *buffer);
 static int StFillStreamBuffer(void);
 static void StStartFillStreamBuffer(void);
+#ifdef SMB_DRIVER
+static u8 StRetryPending;
+#endif
 
 static unsigned int StmScheduleCb(void *arg)
 {
@@ -39,6 +42,9 @@ static void StmCallback(void)
 
 static void StReset(void)
 {
+#ifdef SMB_DRIVER
+    StRetryPending = 0;
+#endif
     cdvdman_stat.StreamingData.StWritePtr = 0;
     cdvdman_stat.StreamingData.StReadPtr = 0;
     cdvdman_stat.StreamingData.StStreamed = 0;
@@ -73,6 +79,7 @@ static int StFillStreamBuffer(void)
 #ifdef SMB_DRIVER
         /* sceCdSt 填缓冲不能排队，否则游戏自己的 sceCdSync 会等到流缓冲填满才返回。 */
         if (cdvdman_AsyncStreamRead(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
+            StRetryPending = 1;
 #else
         if (cdvdman_AsyncRead(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
 #endif
@@ -80,9 +87,15 @@ static int StFillStreamBuffer(void)
             cdvdman_stat.StreamingData.StIsReading = 0;
             result = -1;
         } else {
+#ifdef SMB_DRIVER
+            StRetryPending = 0;
+#endif
             result = 0;
         }
     } else {
+#ifdef SMB_DRIVER
+        StRetryPending = 0;
+#endif
         iDPRINTF("Stream fill buffer: Stream full.\n");
         // Nothing else to read.
         cdvdman_stat.StreamingData.StIsReading = 0;
@@ -103,6 +116,21 @@ static void StStartFillStreamBuffer(void)
         SetAlarm(&StmScheduleClock, &StmScheduleCb, &cdvdman_stat.StreamingData);
     }
 }
+
+
+#ifdef SMB_DRIVER
+int cdvdman_StmIsWaiting(void)
+{
+    return StRetryPending;
+}
+
+void cdvdman_StmRetry(void)
+{
+    /* 普通批次已释放设备时立即交给等待中的流，早于游戏普通读回调。 */
+    if (StRetryPending)
+        StFillStreamBuffer();
+}
+#endif
 
 int sceCdStInit(u32 bufmax, u32 bankmax, void *iop_bufaddr)
 {
@@ -336,6 +364,9 @@ int sceCdStPause(void)
         CpuSuspendIntr(&OldState);
         // Pause.
         SetStm0Callback(NULL);
+#ifdef SMB_DRIVER
+        StRetryPending = 0;
+#endif
         cdvdman_stat.StreamingData.StIsReading = 0;
         CpuResumeIntr(OldState);
 
