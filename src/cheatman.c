@@ -69,10 +69,24 @@ const u32 *GetCheatsList(void)
 static code_t make_code(const char *s)
 {
     code_t code;
-    code.addr = 0;
-    code.val = 0;
-    /* 直接扫原行，避免先把空格挤掉再按 "%08X %08X" 对不上。 */
-    sscanf(s, "%x %x", &code.addr, &code.val);
+    u32 address;
+    u32 value;
+    char digits[CODE_DIGITS];
+    int i = 0;
+
+    while (*s) {
+        if (isxdigit((int)*s))
+            digits[i++] = *s;
+        s++;
+    }
+
+    digits[i] = '\0';
+
+    sscanf(digits, "%08X %08X", &address, &value);
+
+    // Return Code Address and Value
+    code.addr = address;
+    code.val = value;
     return code;
 }
 
@@ -84,27 +98,19 @@ static code_t make_code(const char *s)
  */
 static int is_cheat_code(const char *s)
 {
-    int n1 = 0, n2 = 0;
+    int i = 0;
 
-    while (isspace((unsigned char)*s))
-        s++;
-    while (isxdigit((unsigned char)*s)) {
-        n1++;
-        s++;
-    }
-    if (n1 != 8 || !isspace((unsigned char)*s))
-        return 0;
-    while (isspace((unsigned char)*s))
-        s++;
-    while (isxdigit((unsigned char)*s)) {
-        n2++;
+    while (*s) {
+        if (isxdigit((int)*s)) {
+            if (++i > CODE_DIGITS)
+                return 0;
+        } else if (!isspace((int)*s)) {
+            return 0;
+        }
         s++;
     }
-    if (n2 != 8)
-        return 0;
-    while (isspace((unsigned char)*s))
-        s++;
-    return *s == '\0';
+
+    return (i == CODE_DIGITS);
 }
 
 /*
@@ -168,15 +174,13 @@ static char *term_str(char *s, int (*callback)(const char *))
 /*
  * is_empty_str - Returns 1 if @s contains no printable chars other than white
  * space.  Otherwise, 0 is returned.
- *
- * 不能用 isgraph：UTF-8 中文在 C locale 里不算 graph，纯中文标题会被当成空行丢掉。
- * signed char 传给 isspace/isgraph 还会把首字节当空白裁掉，后面全部错位乱码；
- * 前面加数字/字母看起来正常，只是 trim 在 ASCII 处停住了。
  */
 static int is_empty_str(const char *s)
 {
-    while (*s) {
-        if (!isspace((unsigned char)*s++))
+    size_t slen = strlen(s);
+
+    while (slen--) {
+        if (isgraph((int)*s++))
             return 0;
     }
 
@@ -198,13 +202,13 @@ static int trim_str(char *s)
         return -1;
 
     /* Get first non-space char */
-    while (isspace((unsigned char)*t++))
+    while (isspace((int)*t++))
         first++;
 
     /* Get last non-space char */
     last = strlen(s) - 1;
     t = &s[last];
-    while (isspace((unsigned char)*t--))
+    while (isspace((int)*t--))
         last--;
 
     /* Kill leading/trailing spaces */
@@ -222,7 +226,7 @@ static int trim_str(char *s)
 static int is_empty_substr(const char *s, size_t count)
 {
     while (count--) {
-        if (!isspace((unsigned char)*s++))
+        if (isgraph((int)*s++))
             return 0;
     }
 
