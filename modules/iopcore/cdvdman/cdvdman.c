@@ -32,13 +32,8 @@ int (*DeviceReadSectorsPtr)(u32 sector, void *buffer, unsigned int count) = &Dev
 static void oplShutdown(int poff);
 static int cdvdman_writeSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 static unsigned int event_alarm_cb(void *args);
-#ifdef SMB_DRIVER
-static int cdvdman_signal_read_end(void);
-static int cdvdman_signal_read_end_intr(void);
-#else
 static void cdvdman_signal_read_end(void);
 static void cdvdman_signal_read_end_intr(void);
-#endif
 static void cdvdman_startThreads(void);
 static void cdvdman_create_semaphores(void);
 static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf);
@@ -84,7 +79,6 @@ enum smb_read_owner {
 
 /* 请求所有者随队列项保存，完成时不能用当前全局回调反推已经完成的请求。 */
 static u8 cdread_pending;
-static u8 cdread_pending_used;
 static u8 cdread_io_busy;
 static u8 cdread_outstand;
 static u8 cdread_owner;
@@ -596,15 +590,12 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
 
     if (sync_flag) {
         /* 后台流补填只重试；普通读可排一条，避免把游戏的第二条流直接拒绝。 */
-        /* 流补填已等待时，本批次只能接收一条普通 pending，避免回调无限续接。 */
-        if (owner == SMB_READ_OWNER_NORMAL && cdread_io_busy && !cdread_pending &&
-            !(cdread_pending_used && cdvdman_StmIsWaiting())) {
+        if (owner == SMB_READ_OWNER_NORMAL && cdread_io_busy && !cdread_pending) {
             cdread_pending_lba = lsn;
             cdread_pending_sectors = sectors;
             cdread_pending_size = sector_size;
             cdread_pending_buf = buf;
             cdread_pending = 1;
-            cdread_pending_used = 1;
             cdread_outstand++;
             CpuResumeIntr(OldState);
             return 1;
@@ -911,12 +902,7 @@ void cdvdman_cb_event(int reason)
         else
             SetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data);
     } else {
-#ifdef SMB_DRIVER
-        if (cdvdman_signal_read_end())
-            cdvdman_StmRetry();
-#else
         cdvdman_signal_read_end();
-#endif
     }
 }
 
@@ -924,12 +910,7 @@ static unsigned int event_alarm_cb(void *args)
 {
     struct cdvdman_cb_data *cb_data = args;
 
-#ifdef SMB_DRIVER
-    if (cdvdman_signal_read_end_intr())
-        cdvdman_StmRetry();
-#else
     cdvdman_signal_read_end_intr();
-#endif
     if (cb_data->user_cb != NULL) // This interrupt does not occur immediately, hence check for the callback again here.
         cb_data->user_cb(cb_data->reason);
     return 0;
@@ -943,7 +924,7 @@ static unsigned int event_alarm_cb(void *args)
    Hence if a user callback is registered, signal completion from
    within the interrupt handler, before the user callback is run. */
 #ifdef SMB_DRIVER
-static int cdvdman_signal_read_end(void)
+static void cdvdman_signal_read_end(void)
 {
     int OldState;
 
@@ -952,27 +933,23 @@ static int cdvdman_signal_read_end(void)
     if (cdread_outstand > 1) {
         cdread_outstand--;
         CpuResumeIntr(OldState);
-        return 0;
+        return;
     }
     cdread_outstand = 0;
-    cdread_pending_used = 0;
     sync_flag = 0;
     CpuResumeIntr(OldState);
     SetEventFlag(cdvdman_stat.intr_ef, 9);
-    return 1;
 }
 
-static int cdvdman_signal_read_end_intr(void)
+static void cdvdman_signal_read_end_intr(void)
 {
     if (cdread_outstand > 1) {
         cdread_outstand--;
-        return 0;
+        return;
     }
     cdread_outstand = 0;
-    cdread_pending_used = 0;
     sync_flag = 0;
     iSetEventFlag(cdvdman_stat.intr_ef, 9);
-    return 1;
 }
 
 static void cdvdman_cdread_Thread(void *args)
