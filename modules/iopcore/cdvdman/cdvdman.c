@@ -595,9 +595,9 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
     CpuSuspendIntr(&OldState);
 
     if (sync_flag) {
-        /* 后台流补填只重试；普通读可排一条，避免把游戏的第二条流直接拒绝。 */
+        /* 普通读在设备 I/O 或完成回调窗口都可排一条，避免新流首笔请求丢失。 */
         /* 流补填已等待时，本批次只能接收一条普通 pending，避免回调无限续接。 */
-        if (owner == SMB_READ_OWNER_NORMAL && cdread_io_busy && !cdread_pending &&
+        if (owner == SMB_READ_OWNER_NORMAL && !cdread_pending &&
             !(cdread_pending_used && cdvdman_StmIsWaiting())) {
             cdread_pending_lba = lsn;
             cdread_pending_sectors = sectors;
@@ -648,6 +648,22 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
     return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, SMB_READ_OWNER_STREAM);
+}
+
+/* 调用方必须已关中断；用于 I/O 完成前后两个 pending 到达窗口。 */
+static int cdvdman_promote_pending(void)
+{
+    if (cdread_io_busy || !cdread_pending)
+        return 0;
+
+    cdvdman_stat.cdread_lba = cdread_pending_lba;
+    cdvdman_stat.cdread_sectors = cdread_pending_sectors;
+    cdvdman_stat.sector_size = cdread_pending_size;
+    cdvdman_stat.cdread_buf = cdread_pending_buf;
+    cdread_owner = SMB_READ_OWNER_NORMAL;
+    cdread_pending = 0;
+    cdread_io_busy = 1;
+    return 1;
 }
 
 void cdvdman_cancel_pending_read(void)
@@ -946,15 +962,19 @@ static unsigned int event_alarm_cb(void *args)
 static int cdvdman_signal_read_end(void)
 {
     int OldState;
+    int kick;
 
     CpuSuspendIntr(&OldState);
-    /* 还有排队/下一条未完成时，sceCdSync 必须继续等。 */
-    if (cdread_outstand > 1) {
+    if (cdread_outstand > 0)
         cdread_outstand--;
+    /* I/O 已结束后才到达的 pending 必须在释放 sync 前重新启动。 */
+    kick = cdvdman_promote_pending();
+    if (kick || cdread_outstand > 0) {
         CpuResumeIntr(OldState);
+        if (kick)
+            SignalSema(cdrom_rthread_sema);
         return 0;
     }
-    cdread_outstand = 0;
     cdread_pending_used = 0;
     sync_flag = 0;
     CpuResumeIntr(OldState);
@@ -964,11 +984,17 @@ static int cdvdman_signal_read_end(void)
 
 static int cdvdman_signal_read_end_intr(void)
 {
-    if (cdread_outstand > 1) {
+    int kick;
+
+    if (cdread_outstand > 0)
         cdread_outstand--;
+    /* alarm 回调内使用中断版信号，保证 late pending 不会滞留。 */
+    kick = cdvdman_promote_pending();
+    if (kick || cdread_outstand > 0) {
+        if (kick)
+            iSignalSema(cdrom_rthread_sema);
         return 0;
     }
-    cdread_outstand = 0;
     cdread_pending_used = 0;
     sync_flag = 0;
     iSetEventFlag(cdvdman_stat.intr_ef, 9);
@@ -993,17 +1019,7 @@ static void cdvdman_cdread_Thread(void *args)
             completed_owner = cdread_owner;
             completed_generation = cdread_stream_generation;
             cdread_io_busy = 0;
-            kick = 0;
-            if (cdread_pending) {
-                cdvdman_stat.cdread_lba = cdread_pending_lba;
-                cdvdman_stat.cdread_sectors = cdread_pending_sectors;
-                cdvdman_stat.sector_size = cdread_pending_size;
-                cdvdman_stat.cdread_buf = cdread_pending_buf;
-                cdread_owner = SMB_READ_OWNER_NORMAL;
-                cdread_pending = 0;
-                cdread_io_busy = 1;
-                kick = 1;
-            }
+            kick = cdvdman_promote_pending();
             CpuResumeIntr(OldState);
 
             if (completed_owner == SMB_READ_OWNER_STREAM) {
