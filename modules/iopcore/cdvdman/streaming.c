@@ -19,6 +19,7 @@ static unsigned int StmScheduleCb(void *arg)
 static void StmCallback(void)
 {
     int OldState;
+    int completed = 0;
 
     // Only update parameters if the streaming system was reading. Otherwise, this callback might have been triggered by the game reading data (BUG!)
     if (cdvdman_stat.StreamingData.StIsReading) {
@@ -29,8 +30,13 @@ static void StmCallback(void)
         if (cdvdman_stat.StreamingData.StWritePtr >= cdvdman_stat.StreamingData.StBufmax)
             cdvdman_stat.StreamingData.StWritePtr = 0;
         cdvdman_stat.StreamingData.StIsReading = 0;
+        completed = 1;
         CpuResumeIntr(OldState);
     }
+
+    /* 数据记账完成后再次通知消费者，避免提前事件被清除后永久等待。 */
+    if (completed)
+        SetEventFlag(cdvdman_stat.intr_ef, 8);
 
     DPRINTF("StmCallback: %08lx, wr: %u, rd: %u, streamed: %u\n", cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StWritePtr, cdvdman_stat.StreamingData.StReadPtr, cdvdman_stat.StreamingData.StStreamed);
 
