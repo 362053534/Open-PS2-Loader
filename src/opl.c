@@ -2865,7 +2865,7 @@ static void setDefaults(void)
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
-    gAutoMode1 = 0;
+    gAutoMode1 = 1;
     gTxtRename = 0;
     gAutosort = 1;
     gAutoRefresh = 1;
