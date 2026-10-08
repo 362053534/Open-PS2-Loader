@@ -1851,19 +1851,6 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
 
 static const struct cdvdman_settings_common cdvdman_settings_common_sample = CDVDMAN_SETTINGS_DEFAULT_COMMON;
 
-int sbBdmCompatDefaultsMode1(int bdmDeviceType, const char *bdmDriver)
-{
-    (void)bdmDeviceType;
-    (void)bdmDriver;
-    return gAutoMode1;
-}
-
-int sbCompatDefaultsMode1(item_list_t *support)
-{
-    (void)support;
-    return gAutoMode1;
-}
-
 int sbGetCompatMask(config_set_t *configSet, int defaultMode1)
 {
     int compatmask = 0;

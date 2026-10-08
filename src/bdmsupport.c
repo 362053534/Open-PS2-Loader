@@ -707,9 +707,9 @@ vmc_prepared:;
         hddPartCount = hddGetPartitionInfo(gOPLPart, parts);
 
     if (itemList != NULL)
-        compatmask = sbPrepare(game, configSet, irx_size, irx, &index, sbCompatDefaultsMode1(itemList));
+        compatmask = sbPrepare(game, configSet, irx_size, irx, &index, gAutoMode1);
     else
-        compatmask = sbPrepare(game, configSet, irx_size, irx, &index, sbBdmCompatDefaultsMode1(pDeviceData->bdmDeviceType, pDeviceData->bdmDriver));
+        compatmask = sbPrepare(game, configSet, irx_size, irx, &index, gAutoMode1);
     settings = (struct cdvdman_settings_bdm *)((u8 *)irx + index);
     if (settings == NULL) {
         return;

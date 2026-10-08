@@ -1073,7 +1073,7 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
     }
 
     /* 只有勾变过才写，避免进设置点保存就把默认变成手动。测试修改也走这里，只改内存。 */
-    if (sbCompatDefaultsMode1(support)) {
+    if (gAutoMode1) {
         int mode1 = (compatMode & COMPAT_MODE_1) != 0;
         if (mode1 != loadedMode1)
             result = configSetInt(configSet, CONFIG_ITEM_MANUAL_MODE1, 1);
@@ -1577,7 +1577,7 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     } else
         diaSetInt(diaCompatConfig, COMPAT_DMA, 0);
 
-    compatDefaultsMode1 = sbCompatDefaultsMode1(support);
+    compatDefaultsMode1 = gAutoMode1;
     compatMode = sbGetCompatMask(configSet, compatDefaultsMode1);
     loadedMode1 = (compatMode & COMPAT_MODE_1) != 0;
     for (int i = 0; i < COMPAT_MODE_COUNT; ++i)
