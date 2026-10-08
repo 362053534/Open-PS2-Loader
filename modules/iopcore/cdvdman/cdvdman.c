@@ -72,10 +72,18 @@ unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
 
 #ifdef SMB_DRIVER
-/* 1 深排队：音乐占着读线程时，语音 sceCdRead 先收下，避免直接返回 0。 */
+enum smb_read_owner {
+    SMB_READ_OWNER_NORMAL = 0,
+    SMB_READ_OWNER_STREAM
+};
+
+/* 请求所有者随队列项保存，完成时不能用当前全局回调反推已经完成的请求。 */
 static u8 cdread_pending;
 static u8 cdread_io_busy;
 static u8 cdread_outstand;
+static u8 cdread_owner;
+static u32 cdread_stream_generation;
+static u32 stream_generation;
 static u32 cdread_pending_lba;
 static u32 cdread_pending_sectors;
 static u16 cdread_pending_size;
@@ -202,135 +210,6 @@ int DeviceReadSectorsCached(u32 lsn, void *buffer, unsigned int sectors)
     return DeviceReadSectors(lsn, buffer, sectors);
 }
 
-#ifdef SMB_DRIVER
-// 普通 ISO 专用扇区缓存，和 ZSO 的 DeviceReadSectorsCached 分开，避免改压缩读路径。
-#define ISO_SECTOR_CACHE_MAX_WAYS 2
-static u8 iso_cache_size = 0;
-static u8 iso_cache_ways = 0;
-static u8 *iso_sector_cache = NULL;
-static u32 iso_cache_lsn[ISO_SECTOR_CACHE_MAX_WAYS];
-static u8 iso_cache_count[ISO_SECTOR_CACHE_MAX_WAYS];
-static u8 iso_cache_mru = 0;
-
-static void iso_sector_cache_reset(void)
-{
-    int i;
-
-    for (i = 0; i < ISO_SECTOR_CACHE_MAX_WAYS; i++) {
-        iso_cache_lsn[i] = 0xFFFFFFFF;
-        iso_cache_count[i] = 0;
-    }
-    iso_cache_mru = 0;
-}
-
-static int iso_sector_cache_try_alloc(u8 cache_size, u8 ways)
-{
-    u8 *buf;
-
-    if (!cache_size || !ways)
-        return 0;
-
-    buf = AllocSysMemory(ALLOC_FIRST, (int)ways * cache_size * 2048, NULL);
-    if (!buf)
-        return 0;
-
-    iso_sector_cache = buf;
-    iso_cache_size = cache_size;
-    iso_cache_ways = ways;
-    iso_sector_cache_reset();
-    return 1;
-}
-
-static void initIsoSectorCache(void)
-{
-    u8 cache_size = cdvdman_settings.common.zso_cache;
-
-    if (iso_sector_cache != NULL || cache_size == 0)
-        return;
-
-    // 旧配置里常见 8/16，接不住「1 扇区后再读 LSN+16」的语音块。
-    if (cache_size < 32)
-        cache_size = 32;
-
-    /* 默认 1-way×N（32 时约 64KB）。Amazon 类「32 穿透 + 一路 1/16」够用；不动态升 2-way。 */
-    while (cache_size >= 8) {
-        if (iso_sector_cache_try_alloc(cache_size, 1))
-            return;
-        cache_size >>= 1;
-    }
-}
-
-static int iso_sector_cache_find(u32 lsn, unsigned int sectors)
-{
-    int i;
-    u32 off;
-
-    for (i = 0; i < iso_cache_ways; i++) {
-        if (iso_cache_lsn[i] == 0xFFFFFFFF || lsn < iso_cache_lsn[i])
-            continue;
-        off = lsn - iso_cache_lsn[i];
-        if (off < iso_cache_count[i] && sectors <= (u32)(iso_cache_count[i] - off))
-            return i;
-    }
-    return -1;
-}
-
-static int iso_sector_cache_pick_victim(void)
-{
-    int i;
-
-    for (i = 0; i < iso_cache_ways; i++) {
-        if (iso_cache_lsn[i] == 0xFFFFFFFF)
-            return i;
-    }
-    for (i = 0; i < iso_cache_ways; i++) {
-        if (i != iso_cache_mru)
-            return i;
-    }
-    return 0;
-}
-
-static int DeviceReadSectorsIsoCached(u32 lsn, void *buffer, unsigned int sectors)
-{
-    int way, res;
-    unsigned int fetch;
-    u8 *way_buf;
-
-    /* 大于 16 扇区穿透（≥17）。≤16 可查命中；未命中预取填窗（含 2～16）。
-     * Amazon：1/16 双流仍可用缓存；≥17（含音乐 32）直读不占窗。 */
-    if (!iso_cache_size || !iso_sector_cache || sectors > 16)
-        return DeviceReadSectors(lsn, buffer, sectors);
-
-    way = iso_sector_cache_find(lsn, sectors);
-    if (way >= 0) {
-        memcpy(buffer, iso_sector_cache + ((way * iso_cache_size) + (lsn - iso_cache_lsn[way])) * 2048, sectors * 2048);
-        iso_cache_mru = (u8)way;
-        return SCECdErNO;
-    }
-
-    way = iso_sector_cache_pick_victim();
-    way_buf = iso_sector_cache + way * iso_cache_size * 2048;
-    fetch = iso_cache_size;
-    if (mediaLsnCount && lsn < mediaLsnCount && (mediaLsnCount - lsn) < fetch)
-        fetch = mediaLsnCount - lsn;
-    if (fetch < sectors)
-        return DeviceReadSectors(lsn, buffer, sectors);
-
-    res = DeviceReadSectors(lsn, way_buf, fetch);
-    if (res != SCECdErNO) {
-        iso_cache_lsn[way] = 0xFFFFFFFF;
-        iso_cache_count[way] = 0;
-        return DeviceReadSectors(lsn, buffer, sectors);
-    }
-
-    iso_cache_lsn[way] = lsn;
-    iso_cache_count[way] = (u8)fetch;
-    iso_cache_mru = (u8)way;
-    memcpy(buffer, way_buf, sectors * 2048);
-    return SCECdErNO;
-}
-#endif
-
 /*
   For ZSO we need to be able to read at arbitrary offsets with arbitrary sizes.
   Since we can only do sector-based reads, this funtions acts as a wrapper.
@@ -415,14 +294,6 @@ static int ProbeZSO(u8 *buffer)
         // redirect sector reader
         DeviceReadSectorsPtr = &DeviceReadSectorsCompressed;
     }
-#ifdef SMB_DRIVER
-    else {
-        // 普通 ISO 走独立缓存，不复用 ZSO 的 DeviceReadSectorsCached。
-        initIsoSectorCache();
-        if (iso_cache_size)
-            DeviceReadSectorsPtr = &DeviceReadSectorsIsoCached;
-    }
-#endif
     return 1;
 }
 
@@ -709,7 +580,7 @@ static int cdvdman_common_lock(int IntrContext)
 }
 
 #ifdef SMB_DRIVER
-static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *buf, int allow_pending)
+static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *buf, enum smb_read_owner owner)
 {
     int IsIntrContext, OldState;
 
@@ -718,8 +589,8 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
     CpuSuspendIntr(&OldState);
 
     if (sync_flag) {
-        /* 只在读线程堵在设备 I/O 时收下一条；sceCdSt 走 NoPending，不会进这里。 */
-        if (allow_pending && cdread_io_busy && !cdread_pending) {
+        /* 后台流补填只重试；普通读可排一条，避免把游戏的第二条流直接拒绝。 */
+        if (owner == SMB_READ_OWNER_NORMAL && cdread_io_busy && !cdread_pending) {
             cdread_pending_lba = lsn;
             cdread_pending_sectors = sectors;
             cdread_pending_size = sector_size;
@@ -742,6 +613,9 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
 
     cdread_io_busy = 1;
     cdread_outstand = 1;
+    cdread_owner = owner;
+    if (owner == SMB_READ_OWNER_STREAM)
+        cdread_stream_generation = stream_generation;
     cdvdman_stat.cdread_lba = lsn;
     cdvdman_stat.cdread_sectors = sectors;
     cdvdman_stat.sector_size = sector_size;
@@ -759,12 +633,12 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
 
 int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
-    return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, 1);
+    return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, SMB_READ_OWNER_NORMAL);
 }
 
-int cdvdman_AsyncReadNoPending(u32 lsn, u32 sectors, u16 sector_size, void *buf)
+int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
-    return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, 0);
+    return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, SMB_READ_OWNER_STREAM);
 }
 
 void cdvdman_cancel_pending_read(void)
@@ -1082,6 +956,8 @@ static void cdvdman_cdread_Thread(void *args)
 {
     int OldState;
     int kick;
+    u8 completed_owner;
+    u32 completed_generation;
 
     while (1) {
         WaitSema(cdrom_rthread_sema);
@@ -1090,6 +966,9 @@ static void cdvdman_cdread_Thread(void *args)
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
             CpuSuspendIntr(&OldState);
+            /* 提升待处理请求前先冻结完成项身份，否则新请求会偷走旧请求的完成通知。 */
+            completed_owner = cdread_owner;
+            completed_generation = cdread_stream_generation;
             cdread_io_busy = 0;
             kick = 0;
             if (cdread_pending) {
@@ -1097,24 +976,22 @@ static void cdvdman_cdread_Thread(void *args)
                 cdvdman_stat.cdread_sectors = cdread_pending_sectors;
                 cdvdman_stat.sector_size = cdread_pending_size;
                 cdvdman_stat.cdread_buf = cdread_pending_buf;
+                cdread_owner = SMB_READ_OWNER_NORMAL;
                 cdread_pending = 0;
                 cdread_io_busy = 1;
                 kick = 1;
             }
             CpuResumeIntr(OldState);
 
-            /* This streaming callback is not compatible with the original SONY stream channel 0 (IOP) callback's design.
-           The original is run from the interrupt handler, but we want it to run
-           from a threaded environment because our interrupt is emulated. */
-            if (Stm0Callback != NULL) {
+            if (completed_owner == SMB_READ_OWNER_STREAM) {
                 cdvdman_signal_read_end();
 
-                /* Check that the streaming callback was not cleared, as this pointer may get changed between function calls.
-                   As per the original semantics, once it is cleared, then it should not be called. */
-                if (Stm0Callback != NULL)
+                /* 停止、暂停或重新启动会换代，旧 I/O 不得推进新流的环形缓冲。 */
+                if (completed_generation == stream_generation && Stm0Callback != NULL)
                     Stm0Callback();
-            } else
-                cdvdman_cb_event(SCECdFuncRead); // Only runs if streaming is not in action.
+            } else {
+                cdvdman_cb_event(SCECdFuncRead);
+            }
         } while (kick);
     }
 }
@@ -1287,7 +1164,17 @@ int _start(int argc, char **argv)
 //-------------------------------------------------------------------------
 void SetStm0Callback(StmCallback_t callback)
 {
+#ifdef SMB_DRIVER
+    int OldState;
+
+    CpuSuspendIntr(&OldState);
+    /* 每次流状态切换都换代，让切换前已经发出的 SMB 请求失效。 */
+    stream_generation++;
     Stm0Callback = callback;
+    CpuResumeIntr(OldState);
+#else
+    Stm0Callback = callback;
+#endif
 }
 
 //-------------------------------------------------------------------------
