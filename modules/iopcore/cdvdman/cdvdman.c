@@ -159,6 +159,7 @@ static u32 bdm_cdread_diag_error_count;
 static u32 bdm_cdread_diag_error_sequence;
 static u32 bdm_cdread_diag_error_lba;
 static u32 bdm_cdread_diag_error_sectors;
+static u32 bdm_cdread_diag_signature;
 static struct cdread_diag_sample bdm_cdread_diag_history[CDREAD_DIAG_HISTORY];
 static u8 bdm_cdread_diag_history_head;
 static void bdm_cdread_diag_watch_Thread(void *args);
@@ -1226,6 +1227,7 @@ static void cdvdman_cdread_Thread(void *args)
                                                cdvdman_stat.cdread_sectors * cdvdman_stat.sector_size);
         CpuSuspendIntr(&OldState);
         bdm_cdread_diag_completed = bdm_cdread_diag_sequence;
+        bdm_cdread_diag_signature = diag_signature;
         bdm_cdread_diag_history[bdm_cdread_diag_history_head].sequence = bdm_cdread_diag_sequence;
         bdm_cdread_diag_history[bdm_cdread_diag_history_head].lba = bdm_cdread_diag_lba;
         bdm_cdread_diag_history[bdm_cdread_diag_history_head].sectors = bdm_cdread_diag_sectors;
@@ -1362,7 +1364,7 @@ static void bdm_cdread_diag_watch_Thread(void *args)
 
     while (1) {
         int OldState;
-        u32 sequence, completed, notified, lba, sectors;
+        u32 sequence, completed, notified, lba, sectors, signature;
         u32 errors, error_sequence, error_lba, error_sectors;
         struct cdread_diag_sample history[CDREAD_DIAG_HISTORY];
         u8 phase, busy, sync, result, last_error, history_head;
@@ -1375,6 +1377,7 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         notified = bdm_cdread_diag_notified;
         lba = bdm_cdread_diag_lba;
         sectors = bdm_cdread_diag_sectors;
+        signature = bdm_cdread_diag_signature;
         errors = bdm_cdread_diag_error_count;
         error_sequence = bdm_cdread_diag_error_sequence;
         error_lba = bdm_cdread_diag_error_lba;
@@ -1404,20 +1407,23 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         /* USB/BDM 同一状态持续五秒才输出，正常读取不打印。 */
         if (stable_seconds >= 5 && (sequence != reported_sequence || phase != reported_phase)) {
             if (phase == 3) {
-                printf("BDM_CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu sync=%u busy=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
-                       sequence, lba, sectors, sync, busy, completed, notified, result, errors,
-                       error_sequence, error_lba, error_sectors, last_error);
+                printf("BDM_CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu sig=%08lx sync=%u busy=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                       sequence, lba, sectors, signature, sync, busy, completed, notified, result,
+                       errors, error_sequence, error_lba, error_sectors, last_error);
             } else {
-                printf("BDM_CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu sync=%u busy=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
-                       phase == 1 ? "io" : "completion", sequence, lba, sectors, sync, busy,
-                       completed, notified, result, errors, error_sequence, error_lba,
+                printf("BDM_CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu sig=%08lx sync=%u busy=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                       phase == 1 ? "io" : "completion", sequence, lba, sectors, signature, sync,
+                       busy, completed, notified, result, errors, error_sequence, error_lba,
                        error_sectors, last_error);
             }
             for (i = 0; i < CDREAD_DIAG_HISTORY; i++) {
                 struct cdread_diag_sample *sample = &history[(history_head + i) % CDREAD_DIAG_HISTORY];
-                if (sample->sequence != 0)
+                if (sample->sequence != 0) {
                     printf("BDM_CDREAD_HISTORY seq=%lu lsn=%lu sectors=%lu result=%u sig=%08lx\n",
                            sample->sequence, sample->lba, sample->sectors, sample->result, sample->signature);
+                    /* 卡点已经发生，分开发包只为避免 UDP 连发丢失，不影响读取时序。 */
+                    DelayThread(20000);
+                }
             }
             reported_sequence = sequence;
             reported_phase = phase;
