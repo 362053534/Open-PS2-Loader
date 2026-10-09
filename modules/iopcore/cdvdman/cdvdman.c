@@ -160,9 +160,33 @@ static u32 bdm_cdread_diag_error_sequence;
 static u32 bdm_cdread_diag_error_lba;
 static u32 bdm_cdread_diag_error_sectors;
 static u32 bdm_cdread_diag_signature;
+struct bdm_cdread_diag_timing {
+    u32 sequence;
+    u32 submit;
+    u32 io_start;
+    u32 io_end;
+    u32 notify;
+    u32 gap;
+};
 static struct cdread_diag_sample bdm_cdread_diag_history[CDREAD_DIAG_HISTORY];
+static struct bdm_cdread_diag_timing bdm_cdread_diag_timing[CDREAD_DIAG_HISTORY];
 static u8 bdm_cdread_diag_history_head;
+static u32 bdm_cdread_diag_submit;
+static u32 bdm_cdread_diag_io_start;
+static u32 bdm_cdread_diag_gap;
+static u32 bdm_cdread_diag_last_notify;
 static void bdm_cdread_diag_watch_Thread(void *args);
+
+static void bdm_cdread_diag_mark_notify(void)
+{
+    iop_sys_clock_t clock;
+    u8 index = (bdm_cdread_diag_history_head + CDREAD_DIAG_HISTORY - 1) % CDREAD_DIAG_HISTORY;
+
+    GetSystemTime(&clock);
+    if (bdm_cdread_diag_timing[index].sequence == bdm_cdread_diag_completed)
+        bdm_cdread_diag_timing[index].notify = clock.lo;
+    bdm_cdread_diag_last_notify = clock.lo;
+}
 #endif
 
 #ifdef __USE_DEV9
@@ -812,8 +836,14 @@ void cdvdman_diag_short_read(u32 expected, u32 actual)
 int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
     int IsIntrContext, OldState;
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    iop_sys_clock_t diag_clock;
+#endif
 
     IsIntrContext = QueryIntrContext();
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    GetSystemTime(&diag_clock);
+#endif
 
     CpuSuspendIntr(&OldState);
 
@@ -832,6 +862,8 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
     bdm_cdread_diag_sequence++;
     bdm_cdread_diag_lba = lsn;
     bdm_cdread_diag_sectors = sectors;
+    bdm_cdread_diag_submit = diag_clock.lo;
+    bdm_cdread_diag_gap = bdm_cdread_diag_last_notify != 0 ? diag_clock.lo - bdm_cdread_diag_last_notify : 0;
     bdm_cdread_diag_busy = 1;
 #endif
     cdvdman_stat.cdread_lba = lsn;
@@ -1195,6 +1227,7 @@ static void cdvdman_cdread_Thread(void *args)
 static void cdvdman_signal_read_end(void)
 {
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_diag_mark_notify();
     bdm_cdread_diag_notified = bdm_cdread_diag_completed;
 #endif
     sync_flag = 0;
@@ -1204,6 +1237,7 @@ static void cdvdman_signal_read_end(void)
 static void cdvdman_signal_read_end_intr(void)
 {
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_diag_mark_notify();
     bdm_cdread_diag_notified = bdm_cdread_diag_completed;
 #endif
     sync_flag = 0;
@@ -1216,13 +1250,19 @@ static void cdvdman_cdread_Thread(void *args)
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
         int OldState;
         u32 diag_signature;
+        iop_sys_clock_t diag_clock;
 #endif
 
         WaitSema(cdrom_rthread_sema);
 
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+        GetSystemTime(&diag_clock);
+        bdm_cdread_diag_io_start = diag_clock.lo;
+#endif
         cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+        GetSystemTime(&diag_clock);
         diag_signature = cdread_diag_signature(cdvdman_stat.cdread_buf,
                                                cdvdman_stat.cdread_sectors * cdvdman_stat.sector_size);
         CpuSuspendIntr(&OldState);
@@ -1233,6 +1273,12 @@ static void cdvdman_cdread_Thread(void *args)
         bdm_cdread_diag_history[bdm_cdread_diag_history_head].sectors = bdm_cdread_diag_sectors;
         bdm_cdread_diag_history[bdm_cdread_diag_history_head].signature = diag_signature;
         bdm_cdread_diag_history[bdm_cdread_diag_history_head].result = cdvdman_stat.err;
+        bdm_cdread_diag_timing[bdm_cdread_diag_history_head].sequence = bdm_cdread_diag_sequence;
+        bdm_cdread_diag_timing[bdm_cdread_diag_history_head].submit = bdm_cdread_diag_submit;
+        bdm_cdread_diag_timing[bdm_cdread_diag_history_head].io_start = bdm_cdread_diag_io_start;
+        bdm_cdread_diag_timing[bdm_cdread_diag_history_head].io_end = diag_clock.lo;
+        bdm_cdread_diag_timing[bdm_cdread_diag_history_head].notify = 0;
+        bdm_cdread_diag_timing[bdm_cdread_diag_history_head].gap = bdm_cdread_diag_gap;
         bdm_cdread_diag_history_head = (bdm_cdread_diag_history_head + 1) % CDREAD_DIAG_HISTORY;
         bdm_cdread_diag_result = cdvdman_stat.err;
         bdm_cdread_diag_busy = 0;
@@ -1356,7 +1402,7 @@ static void cdvdman_diag_watch_Thread(void *args)
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
 static void bdm_cdread_diag_watch_Thread(void *args)
 {
-    u32 last_sequence = 0, reported_sequence = 0;
+    u32 last_sequence = 0, reported_sequence = 0, last_timing_report = 0;
     u8 last_phase = 0, reported_phase = 0, stable_seconds = 0;
 
     (void)args;
@@ -1367,6 +1413,7 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         u32 sequence, completed, notified, lba, sectors, signature;
         u32 errors, error_sequence, error_lba, error_sectors;
         struct cdread_diag_sample history[CDREAD_DIAG_HISTORY];
+        struct bdm_cdread_diag_timing timing[CDREAD_DIAG_HISTORY];
         u8 phase, busy, sync, result, last_error, history_head;
         int i;
 
@@ -1387,10 +1434,29 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         busy = bdm_cdread_diag_busy;
         sync = sync_flag;
         history_head = bdm_cdread_diag_history_head;
-        for (i = 0; i < CDREAD_DIAG_HISTORY; i++)
+        for (i = 0; i < CDREAD_DIAG_HISTORY; i++) {
             history[i] = bdm_cdread_diag_history[i];
+            timing[i] = bdm_cdread_diag_timing[i];
+        }
         phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
         CpuResumeIntr(OldState);
+
+        /* 连续读取时每至少 32 笔报告一次最新时序，监视线程最多每秒输出一行。 */
+        if (completed >= last_timing_report + 32) {
+            u8 index = (history_head + CDREAD_DIAG_HISTORY - 1) % CDREAD_DIAG_HISTORY;
+            struct bdm_cdread_diag_timing *sample = &timing[index];
+
+            if (sample->sequence == completed && sample->notify != 0) {
+                printf("BDM_CDREAD_TIMING seq=%lu lsn=%lu sectors=%lu sig=%08lx queue_us=%lu io_us=%lu notify_us=%lu gap_us=%lu total_us=%lu\n",
+                       completed, history[index].lba, history[index].sectors, history[index].signature,
+                       (sample->io_start - sample->submit) / 37u,
+                       (sample->io_end - sample->io_start) / 37u,
+                       (sample->notify - sample->io_end) / 37u,
+                       sample->gap / 37u,
+                       (sample->notify - sample->submit) / 37u);
+                last_timing_report = completed;
+            }
+        }
 
         if (phase == 0)
             continue;
@@ -1417,10 +1483,17 @@ static void bdm_cdread_diag_watch_Thread(void *args)
                        error_sectors, last_error);
             }
             for (i = 0; i < CDREAD_DIAG_HISTORY; i++) {
-                struct cdread_diag_sample *sample = &history[(history_head + i) % CDREAD_DIAG_HISTORY];
+                u8 index = (history_head + i) % CDREAD_DIAG_HISTORY;
+                struct cdread_diag_sample *sample = &history[index];
+                struct bdm_cdread_diag_timing *times = &timing[index];
                 if (sample->sequence != 0) {
-                    printf("BDM_CDREAD_HISTORY seq=%lu lsn=%lu sectors=%lu result=%u sig=%08lx\n",
-                           sample->sequence, sample->lba, sample->sectors, sample->result, sample->signature);
+                    printf("BDM_CDREAD_HISTORY seq=%lu lsn=%lu sectors=%lu result=%u sig=%08lx queue_us=%lu io_us=%lu notify_us=%lu gap_us=%lu total_us=%lu\n",
+                           sample->sequence, sample->lba, sample->sectors, sample->result, sample->signature,
+                           (times->io_start - times->submit) / 37u,
+                           (times->io_end - times->io_start) / 37u,
+                           times->notify != 0 ? (times->notify - times->io_end) / 37u : 0,
+                           times->gap / 37u,
+                           times->notify != 0 ? (times->notify - times->submit) / 37u : 0);
                     /* 卡点已经发生，分开发包只为避免 UDP 连发丢失，不影响读取时序。 */
                     DelayThread(20000);
                 }
