@@ -104,6 +104,12 @@ static u32 cdread_diag_error_lba;
 static u32 cdread_diag_error_sectors;
 static u8 cdread_diag_result;
 static u8 cdread_diag_last_error;
+static u32 cdread_diag_short_count;
+static u32 cdread_diag_short_sequence;
+static u32 cdread_diag_short_lba;
+static u32 cdread_diag_short_sectors;
+static u32 cdread_diag_short_expected;
+static u32 cdread_diag_short_actual;
 static void cdvdman_diag_watch_Thread(void *args);
 #endif
 #endif
@@ -726,6 +732,31 @@ void cdvdman_cancel_pending_read(void)
     }
     CpuResumeIntr(OldState);
 }
+
+#ifdef __CDREAD_DIAG
+void cdvdman_diag_short_read(u32 expected, u32 actual)
+{
+    int OldState;
+    u32 count, sequence, lba, sectors;
+
+    CpuSuspendIntr(&OldState);
+    cdread_diag_short_count++;
+    cdread_diag_short_sequence = cdread_diag_sequence;
+    cdread_diag_short_lba = cdread_diag_lba;
+    cdread_diag_short_sectors = cdread_diag_sectors;
+    cdread_diag_short_expected = expected;
+    cdread_diag_short_actual = actual;
+    count = cdread_diag_short_count;
+    sequence = cdread_diag_short_sequence;
+    lba = cdread_diag_short_lba;
+    sectors = cdread_diag_short_sectors;
+    CpuResumeIntr(OldState);
+
+    /* 短读会被补零且不会设置设备错误，因此必须单独报告。 */
+    printf("CDREAD_SHORT seq=%lu lsn=%lu sectors=%lu expected=%lu actual=%lu shorts=%lu\n",
+           sequence, lba, sectors, expected, actual, count);
+}
+#endif
 #else
 int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
@@ -1136,6 +1167,7 @@ static void cdvdman_diag_watch_Thread(void *args)
         int OldState;
         u32 sequence, completed, notified, lba, sectors;
         u32 error_count, error_sequence, error_lba, error_sectors;
+        u32 short_count, short_sequence, short_lba, short_sectors, short_expected, short_actual;
         u8 phase, owner, busy, pending, outstand, sync, result, last_error;
 
         DelayThread(1000000);
@@ -1151,6 +1183,12 @@ static void cdvdman_diag_watch_Thread(void *args)
         error_sectors = cdread_diag_error_sectors;
         result = cdread_diag_result;
         last_error = cdread_diag_last_error;
+        short_count = cdread_diag_short_count;
+        short_sequence = cdread_diag_short_sequence;
+        short_lba = cdread_diag_short_lba;
+        short_sectors = cdread_diag_short_sectors;
+        short_expected = cdread_diag_short_expected;
+        short_actual = cdread_diag_short_actual;
         owner = cdread_owner;
         busy = cdread_io_busy;
         pending = cdread_pending;
@@ -1175,15 +1213,18 @@ static void cdvdman_diag_watch_Thread(void *args)
         /* 同一状态持续五秒才报告一次，避免逐笔读取日志改变时序。 */
         if (stable_seconds >= 5 && (sequence != reported_sequence || phase != reported_phase)) {
             if (phase == 3) {
-                printf("CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                printf("CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u shorts=%lu\n",
                        sequence, lba, sectors, owner, sync, busy, pending, outstand, completed, notified,
-                       result, error_count, error_sequence, error_lba, error_sectors, last_error);
+                       result, error_count, error_sequence, error_lba, error_sectors, last_error, short_count);
             } else {
-                printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u shorts=%lu\n",
                        phase == 1 ? "io" : "completion", sequence, lba, sectors, owner,
                        sync, busy, pending, outstand, completed, notified, result, error_count,
-                       error_sequence, error_lba, error_sectors, last_error);
+                       error_sequence, error_lba, error_sectors, last_error, short_count);
             }
+            if (short_count > 0)
+                printf("CDREAD_LAST_SHORT seq=%lu lsn=%lu sectors=%lu expected=%lu actual=%lu shorts=%lu\n",
+                       short_sequence, short_lba, short_sectors, short_expected, short_actual, short_count);
             reported_sequence = sequence;
             reported_phase = phase;
         }

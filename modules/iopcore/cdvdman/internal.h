@@ -40,6 +40,10 @@
 #define iDPRINTF(args...)
 #endif
 
+#if defined(SMB_DRIVER) && defined(__CDREAD_DIAG)
+void cdvdman_diag_short_read(u32 expected, u32 actual);
+#endif
+
 #ifdef HDD_DRIVER
 #define CDVDMAN_SETTINGS_TYPE                    cdvdman_settings_hdd
 #define CDVDMAN_SETTINGS_DEFAULT_DEVICE_SETTINGS CDVDMAN_SETTINGS_DEFAULT_HDD,
