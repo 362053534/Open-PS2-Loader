@@ -71,6 +71,36 @@ unsigned char sync_flag;
 unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
 
+#ifdef __CDREAD_DIAG
+#define CDREAD_DIAG_HISTORY 4
+struct cdread_diag_sample {
+    u32 sequence;
+    u32 lba;
+    u32 sectors;
+    u32 signature;
+    u8 result;
+};
+
+/* 均匀抽样 128 字节，兼顾内容差异检测和 IOP 时序扰动。 */
+static u32 cdread_diag_signature(const void *buffer, u32 bytes)
+{
+    const u8 *data = buffer;
+    u32 hash = 2166136261u ^ bytes;
+    u32 i;
+
+    if (bytes == 0 || buffer == NULL)
+        return hash;
+
+    for (i = 0; i < 128; i++) {
+        u32 offset = (i * (bytes - 1)) / 127;
+        hash ^= data[offset];
+        hash *= 16777619u;
+    }
+
+    return hash;
+}
+#endif
+
 #ifdef SMB_DRIVER
 enum smb_read_owner {
     SMB_READ_OWNER_NORMAL = 0,
@@ -110,6 +140,8 @@ static u32 cdread_diag_short_lba;
 static u32 cdread_diag_short_sectors;
 static u32 cdread_diag_short_expected;
 static u32 cdread_diag_short_actual;
+static struct cdread_diag_sample cdread_diag_history[CDREAD_DIAG_HISTORY];
+static u8 cdread_diag_history_head;
 static void cdvdman_diag_watch_Thread(void *args);
 #endif
 #endif
@@ -127,6 +159,8 @@ static u32 bdm_cdread_diag_error_count;
 static u32 bdm_cdread_diag_error_sequence;
 static u32 bdm_cdread_diag_error_lba;
 static u32 bdm_cdread_diag_error_sectors;
+static struct cdread_diag_sample bdm_cdread_diag_history[CDREAD_DIAG_HISTORY];
+static u8 bdm_cdread_diag_history_head;
 static void bdm_cdread_diag_watch_Thread(void *args);
 #endif
 
@@ -1105,6 +1139,9 @@ static void cdvdman_cdread_Thread(void *args)
     int kick;
     u8 completed_owner;
     u32 completed_generation;
+#ifdef __CDREAD_DIAG
+    u32 diag_signature;
+#endif
 
     while (1) {
         WaitSema(cdrom_rthread_sema);
@@ -1112,9 +1149,19 @@ static void cdvdman_cdread_Thread(void *args)
         do {
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
+#ifdef __CDREAD_DIAG
+            diag_signature = cdread_diag_signature(cdvdman_stat.cdread_buf,
+                                                   cdvdman_stat.cdread_sectors * cdvdman_stat.sector_size);
+#endif
             CpuSuspendIntr(&OldState);
 #ifdef __CDREAD_DIAG
             cdread_diag_completed = cdread_diag_sequence;
+            cdread_diag_history[cdread_diag_history_head].sequence = cdread_diag_sequence;
+            cdread_diag_history[cdread_diag_history_head].lba = cdread_diag_lba;
+            cdread_diag_history[cdread_diag_history_head].sectors = cdread_diag_sectors;
+            cdread_diag_history[cdread_diag_history_head].signature = diag_signature;
+            cdread_diag_history[cdread_diag_history_head].result = cdvdman_stat.err;
+            cdread_diag_history_head = (cdread_diag_history_head + 1) % CDREAD_DIAG_HISTORY;
             cdread_diag_result = cdvdman_stat.err;
             if (cdvdman_stat.err != SCECdErNO) {
                 cdread_diag_error_count++;
@@ -1167,6 +1214,7 @@ static void cdvdman_cdread_Thread(void *args)
     while (1) {
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
         int OldState;
+        u32 diag_signature;
 #endif
 
         WaitSema(cdrom_rthread_sema);
@@ -1174,8 +1222,16 @@ static void cdvdman_cdread_Thread(void *args)
         cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
 #if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+        diag_signature = cdread_diag_signature(cdvdman_stat.cdread_buf,
+                                               cdvdman_stat.cdread_sectors * cdvdman_stat.sector_size);
         CpuSuspendIntr(&OldState);
         bdm_cdread_diag_completed = bdm_cdread_diag_sequence;
+        bdm_cdread_diag_history[bdm_cdread_diag_history_head].sequence = bdm_cdread_diag_sequence;
+        bdm_cdread_diag_history[bdm_cdread_diag_history_head].lba = bdm_cdread_diag_lba;
+        bdm_cdread_diag_history[bdm_cdread_diag_history_head].sectors = bdm_cdread_diag_sectors;
+        bdm_cdread_diag_history[bdm_cdread_diag_history_head].signature = diag_signature;
+        bdm_cdread_diag_history[bdm_cdread_diag_history_head].result = cdvdman_stat.err;
+        bdm_cdread_diag_history_head = (bdm_cdread_diag_history_head + 1) % CDREAD_DIAG_HISTORY;
         bdm_cdread_diag_result = cdvdman_stat.err;
         bdm_cdread_diag_busy = 0;
         if (cdvdman_stat.err != SCECdErNO) {
@@ -1220,7 +1276,9 @@ static void cdvdman_diag_watch_Thread(void *args)
         u32 sequence, completed, notified, lba, sectors;
         u32 error_count, error_sequence, error_lba, error_sectors;
         u32 short_count, short_sequence, short_lba, short_sectors, short_expected, short_actual;
-        u8 phase, owner, busy, pending, outstand, sync, result, last_error;
+        struct cdread_diag_sample history[CDREAD_DIAG_HISTORY];
+        u8 phase, owner, busy, pending, outstand, sync, result, last_error, history_head;
+        int i;
 
         DelayThread(1000000);
         CpuSuspendIntr(&OldState);
@@ -1246,6 +1304,9 @@ static void cdvdman_diag_watch_Thread(void *args)
         pending = cdread_pending;
         outstand = cdread_outstand;
         sync = sync_flag;
+        history_head = cdread_diag_history_head;
+        for (i = 0; i < CDREAD_DIAG_HISTORY; i++)
+            history[i] = cdread_diag_history[i];
         /* phase 3 表示已有读历史但当前完全空闲，用来确认是上层停止继续提交。 */
         phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
         CpuResumeIntr(OldState);
@@ -1277,6 +1338,12 @@ static void cdvdman_diag_watch_Thread(void *args)
             if (short_count > 0)
                 printf("CDREAD_LAST_SHORT seq=%lu lsn=%lu sectors=%lu expected=%lu actual=%lu shorts=%lu\n",
                        short_sequence, short_lba, short_sectors, short_expected, short_actual, short_count);
+            for (i = 0; i < CDREAD_DIAG_HISTORY; i++) {
+                struct cdread_diag_sample *sample = &history[(history_head + i) % CDREAD_DIAG_HISTORY];
+                if (sample->sequence != 0)
+                    printf("CDREAD_HISTORY seq=%lu lsn=%lu sectors=%lu result=%u sig=%08lx\n",
+                           sample->sequence, sample->lba, sample->sectors, sample->result, sample->signature);
+            }
             reported_sequence = sequence;
             reported_phase = phase;
         }
@@ -1297,7 +1364,9 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         int OldState;
         u32 sequence, completed, notified, lba, sectors;
         u32 errors, error_sequence, error_lba, error_sectors;
-        u8 phase, busy, sync, result, last_error;
+        struct cdread_diag_sample history[CDREAD_DIAG_HISTORY];
+        u8 phase, busy, sync, result, last_error, history_head;
+        int i;
 
         DelayThread(1000000);
         CpuSuspendIntr(&OldState);
@@ -1314,6 +1383,9 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         last_error = bdm_cdread_diag_last_error;
         busy = bdm_cdread_diag_busy;
         sync = sync_flag;
+        history_head = bdm_cdread_diag_history_head;
+        for (i = 0; i < CDREAD_DIAG_HISTORY; i++)
+            history[i] = bdm_cdread_diag_history[i];
         phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
         CpuResumeIntr(OldState);
 
@@ -1340,6 +1412,12 @@ static void bdm_cdread_diag_watch_Thread(void *args)
                        phase == 1 ? "io" : "completion", sequence, lba, sectors, sync, busy,
                        completed, notified, result, errors, error_sequence, error_lba,
                        error_sectors, last_error);
+            }
+            for (i = 0; i < CDREAD_DIAG_HISTORY; i++) {
+                struct cdread_diag_sample *sample = &history[(history_head + i) % CDREAD_DIAG_HISTORY];
+                if (sample->sequence != 0)
+                    printf("BDM_CDREAD_HISTORY seq=%lu lsn=%lu sectors=%lu result=%u sig=%08lx\n",
+                           sample->sequence, sample->lba, sample->sectors, sample->result, sample->signature);
             }
             reported_sequence = sequence;
             reported_phase = phase;
