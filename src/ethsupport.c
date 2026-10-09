@@ -845,6 +845,11 @@ static void ethShutdown(item_list_t *itemList)
         ethSMBDisconnect();
     }
 
+#ifdef __INGAME_DEBUG
+    /* 游戏内 UDP 日志仍依赖当前网卡；随后 IOP 重置会统一卸载这些模块。 */
+    LOG("ETHSUPPORT Keep DEV9 for in-game debug\n");
+    return;
+#else
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
     // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9
     {
@@ -855,6 +860,7 @@ static void ethShutdown(item_list_t *itemList)
         if (ethOwnedDev9)
             sysShutdownDev9();
     }
+#endif
 }
 
 static int ethCheckVMC(item_list_t *itemList, char *name, int createSize)
