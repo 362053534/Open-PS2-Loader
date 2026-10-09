@@ -5,7 +5,6 @@
 */
 
 #include "internal.h"
-#include "smb_tuning.h"
 
 static unsigned char cdvdman_media_changed = 1;
 
@@ -33,7 +32,7 @@ int sceCdGetDiskType(void)
 //-------------------------------------------------------------------------
 int sceCdGetError(void)
 {
-    CDVD_DPRINTF("sceCdGetError %d", cdvdman_stat.err);
+    DPRINTF("sceCdGetError %d\n", cdvdman_stat.err);
 
     return cdvdman_stat.err;
 }
@@ -115,7 +114,7 @@ int sceCdApplySCmd(u8 cmd, const void *in, u16 in_size, void *out)
 //-------------------------------------------------------------------------
 int sceCdStatus(void)
 {
-    CDVD_DPRINTF("sceCdStatus %d", (int)cdvdman_stat.status);
+    DPRINTF("sceCdStatus %d\n", (int)cdvdman_stat.status);
 
     return (int)cdvdman_stat.status;
 }

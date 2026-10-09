@@ -1,6 +1,6 @@
 name: SMB-bisect-builds
 
-# 为 SMB 模式 FMV 音频杂音排查生成 B1–B6 六个减法构建。
+# 为 SMB 模式 FMV 音频杂音排查生成 B1–B4 减法构建 + BASE/CURR 成对诊断构建。
 # 每个构建仅把 modules/iopcore/cdvdman/smb_tuning.h 中对应的一个开关置 0，
 # 其余与提交 6254970 的行为完全一致。产物打包在 OPNPS2LD-SMB-Bisect 中。
 # 排查方法见 notes/smb_fmv_noise_analysis.md。
@@ -67,9 +67,19 @@ jobs:
           pattern: OPNPS2LD-SMB-Bisect-B*
           delete-merged: true
 
-  # 诊断构建：全功能开启 + SMB_DIAG_LOG=1，IOP 日志经 UDP 广播到 18194 端口。
-  # 主机端用 "ncat -l -u -p 18194"（Windows）或 "nc -ul 18194"（Linux/macOS）抓取。
-  build-smb-diag:
+  # 诊断构建（成对产出）：
+  #   BASE = 基线 edf39ddc（实机无杂音）
+  #   CURR = 当前分支 HEAD（= 提交 6254970 行为，实机有杂音）
+  # 两棵树注入同一份观测点（tools/smb-diag/instrument.py），字段名/单位/触发条件完全一致，
+  # 因此两份日志可以逐行做差，定位"杂音版本的读盘节奏到底哪里变了"。
+  # 日志走 IOP stdout -> udptty UDP 广播 18194（当前树的 SMBD 行额外单播一份到 SMB 服务器 IP）。
+  build-diag-pair:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, desc: baseline-edf39ddc-no-noise }
+          - { id: CURR, ref: "", desc: current-6254970-with-noise }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -78,20 +88,36 @@ jobs:
 
     - run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        git fetch --prune --unshallow
 
-    - name: Enable SMB_DIAG_LOG
+    - name: Save instrumenter (survives the tree switch)
+      run: |
+        cp -r tools/smb-diag /tmp/smb-diag-tools
+        ls -l /tmp/smb-diag-tools
+
+    - name: Checkout ${{ matrix.id }} tree (${{ matrix.desc }})
+      run: |
+        set -e
+        REF="${{ matrix.ref }}"
+        [ -n "$REF" ] || REF="${{ github.sha }}"
+        echo "fetching $REF"
+        git fetch --depth 1 origin "$REF" || git fetch origin "$REF"
+        git checkout -f FETCH_HEAD
+        git log --oneline -1
+        git status --short | head -5
+
+    - name: Apply read-cadence instrumentation
+      run: |
+        mkdir -p tools
+        cp -r /tmp/smb-diag-tools tools/smb-diag
+        python3 tools/smb-diag/instrument.py .
+        git --no-pager diff --stat
+
+    # 当前树独有：SMB 内部事件（Echo 耗时 / 重连 / 读延迟统计）。
+    - name: Enable SMB_DIAG_LOG (current tree only)
+      if: matrix.id == 'CURR'
       run: |
         sed -i "s/#define SMB_DIAG_LOG 0/#define SMB_DIAG_LOG 1/" modules/iopcore/cdvdman/smb_tuning.h
         grep -n "define SMB_DIAG_LOG" modules/iopcore/cdvdman/smb_tuning.h
-
-    # 此 fork 把 main() 里的 LOG_ENABLE() 注释掉了（与上游官方不同），
-    # 导致 UI 阶段 udptty/ps2link 的服务端不加载；诊断构建里恢复上游行为。
-    - name: Restore LOG_ENABLE in main() (upstream behavior)
-      run: |
-        grep -n "LOG_ENABLE" src/opl.c
-        sed -i "s|^[[:space:]]*//LOG_ENABLE();|    LOG_ENABLE();|" src/opl.c
-        grep -n "LOG_ENABLE" src/opl.c
 
     - name: Get version
       run: |
@@ -110,10 +136,11 @@ jobs:
           tail -60 build.log | while IFS= read -r line; do echo "::notice::$line"; done
           exit $ret
         fi
-        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-SMB-DIAG-UDP-TTY.elf
+        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-DIAG-UDP-TTY.elf
+        ls -l OPNPS2LD-*.elf
 
-    - name: Upload diag artifact ELF
+    - name: Upload ${{ matrix.id }} diag artifact ELF
       uses: actions/upload-artifact@v7
       with:
-        name: OPNPS2LD-SMB-Diag
-        path: OPNPS2LD-*-SMB-DIAG-UDP-TTY.elf
+        name: OPNPS2LD-SMB-Diag-${{ matrix.id }}
+        path: OPNPS2LD-*-DIAG-UDP-TTY.elf

@@ -84,7 +84,7 @@ static int smbOpenGame(void);
 #if SMB_DIAG_LOG
 /* v4 diag counters: accumulated by DeviceReadSectors, summarized and reset by
    smbReconnectThread every 2 seconds. */
-static unsigned int smbRdCount, smbRdFail, smbRdZero, smbRdMaxMs, smbRdSumMs;
+static unsigned int smbRdCount, smbRdFail, smbRdMaxMs, smbRdSumMs;
 static unsigned int smbRdSlow100, smbRdSlow250, smbRdSlow1000;
 #endif
 
@@ -223,10 +223,10 @@ static void smbReconnectThread(void *arg)
         }
 
 #if SMB_DIAG_LOG
-        SMBDIAG("HB n=%u fail=%u zero=%u max=%ums avg=%ums s100=%u s250=%u s1k=%u", smbRdCount, smbRdFail,
-                smbRdZero, smbRdMaxMs, smbRdCount ? smbRdSumMs / smbRdCount : 0, smbRdSlow100, smbRdSlow250,
+        SMBDIAG("HB n=%u fail=%u max=%ums avg=%ums s100=%u s250=%u s1k=%u", smbRdCount, smbRdFail,
+                smbRdMaxMs, smbRdCount ? smbRdSumMs / smbRdCount : 0, smbRdSlow100, smbRdSlow250,
                 smbRdSlow1000);
-        smbRdCount = smbRdFail = smbRdZero = smbRdMaxMs = smbRdSumMs = 0;
+        smbRdCount = smbRdFail = smbRdMaxMs = smbRdSumMs = 0;
         smbRdSlow100 = smbRdSlow250 = smbRdSlow1000 = 0;
 #endif
         DelayThread(2000000);
@@ -437,13 +437,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 break;
             }
 #if SMB_FEAT_SHORTREAD_ZEROFILL
-            if (result < bytes_to_read) {
-#if SMB_DIAG_LOG
-                SMBDIAG("ZEROFILL lsn=%u got=%d want=%d buf=%p", (unsigned int)offslsn, result, bytes_to_read, &p[r]);
-                smbRdZero++;
-#endif
+            if (result < bytes_to_read)
                 memset(&p[r + result], 0, bytes_to_read - result);
-            }
 #else
             if (result < bytes_to_read) {
                 rv = SCECdErREAD;
@@ -458,13 +453,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 break;
             }
 #if SMB_FEAT_SHORTREAD_ZEROFILL
-            if (result < bytes_to_read) {
-#if SMB_DIAG_LOG
-                SMBDIAG("ZEROFILL lsn=%u got=%d want=%d buf=%p", (unsigned int)offslsn, result, bytes_to_read, &p[r]);
-                smbRdZero++;
-#endif
+            if (result < bytes_to_read)
                 memset(&p[r + result], 0, bytes_to_read - result);
-            }
 #else
             if (result < bytes_to_read) {
                 rv = SCECdErREAD;

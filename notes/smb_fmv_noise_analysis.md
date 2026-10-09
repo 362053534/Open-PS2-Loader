@@ -136,31 +136,55 @@ SMB 路径关键事件带毫秒时间戳输出：
   的超时拆链+重连（额外 2–5s）捅破了缓冲**。v4 的 `RD done ms=` 与 `RECONNECT` 行可区分这两条。
 - 该窗口**不一定包含杂音时刻**——v3 的 `sceCdRead` 等打印没有时间戳，无法对齐读间隔空洞。
 
-### v4 诊断构建（2026-10-09，全部 `#if SMB_DIAG_LOG` 门控，正式构建行为不变）
+### v4 诊断构建会"进游戏卡死"的原因（2026-10-09 修订）
 
-1. **读盘路径全链路毫秒时间戳**：`sceCdRead` / `cdvdman_read` / `cdvdman_cb_event` /
-   `sceCdGetError` / `sceCdStatus` 的打印改为 `CDVD <ms> ...` 前缀（udptty 广播），
-   可把杂音时刻精确对齐到某次读盘动作与读间隔空洞。
-2. **`RD done` 门槛 250ms → 100ms**，并新增目标缓冲地址 `buf=`——用于区分音频流缓冲
-   （杂音相关）与视频流缓冲的读延迟。
-3. **短读补零告警**：`DeviceReadSectors` 发现 `result < bytes_to_read` 立即打
-   `SMBD ZEROFILL lsn=... got=... want=... buf=...`——这是"数据被静默填零、解码侧听到杂音"
-   的直接证据路径（此前该路径完全没有日志）。
-4. **服务器短回告警**：`smb_ReadAndX` 收到 `DataLength < 请求字节数` 打
-   `SMBD RAX short off=... want=... got=...`（ZEROFILL 的上游原因）。
-5. **心跳统计**：重连线程每 2 秒打一行
-   `SMBD HB n=读数 fail=失败数 zero=补零数 max=最慢读 avg=平均读 s100/s250/s1k=慢读桶计数`，
-   无需逐读打印即可掌握读延迟分布与卡顿。
-6. **ECHO 全量打印并带耗时**：`SMBD ECHO res=... ms=...`；`res=0` 表示因读盘占用
-   `smb_io_sema` 而跳过（v3 不打这行）。
+用户实机反馈：**v2（第一个 Diag 版）本身没问题**（当时是抓包电脑连错了网络），
+而后续版本进游戏会卡死。逐条核对 v3/v4 相对 v2 的增量后，两个嫌疑点已全部撤除：
 
-v4 日志判读要点：
+1. **v3 的 `LOG_ENABLE()` 恢复（头号嫌疑，已撤）**：该行会在 UI 阶段加载
+   `udptty + ioptrap + ps2link` 三个模块（`src/debug.c: debugSetActive()`）。
+   v2 没有它、实机正常；加上它之后才出现进游戏卡死。已把该 CI 步骤删除，
+   诊断构建回到 v2 的加载集合。
+2. **v4 的"逐调用时间戳打印"（已撤）**：v4 给 `sceCdStatus` / `sceCdGetError` /
+   `sceCdRead` / `cdvdman_read` / `cdvdman_cb_event` 全部加了时间戳打印。
+   但 `sceCdStatus` 是游戏**紧循环轮询**的（v3 日志里可见成片 `sceCdStatus 10`），
+   而 cdvdman 的每条 `printf` 都要 `WaitSema(tty_sema)` + 一次阻塞式 UDP `sendto`
+   （`modules/debug/udptty-ingame/udptty.c: tty_write/udp_send`）——
+   每秒数千次 UDP 发送足以把 IOP 拖死。已全部还原为 v2 的普通 `DPRINTF`。
 
-- 杂音时刻伴随 `ZEROFILL` / `RAX short` ⇒ 根因是短读补零（数据损坏），查服务器为何短回；
-- 杂音时刻伴随 `RD done ms≈30000` 紧跟 `RD fail`+`RECONNECT` ⇒ 30s 超时拆链坐实；
-- `HB` 显示 max/avg 正常、fail/zero=0，且 `CDVD` 时间戳无几百毫秒以上空洞 ⇒ SMB 传输健康，
-  问题在游戏解码/缓冲侧或读盘节奏；
-- `ECHO res=0` 频繁出现 ⇒ 心跳因读盘占用信号量被跳过（正常，观察其是否引入延迟）。
+**结论：诊断日志必须"事件驱动、稀疏输出"，不能逐读全量打印。**
+
+### v5：成对诊断构建（BASE 基线 vs CURR 当前）+ 读节奏观测点
+
+按用户建议改为"同一套观测点、两棵树分别构建、日志直接逐行做差"：
+
+- **`tools/smb-diag/instrument.py`**：树无关的注入脚本，可分别作用在
+  基线 `edf39ddc`（无杂音）与当前 HEAD（有杂音）上。它只依赖两棵树中
+  **完全相同的代码形状**（`sceCdRead` 入口 / `cdvdman_read` / `DeviceReadSectors`
+  的短读补零 / `smb_ReadAndX` 的返回长度 / `imports.lst`）。
+  实测注入后 `ncmd.c`、`diag_stamp.h` 在两棵树中**逐字节相同** ⇒ 字段与触发条件一致。
+- **只在 `__IOPCORE_DEBUG` 下展开**，release 构建编译结果与未注入时完全一致。
+- CI job `build-diag-pair` 产出两个产物：
+  - **`OPNPS2LD-SMB-Diag-BASE`** = 基线 `edf39ddc` + 观测点（**无杂音**对照组）
+  - **`OPNPS2LD-SMB-Diag-CURR`** = 当前 HEAD（= 6254970 行为）+ 观测点 + `SMB_DIAG_LOG=1`
+
+注入的日志行（全部带毫秒时间戳，走 udptty UDP 18194）：
+
+| 行 | 触发条件 | 含义 |
+|---|---|---|
+| `CDVD N ms=… n=<累计读次数> gaps=<累计空洞数>` | 每 256 次读 | 存活心跳 + **读速率**（两版可直接比速率） |
+| `CDVD GAP ms=… gap=<距上次读 ms> lsn=… n=…` | 相邻读间隔 ≥ 50ms | **读节奏空洞**：数据流断流 |
+| `CDVD SLOW ms=… dur=<读耗时 ms> lsn=… sec=… buf=…` | 单次读 ≥ 100ms | 单次读被拖慢（含目标缓冲地址） |
+| `CDVD ZERO ms=… lsn=… got=… want=… buf=…` | 短读 → 尾部被静默填零 | **解码侧听到杂音/花屏的直接证据** |
+| `CDVD SHORT ms=… off=… want=… got=…` | 服务器回包数据少于请求 | `ZERO` 的上游原因 |
+
+（CURR 额外保留 SMB 内部事件：`SMBD ECHO res=… ms=…`、`SMBD RD done … ms=…`、
+`SMBD RECONNECT …`、`SMBD HB n=… fail=… max=…ms avg=…ms s100/s250/s1k=…`。）
+
+**对比方法**：同一个游戏、同一段 FMV，分别用 BASE / CURR 各录一份日志：
+- 若 CURR 出现 `GAP`/`SLOW`/`ZERO`/`SHORT` 而 BASE 没有 ⇒ 差异就在这几行的时刻与规模上；
+- 若两者都平静但 CURR 有杂音 ⇒ 问题不在读盘数据面，转向解码/缓冲侧；
+- 若 BASE 的 `CDVD N` 读速率明显高于 CURR ⇒ 6254970 引入了整体性吞吐下降。
 
 后续预案（视取证结果选择）：提高/移除超时、超时后只重试当前请求而不拆链、
 把重连恢复路径改回“先报错给游戏”、或针对服务器慢响应做读缓冲优化。
