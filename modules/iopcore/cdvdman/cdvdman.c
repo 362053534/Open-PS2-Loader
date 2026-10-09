@@ -114,6 +114,22 @@ static void cdvdman_diag_watch_Thread(void *args);
 #endif
 #endif
 
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+static u8 bdm_cdread_diag_busy;
+static u8 bdm_cdread_diag_result;
+static u8 bdm_cdread_diag_last_error;
+static u32 bdm_cdread_diag_sequence;
+static u32 bdm_cdread_diag_completed;
+static u32 bdm_cdread_diag_notified;
+static u32 bdm_cdread_diag_lba;
+static u32 bdm_cdread_diag_sectors;
+static u32 bdm_cdread_diag_error_count;
+static u32 bdm_cdread_diag_error_sequence;
+static u32 bdm_cdread_diag_error_lba;
+static u32 bdm_cdread_diag_error_sectors;
+static void bdm_cdread_diag_watch_Thread(void *args);
+#endif
+
 #ifdef __USE_DEV9
 static int POFFThreadID;
 #endif
@@ -768,10 +784,21 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
     if (!cdvdman_common_lock(IsIntrContext)) {
         CpuResumeIntr(OldState);
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+        printf("BDM_CDREAD_REJECT lsn=%lu sectors=%lu sync=%u busy=%u seq=%lu completed=%lu notified=%lu\n",
+               lsn, sectors, sync_flag, bdm_cdread_diag_busy, bdm_cdread_diag_sequence,
+               bdm_cdread_diag_completed, bdm_cdread_diag_notified);
+#endif
         DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
         return 0;
     }
 
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_diag_sequence++;
+    bdm_cdread_diag_lba = lsn;
+    bdm_cdread_diag_sectors = sectors;
+    bdm_cdread_diag_busy = 1;
+#endif
     cdvdman_stat.cdread_lba = lsn;
     cdvdman_stat.cdread_sectors = sectors;
     cdvdman_stat.sector_size = sector_size;
@@ -1119,12 +1146,18 @@ static void cdvdman_cdread_Thread(void *args)
 #else
 static void cdvdman_signal_read_end(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_diag_notified = bdm_cdread_diag_completed;
+#endif
     sync_flag = 0;
     SetEventFlag(cdvdman_stat.intr_ef, 9);
 }
 
 static void cdvdman_signal_read_end_intr(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_diag_notified = bdm_cdread_diag_completed;
+#endif
     sync_flag = 0;
     iSetEventFlag(cdvdman_stat.intr_ef, 9);
 }
@@ -1132,9 +1165,28 @@ static void cdvdman_signal_read_end_intr(void)
 static void cdvdman_cdread_Thread(void *args)
 {
     while (1) {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+        int OldState;
+#endif
+
         WaitSema(cdrom_rthread_sema);
 
         cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+        CpuSuspendIntr(&OldState);
+        bdm_cdread_diag_completed = bdm_cdread_diag_sequence;
+        bdm_cdread_diag_result = cdvdman_stat.err;
+        bdm_cdread_diag_busy = 0;
+        if (cdvdman_stat.err != SCECdErNO) {
+            bdm_cdread_diag_error_count++;
+            bdm_cdread_diag_last_error = cdvdman_stat.err;
+            bdm_cdread_diag_error_sequence = bdm_cdread_diag_sequence;
+            bdm_cdread_diag_error_lba = bdm_cdread_diag_lba;
+            bdm_cdread_diag_error_sectors = bdm_cdread_diag_sectors;
+        }
+        CpuResumeIntr(OldState);
+#endif
 
         /* This streaming callback is not compatible with the original SONY stream channel 0 (IOP) callback's design.
        The original is run from the interrupt handler, but we want it to run
@@ -1232,6 +1284,70 @@ static void cdvdman_diag_watch_Thread(void *args)
 }
 #endif
 
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+static void bdm_cdread_diag_watch_Thread(void *args)
+{
+    u32 last_sequence = 0, reported_sequence = 0;
+    u8 last_phase = 0, reported_phase = 0, stable_seconds = 0;
+
+    (void)args;
+    printf("BDM_CDREAD_DIAG_READY\n");
+
+    while (1) {
+        int OldState;
+        u32 sequence, completed, notified, lba, sectors;
+        u32 errors, error_sequence, error_lba, error_sectors;
+        u8 phase, busy, sync, result, last_error;
+
+        DelayThread(1000000);
+        CpuSuspendIntr(&OldState);
+        sequence = bdm_cdread_diag_sequence;
+        completed = bdm_cdread_diag_completed;
+        notified = bdm_cdread_diag_notified;
+        lba = bdm_cdread_diag_lba;
+        sectors = bdm_cdread_diag_sectors;
+        errors = bdm_cdread_diag_error_count;
+        error_sequence = bdm_cdread_diag_error_sequence;
+        error_lba = bdm_cdread_diag_error_lba;
+        error_sectors = bdm_cdread_diag_error_sectors;
+        result = bdm_cdread_diag_result;
+        last_error = bdm_cdread_diag_last_error;
+        busy = bdm_cdread_diag_busy;
+        sync = sync_flag;
+        phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
+        CpuResumeIntr(OldState);
+
+        if (phase == 0)
+            continue;
+
+        if (sequence == last_sequence && phase == last_phase) {
+            if (stable_seconds < 255)
+                stable_seconds++;
+        } else {
+            last_sequence = sequence;
+            last_phase = phase;
+            stable_seconds = 1;
+        }
+
+        /* USB/BDM 同一状态持续五秒才输出，正常读取不打印。 */
+        if (stable_seconds >= 5 && (sequence != reported_sequence || phase != reported_phase)) {
+            if (phase == 3) {
+                printf("BDM_CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu sync=%u busy=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                       sequence, lba, sectors, sync, busy, completed, notified, result, errors,
+                       error_sequence, error_lba, error_sectors, last_error);
+            } else {
+                printf("BDM_CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu sync=%u busy=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                       phase == 1 ? "io" : "completion", sequence, lba, sectors, sync, busy,
+                       completed, notified, result, errors, error_sequence, error_lba,
+                       error_sectors, last_error);
+            }
+            reported_sequence = sequence;
+            reported_phase = phase;
+        }
+    }
+}
+#endif
+
 //-------------------------------------------------------------------------
 static void cdvdman_startThreads(void)
 {
@@ -1255,6 +1371,13 @@ static void cdvdman_startThreads(void)
     thread_param.stacksize = 0x800;
     thread_param.priority = 0x30;
     thread_param.option = 0xABCD0001;
+    StartThread(CreateThread(&thread_param), NULL);
+#elif defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    /* USB/BDM 使用独立状态，不能套用 SMB pending 语义。 */
+    thread_param.thread = &bdm_cdread_diag_watch_Thread;
+    thread_param.stacksize = 0x800;
+    thread_param.priority = 0x30;
+    thread_param.option = 0xABCD0002;
     StartThread(CreateThread(&thread_param), NULL);
 #endif
 }
