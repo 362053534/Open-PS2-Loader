@@ -93,6 +93,12 @@ static void *cdread_pending_buf;
 static u32 cdread_diag_active;
 static u32 cdread_diag_pending;
 static u32 cdread_diag_rejected;
+static u32 cdread_diag_sequence;
+static u32 cdread_diag_completed;
+static u32 cdread_diag_notified;
+static u32 cdread_diag_lba;
+static u32 cdread_diag_sectors;
+static void cdvdman_diag_watch_Thread(void *args);
 #endif
 #endif
 
@@ -649,6 +655,9 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
 #ifdef __CDREAD_DIAG
     if (owner == SMB_READ_OWNER_NORMAL)
         cdread_diag_active++;
+    cdread_diag_sequence++;
+    cdread_diag_lba = lsn;
+    cdread_diag_sectors = sectors;
 #endif
     cdread_owner = owner;
     if (owner == SMB_READ_OWNER_STREAM)
@@ -691,6 +700,11 @@ static int cdvdman_promote_pending(void)
     cdread_owner = SMB_READ_OWNER_NORMAL;
     cdread_pending = 0;
     cdread_io_busy = 1;
+#ifdef __CDREAD_DIAG
+    cdread_diag_sequence++;
+    cdread_diag_lba = cdvdman_stat.cdread_lba;
+    cdread_diag_sectors = cdvdman_stat.cdread_sectors;
+#endif
     return 1;
 }
 
@@ -983,6 +997,9 @@ static void cdvdman_signal_read_end(void)
     int kick;
 
     CpuSuspendIntr(&OldState);
+#ifdef __CDREAD_DIAG
+    cdread_diag_notified = cdread_diag_completed;
+#endif
     if (cdread_outstand > 0)
         cdread_outstand--;
     /* I/O 已结束后才到达的 pending 必须在释放 sync 前重新启动。 */
@@ -1002,6 +1019,9 @@ static void cdvdman_signal_read_end_intr(void)
 {
     int kick;
 
+#ifdef __CDREAD_DIAG
+    cdread_diag_notified = cdread_diag_completed;
+#endif
     if (cdread_outstand > 0)
         cdread_outstand--;
     /* alarm 回调内使用中断版信号，保证 late pending 不会滞留。 */
@@ -1029,6 +1049,9 @@ static void cdvdman_cdread_Thread(void *args)
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
             CpuSuspendIntr(&OldState);
+#ifdef __CDREAD_DIAG
+            cdread_diag_completed = cdread_diag_sequence;
+#endif
             /* 提升待处理请求前先冻结完成项身份，否则新请求会偷走旧请求的完成通知。 */
             completed_owner = cdread_owner;
             completed_generation = cdread_stream_generation;
@@ -1084,6 +1107,61 @@ static void cdvdman_cdread_Thread(void *args)
 }
 #endif
 
+#if defined(SMB_DRIVER) && defined(__CDREAD_DIAG)
+static void cdvdman_diag_watch_Thread(void *args)
+{
+    u32 last_sequence = 0, reported_sequence = 0;
+    u8 last_phase = 0, reported_phase = 0, stable_seconds = 0;
+
+    (void)args;
+
+    while (1) {
+        int OldState;
+        u32 sequence, completed, notified, lba, sectors;
+        u8 phase, owner, busy, pending, outstand, sync;
+
+        DelayThread(1000000);
+        CpuSuspendIntr(&OldState);
+        sequence = cdread_diag_sequence;
+        completed = cdread_diag_completed;
+        notified = cdread_diag_notified;
+        lba = cdread_diag_lba;
+        sectors = cdread_diag_sectors;
+        owner = cdread_owner;
+        busy = cdread_io_busy;
+        pending = cdread_pending;
+        outstand = cdread_outstand;
+        sync = sync_flag;
+        phase = busy ? 1 : (sync ? 2 : 0);
+        CpuResumeIntr(OldState);
+
+        if (phase == 0) {
+            stable_seconds = 0;
+            last_phase = 0;
+            continue;
+        }
+
+        if (sequence == last_sequence && phase == last_phase) {
+            if (stable_seconds < 255)
+                stable_seconds++;
+        } else {
+            last_sequence = sequence;
+            last_phase = phase;
+            stable_seconds = 1;
+        }
+
+        /* 同一阶段持续五秒才报告一次，正常读路径不产生串口或网络输出。 */
+        if (stable_seconds >= 5 && (sequence != reported_sequence || phase != reported_phase)) {
+            printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu\n",
+                   phase == 1 ? "io" : "completion", sequence, lba, sectors, owner,
+                   sync, busy, pending, outstand, completed, notified);
+            reported_sequence = sequence;
+            reported_phase = phase;
+        }
+    }
+}
+#endif
+
 //-------------------------------------------------------------------------
 static void cdvdman_startThreads(void)
 {
@@ -1100,6 +1178,15 @@ static void cdvdman_startThreads(void)
 
     cdvdman_ReadingThreadID = CreateThread(&thread_param);
     StartThread(cdvdman_ReadingThreadID, NULL);
+
+#if defined(SMB_DRIVER) && defined(__CDREAD_DIAG)
+    /* 低优先级监视线程只在状态五秒不前进时输出，不干扰正常读取。 */
+    thread_param.thread = &cdvdman_diag_watch_Thread;
+    thread_param.stacksize = 0x800;
+    thread_param.priority = 0x30;
+    thread_param.option = 0xABCD0001;
+    StartThread(CreateThread(&thread_param), NULL);
+#endif
 }
 
 //-------------------------------------------------------------------------
