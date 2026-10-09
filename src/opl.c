@@ -3252,7 +3252,11 @@ int main(int argc, char *argv[])
     init();
 
     // until this point in the code is reached, only PREINIT_LOG macro should be used
+#ifndef __CDREAD_DIAG
     LOG_ENABLE();
+#else
+    /* 专用游戏内诊断不启动菜单 UDPTTY，避免残留 KPRTTY 钩子跨 IOP 重置。 */
+#endif
 
     guiIntroLoop();
     guiMainLoop();
