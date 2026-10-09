@@ -845,12 +845,6 @@ static void ethShutdown(item_list_t *itemList)
         ethSMBDisconnect();
     }
 
-#ifdef __INGAME_DEBUG
-    /* 先停止菜单网络线程以免干扰 IOP 重置，但保留 DEV9 供游戏内 UDP 重新初始化。 */
-    LOG("ETHSUPPORT Stop UI network; keep DEV9 powered\n");
-    ethDeinitModules();
-    return;
-#else
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
     // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9
     {
@@ -861,7 +855,6 @@ static void ethShutdown(item_list_t *itemList)
         if (ethOwnedDev9)
             sysShutdownDev9();
     }
-#endif
 }
 
 static int ethCheckVMC(item_list_t *itemList, char *name, int createSize)
