@@ -88,7 +88,7 @@ static u32 cdread_pending_lba;
 static u32 cdread_pending_sectors;
 static u16 cdread_pending_size;
 static void *cdread_pending_buf;
-#ifdef __IOPCORE_DEBUG
+#ifdef __CDREAD_DIAG
 /* 只在拒绝时输出累计分类，避免逐笔读日志改变 IOP 时序。 */
 static u32 cdread_diag_active;
 static u32 cdread_diag_pending;
@@ -589,7 +589,7 @@ static int cdvdman_common_lock(int IntrContext)
 static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *buf, enum smb_read_owner owner)
 {
     int IsIntrContext, OldState;
-#ifdef __IOPCORE_DEBUG
+#ifdef __CDREAD_DIAG
     u8 diag_sync, diag_busy, diag_pending, diag_outstand;
     u32 diag_active_count, diag_pending_count, diag_rejected_count;
 #endif
@@ -607,13 +607,13 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
             cdread_pending_buf = buf;
             cdread_pending = 1;
             cdread_outstand++;
-#ifdef __IOPCORE_DEBUG
+#ifdef __CDREAD_DIAG
             cdread_diag_pending++;
 #endif
             CpuResumeIntr(OldState);
             return 1;
         }
-#ifdef __IOPCORE_DEBUG
+#ifdef __CDREAD_DIAG
         if (owner == SMB_READ_OWNER_NORMAL) {
             cdread_diag_rejected++;
             diag_sync = sync_flag;
@@ -626,13 +626,15 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
         }
 #endif
         CpuResumeIntr(OldState);
+#ifdef __CDREAD_DIAG
         if (owner == SMB_READ_OWNER_NORMAL) {
-            DPRINTF("CDREAD_REJECT pending-full lsn=%lu sectors=%lu sync=%u busy=%u pending=%u out=%u accepted_active=%lu accepted_pending=%lu rejected=%lu\n",
-                    lsn, sectors, diag_sync, diag_busy, diag_pending, diag_outstand,
-                    diag_active_count, diag_pending_count, diag_rejected_count);
-        } else {
-            DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
+            printf("CDREAD_REJECT pending-full lsn=%lu sectors=%lu sync=%u busy=%u pending=%u out=%u accepted_active=%lu accepted_pending=%lu rejected=%lu\n",
+                   lsn, sectors, diag_sync, diag_busy, diag_pending, diag_outstand,
+                   diag_active_count, diag_pending_count, diag_rejected_count);
         }
+#endif
+        if (owner != SMB_READ_OWNER_NORMAL)
+            DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
         return 0;
     }
 
@@ -644,7 +646,7 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
 
     cdread_io_busy = 1;
     cdread_outstand = 1;
-#ifdef __IOPCORE_DEBUG
+#ifdef __CDREAD_DIAG
     if (owner == SMB_READ_OWNER_NORMAL)
         cdread_diag_active++;
 #endif

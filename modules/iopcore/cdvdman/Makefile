@@ -56,6 +56,9 @@ IOP_INCS += -I../common
 ifeq ($(IOPCORE_DEBUG),1)
 IOP_CFLAGS += -D__IOPCORE_DEBUG
 endif
+ifeq ($(CDREAD_DIAG),1)
+IOP_CFLAGS += -D__CDREAD_DIAG
+endif
 
 ifeq ($(USE_DEV9),1)
 IOP_OBJS += dev9.o
