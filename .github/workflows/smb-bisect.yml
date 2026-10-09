@@ -91,7 +91,17 @@ jobs:
 
     - name: Compile -> DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP
       run: |
-        make --trace DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP
+        set +e
+        make DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP > build.log 2>&1
+        ret=$?
+        if [ $ret -ne 0 ]; then
+          echo "build failed with $ret, first errors:"
+          grep -n -iE "error|undefined|No rule|assert" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          tail -60 build.log | while IFS= read -r line; do echo "::notice::$line"; done
+          exit $ret
+        fi
         mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-SMB-DIAG-UDP-TTY.elf
 
     - name: Upload diag artifact ELF
