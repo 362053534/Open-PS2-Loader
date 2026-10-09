@@ -85,6 +85,14 @@ jobs:
         sed -i "s/#define SMB_DIAG_LOG 0/#define SMB_DIAG_LOG 1/" modules/iopcore/cdvdman/smb_tuning.h
         grep -n "define SMB_DIAG_LOG" modules/iopcore/cdvdman/smb_tuning.h
 
+    # 此 fork 把 main() 里的 LOG_ENABLE() 注释掉了（与上游官方不同），
+    # 导致 UI 阶段 udptty/ps2link 的服务端不加载；诊断构建里恢复上游行为。
+    - name: Restore LOG_ENABLE in main() (upstream behavior)
+      run: |
+        grep -n "LOG_ENABLE" src/opl.c
+        sed -i "s|^[[:space:]]*//LOG_ENABLE();|    LOG_ENABLE();|" src/opl.c
+        grep -n "LOG_ENABLE" src/opl.c
+
     - name: Get version
       run: |
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
