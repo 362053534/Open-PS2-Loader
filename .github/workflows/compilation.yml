@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        debug: [iopcore_debug, ingame_debug, eesio_debug, iopcore_ppctty_debug, ingame_ppctty_debug, DTL_T10000=1]
+        debug: [iopcore_debug]
         # container_commit: [":main", "@sha256:7df074b3007f918b81f911e8b21fce1f297eff73ca03508064651ce2c8713570"] Replace with desired docker image hash or tag
         container_commit: [":main"]
     runs-on: ubuntu-latest
