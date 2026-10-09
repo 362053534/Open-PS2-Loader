@@ -846,8 +846,9 @@ static void ethShutdown(item_list_t *itemList)
     }
 
 #ifdef __INGAME_DEBUG
-    /* 游戏内 UDP 日志仍依赖当前网卡；随后 IOP 重置会统一卸载这些模块。 */
-    LOG("ETHSUPPORT Keep DEV9 for in-game debug\n");
+    /* 先停止菜单网络线程以免干扰 IOP 重置，但保留 DEV9 供游戏内 UDP 重新初始化。 */
+    LOG("ETHSUPPORT Stop UI network; keep DEV9 powered\n");
+    ethDeinitModules();
     return;
 #else
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
