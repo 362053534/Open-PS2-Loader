@@ -4,10 +4,12 @@
  * 用法：每次构建只把其中【一项】从 1 改为 0，烧录后在问题游戏上验证同一段 FMV。
  * 全部置 1 时与提交 6254970（“改进SMB-拔线模拟开关仓，断线后无限重连”）行为完全一致。
  *
+ * 排查基线（已由实机验证“无杂音”）：提交 6254970 的父提交 edf39ddc。
+ * 该提交的精确改动面只有 7 个文件、四类行为变更，对应 T1–T4；
+ * T5/T6 对应的行为早于问题提交即已存在，与本次回归无关。
+ *
  * 依赖关系：
  *   - SMB_FEAT_ECHO_KEEPALIVE 依附于 SMB_FEAT_RECONNECT_THREADS；线程关掉后心跳自然消失。
- *   - SMB_FEAT_SHORTREAD_ZEROFILL 同时作用于 smb.c（ReadFile 报零填充短读）
- *     与 device-smb.c（DeviceReadSectors 对短读的处理）。
  */
 #ifndef SMB_TUNING_H
 #define SMB_TUNING_H
@@ -30,11 +32,13 @@
 #define SMB_FEAT_RECONNECT_THREADS 1
 
 /* T5: 短读(服务器返回 0 字节/读到文件尾)按“成功+补零”返回。
- *     置 0：恢复旧行为——短读/失败立即作为读错误上报给游戏，不补零。*/
+ *     【已排除】该行为在问题提交的父提交 edf39ddc 中已逐字存在，
+ *     不属于本次回归范围——保持为 1，开关仅作留档。*/
 #define SMB_FEAT_SHORTREAD_ZEROFILL 1
 
 /* T6: 读取越过 PVD 标称容量时继续读、读不到补零（兼容 D9 转 D5 类魔改镜像）。
- *     置 0：恢复旧行为——起始 LSN 越界立即报 SCECdErIPI，跨界截断并报 SCECdErEOM。*/
+ *     【已排除】cdvdman.c 未被提交 6254970 触及，该语义早于问题提交——
+ *     保持为 1，开关仅作留档。*/
 #define SMB_FEAT_OOB_READ_TOLERANT 1
 
 #endif /* SMB_TUNING_H */

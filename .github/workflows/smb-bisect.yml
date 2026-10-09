@@ -11,16 +11,18 @@ on:
 
 jobs:
   build-smb-bisect:
+    # 基线为提交 6254970 的父提交 edf39ddc（实机验证无杂音）。
+    # 该提交实际只改 7 个文件、四类行为变更，因此只需 4 个减法构建。
+    # （早期版本的 B4=SHORTREAD_ZEROFILL / B5=OOB_READ_TOLERANT 针对的是
+    #    早于 edf39ddc 就存在的语义，与本回归无关，已撤下。）
     strategy:
       fail-fast: false
       matrix:
         include:
           - { id: B1, switch: SMB_FEAT_ECHO_KEEPALIVE }
           - { id: B2, switch: SMB_FEAT_SOCK_TIMEOUT }
-          - { id: B3, switch: SMB_FEAT_RECONNECT_THREADS }
-          - { id: B4, switch: SMB_FEAT_SHORTREAD_ZEROFILL }
-          - { id: B5, switch: SMB_FEAT_OOB_READ_TOLERANT }
-          - { id: B6, switch: SMB_FEAT_TCP_KEEPALIVE }
+          - { id: B3, switch: SMB_FEAT_TCP_KEEPALIVE }
+          - { id: B4, switch: SMB_FEAT_RECONNECT_THREADS }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
