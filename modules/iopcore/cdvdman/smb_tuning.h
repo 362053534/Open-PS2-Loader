@@ -50,7 +50,10 @@
 
 #if SMB_DIAG_LOG
 #include <stdio.h>
+#include <sysclib.h>
 #include <thbase.h>
+
+extern void smbDiagEmit(const char *msg);
 
 static inline unsigned int smbDiagNowMs(void)
 {
@@ -62,7 +65,12 @@ static inline unsigned int smbDiagNowMs(void)
     return sec * 1000 + usec / 1000;
 }
 
-#define SMBDIAG(fmt, ...) printf("SMBD %u " fmt "\n", smbDiagNowMs(), ##__VA_ARGS__)
+#define SMBDIAG(fmt, ...)                                                                     \
+    do {                                                                                      \
+        char smbd_buf[192];                                                                   \
+        sprintf(smbd_buf, "SMBD %u " fmt "\n", smbDiagNowMs(), ##__VA_ARGS__);                \
+        smbDiagEmit(smbd_buf);                                                                \
+    } while (0)
 #else
 #define SMBDIAG(fmt, ...)
 #endif

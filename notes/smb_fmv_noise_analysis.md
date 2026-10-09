@@ -97,9 +97,17 @@ SMB 路径关键事件带毫秒时间戳输出：
 - `TCP connect`、`NegotiateProt`、`REPLY/RAX send/recv fail`（含在读位置的 LSN 偏移）
 
 抓取方法：
-1. 在 SMB 服务器所在电脑上运行：`ncat -l -u -p 18194`（Windows，Nmap Ncat）或 `nc -ul 18194`（Linux/macOS），放行防火墙 UDP 18194。
-2. 用 DIAG 版 OPL 启动问题游戏，播到能复现杂音的 FMV，录下完整日志。
-3. 对照杂音出现时刻的日志行：
+1. 在 SMB 服务器所在电脑上运行：`ncat -l -u -p 18194`（Windows，Nmap Ncat）或 `nc -ul 18194 > opl_smbd.log`（Linux/macOS）。也可以直接用 ps2link/ps2client 体系任何能收 UDP 18194 的接收器——收到的就是纯文本行。
+2. **必须在电脑防火墙放行入站 UDP 18194**（最容易漏的一步）：
+   - Windows（管理员 CMD 一次即可）：
+     `netsh advfirewall firewall add rule name="OPL-UDP-18194" protocol=UDP dir=in localport=18194 action=allow`
+   - Linux（用 ufw 时）：`sudo ufw allow 18194/udp`
+3. v2 版 DIAG 构建起，每条 `SMBD` 日志会**同时走两条通道**，任一可达即可：
+   - `255.255.255.255:18194` 广播（udptty 原生通道，收不到则多为防火墙/无线 AP 广播隔离）；
+   - **单播到 SMB 服务器 IP:18194**（cdvdman 内建的诊断镜像，沿 SMB 数据同一条网络路径走，几乎必达——只要你的抓包程序和 SMB 服务器在同一台电脑上）。
+   若抓包电脑**不是** SMB 服务器（例如 SMB 跑在路由器/NAS 上），请把抓包程序放到与 PS2 同一广播域的电脑上抓广播通道；或告诉我抓包电脑的 IP，我可以出固定目的 IP 的构建。
+4. 用 DIAG 版 OPL 启动问题游戏，播到能复现杂音的 FMV，录下完整日志。
+5. 对照杂音出现时刻的日志行：
    - 看到 `RD done ... ms=30000` 紧跟 `RD fail`+`RECONNECT` ⇒ 超时触发坐实（服务器/网络真卡 ≥30s）；
    - 看到大量数百~数千 ms 的 `RD done ms=xxx`（无失败）⇒ 服务器/链路本身慢，杂音是欠载；
    - 看到 `ECHO res=-1` 与杂音对时 ⇒ Echo 方向仍有嫌疑（虽已排除，可复查）；

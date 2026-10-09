@@ -30,6 +30,42 @@ int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, sockl
 int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
+#if SMB_DIAG_LOG
+// 诊断镜像通道：每条 SMBDIAG 日志除走 stdout（udptty 广播）外，
+// 再单播一份到 SMB 服务器 IP 的 UDP 18194 端口（部分网络环境收不到 255.255.255.255 广播）。
+int (*plwip_sendto)(int s, void *dataptr, int size, unsigned int flags, struct sockaddr *to, socklen_t tolen); // #12
+static int smbDiagSock = -1;
+
+void smbDiagEmit(const char *msg)
+{
+    struct sockaddr_in peer;
+    u32 dest;
+    int len;
+
+    printf("%s", msg);
+
+    if (!plwip_socket || !plwip_sendto || !pinet_addr)
+        return;
+
+    dest = pinet_addr(cdvdman_settings.smb_ip);
+    if (!dest || dest == 0xFFFFFFFFu)
+        return;
+
+    if (smbDiagSock < 0) {
+        smbDiagSock = plwip_socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (smbDiagSock < 0)
+            return;
+    }
+
+    peer.sin_family = AF_INET;
+    peer.sin_port = htons(18194);
+    peer.sin_addr.s_addr = dest;
+
+    len = strlen(msg);
+    plwip_sendto(smbDiagSock, (void *)msg, len, 0, (struct sockaddr *)&peer, sizeof(peer));
+}
+#endif
+
 static u32 ServerCapabilities;
 #if SMB_FEAT_RECONNECT_THREADS
 static OplSmbPwHashFunc_t smbHashCallback;
@@ -63,6 +99,9 @@ static void ps2ip_init(void)
        smb_AbortConnection() 一旦被启用会调到野地址。这里先置空。 */
     plwip_shutdown = NULL;
     pinet_addr = info.exports[24];
+#if SMB_DIAG_LOG
+    plwip_sendto = info.exports[12];
+#endif
 
 #if SMB_FEAT_RECONNECT_THREADS
     if (getModInfo("netman\0\0", &info))
