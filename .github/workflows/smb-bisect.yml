@@ -1,0 +1,66 @@
+name: SMB-bisect-builds
+
+# 为 SMB 模式 FMV 音频杂音排查生成 B1–B6 六个减法构建。
+# 每个构建仅把 modules/iopcore/cdvdman/smb_tuning.h 中对应的一个开关置 0，
+# 其余与提交 6254970 的行为完全一致。产物打包在 OPNPS2LD-SMB-Bisect 中。
+# 排查方法见 notes/smb_fmv_noise_analysis.md。
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-smb-bisect:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: B1, switch: SMB_FEAT_ECHO_KEEPALIVE }
+          - { id: B2, switch: SMB_FEAT_SOCK_TIMEOUT }
+          - { id: B3, switch: SMB_FEAT_RECONNECT_THREADS }
+          - { id: B4, switch: SMB_FEAT_SHORTREAD_ZEROFILL }
+          - { id: B5, switch: SMB_FEAT_OOB_READ_TOLERANT }
+          - { id: B6, switch: SMB_FEAT_TCP_KEEPALIVE }
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v6
+
+    - run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git fetch --prune --unshallow
+
+    - name: Flip switch for ${{ matrix.id }} (${{ matrix.switch }} -> 0)
+      run: |
+        sed -i "s/#define ${{ matrix.switch }} 1/#define ${{ matrix.switch }} 0/" modules/iopcore/cdvdman/smb_tuning.h
+        grep -n "define ${{ matrix.switch }}" modules/iopcore/cdvdman/smb_tuning.h
+
+    - name: Get version
+      run: |
+        echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
+
+    - name: Compile -> make clean release
+      run: make --trace clean release
+
+    - name: Rename ELF with bisect tag
+      run: |
+        mv OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-${{ matrix.switch }}=0.ELF
+        ls -l OPNPS2LD-*.ELF
+
+    - name: Upload bisect artifact ELF
+      uses: actions/upload-artifact@v7
+      with:
+        name: OPNPS2LD-SMB-Bisect-${{ matrix.id }}
+        path: OPNPS2LD-*-B?-*.ELF
+
+  merge-smb-bisect:
+    runs-on: ubuntu-latest
+    needs: build-smb-bisect
+    steps:
+      - name: Merge Artifacts
+        uses: actions/upload-artifact/merge@v7
+        with:
+          name: OPNPS2LD-SMB-Bisect
+          pattern: OPNPS2LD-SMB-Bisect-B*
+          delete-merged: true
