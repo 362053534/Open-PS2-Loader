@@ -34,7 +34,8 @@ IOP_OBJS_DIR = obj.bdm/
 IOP_OBJS += device-bdm.o
 IOP_CFLAGS += -DBDM_DRIVER
 IOP_LIBS += -L$(PS2SDK)/iop/lib -lbdm
-ifeq ($(IOPCORE_DEBUG),1)
+ifneq ($(filter 1,$(IOPCORE_DEBUG) $(CDREAD_DIAG)),)
+# USB/BDM 的游戏内 UDP 诊断需要由 CDVDMAN 提供 DEV9 导出给 SMAP。
 USE_DEV9 = 1
 endif
 endif
