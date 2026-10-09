@@ -155,10 +155,12 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     ret = plwip_connect(sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
     if (ret < 0) {
+        SMBDIAG("TCP connect fail");
         plwip_close(sock);
         return -2;
     }
 
+    SMBDIAG("TCP connect sock=%d tmo=%d", sock, SMB_FEAT_SOCK_TIMEOUT ? SMB_IO_TIMEOUT : 0);
     return sock;
 }
 
@@ -211,26 +213,34 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
     if (shdrlen == 0) {
         //Send the whole message, including the 4-byte direct transport packet header.
         rcv_size = SendData(main_socket, (char *)&SMB_buf, totalpkt_size);
-        if (rcv_size <= 0)
+        if (rcv_size <= 0) {
+            SMBDIAG("REPLY send fail r=%d", rcv_size);
             return -1;
+        }
     } else {
         size = shdrlen + 4;
 
         //Send the headers, followed by the payload.
         rcv_size = SendData(main_socket, (char *)&SMB_buf, size);
-        if (rcv_size <= 0)
+        if (rcv_size <= 0) {
+            SMBDIAG("REPLY send-hdr fail r=%d", rcv_size);
             return -1;
+        }
 
         rcv_size = SendData(main_socket, spayload, totalpkt_size - size);
-        if (rcv_size <= 0)
+        if (rcv_size <= 0) {
+            SMBDIAG("REPLY send-pl fail r=%d", rcv_size);
             return -1;
+        }
     }
 
     //Read NetBIOS session message header. Drop NBSS Session Keep alive messages (type == 0x85, with no body), but process session messages (type == 0x00).
     do {
         rcv_size = RecvData(main_socket, (char *)&SMB_buf.sessionHeader, sizeof(SMB_buf.sessionHeader));
-        if (rcv_size <= 0)
+        if (rcv_size <= 0) {
+            SMBDIAG("REPLY recv-hdr fail r=%d", rcv_size);
             return -2;
+        }
     } while (nb_GetPacketType() != 0);
 
     totalpkt_size = nb_GetSessionMessageLength();
@@ -238,8 +248,10 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
     //If rhdrlen is not specified, retrieve the whole packet. Otherwise, retrieve only the headers (caller will retrieve the payload separately).
     size = (rhdrlen == 0) ? totalpkt_size : rhdrlen;
     rcv_size = RecvData(main_socket, (char *)&SMB_buf.smb, size);
-    if (rcv_size <= 0)
+    if (rcv_size <= 0) {
+        SMBDIAG("REPLY recv-body fail r=%d", rcv_size);
         return -2;
+    }
 
     return totalpkt_size;
 }
@@ -668,15 +680,19 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 #ifdef USE_CUSTOM_RECV
     //Send the whole message, including the 4-byte direct transport packet header.
     r = SendData(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4);
-    if (r <= 0)
+    if (r <= 0) {
+        SMBDIAG("RAX send fail r=%d off=%u len=%d", r, (unsigned int)offsetlow, nbytes);
         return -1;
+    }
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
     do {
         rcv_size = plwip_recvfrom(main_socket, &SMB_buf, 49, readbuf, nbytes, 0, NULL, NULL);
-        if (rcv_size <= 0)
+        if (rcv_size <= 0) {
+            SMBDIAG("RAX recv fail r=%d off=%u len=%d", rcv_size, (unsigned int)offsetlow, nbytes);
             return -2;
+        }
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
     expected_size = nb_GetSessionMessageLength() + 4;
@@ -685,8 +701,10 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     // Handle fragmented packets
     while (rcv_size < expected_size) {
         r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL); // - rcv_size
-        if (r <= 0)
+        if (r <= 0) {
+            SMBDIAG("RAX frag fail r=%d got=%d want=%d", r, rcv_size, expected_size);
             return -2;
+        }
         rcv_size += r;
     }
 #else

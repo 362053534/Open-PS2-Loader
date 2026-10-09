@@ -66,3 +66,36 @@ jobs:
           name: OPNPS2LD-SMB-Bisect
           pattern: OPNPS2LD-SMB-Bisect-B*
           delete-merged: true
+
+  # 诊断构建：全功能开启 + SMB_DIAG_LOG=1，IOP 日志经 UDP 广播到 18194 端口。
+  # 主机端用 "ncat -l -u -p 18194"（Windows）或 "nc -ul 18194"（Linux/macOS）抓取。
+  build-smb-diag:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v6
+
+    - run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git fetch --prune --unshallow
+
+    - name: Enable SMB_DIAG_LOG
+      run: |
+        sed -i "s/#define SMB_DIAG_LOG 0/#define SMB_DIAG_LOG 1/" modules/iopcore/cdvdman/smb_tuning.h
+        grep -n "define SMB_DIAG_LOG" modules/iopcore/cdvdman/smb_tuning.h
+
+    - name: Get version
+      run: |
+        echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
+
+    - name: Compile -> DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP
+      run: |
+        make --trace DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP
+        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-SMB-DIAG-UDP-TTY.elf
+
+    - name: Upload diag artifact ELF
+      uses: actions/upload-artifact@v7
+      with:
+        name: OPNPS2LD-SMB-Diag
+        path: OPNPS2LD-*-SMB-DIAG-UDP-TTY.elf

@@ -41,4 +41,30 @@
  *     保持为 1，开关仅作留档。*/
 #define SMB_FEAT_OOB_READ_TOLERANT 1
 
+/* 诊断构建：置 1 后，SMB 读取路径的关键事件（慢读取/读取失败/重连/心跳/链路变化）
+ *   带毫秒时间戳输出到 IOP stdout。
+ *   需用 DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP 构建，
+ *   日志经 UDP 广播到 255.255.255.255:18194，主机端用 ncat/nc -ul 18194 抓取。
+ *   正常播放时近乎无输出；异常时按事件出现。正式版本必须保持为 0。*/
+#define SMB_DIAG_LOG 0
+
+#if SMB_DIAG_LOG
+#include <stdio.h>
+#include <thbase.h>
+
+static inline unsigned int smbDiagNowMs(void)
+{
+    iop_sys_clock_t now;
+    u32 sec, usec;
+
+    GetSystemTime(&now);
+    SysClock2USec(&now, &sec, &usec);
+    return sec * 1000 + usec / 1000;
+}
+
+#define SMBDIAG(fmt, ...) printf("SMBD %u " fmt "\n", smbDiagNowMs(), ##__VA_ARGS__)
+#else
+#define SMBDIAG(fmt, ...)
+#endif
+
 #endif /* SMB_TUNING_H */

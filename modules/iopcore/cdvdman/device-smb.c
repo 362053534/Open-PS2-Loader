@@ -126,6 +126,7 @@ static void smbReconnectThread(void *arg)
             if (++keepAliveCounter >= 15) {
                 result = smb_Echo();
                 if (result) {
+                    SMBDIAG("ECHO res=%d", result);
                     keepAliveCounter = 0;
                     if (result < 0)
                         smbConnectionState = 2;
@@ -137,6 +138,7 @@ static void smbReconnectThread(void *arg)
 #endif
 
         if (smbReconnectEnabled && smbConnectionState == 2) {
+            SMBDIAG("STATE=2 close socket");
             if (smb_io_sema < 0) {
                 smb_Disconnect();
                 smbConnectionState = 0;
@@ -150,11 +152,13 @@ static void smbReconnectThread(void *arg)
         if (smbReconnectEnabled && smbConnectionState == 0 && !smbPhysicalLinkDown &&
             (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
             smbConnectionState = 2;
+            SMBDIAG("RECONNECT start");
 
             if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
                 smbOpenGame() > 0 && smbReconnectEnabled && !smbPhysicalLinkDown &&
                 (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
                 smbConnectionState = 1;
+                SMBDIAG("RECONNECT ok");
                 if (smbTrayOpen) {
                     sceCdTrayReq(SCECdTrayClose, NULL);
                     smbTrayOpen = 0;
@@ -162,6 +166,7 @@ static void smbReconnectThread(void *arg)
                 continue;
             }
 
+            SMBDIAG("RECONNECT fail");
             smb_Disconnect();
             smbConnectionState = 0;
         }
@@ -178,6 +183,7 @@ static void smbLinkMonitorThread(void *arg)
         if (smbReconnectEnabled && pNetManGetGlobalNetIFLinkState) {
             if (!pNetManGetGlobalNetIFLinkState()) {
                 if (!smbPhysicalLinkDown) {
+                    SMBDIAG("LINK down");
                     smbPhysicalLinkDown = 1;
                     smbTrayOpen = 1;
                     sceCdTrayReq(SCECdTrayOpen, NULL);
@@ -185,6 +191,8 @@ static void smbLinkMonitorThread(void *arg)
                         smbConnectionState = 2;
                 }
             } else {
+                if (smbPhysicalLinkDown)
+                    SMBDIAG("LINK up");
                 smbPhysicalLinkDown = 0;
             }
         }
@@ -197,9 +205,11 @@ static void smbLinkMonitorThread(void *arg)
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
 {
     ps2ip_init();
+    SMBDIAG("NegotiateProt boot");
 #if SMB_FEAT_RECONNECT_THREADS
     smbHashCallback = hash_callback;
     while (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback) <= 0) {
+        SMBDIAG("NegotiateProt fail, retry in 2s");
         smb_Disconnect();
         DelayThread(2000000);
     }
@@ -207,11 +217,14 @@ void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
     // 恢复旧行为：启动时只做一次协商
     smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback);
 #endif
+    SMBDIAG("NegotiateProt done");
 }
 
 void DeviceInit(void)
 {
     RegisterLibraryEntries(&_exp_oplsmb);
+    SMBDIAG("DeviceInit: diag build, features ECHO=%d TMO=%d KPALV=%d THREADS=%d",
+        SMB_FEAT_ECHO_KEEPALIVE, SMB_FEAT_SOCK_TIMEOUT, SMB_FEAT_TCP_KEEPALIVE, SMB_FEAT_RECONNECT_THREADS);
 
 #if SMB_FEAT_RECONNECT_THREADS
     iop_thread_t thread;
@@ -258,6 +271,7 @@ void DeviceFSInit(void)
     // 恢复旧行为：单次打开会话/共享/文件，不检查结果
     smbOpenGame();
 #endif
+    SMBDIAG("DeviceFSInit done state ok");
 }
 
 void DeviceLock(void)
@@ -308,9 +322,21 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
             bytes_to_read = sectors_to_read * 2048;
 #if SMB_FEAT_RECONNECT_THREADS
+#if SMB_DIAG_LOG
+            int rdRetries = 0;
+            int rdWaited = 0;
+            unsigned int rdStart = smbDiagNowMs();
+#endif
             for (;;) {
-                while (smbReconnectEnabled && !smbPhysicalLinkDown && smbConnectionState != 1)
+                while (smbReconnectEnabled && !smbPhysicalLinkDown && smbConnectionState != 1) {
+#if SMB_DIAG_LOG
+                    if (!rdWaited) {
+                        SMBDIAG("RD wait-reconnect lsn=%u", (unsigned int)offslsn);
+                        rdWaited = 1;
+                    }
+#endif
                     DelayThread(100000);
+                }
 
                 if (!smbReconnectEnabled || smbPhysicalLinkDown) {
                     result = -1;
@@ -322,8 +348,20 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                     break;
 
                 // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
+                SMBDIAG("RD fail lsn=%u res=%d retry=%d", (unsigned int)offslsn, result, rdRetries + 1);
+#if SMB_DIAG_LOG
+                rdRetries++;
+#endif
                 smbConnectionState = 2;
             }
+#if SMB_DIAG_LOG
+            {
+                unsigned int rdDur = smbDiagNowMs() - rdStart;
+
+                if (rdDur >= 250 || rdRetries || rdWaited)
+                    SMBDIAG("RD done lsn=%u sec=%u ms=%u res=%d retries=%d", (unsigned int)offslsn, sectors_to_read, rdDur, result, rdRetries);
+            }
+#endif
 
             if (result < 0) {
                 rv = SCECdErTRMOPN;
