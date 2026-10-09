@@ -287,7 +287,7 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     void *ptr;
     int endOfMedia = 0;
 
-    DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p\n", lsn, sectors, buf);
+    CDVD_DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p", lsn, sectors, buf);
 
 #if SMB_FEAT_OOB_READ_TOLERANT
     // PVD容量仅作为辅助边界，底层能够完整读取时兼容D9转D5等魔改镜像。
@@ -725,7 +725,7 @@ void cdvdman_cb_event(int reason)
     if (cb_data.user_cb != NULL) {
         cb_data.reason = reason;
 
-        DPRINTF("cdvdman_cb_event reason: %d - setting cb alarm...\n", reason);
+        CDVD_DPRINTF("cdvdman_cb_event reason: %d - setting cb alarm...", reason);
 
         if (QueryIntrContext())
             iSetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data);

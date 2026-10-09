@@ -5,6 +5,7 @@
 */
 
 #include "internal.h"
+#include "smb_tuning.h"
 
 //-------------------------------------------------------------------------
 int sceCdSync(int mode)
@@ -40,7 +41,7 @@ int sceCdRead(u32 lsn, u32 sectors, void *buf, sceCdRMode *mode)
             sector_size = 2340;
     }
 
-    DPRINTF("sceCdRead lsn=%d sectors=%d sector_size=%d buf=%08x\n", (int)lsn, (int)sectors, (int)sector_size, (int)buf);
+    CDVD_DPRINTF("sceCdRead lsn=%d sectors=%d sector_size=%d buf=%08x", (int)lsn, (int)sectors, (int)sector_size, (int)buf);
 
     if ((!(cdvdman_settings.common.flags & IOPCORE_COMPAT_ALT_READ)) || QueryIntrContext()) {
         result = cdvdman_AsyncRead(lsn, sectors, sector_size, buf);

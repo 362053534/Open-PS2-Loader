@@ -117,6 +117,51 @@ SMB 路径关键事件带毫秒时间戳输出：
    - 看到 `ECHO res=-1` 与杂音对时 ⇒ Echo 方向仍有嫌疑（虽已排除，可复查）；
    - 若 IOP 日志平静而杂音依旧 ⇒ 问题不在 SMB 数据面，转向游戏侧/缓存层查。
 
+### 第一份 DIAG 日志（v3 构建）判读结果（2026-10-09）
+
+用户回传的一段游戏内日志（t≈92s 起，约 62 秒窗口）：
+
+- `SMBD` 行仅 3 条，全部是 `ECHO res=1`（92102/124120/154143，间隔约 30s，正常心跳）；
+  **无任何 `RD done/fail/wait-reconnect`、`RECONNECT`、`LINK` 行** ⇒ 该窗口内 SMB 传输完全健康：
+  每次读盘 <250ms、无失败、无重试、无重连。
+- 日志中大量的 `WARNING: WaitSema KE_CAN_NOT_WAIT` 与 `padman: *** VBLANK OVERLAP ***`
+  **不是 OPL 的输出**：前者是 **debug 版 IOP Realtime Kernel** 的线程管理器告警（出处见 TCRF
+  "PlayStation 2/Development Text"：`WARNING: WaitSema KE_CAN_NOT_WAIT` 是该内核调试串口的固定文案），
+  后者是游戏自带 padman 的调试打印。两者在基线版本同样存在，属于环境噪音而非根因；
+  但 WaitSema 洪泛集中在读目标缓冲 `0x11d680/0x125680` 与 `0x134ec0/0x13a340` 的窗口
+  （推测是游戏音频流线程的缓冲），可作为"游戏流播放受压窗口"的参考标记。
+- 重要推论：基线 `edf39ddc` 的 recv 是**永久阻塞**的——如果 FMV 期间真的发生 ≥30s 的服务器停顿，
+  基线也会整段卡住并欠载杂音。用户确认基线无杂音 ⇒ **要么不存在 ≥30s 停顿**（那 30s RCVTIMEO
+  永不触发，B2 的"部分有效"可能是间歇性杂音单次实机的巧合），**要么停顿被游戏缓冲吸收、而 6254970
+  的超时拆链+重连（额外 2–5s）捅破了缓冲**。v4 的 `RD done ms=` 与 `RECONNECT` 行可区分这两条。
+- 该窗口**不一定包含杂音时刻**——v3 的 `sceCdRead` 等打印没有时间戳，无法对齐读间隔空洞。
+
+### v4 诊断构建（2026-10-09，全部 `#if SMB_DIAG_LOG` 门控，正式构建行为不变）
+
+1. **读盘路径全链路毫秒时间戳**：`sceCdRead` / `cdvdman_read` / `cdvdman_cb_event` /
+   `sceCdGetError` / `sceCdStatus` 的打印改为 `CDVD <ms> ...` 前缀（udptty 广播），
+   可把杂音时刻精确对齐到某次读盘动作与读间隔空洞。
+2. **`RD done` 门槛 250ms → 100ms**，并新增目标缓冲地址 `buf=`——用于区分音频流缓冲
+   （杂音相关）与视频流缓冲的读延迟。
+3. **短读补零告警**：`DeviceReadSectors` 发现 `result < bytes_to_read` 立即打
+   `SMBD ZEROFILL lsn=... got=... want=... buf=...`——这是"数据被静默填零、解码侧听到杂音"
+   的直接证据路径（此前该路径完全没有日志）。
+4. **服务器短回告警**：`smb_ReadAndX` 收到 `DataLength < 请求字节数` 打
+   `SMBD RAX short off=... want=... got=...`（ZEROFILL 的上游原因）。
+5. **心跳统计**：重连线程每 2 秒打一行
+   `SMBD HB n=读数 fail=失败数 zero=补零数 max=最慢读 avg=平均读 s100/s250/s1k=慢读桶计数`，
+   无需逐读打印即可掌握读延迟分布与卡顿。
+6. **ECHO 全量打印并带耗时**：`SMBD ECHO res=... ms=...`；`res=0` 表示因读盘占用
+   `smb_io_sema` 而跳过（v3 不打这行）。
+
+v4 日志判读要点：
+
+- 杂音时刻伴随 `ZEROFILL` / `RAX short` ⇒ 根因是短读补零（数据损坏），查服务器为何短回；
+- 杂音时刻伴随 `RD done ms≈30000` 紧跟 `RD fail`+`RECONNECT` ⇒ 30s 超时拆链坐实；
+- `HB` 显示 max/avg 正常、fail/zero=0，且 `CDVD` 时间戳无几百毫秒以上空洞 ⇒ SMB 传输健康，
+  问题在游戏解码/缓冲侧或读盘节奏；
+- `ECHO res=0` 频繁出现 ⇒ 心跳因读盘占用信号量被跳过（正常，观察其是否引入延迟）。
+
 后续预案（视取证结果选择）：提高/移除超时、超时后只重试当前请求而不拆链、
 把重连恢复路径改回“先报错给游戏”、或针对服务器慢响应做读缓冲优化。
 

@@ -71,8 +71,14 @@ static inline unsigned int smbDiagNowMs(void)
         sprintf(smbd_buf, "SMBD %u " fmt "\n", smbDiagNowMs(), ##__VA_ARGS__);                \
         smbDiagEmit(smbd_buf);                                                                \
     } while (0)
+
+/* v4: cdvdman key-path prints carry a millisecond timestamp (IOP stdout -> udptty
+   broadcast, same channel as the game's own sceCdRead prints), so the moment audio
+   noise appears can be aligned with concrete disc-read activity. */
+#define CDVD_DPRINTF(fmt, ...) printf("CDVD %u " fmt "\n", smbDiagNowMs(), ##__VA_ARGS__)
 #else
 #define SMBDIAG(fmt, ...)
+#define CDVD_DPRINTF(fmt, ...) DPRINTF(fmt, ##__VA_ARGS__)
 #endif
 
 #endif /* SMB_TUNING_H */

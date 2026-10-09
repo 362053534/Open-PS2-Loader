@@ -697,6 +697,8 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
     expected_size = nb_GetSessionMessageLength() + 4;
     DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
+    if (DataLength < nbytes)
+        SMBDIAG("RAX short off=%u want=%d got=%d", (unsigned int)offsetlow, nbytes, DataLength);
 
     // Handle fragmented packets
     while (rcv_size < expected_size) {

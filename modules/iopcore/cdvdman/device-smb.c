@@ -81,6 +81,13 @@ static void smbLinkMonitorThread(void *arg);
 
 static int smbOpenGame(void);
 
+#if SMB_DIAG_LOG
+/* v4 diag counters: accumulated by DeviceReadSectors, summarized and reset by
+   smbReconnectThread every 2 seconds. */
+static unsigned int smbRdCount, smbRdFail, smbRdZero, smbRdMaxMs, smbRdSumMs;
+static unsigned int smbRdSlow100, smbRdSlow250, smbRdSlow1000;
+#endif
+
 static void ps2ip_init(void)
 {
     modinfo_t info;
@@ -163,9 +170,14 @@ static void smbReconnectThread(void *arg)
         if (smbReconnectEnabled && smbConnectionState == 1 && !smbPhysicalLinkDown) {
             // 每30秒发送一次SMB保活请求，防止服务器回收长时间空闲的会话。
             if (++keepAliveCounter >= 15) {
+#if SMB_DIAG_LOG
+                unsigned int echoStart = smbDiagNowMs();
+#endif
                 result = smb_Echo();
+#if SMB_DIAG_LOG
+                SMBDIAG("ECHO res=%d ms=%u", result, smbDiagNowMs() - echoStart);
+#endif
                 if (result) {
-                    SMBDIAG("ECHO res=%d", result);
                     keepAliveCounter = 0;
                     if (result < 0)
                         smbConnectionState = 2;
@@ -210,6 +222,13 @@ static void smbReconnectThread(void *arg)
             smbConnectionState = 0;
         }
 
+#if SMB_DIAG_LOG
+        SMBDIAG("HB n=%u fail=%u zero=%u max=%ums avg=%ums s100=%u s250=%u s1k=%u", smbRdCount, smbRdFail,
+                smbRdZero, smbRdMaxMs, smbRdCount ? smbRdSumMs / smbRdCount : 0, smbRdSlow100, smbRdSlow250,
+                smbRdSlow1000);
+        smbRdCount = smbRdFail = smbRdZero = smbRdMaxMs = smbRdSumMs = 0;
+        smbRdSlow100 = smbRdSlow250 = smbRdSlow1000 = 0;
+#endif
         DelayThread(2000000);
     }
 }
@@ -397,8 +416,19 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             {
                 unsigned int rdDur = smbDiagNowMs() - rdStart;
 
-                if (rdDur >= 250 || rdRetries || rdWaited)
-                    SMBDIAG("RD done lsn=%u sec=%u ms=%u res=%d retries=%d", (unsigned int)offslsn, sectors_to_read, rdDur, result, rdRetries);
+                smbRdCount++;
+                if (rdDur > smbRdMaxMs)
+                    smbRdMaxMs = rdDur;
+                smbRdSumMs += rdDur;
+                if (rdDur >= 1000)
+                    smbRdSlow1000++;
+                else if (rdDur >= 250)
+                    smbRdSlow250++;
+                else if (rdDur >= 100)
+                    smbRdSlow100++;
+                smbRdFail += rdRetries;
+                if (rdDur >= 100 || rdRetries || rdWaited)
+                    SMBDIAG("RD done lsn=%u sec=%u ms=%u res=%d retries=%d buf=%p", (unsigned int)offslsn, sectors_to_read, rdDur, result, rdRetries, &p[r]);
             }
 #endif
 
@@ -407,8 +437,13 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 break;
             }
 #if SMB_FEAT_SHORTREAD_ZEROFILL
-            if (result < bytes_to_read)
+            if (result < bytes_to_read) {
+#if SMB_DIAG_LOG
+                SMBDIAG("ZEROFILL lsn=%u got=%d want=%d buf=%p", (unsigned int)offslsn, result, bytes_to_read, &p[r]);
+                smbRdZero++;
+#endif
                 memset(&p[r + result], 0, bytes_to_read - result);
+            }
 #else
             if (result < bytes_to_read) {
                 rv = SCECdErREAD;
@@ -423,8 +458,13 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 break;
             }
 #if SMB_FEAT_SHORTREAD_ZEROFILL
-            if (result < bytes_to_read)
+            if (result < bytes_to_read) {
+#if SMB_DIAG_LOG
+                SMBDIAG("ZEROFILL lsn=%u got=%d want=%d buf=%p", (unsigned int)offslsn, result, bytes_to_read, &p[r]);
+                smbRdZero++;
+#endif
                 memset(&p[r + result], 0, bytes_to_read - result);
+            }
 #else
             if (result < bytes_to_read) {
                 rv = SCECdErREAD;
