@@ -6,6 +6,7 @@
 
 #include "internal.h"
 #include "../../isofs/zso.h"
+#include "smb_tuning.h"
 
 #define MODNAME "cdvd_driver"
 IRX_ID(MODNAME, 1, 1);
@@ -240,6 +241,7 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
 
 int DeviceReadSectorsCompressed(u32 lsn, void *addr, unsigned int count)
 {
+#if SMB_FEAT_OOB_READ_TOLERANT
     unsigned int sectors;
 
     if (lsn >= ziso_total_block) {
@@ -256,6 +258,10 @@ int DeviceReadSectorsCompressed(u32 lsn, void *addr, unsigned int count)
         memset((u8 *)addr + sectors * 2048, 0, (count - sectors) * 2048);
 
     return SCECdErNO;
+#else
+    // 恢复旧行为：逐段解压失败即报EOM错误
+    return (ziso_read_sector(addr, lsn, count) == count) ? SCECdErNO : SCECdErEOM;
+#endif
 }
 
 static int probed = 0;
@@ -283,6 +289,7 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 
     DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p\n", lsn, sectors, buf);
 
+#if SMB_FEAT_OOB_READ_TOLERANT
     // PVD容量仅作为辅助边界，底层能够完整读取时兼容D9转D5等魔改镜像。
     if (mediaLsnCount) {
         if (lsn >= mediaLsnCount) {
@@ -293,6 +300,22 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
             endOfMedia = 1;
         }
     }
+#else
+    // 恢复旧行为：起始位置越界直接报错；跨界读取截断并在读完后报EOM错误
+    if (mediaLsnCount) {
+        if (lsn >= mediaLsnCount) {
+            DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
+            cdvdman_stat.err = SCECdErIPI;
+            return 1;
+        }
+
+        if ((lsn + sectors) > mediaLsnCount) {
+            DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
+            endOfMedia = 1;
+            sectors = mediaLsnCount - lsn;
+        }
+    }
+#endif
 
     if (probed == 0) { // Probe for ZSO before first read
         // check for ZSO
@@ -358,8 +381,13 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     }
 
     // If we had a read that went past the end of media, after reading what we can, set the end of media error.
+#if SMB_FEAT_OOB_READ_TOLERANT
     if (endOfMedia && cdvdman_stat.err != SCECdErNO)
         cdvdman_stat.err = endOfMedia == 2 ? SCECdErIPI : SCECdErEOM;
+#else
+    if (endOfMedia)
+        cdvdman_stat.err = SCECdErEOM;
+#endif
 
     return (cdvdman_stat.err == SCECdErNO ? 0 : 1);
 }

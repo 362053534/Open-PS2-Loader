@@ -8,6 +8,7 @@
 #include "internal.h"
 
 #include "device.h"
+#include "smb_tuning.h"
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -30,6 +31,7 @@ int (*plwip_shutdown)(int s, int how);                                          
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 static u32 ServerCapabilities;
+#if SMB_FEAT_RECONNECT_THREADS
 static OplSmbPwHashFunc_t smbHashCallback;
 static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
@@ -37,9 +39,11 @@ static volatile int smbPhysicalLinkDown;
 static volatile int smbTrayOpen;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 
-static int smbOpenGame(void);
 static void smbReconnectThread(void *arg);
 static void smbLinkMonitorThread(void *arg);
+#endif
+
+static int smbOpenGame(void);
 
 static void ps2ip_init(void)
 {
@@ -54,11 +58,16 @@ static void ps2ip_init(void)
     plwip_send = info.exports[11];
     plwip_socket = info.exports[13];
     plwip_setsockopt = info.exports[19];
-    plwip_shutdown = info.exports[46];
+    /* 注意：ps2ip 的导出表只有 41 项（下标 0..40），并不存在 lwip_shutdown。
+       原来读 info.exports[46] 是越界读，拿到的是野指针；
+       smb_AbortConnection() 一旦被启用会调到野地址。这里先置空。 */
+    plwip_shutdown = NULL;
     pinet_addr = info.exports[24];
 
+#if SMB_FEAT_RECONNECT_THREADS
     if (getModInfo("netman\0\0", &info))
         pNetManGetGlobalNetIFLinkState = info.exports[14];
+#endif
 }
 
 static int smbOpenGame(void)
@@ -100,14 +109,18 @@ static int smbOpenGame(void)
     return 1;
 }
 
+#if SMB_FEAT_RECONNECT_THREADS
 static void smbReconnectThread(void *arg)
 {
+#if SMB_FEAT_ECHO_KEEPALIVE
     int keepAliveCounter = 0;
     int result;
+#endif
 
     (void)arg;
 
     while (1) {
+#if SMB_FEAT_ECHO_KEEPALIVE
         if (smbReconnectEnabled && smbConnectionState == 1 && !smbPhysicalLinkDown) {
             // 每30秒发送一次SMB保活请求，防止服务器回收长时间空闲的会话。
             if (++keepAliveCounter >= 15) {
@@ -121,6 +134,7 @@ static void smbReconnectThread(void *arg)
         } else {
             keepAliveCounter = 0;
         }
+#endif
 
         if (smbReconnectEnabled && smbConnectionState == 2) {
             if (smb_io_sema < 0) {
@@ -178,22 +192,29 @@ static void smbLinkMonitorThread(void *arg)
         DelayThread(500000);
     }
 }
+#endif /* SMB_FEAT_RECONNECT_THREADS */
 
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
 {
     ps2ip_init();
+#if SMB_FEAT_RECONNECT_THREADS
     smbHashCallback = hash_callback;
     while (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback) <= 0) {
         smb_Disconnect();
         DelayThread(2000000);
     }
+#else
+    // 恢复旧行为：启动时只做一次协商
+    smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback);
+#endif
 }
 
 void DeviceInit(void)
 {
-    iop_thread_t thread;
-
     RegisterLibraryEntries(&_exp_oplsmb);
+
+#if SMB_FEAT_RECONNECT_THREADS
+    iop_thread_t thread;
 
     thread.attr = TH_C;
     thread.option = 0;
@@ -205,6 +226,7 @@ void DeviceInit(void)
 
     thread.thread = smbLinkMonitorThread;
     StartThread(CreateThread(&thread), NULL);
+#endif
 }
 
 void DeviceDeinit(void)
@@ -214,11 +236,17 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
+#if SMB_FEAT_RECONNECT_THREADS
     return smbConnectionState == 1 ? SCECdComplete : SCECdNotReady;
+#else
+    // 恢复旧行为：始终报告就绪
+    return SCECdComplete;
+#endif
 }
 
 void DeviceFSInit(void)
 {
+#if SMB_FEAT_RECONNECT_THREADS
     smbReconnectEnabled = 1;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
@@ -226,6 +254,10 @@ void DeviceFSInit(void)
         smb_Disconnect();
         smbConnectionState = 0;
     }
+#else
+    // 恢复旧行为：单次打开会话/共享/文件，不检查结果
+    smbOpenGame();
+#endif
 }
 
 void DeviceLock(void)
@@ -235,10 +267,15 @@ void DeviceLock(void)
 
 void DeviceUnmount(void)
 {
+#if SMB_FEAT_RECONNECT_THREADS
     smbReconnectEnabled = 0;
     if (smbConnectionState == 1)
         smb_CloseAll();
     smbConnectionState = 2;
+#else
+    // 恢复旧行为：无条件关闭全部文件句柄
+    smb_CloseAll();
+#endif
     smb_Disconnect();
 }
 
@@ -270,6 +307,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 esc_flag = 1;
 
             bytes_to_read = sectors_to_read * 2048;
+#if SMB_FEAT_RECONNECT_THREADS
             for (;;) {
                 while (smbReconnectEnabled && !smbPhysicalLinkDown && smbConnectionState != 1)
                     DelayThread(100000);
@@ -291,8 +329,32 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 rv = SCECdErTRMOPN;
                 break;
             }
+#if SMB_FEAT_SHORTREAD_ZEROFILL
             if (result < bytes_to_read)
                 memset(&p[r + result], 0, bytes_to_read - result);
+#else
+            if (result < bytes_to_read) {
+                rv = SCECdErREAD;
+                break;
+            }
+#endif
+#else  /* !SMB_FEAT_RECONNECT_THREADS */
+            // 恢复旧行为：单次读取，失败立即向游戏报告读错误
+            result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
+            if (result <= 0) {
+                rv = SCECdErREAD;
+                break;
+            }
+#if SMB_FEAT_SHORTREAD_ZEROFILL
+            if (result < bytes_to_read)
+                memset(&p[r + result], 0, bytes_to_read - result);
+#else
+            if (result < bytes_to_read) {
+                rv = SCECdErREAD;
+                break;
+            }
+#endif
+#endif /* SMB_FEAT_RECONNECT_THREADS */
 
             r += bytes_to_read;
             offslsn += sectors_to_read;

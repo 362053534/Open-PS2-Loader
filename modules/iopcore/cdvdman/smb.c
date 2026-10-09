@@ -16,6 +16,7 @@
 
 #include "oplsmb.h"
 #include "smb.h"
+#include "smb_tuning.h"
 #include "cdvd_config.h"
 
 #include "smsutils.h"
@@ -136,12 +137,16 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
+#if SMB_FEAT_TCP_KEEPALIVE
     plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
     opt = SMB_KEEPALIVE_TIME;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
+#endif
+#if SMB_FEAT_SOCK_TIMEOUT
     opt = SMB_IO_TIMEOUT;
     plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
     plwip_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
+#endif
 
     memset(&sock_addr, 0, sizeof(sock_addr));
     sock_addr.sin_addr = dst_IP;
@@ -726,11 +731,19 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
         toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
 
         result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
+#if SMB_FEAT_SHORTREAD_ZEROFILL
         if (result <= 0) {
             if (!result)
                 result = nbytes - remaining;
             break;
         }
+#else
+        // 恢复旧行为：读取失败立即返回错误（但补上旧代码漏掉的信号量释放，避免下一次读取死锁）
+        if (result <= 0) {
+            SIGNALIOSEMA(smb_io_sema);
+            return result;
+        }
+#endif
 
         //Check for and handle overflow.
         if (offsetlow + result < offsetlow)
@@ -742,7 +755,11 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
 
     SIGNALIOSEMA(smb_io_sema);
 
+#if SMB_FEAT_SHORTREAD_ZEROFILL
     return remaining > 0 ? result : nbytes;
+#else
+    return nbytes;
+#endif
 }
 
 //-------------------------------------------------------------------------
