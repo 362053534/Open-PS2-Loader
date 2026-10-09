@@ -98,6 +98,12 @@ static u32 cdread_diag_completed;
 static u32 cdread_diag_notified;
 static u32 cdread_diag_lba;
 static u32 cdread_diag_sectors;
+static u32 cdread_diag_error_count;
+static u32 cdread_diag_error_sequence;
+static u32 cdread_diag_error_lba;
+static u32 cdread_diag_error_sectors;
+static u8 cdread_diag_result;
+static u8 cdread_diag_last_error;
 static void cdvdman_diag_watch_Thread(void *args);
 #endif
 #endif
@@ -1051,6 +1057,14 @@ static void cdvdman_cdread_Thread(void *args)
             CpuSuspendIntr(&OldState);
 #ifdef __CDREAD_DIAG
             cdread_diag_completed = cdread_diag_sequence;
+            cdread_diag_result = cdvdman_stat.err;
+            if (cdvdman_stat.err != SCECdErNO) {
+                cdread_diag_error_count++;
+                cdread_diag_last_error = cdvdman_stat.err;
+                cdread_diag_error_sequence = cdread_diag_sequence;
+                cdread_diag_error_lba = cdread_diag_lba;
+                cdread_diag_error_sectors = cdread_diag_sectors;
+            }
 #endif
             /* 提升待处理请求前先冻结完成项身份，否则新请求会偷走旧请求的完成通知。 */
             completed_owner = cdread_owner;
@@ -1121,7 +1135,8 @@ static void cdvdman_diag_watch_Thread(void *args)
     while (1) {
         int OldState;
         u32 sequence, completed, notified, lba, sectors;
-        u8 phase, owner, busy, pending, outstand, sync;
+        u32 error_count, error_sequence, error_lba, error_sectors;
+        u8 phase, owner, busy, pending, outstand, sync, result, last_error;
 
         DelayThread(1000000);
         CpuSuspendIntr(&OldState);
@@ -1130,6 +1145,12 @@ static void cdvdman_diag_watch_Thread(void *args)
         notified = cdread_diag_notified;
         lba = cdread_diag_lba;
         sectors = cdread_diag_sectors;
+        error_count = cdread_diag_error_count;
+        error_sequence = cdread_diag_error_sequence;
+        error_lba = cdread_diag_error_lba;
+        error_sectors = cdread_diag_error_sectors;
+        result = cdread_diag_result;
+        last_error = cdread_diag_last_error;
         owner = cdread_owner;
         busy = cdread_io_busy;
         pending = cdread_pending;
@@ -1154,12 +1175,14 @@ static void cdvdman_diag_watch_Thread(void *args)
         /* 同一状态持续五秒才报告一次，避免逐笔读取日志改变时序。 */
         if (stable_seconds >= 5 && (sequence != reported_sequence || phase != reported_phase)) {
             if (phase == 3) {
-                printf("CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu\n",
-                       sequence, lba, sectors, owner, sync, busy, pending, outstand, completed, notified);
+                printf("CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
+                       sequence, lba, sectors, owner, sync, busy, pending, outstand, completed, notified,
+                       result, error_count, error_sequence, error_lba, error_sectors, last_error);
             } else {
-                printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu\n",
+                printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu result=%u errors=%lu error_seq=%lu error_lsn=%lu error_sectors=%lu last_error=%u\n",
                        phase == 1 ? "io" : "completion", sequence, lba, sectors, owner,
-                       sync, busy, pending, outstand, completed, notified);
+                       sync, busy, pending, outstand, completed, notified, result, error_count,
+                       error_sequence, error_lba, error_sectors, last_error);
             }
             reported_sequence = sequence;
             reported_phase = phase;
