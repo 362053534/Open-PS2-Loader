@@ -1115,6 +1115,9 @@ static void cdvdman_diag_watch_Thread(void *args)
 
     (void)args;
 
+    /* 单次启动标记用于确认监视线程和游戏内日志链路均已生效。 */
+    printf("CDREAD_DIAG_READY\n");
+
     while (1) {
         int OldState;
         u32 sequence, completed, notified, lba, sectors;
@@ -1132,14 +1135,12 @@ static void cdvdman_diag_watch_Thread(void *args)
         pending = cdread_pending;
         outstand = cdread_outstand;
         sync = sync_flag;
-        phase = busy ? 1 : (sync ? 2 : 0);
+        /* phase 3 表示已有读历史但当前完全空闲，用来确认是上层停止继续提交。 */
+        phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
         CpuResumeIntr(OldState);
 
-        if (phase == 0) {
-            stable_seconds = 0;
-            last_phase = 0;
+        if (phase == 0)
             continue;
-        }
 
         if (sequence == last_sequence && phase == last_phase) {
             if (stable_seconds < 255)
@@ -1150,11 +1151,16 @@ static void cdvdman_diag_watch_Thread(void *args)
             stable_seconds = 1;
         }
 
-        /* 同一阶段持续五秒才报告一次，正常读路径不产生串口或网络输出。 */
+        /* 同一状态持续五秒才报告一次，避免逐笔读取日志改变时序。 */
         if (stable_seconds >= 5 && (sequence != reported_sequence || phase != reported_phase)) {
-            printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu\n",
-                   phase == 1 ? "io" : "completion", sequence, lba, sectors, owner,
-                   sync, busy, pending, outstand, completed, notified);
+            if (phase == 3) {
+                printf("CDREAD_IDLE seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu\n",
+                       sequence, lba, sectors, owner, sync, busy, pending, outstand, completed, notified);
+            } else {
+                printf("CDREAD_STALL phase=%s seq=%lu lsn=%lu sectors=%lu owner=%u sync=%u busy=%u pending=%u out=%u completed=%lu notified=%lu\n",
+                       phase == 1 ? "io" : "completion", sequence, lba, sectors, owner,
+                       sync, busy, pending, outstand, completed, notified);
+            }
             reported_sequence = sequence;
             reported_phase = phase;
         }
