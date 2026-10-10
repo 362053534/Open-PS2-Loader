@@ -193,6 +193,7 @@ char gExitPath[256];
 int gEnableDebug;
 int gPS2Logo;
 int gDefaultDevice;
+int gAutoMode1;
 int gEnableWrite;
 char gBDMPrefix[32];
 char gETHPrefix[32];
@@ -2008,6 +2009,7 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_AUTO_SORT, &gAutosort);
             configGetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, &gAutoRefresh);
             configGetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, &gDefaultDevice);
+            configGetInt(configOPL, CONFIG_OPL_AUTO_MODE1, &gAutoMode1);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_WRITE, &gEnableWrite);
             configGetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, &gHDDSpindown);
             configGetStrCopy(configOPL, CONFIG_OPL_BDM_PREFIX, gBDMPrefix, sizeof(gBDMPrefix));
@@ -2177,6 +2179,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_AUTO_SORT, gAutosort);
         configSetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, gAutoRefresh);
         configSetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, gDefaultDevice);
+        configSetInt(configOPL, CONFIG_OPL_AUTO_MODE1, gAutoMode1);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_WRITE, gEnableWrite);
         configSetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, gHDDSpindown);
         configSetStr(configOPL, CONFIG_OPL_BDM_PREFIX, gBDMPrefix);
@@ -2862,6 +2865,7 @@ static void setDefaults(void)
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
+    gAutoMode1 = 1;
     gTxtRename = 0;
     gAutosort = 1;
     gAutoRefresh = 1;
@@ -3248,7 +3252,7 @@ int main(int argc, char *argv[])
     init();
 
     // until this point in the code is reached, only PREINIT_LOG macro should be used
-    //LOG_ENABLE();
+    LOG_ENABLE();
 
     guiIntroLoop();
     guiMainLoop();

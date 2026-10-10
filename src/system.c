@@ -949,7 +949,12 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     strncpy(config->ExitPath, gExitPath, CORE_EXIT_PATH_MAX_LEN);
     strncpy(config->GameModeDesc, mode_str, CORE_GAME_MODE_DESC_MAX_LEN);
 
+#ifdef __CDREAD_DIAG
+    /* 专用诊断不能依赖用户配置，否则 EE Core 会跳过部分调试路径。 */
+    config->EnableDebug = 1;
+#else
     config->EnableDebug = gEnableDebug;
+#endif
     config->HDDSpindown = gHDDSpindown;
     config->g_ps2_ETHOpMode = gETHOpMode;
 

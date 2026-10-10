@@ -1437,7 +1437,7 @@ static void cdvdman_diag_watch_Thread(void *args)
 static void bdm_cdread_diag_watch_Thread(void *args)
 {
     u32 last_sequence = 0, reported_sequence = 0, last_timing_report = 0;
-    u32 reported_api_total = 0;
+    struct bdm_cdread_api_diag reported_api = {0};
     u8 last_phase = 0, reported_phase = 0, stable_seconds = 0;
 
     (void)args;
@@ -1446,7 +1446,7 @@ static void bdm_cdread_diag_watch_Thread(void *args)
     while (1) {
         int OldState;
         u32 sequence, completed, notified, lba, sectors, signature;
-        u32 errors, error_sequence, error_lba, error_sectors, api_total;
+        u32 errors, error_sequence, error_lba, error_sectors;
         struct cdread_diag_sample history[CDREAD_DIAG_HISTORY];
         struct bdm_cdread_diag_timing timing[CDREAD_DIAG_HISTORY];
         struct bdm_cdread_api_diag api;
@@ -1478,18 +1478,13 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
         CpuResumeIntr(OldState);
 
-        api_total = api.sync_calls + api.sync_busy + api.geterror_calls + api.callback_set +
-                    api.callback_clear + api.read_rejected + api.st_init + api.st_start +
-                    api.st_stat + api.st_stop + api.st_pause + api.st_resume + api.st_seek +
-                    api.st_read + api.st_underrun + api.prefetch_hit + api.prefetch_fill +
-                    api.prefetch_fail;
-        if (api_total != reported_api_total) {
+        if (memcmp(&api, &reported_api, sizeof(api)) != 0) {
             printf("BDM_CRI_API sync=%lu sync_busy=%lu geterr=%lu cb_set=%lu cb_clear=%lu rejected=%lu st_init=%lu st_start=%lu st_stat=%lu st_stop=%lu st_pause=%lu st_resume=%lu st_seek=%lu st_read=%lu st_underrun=%lu pf_hit=%lu pf_fill=%lu pf_fail=%lu\n",
                    api.sync_calls, api.sync_busy, api.geterror_calls, api.callback_set, api.callback_clear,
                    api.read_rejected, api.st_init, api.st_start, api.st_stat, api.st_stop,
                    api.st_pause, api.st_resume, api.st_seek, api.st_read, api.st_underrun,
                    api.prefetch_hit, api.prefetch_fill, api.prefetch_fail);
-            reported_api_total = api_total;
+            reported_api = api;
         }
 
         /* 连续读取时每至少 32 笔报告一次最新时序，监视线程最多每秒输出一行。 */

@@ -32,6 +32,9 @@ int sceCdGetDiskType(void)
 //-------------------------------------------------------------------------
 int sceCdGetError(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.geterror_calls++;
+#endif
     DPRINTF("sceCdGetError %d\n", cdvdman_stat.err);
 
     return cdvdman_stat.err;
