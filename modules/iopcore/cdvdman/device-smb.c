@@ -8,15 +8,10 @@
 #include "internal.h"
 
 #include "device.h"
-#include "smb_tuning.h"
 
-#ifndef SMB_RECONNECT_INTERVAL_US
 #define SMB_RECONNECT_INTERVAL_US 2000000
-#endif
 #define SMB_RECOVERY_WAIT_US      100000
-#ifndef SMB_ECHO_IDLE_TICKS
 #define SMB_ECHO_IDLE_TICKS       60
-#endif
 #define SMB_ECHO_RETRY_COUNT      2
 #define SMB_CONNECTION_WAIT_LINK  3
 #define SMB_CONNECTION_RETRY_WAIT 4
@@ -55,9 +50,6 @@ static volatile int smbReconnectStopping;
 static volatile int smbReconnectStopped;
 static volatile unsigned int smbIdleTicks;
 static volatile unsigned int smbEchoRetryCount;
-#if SMB_FEAT_ECHO_FORCE
-static volatile int smbEchoForced;
-#endif
 static int smbReconnectThreadID = -1;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
@@ -140,13 +132,6 @@ static void smbReconnectThread(void *arg)
             continue;
         }
 
-#if SMB_FEAT_ECHO_FORCE
-        /* 诊断用：启动后强制尽早发一次 Echo。smb_Echo() 在读线程占用
-         * smb_io_sema 时会直接返回 0（跳过），所以要重试到它真的执行为止。 */
-        if (!smbEchoForced)
-            smbIdleTicks = SMB_ECHO_IDLE_TICKS;
-#endif
-
         if (smbReconnectEnabled && smbConnectionState == 1) {
             // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
             if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
@@ -154,10 +139,6 @@ static void smbReconnectThread(void *arg)
 
             if (smbIdleTicks >= SMB_ECHO_IDLE_TICKS) {
                 result = smb_Echo();
-#if SMB_FEAT_ECHO_FORCE
-                if (result != 0) /* 0 = 被跳过，还没真的执行 */
-                    smbEchoForced = 1;
-#endif
                 if (result > 0) {
                     smbIdleTicks = 0;
                     smbEchoRetryCount = 0;

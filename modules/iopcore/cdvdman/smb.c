@@ -16,7 +16,6 @@
 
 #include "oplsmb.h"
 #include "smb.h"
-#include "smb_tuning.h"
 #include "cdvd_config.h"
 
 #include "smsutils.h"
@@ -38,8 +37,12 @@
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
-#define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
+/* Echo 保活探测的超时上限：不能用 setsockopt(SO_RCVTIMEO) —— 那会让 lwip 的每一次
+ * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
+ * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
+#define SMB_ECHO_TIMEOUT_MS    3000
+#define SMB_ECHO_POLL_MS       20
 
 int smb_io_sema = -1;
 
@@ -138,18 +141,10 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-#if SMB_FEAT_KEEPALIVE
     plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
     opt = SMB_KEEPALIVE_TIME;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
-#endif
-#if SMB_FEAT_SOCK_TIMEOUT
-    opt = SMB_IO_TIMEOUT;
-    plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
-#if SMB_FEAT_RCV_TIMEOUT
-    plwip_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
-#endif
-#endif
+    /* 注意：不要设 SO_SNDTIMEO / SO_RCVTIMEO。见 SMB_ECHO_TIMEOUT_MS 的注释。 */
 
     memset(&sock_addr, 0, sizeof(sock_addr));
     sock_addr.sin_addr = dst_IP;
@@ -268,8 +263,6 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
     return totalpkt_size;
 }
 
-#if SMB_FEAT_ECHO_TIMEOUT == 2
-
 /* GetSMBServerReply(0, NULL, 0) 的非阻塞轮询版：一次发完整包、收 NetBIOS 头、
  * 再收 SMB 回包，全程不设 SO_RCVTIMEO，超时上限由 timeout_ms 决定。
  * 只给 smb_Echo() 用，数据面继续走原来的阻塞 GetSMBServerReply()。 */
@@ -299,7 +292,6 @@ static int GetSMBServerReplyTimed(int timeout_ms)
 
     return totalpkt_size;
 }
-#endif
 
 //-------------------------------------------------------------------------
 //These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
@@ -902,30 +894,8 @@ int smb_Echo(void)
     ER->EchoCount = 1;
     ER->ByteCount = 0;
 
-    /* SMB_FEAT_ECHO_TIMEOUT：30s 超时只装在 Echo 这一次往返上，
-     * 而不是常驻在套接字上 —— 数据面的每一次收包因此始终是裸 WaitSema。 */
-#if SMB_FEAT_ECHO_TIMEOUT
-    {
-        int tmo = SMB_IO_TIMEOUT;
-        plwip_setsockopt(main_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tmo, sizeof(tmo));
-        plwip_setsockopt(main_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&tmo, sizeof(tmo));
-    }
-#endif
-
     nb_SetSessionMessage(sizeof(EchoRequest_t));
-#if SMB_FEAT_ECHO_TIMEOUT == 2
     result = GetSMBServerReplyTimed(SMB_ECHO_TIMEOUT_MS) > 0 ? 1 : -1;
-#else
-    result = GetSMBServerReply(0, NULL, 0) > 0 ? 1 : -1;
-#endif
-
-#if SMB_FEAT_ECHO_TIMEOUT
-    {
-        int tmo = 0;
-        plwip_setsockopt(main_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tmo, sizeof(tmo));
-        plwip_setsockopt(main_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&tmo, sizeof(tmo));
-    }
-#endif
 
     SIGNALIOSEMA(smb_io_sema);
 
