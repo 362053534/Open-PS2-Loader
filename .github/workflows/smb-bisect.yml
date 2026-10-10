@@ -37,7 +37,7 @@ jobs:
       matrix:
         include:
           - { id: FIX-RELEASE, tree: FIX, ref: "", mode: release }
-          - { id: PATCH1-STOCK, tree: PATCH1, ref: f91c3cf, mode: release }
+          - { id: PATCH1-STOCK, tree: PATCH1, ref: f91c3cffcc151c97ef9175fe81bd9ebdd1094c5c, mode: release }
           - { id: BASE-RELEASE, tree: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, mode: release }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
