@@ -708,6 +708,16 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
     return 1;
 }
+/* SMB_FEAT_ASYNC_READ=0 时也要把 patch-1 新增的两个入口补齐：
+ * streaming.c / scmd.c 会无条件调用它们。同步路径没有 pending，故一个是转发、一个是空实现。 */
+int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
+{
+    return cdvdman_AsyncRead(lsn, sectors, sector_size, buf);
+}
+
+void cdvdman_cancel_pending_read(void)
+{
+}
 #endif
 
 int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
