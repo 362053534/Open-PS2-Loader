@@ -12,6 +12,7 @@
 #define IOPCORE_COMPAT_ACCU_READS    0x0008
 #define IOPCORE_ENABLE_POFF          0x0100
 #define IOPCORE_SMB_FORMAT_USBLD     0x0200
+#define IOPCORE_COMPAT_SLOW_SEEK     0x0400
 
 // fakemodule_flags
 #define FAKE_MODULE_FLAG_DEV9    (1 << 0) // not used, compiled in
