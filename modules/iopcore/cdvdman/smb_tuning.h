@@ -53,6 +53,10 @@
  * 需要 SMB_FEAT_SOCK_TIMEOUT=0 才有意义（否则超时本来就在套接字上）。 */
 #define SMB_FEAT_ECHO_TIMEOUT 2
 
+/* 诊断用：置 1 时不管空闲与否，游戏启动后尽早强制发一次 Echo。
+ * 用来判定"某次 Echo 到底有没有真的执行过"，不受测试流程影响。 */
+#define SMB_FEAT_ECHO_FORCE 0
+
 /* 模式 2 用：等 Echo 回包的上限（毫秒）与轮询间隔（毫秒）。 */
 #define SMB_ECHO_TIMEOUT_MS 3000
 #define SMB_ECHO_POLL_MS   20

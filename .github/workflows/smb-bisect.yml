@@ -94,6 +94,8 @@ jobs:
           - { id: D1, tag: "NO-SOCKTMO", defines: "SMB_FEAT_SOCK_TIMEOUT=0" }
           - { id: D2, tag: "NO-SOCKTMO+ECHOTMO", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1" }
           - { id: E2, tag: "NO-SOCKTMO+ECHO-POLL-NB", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2" }
+          - { id: E6, tag: "FORCED-ECHO+SETSOCKOPT", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_FEAT_ECHO_FORCE=1" }
+          - { id: E7, tag: "FORCED-ECHO+POLL-NB", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2 SMB_FEAT_ECHO_FORCE=1" }
           - { id: E1, tag: "ECHO-NEVER", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=3600" }
           - { id: E4, tag: "ECHO-AMPLIFY-2s", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=1" }
     runs-on: ubuntu-latest
