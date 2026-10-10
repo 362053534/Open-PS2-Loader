@@ -59,6 +59,8 @@ enum GAME_MENU_IDs {
 // global menu variables
 static menu_list_t *menu;
 static menu_list_t *selected_item;
+static menu_item_t *lastArtMenu;
+static submenu_list_t *lastArtCurrent;
 
 static int actionStatus;
 static int itemConfigId;
@@ -226,7 +228,8 @@ static void menuInitMainMenu(void)
     submenuAppendItem(&mainMenu, -1, NULL, MENU_OSD_LANGUAGE_SETTINGS, _STR_OSD_SETTINGS);
     submenuAppendItem(&mainMenu, -1, NULL, MENU_PARENTAL_LOCK, _STR_PARENLOCKCONFIG);
     submenuAppendItem(&mainMenu, -1, NULL, MENU_NET_CONFIG, _STR_NETCONFIG);
-    submenuAppendItem(&mainMenu, -1, NULL, MENU_NET_UPDATE, _STR_NET_UPDATE);
+    /* 关掉网络更新入口，实现仍留在 guiShowNetCompatUpdate。 */
+    // submenuAppendItem(&mainMenu, -1, NULL, MENU_NET_UPDATE, _STR_NET_UPDATE);
     submenuAppendItem(&mainMenu, -1, NULL, MENU_START_NBD, _STR_STARTNBD);
     submenuAppendItem(&mainMenu, -1, NULL, MENU_ABOUT, _STR_ABOUT);
     submenuAppendItem(&mainMenu, -1, NULL, MENU_SAVE_CHANGES, _STR_SAVE_CHANGES);
@@ -286,6 +289,8 @@ void menuInit()
 {
     menu = NULL;
     selected_item = NULL;
+    lastArtMenu = NULL;
+    lastArtCurrent = NULL;
     itemConfigId = -1;
     itemConfig = NULL;
     mainMenu = NULL;
@@ -349,8 +354,21 @@ static menu_list_t *AllocMenuItem(menu_item_t *item)
     return it;
 }
 
+static int menuItemMode(menu_item_t *item)
+{
+    item_list_t *support;
+
+    if (!item || !item->userdata)
+        return MODE_COUNT;
+    support = item->userdata;
+    return support->mode;
+}
+
 void menuAppendItem(menu_item_t *item)
 {
+    menu_list_t *newitem;
+    int mode;
+
     assert(item);
 
     WaitSema(menuListSemaId);
@@ -359,18 +377,24 @@ void menuAppendItem(menu_item_t *item)
         menu = AllocMenuItem(item);
         selected_item = menu;
     } else {
-        menu_list_t *cur = menu;
+        // 后挂的设备页按 mode 插到应有位置，避免顶到最右边。
+        newitem = AllocMenuItem(item);
+        mode = menuItemMode(item);
+        if (menuItemMode(menu->item) > mode) {
+            newitem->next = menu;
+            menu->prev = newitem;
+            menu = newitem;
+        } else {
+            menu_list_t *cur = menu;
 
-        // traverse till the end
-        while (cur->next)
-            cur = cur->next;
-
-        // create new item
-        menu_list_t *newitem = AllocMenuItem(item);
-
-        // link
-        cur->next = newitem;
-        newitem->prev = cur;
+            while (cur->next && menuItemMode(cur->next->item) <= mode)
+                cur = cur->next;
+            newitem->next = cur->next;
+            newitem->prev = cur;
+            if (cur->next)
+                cur->next->prev = newitem;
+            cur->next = newitem;
+        }
     }
 
     SignalSema(menuListSemaId);
@@ -1004,8 +1028,30 @@ static void menuRenderElements(theme_element_t *elem)
     SignalSema(menuSemaId);
 }
 
+static void menuCheckArtCursorChanged(void)
+{
+    if (!selected_item || !selected_item->item)
+        return;
+
+    menu_item_t *currentMenu = selected_item->item;
+    submenu_list_t *current = currentMenu->current;
+    if (!lastArtMenu) {
+        lastArtMenu = currentMenu;
+        lastArtCurrent = current;
+        return;
+    }
+
+    if (lastArtMenu != currentMenu || lastArtCurrent != current) {
+        cacheCancelPendingArtRequests();
+        lastArtMenu = currentMenu;
+        lastArtCurrent = current;
+    }
+}
+
 void menuRenderMain(void)
 {
+    menuCheckArtCursorChanged();
+
     item_list_t *list = selected_item->item->userdata;
     infoScreen = 0;
     if (list->mode == APP_MODE) {
@@ -1063,6 +1109,8 @@ void menuHandleInputMain()
 
 void menuRenderInfo(void)
 {
+    menuCheckArtCursorChanged();
+
     item_list_t *list = selected_item->item->userdata;
     infoScreen = 1;
     if (list->mode == APP_MODE) {

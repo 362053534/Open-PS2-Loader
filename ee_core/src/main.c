@@ -66,7 +66,7 @@ static int eecoreInit(int argc, char **argv)
 
     DPRINTF("IP=%s NM=%s GW=%s mode: %d\n", config->g_ps2_ip, config->g_ps2_netmask, config->g_ps2_gateway, config->g_ps2_ETHOpMode);
 
-    DPRINTF("PS2RD Cheat Engine = %s\n", config->gCheatList == NULL ? "Disabled" : "Enabled");
+    DPRINTF("PS2RD Cheat Engine = %s\n", config->gCheatList == NULL && !HasBuiltInCheats() ? "Disabled" : "Enabled");
 
     DPRINTF("GSM = %s\n", config->EnableGSMOp == 0 ? "Disabled" : "Enabled");
 
@@ -88,7 +88,7 @@ static int eecoreInit(int argc, char **argv)
     g_compat_mask = config->_CompatMask;
     DPRINTF("Compat Mask = 0x%02x\n", g_compat_mask);
 
-    if (config->gCheatList) {
+    if (config->gCheatList || HasBuiltInCheats()) {
         EnableCheats();
     }
 

@@ -5,6 +5,8 @@ int getmcID(void);
 int getFileSize(int fd);
 void checkMCFolder(void);
 int installPopstarterDrivers(int mode, int bdmDeviceType);
+int buildPopstarterSMBConfigs(char *ipconfig, int ipconfigCapacity, int *ipconfigSize,
+                              char *smbconfig, int smbconfigCapacity, int *smbconfigSize);
 int openFile(char *path, int mode);
 void *readFile(char *path, int align, int *size);
 int listDir(char *path, const char *separator, int maxElem,

@@ -82,20 +82,22 @@ static iop_ext_device_t cdrom_dev = {
 static unsigned char fs_inited = 0;
 
 //--------------------------------------------------------------
-void cdvdman_fs_init(void)
+int cdvdman_fs_init(void)
 {
     if (fs_inited)
-        return;
+        return 1;
 
     DPRINTF("cdvdman_fs_init\n");
 
-    DeviceFSInit();
+    if (DeviceFSInit() < 0)
+        return 0;
 
     memset(&cdvdman_fdhandles[0], 0, MAX_FDHANDLES * sizeof(FHANDLE));
 
     cdvdman_searchfile_init();
 
     fs_inited = 1;
+    return 1;
 }
 
 //--------------------------------------------------------------
@@ -122,7 +124,10 @@ static int cdvdman_open(iop_file_t *f, const char *filename, int mode)
 
     WaitSema(cdrom_io_sema);
 
-    cdvdman_init();
+    if (!cdvdman_init()) {
+        SignalSema(cdrom_io_sema);
+        return -EIO;
+    }
 
     if (f->unit < 2) {
         sceCdDiskReady(0);
@@ -282,7 +287,7 @@ static int cdrom_read(iop_file_t *f, void *buf, int size)
             if (size < nbytes)
                 nbytes = size;
             while (sceCdRead(fh->lsn + (fh->position / 2048), 1, cdvdman_fs_buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
 
             fh->position += nbytes;
             size -= nbytes;
@@ -298,7 +303,7 @@ static int cdrom_read(iop_file_t *f, void *buf, int size)
             nbytes = nsectors * 2048;
 
             while (sceCdRead(fh->lsn + (fh->position / 2048), nsectors, buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
 
             buf += nbytes;
             size -= nbytes;
@@ -311,7 +316,7 @@ static int cdrom_read(iop_file_t *f, void *buf, int size)
         // Phase 3: read any remaining data that isn't divisible by 2048.
         if ((nbytes = size) > 0) {
             while (sceCdRead(fh->lsn + (fh->position / 2048), 1, cdvdman_fs_buf, NULL) == 0)
-                DelayThread(10000);
+                sceCdSync(0);
 
             fh->position += nbytes;
             rpos += nbytes;
@@ -395,7 +400,9 @@ static int cdrom_dread(iop_file_t *f, iox_dirent_t *dirent)
     DPRINTF("cdrom_dread fh->lsn=%lu\n", fh->lsn);
 
     sceCdDiskReady(0);
-    if ((r = sceCdRead(fh->lsn, 1, cdvdman_fs_buf, NULL)) == 1) {
+    while ((r = sceCdRead(fh->lsn, 1, cdvdman_fs_buf, NULL)) == 0)
+        sceCdSync(0);
+    if (r == 1) {
         sceCdSync(0);
 
         do {

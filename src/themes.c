@@ -537,12 +537,37 @@ static void initStaticImage(const char *themePath, config_set_t *themeConfig, th
 
 // GameImage ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static int artEnabledForCache(image_cache_t *cache)
+{
+    // 三个独立开关只挡背景/封面/光碟，其它 ART 照常读。
+    if (!cache || !cache->suffix)
+        return 1;
+    if (!strncmp(cache->suffix, "BG", 2))
+        return gEnableArtBG;
+    if (!strncmp(cache->suffix, "COV", 3))
+        return gEnableArtCOV;
+    if (!strncmp(cache->suffix, "ICO", 3))
+        return gEnableArtICO;
+    return 1;
+}
+
+static int artHideDefaultTemplate(image_cache_t *cache)
+{
+    if (!cache || !cache->suffix)
+        return 0;
+    if (!strncmp(cache->suffix, "COV", 3))
+        return !gEnableArtCOV;
+    if (!strncmp(cache->suffix, "ICO", 3))
+        return !gEnableArtICO;
+    return 0;
+}
+
 static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struct submenu_item *item)
 {
-    if (gEnableArt) {
+    if (artEnabledForCache(cache)) {
         item_list_t *list = (item_list_t *)support;
         char *startup = list->itemGetStartup(list, item->id);
-        return cacheGetTexture(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup);
+        return cacheGetTexture(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
     }
 
     return NULL;
@@ -554,6 +579,9 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
     if (item) {
         GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);
         if (!texture || !texture->Mem) {
+            // 封面/光碟关掉时，连默认模板和卡带框都不画
+            if (artHideDefaultTemplate(gameImage->cache))
+                return;
             if (gameImage->defaultTexture)
                 texture = &gameImage->defaultTexture->source;
             else {
@@ -621,7 +649,7 @@ static void drawAttributeImage(struct menu_list *menu, struct submenu_list *item
                 return;
             } else {
                 int posZ = 0;
-                GSTEXTURE *texture = cacheGetTexture(attributeImage->cache, menu->item->userdata, &posZ, &attributeImage->currentUid, attributeImage->currentValue);
+                GSTEXTURE *texture = cacheGetTexture(attributeImage->cache, menu->item->userdata, &posZ, &attributeImage->currentUid, attributeImage->currentValue, -1);
                 if (texture && texture->Mem) {
                     if (attributeImage->overlayTexture) {
                         rmDrawOverlayPixmap(&attributeImage->overlayTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,
@@ -903,6 +931,9 @@ static void initItemsList(const char *themePath, config_set_t *themeConfig, them
 static void drawItemText(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     if (item) {
+        // 封面关时，封面下方的游戏ID一并隐藏
+        if (!gEnableArtCOV)
+            return;
         item_list_t *support = menu->item->userdata;
         fntRenderString(elem->font, elem->posX, elem->posY, elem->aligned, 0, 0, support->itemGetStartup(support, item->item.id), elem->color);
     }
@@ -1187,6 +1218,14 @@ static int thmLoadResource(GSTEXTURE *texture, int texId, const char *themePath,
     return success;
 }
 
+static void thmApplyTextColor(theme_element_t *elem, u64 color)
+{
+    while (elem) {
+        elem->color = color;
+        elem = elem->next;
+    }
+}
+
 static void thmSetColors(theme_t *theme)
 {
     memcpy(theme->bgColor, gDefaultBgColor, 3);
@@ -1194,11 +1233,11 @@ static void thmSetColors(theme_t *theme)
     theme->uiTextColor = GS_SETREG_RGBA(gDefaultUITextColor[0], gDefaultUITextColor[1], gDefaultUITextColor[2], 0x80);
     theme->selTextColor = GS_SETREG_RGBA(gDefaultSelTextColor[0], gDefaultSelTextColor[1], gDefaultSelTextColor[2], 0x80);
 
-    theme_element_t *elem = theme->mainElems.first;
-    while (elem) {
-        elem->color = theme->textColor;
-        elem = elem->next;
-    }
+    /* APPS 主页/信息页是独立元素链，只改 mainElems 时自定义颜色不会进 APPS。 */
+    thmApplyTextColor(theme->mainElems.first, theme->textColor);
+    thmApplyTextColor(theme->infoElems.first, theme->textColor);
+    thmApplyTextColor(theme->appsMainElems.first, theme->textColor);
+    thmApplyTextColor(theme->appsInfoElems.first, theme->textColor);
 }
 
 static void thmLoadFonts(config_set_t *themeConfig, const char *themePath, theme_t *theme)

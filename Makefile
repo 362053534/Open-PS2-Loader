@@ -73,7 +73,7 @@ endif
 
 FRONTEND_OBJS = pad.o xparam.o fntsys.o renderman.o menusys.o OSDHistory.o system.o lang.o lang_internal.o config.o hdd.o dialogs.o \
 		dia.o ioman.o texcache.o themes.o supportbase.o bdmsupport.o ethsupport.o hddsupport.o zso.o lz4.o \
-		appsupport.o gui.o guigame.o textures.o opl.o atlas.o nbns.o httpclient.o gsm.o cheatman.o sound.o ps2cnf.o
+		appsupport.o popstarter_smb_vfs.o gui.o guigame.o textures.o opl.o atlas.o nbns.o httpclient.o gsm.o cheatman.o sound.o ps2cnf.o
 
 IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		bdm.o bdmfs_fatfs.o usbmass_bd.o iLinkman.o IEEE1394_bd.o mx4sio_bd.o \
@@ -81,8 +81,8 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		ps2dev9.o smsutils.o ps2ip.o smap.o isofs.o nbns-iop.o \
 		sio2man.o padman.o mcman.o mcserv.o \
 		httpclient-iop.o netman.o ps2ips.o \
-		bdm_mcemu.o hdd_mcemu.o smb_mcemu.o \
-		iremsndpatch.o apemodpatch.o f2techioppatch.o cleareffects.o resetspu.o \
+		bdm_mcemu.o hdd_mcemu.o pfs_bdm_mcemu.o smb_mcemu.o \
+		iremsndpatch.o apemodpatch.o f2techioppatch.o rcuyapatch.o cleareffects.o resetspu.o \
 		libsd.o audsrv.o
 
 EECORE_OBJS = ee_core.o ioprp.o util.o \
@@ -297,6 +297,8 @@ clean:	download_lwNBD
 	$(MAKE) -C modules/iopcore/patches/f2techioppatch clean
 	echo "   -cleareffects"
 	$(MAKE) -C modules/iopcore/patches/cleareffects clean
+	echo "   -rcuya"
+	$(MAKE) -C modules/iopcore/patches/rcuyapatch clean
 	echo " -isofs"
 	$(MAKE) -C modules/isofs clean
 	echo " -bdmevent"
@@ -318,6 +320,7 @@ clean:	download_lwNBD
 	echo " -mcemu"
 	$(MAKE) -C modules/mcemu USE_BDM=1 clean
 	$(MAKE) -C modules/mcemu USE_HDD=1 clean
+	$(MAKE) -C modules/mcemu USE_PFS_BDM=1 clean
 	$(MAKE) -C modules/mcemu USE_SMB=1 clean
 	echo " -genvmc"
 	$(MAKE) -C modules/vmc/genvmc clean
@@ -495,6 +498,12 @@ modules/iopcore/patches/f2techioppatch/f2techioppatch.irx: modules/iopcore/patch
 $(EE_ASM_DIR)f2techioppatch.c: modules/iopcore/patches/f2techioppatch/f2techioppatch.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ $(*F)_irx
 
+modules/iopcore/patches/rcuyapatch/rcuyapatch.irx: modules/iopcore/patches/rcuyapatch
+	$(MAKE) -C $<
+
+$(EE_ASM_DIR)rcuyapatch.c: modules/iopcore/patches/rcuyapatch/rcuyapatch.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ $(*F)_irx
+
 modules/iopcore/patches/cleareffects/cleareffects.irx: modules/iopcore/patches/cleareffects
 	$(MAKE) -C $<
 
@@ -517,6 +526,12 @@ modules/mcemu/hdd_mcemu.irx: modules/mcemu
 	$(MAKE) $(MCEMU_DEBUG_FLAGS) $(PADEMU_FLAGS) USE_HDD=1 -C $< all
 
 $(EE_ASM_DIR)hdd_mcemu.c: modules/mcemu/hdd_mcemu.irx
+	$(BIN2C) $< $@ $(*F)_irx
+
+modules/mcemu/pfs_bdm_mcemu.irx: modules/mcemu
+	$(MAKE) $(MCEMU_DEBUG_FLAGS) $(PADEMU_FLAGS) USE_PFS_BDM=1 -C $< all
+
+$(EE_ASM_DIR)pfs_bdm_mcemu.c: modules/mcemu/pfs_bdm_mcemu.irx
 	$(BIN2C) $< $@ $(*F)_irx
 
 modules/mcemu/smb_mcemu.irx: modules/mcemu

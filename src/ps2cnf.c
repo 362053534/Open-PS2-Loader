@@ -11,8 +11,6 @@
 #include "ps2cnf.h"
 #include "ioman.h"
 
-#define CNF_LEN_MAX 1024
-
 static const char *CNFGetToken(const char *cnf, const char *end, const char *key)
 {
     for (; isspace((int)*cnf) && cnf < end; cnf++) {
@@ -67,33 +65,13 @@ static const char *CNFGetKey(const char *line, char *key)
     return line;
 }
 
-int ps2cnfGetBootFile(const char *path, char *bootfile)
+int ps2cnfGetBootFileFromBuffer(const char *system_cnf, int size, char *bootfile)
 {
-    char system_cnf[CNF_LEN_MAX];
     const char *pChar, *cnf_start, *cnf_end;
-    FILE *fd;
-    int size;
 
-    if ((fd = fopen(path, "r")) == NULL) {
-        LOG("Can't open %s\n", path);
-        return ENOENT;
-    }
+    if (system_cnf == NULL || size <= 0)
+        return -1;
 
-    fseek(fd, 0, SEEK_END);
-    size = ftell(fd);
-    rewind(fd);
-
-    if (size >= CNF_LEN_MAX)
-        size = CNF_LEN_MAX - 1;
-
-    if (fread(system_cnf, 1, size, fd) != size) {
-        fclose(fd);
-        LOG("Can't read %s\n", path);
-        return EIO;
-    }
-    fclose(fd);
-
-    system_cnf[size] = '\0';
     cnf_end = &system_cnf[size];
 
     // Parse SYSTEM.CNF
@@ -117,4 +95,34 @@ int ps2cnfGetBootFile(const char *path, char *bootfile)
     }
 
     return 0;
+}
+
+int ps2cnfGetBootFile(const char *path, char *bootfile)
+{
+    char system_cnf[CNF_LEN_MAX];
+    FILE *fd;
+    int size;
+
+    if ((fd = fopen(path, "r")) == NULL) {
+        LOG("Can't open %s\n", path);
+        return ENOENT;
+    }
+
+    fseek(fd, 0, SEEK_END);
+    size = ftell(fd);
+    rewind(fd);
+
+    if (size >= CNF_LEN_MAX)
+        size = CNF_LEN_MAX - 1;
+
+    if (fread(system_cnf, 1, size, fd) != size) {
+        fclose(fd);
+        LOG("Can't read %s\n", path);
+        return EIO;
+    }
+    fclose(fd);
+
+    system_cnf[size] = '\0';
+
+    return ps2cnfGetBootFileFromBuffer(system_cnf, size, bootfile);
 }

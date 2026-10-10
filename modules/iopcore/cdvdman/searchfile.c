@@ -97,8 +97,8 @@ lbl_startlocate:
     }
 
     while (tocLength > 0) {
-        if (sceCdRead(tocLBA, 1, cdvdman_buf, NULL) == 0)
-            return NULL;
+        while (sceCdRead(tocLBA, 1, cdvdman_buf, NULL) == 0)
+            sceCdSync(0);
         sceCdSync(0);
         DPRINTF("cdvdman_locatefile tocLBA read done\n");
 
@@ -160,7 +160,8 @@ static int cdvdman_findfile(sceCdlFILE *pcdfile, const char *name, int layer)
     struct dirTocEntry *tocEntryPointer;
     layer_info_t *pLayerInfo;
 
-    cdvdman_init();
+    if (!cdvdman_init())
+        return 0;
 
     if (cdvdman_settings.common.flags & IOPCORE_COMPAT_EMU_DVDDL)
         layer = 0;
@@ -230,7 +231,8 @@ int sceCdLayerSearchFile(sceCdlFILE *fp, const char *name, int layer)
 void cdvdman_searchfile_init(void)
 {
     // Read the volume descriptor
-    sceCdRead(16, 1, cdvdman_buf, NULL);
+    while (sceCdRead(16, 1, cdvdman_buf, NULL) == 0)
+        sceCdSync(0);
     sceCdSync(0);
 
     struct dirTocEntry *tocEntryPointer = (struct dirTocEntry *)&cdvdman_buf[0x9c];
@@ -250,7 +252,8 @@ void cdvdman_searchfile_init(void)
             u32 lsn0 = mediaLsnCount;
             // So that CdRead below can read more than first layer.
             mediaLsnCount = 0;
-            sceCdRead(layer1_start + 16, 1, cdvdman_buf, NULL);
+            while (sceCdRead(layer1_start + 16, 1, cdvdman_buf, NULL) == 0)
+                sceCdSync(0);
             sceCdSync(0);
             tocEntryPointer = (struct dirTocEntry *)&cdvdman_buf[0x9c];
             layer_info[1].rootDirtocLBA = layer1_start + tocEntryPointer->fileLBA;

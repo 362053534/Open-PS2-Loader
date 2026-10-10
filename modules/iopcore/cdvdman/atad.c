@@ -621,13 +621,14 @@ int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, 
     USE_SPD_REGS;
     int res = 0, retries;
     u16 sector, lcyl, hcyl, select, command, len;
+    u32 transfer_len;
 
     WAITIOSEMA(ata_io_sema);
 
     while (res == 0 && nsectors > 0) {
         if (lba_48bit) {
             /* Setup for 48-bit LBA. */
-            len = (nsectors > 65536) ? 65536 : nsectors;
+            transfer_len = (nsectors > 65536) ? 65536 : nsectors;
 
             /* Combine bits 24-31 and bits 0-7 of lba into sector.  */
             sector = ((lba >> 16) & 0xff00) | (lba & 0xff);
@@ -639,7 +640,7 @@ int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, 
             command = (dir == 1) ? ATA_C_WRITE_DMA_EXT : ATA_C_READ_DMA_EXT;
         } else {
             /* Setup for 28-bit LBA.  */
-            len = (nsectors > 256) ? 256 : nsectors;
+            transfer_len = (nsectors > 256) ? 256 : nsectors;
             sector = lba & 0xff;
             lcyl = (lba >> 8) & 0xff;
             hcyl = (lba >> 16) & 0xff;
@@ -649,12 +650,14 @@ int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, 
             command = (dir == 1) ? ATA_C_WRITE_DMA : ATA_C_READ_DMA;
         }
 
+        len = (u16)transfer_len;
+
         for (retries = 3; retries > 0; retries--) {
             /* Due to the retry loop, put this call (for the GameStar workaround) here instead of the old location. */
             if (ata_gamestar_workaround)
                 ata_set_dir(dir);
 
-            if ((res = sceAtaExecCmd(buf, len, 0, len, sector, lcyl, hcyl, select, command)) != 0)
+            if ((res = sceAtaExecCmd(buf, transfer_len, 0, len, sector, lcyl, hcyl, select, command)) != 0)
                 break;
 
             /* Set up (part of) the transfer here. In v1.04, this was called at the top of the outer loop. */
@@ -670,9 +673,9 @@ int ata_device_sector_io_internal(int device, void *buf, u64 lba, u32 nsectors, 
                 break;
         }
 
-        buf = (void *)((u8 *)buf + len * 512);
-        lba += len;
-        nsectors -= len;
+        buf = (void *)((u8 *)buf + transfer_len * 512);
+        lba += transfer_len;
+        nsectors -= transfer_len;
     }
 
     SIGNALIOSEMA(ata_io_sema);

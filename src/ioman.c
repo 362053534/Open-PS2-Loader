@@ -9,7 +9,7 @@
 #include <sio.h>
 #endif
 
-#define MAX_IO_REQUESTS 8
+#define MAX_IO_REQUESTS 16
 #define MAX_IO_HANDLERS 8
 
 extern void *_gp;
@@ -231,7 +231,7 @@ void ioInit(void)
     gIOThread.gp_reg = &_gp;
     gIOThread.func = &ioWorkerThread;
     gIOThread.stack = thread_stack;
-    gIOThread.initial_priority = 30;
+    gIOThread.initial_priority = 32;
 
     isIORunning = 1;
     isIOPending = 0;
@@ -310,9 +310,10 @@ int ioPutRequestUnique(int type, void *data)
     return ioPutRequestInternal(type, data, 1);
 }
 
-int ioRemoveRequests(int type)
+int ioRemoveRequestsWithCleanup(int type, io_request_cleanup_t cleanup)
 {
-    // lock the deletion sema and the queue end sema as well
+    void *removedData[MAX_IO_REQUESTS];
+
     WaitSema(gEndSemaId);
 
     int count = 0;
@@ -332,7 +333,7 @@ int ioRemoveRequests(int type)
             if (req == gReqEnd)
                 gReqEnd = last;
 
-            count++;
+            removedData[count++] = req->data;
             FreeIoRequest(req);
 
             req = next;
@@ -342,9 +343,23 @@ int ioRemoveRequests(int type)
         }
     }
 
+    if (!gReqList && gActiveRequestType < 0)
+        isIOPending = 0;
+
     SignalSema(gEndSemaId);
 
+    // 清理函数可能获取其他锁，必须离开队列锁后再调用，避免锁顺序反转。
+    if (cleanup) {
+        for (int i = 0; i < count; i++)
+            cleanup(removedData[i]);
+    }
+
     return count;
+}
+
+int ioRemoveRequests(int type)
+{
+    return ioRemoveRequestsWithCleanup(type, NULL);
 }
 
 void ioEnd(void)

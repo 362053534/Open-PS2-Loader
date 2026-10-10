@@ -46,6 +46,9 @@ typedef struct
 void bdmInit(item_list_t *itemList);
 int bdmFindPartition(char *target, const char *name, int write);
 void bdmLoadModules(void);
+void bdmLoadDeviceModules(void);
+int bdmGetLoadedTypeMask(void);
+int bdmIsIlinkSupported(void);
 void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);
 
 void bdmInitSemaphore();
@@ -53,7 +56,7 @@ void bdmEnumerateDevices();
 
 void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData);
 
-int bdmUpdateDeviceData(item_list_t *itemList);
+int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly);
 int bdmHasDeviceEvent(item_list_t *itemList);
 void bdmRequestDeviceCheck(item_list_t *itemList);
 int bdmGetDeviceType(int mode);

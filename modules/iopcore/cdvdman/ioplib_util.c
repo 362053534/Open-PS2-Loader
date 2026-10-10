@@ -75,6 +75,17 @@ static struct FakeModule modulefake_list[] = {
     {NULL, NULL, 0, 0}};
 
 //--------------------------------------------------------------
+/* Neutrino i_dev9_hidden semantics for games that must not touch OPL's NIC (UYA on SMB). */
+static int fakeModHideDev9(void)
+{
+    return (cdvdman_settings.common.fakemodule_flags & FAKE_MODULE_FLAG_HIDE_DEV9) != 0;
+}
+
+static int fakeModIsNic(const struct FakeModule *mod)
+{
+    return (mod->id == FAKE_MODULE_ID_DEV9 || mod->id == FAKE_MODULE_ID_SMAP);
+}
+
 int getModInfo(char *modname, modinfo_t *info)
 {
     iop_library_t *libptr;
@@ -149,6 +160,13 @@ static int Hook_LoadStartModule(char *modpath, int arg_len, char *args, int *mod
 
     mod = checkFakemodByFile(modpath, modulefake_list);
     if (mod != NULL && mod->flag) {
+        if (fakeModHideDev9() && fakeModIsNic(mod)) {
+            if (mod->id == FAKE_MODULE_ID_DEV9) {
+                *modres = 1; /* MODULE_NO_RESIDENT_END — no adapter */
+                return mod->id;
+            }
+            return -200; /* KE_LINKERR — SMAP/ENT_SMAP depend on DEV9 */
+        }
         *modres = mod->returnValue;
         return mod->id;
     }
@@ -165,6 +183,13 @@ static int Hook_StartModule(int id, char *modname, int arg_len, char *args, int 
 
     mod = checkFakemodById(id, modulefake_list);
     if (mod != NULL && mod->flag) {
+        if (fakeModHideDev9() && fakeModIsNic(mod)) {
+            if (mod->id == FAKE_MODULE_ID_DEV9) {
+                *modres = 1;
+                return mod->id;
+            }
+            return -202; /* KE_UNKNOWN_MODULE */
+        }
         *modres = mod->returnValue;
         return mod->id;
     }
@@ -180,8 +205,11 @@ static int Hook_LoadModuleBuffer(void *ptr)
     DPRINTF("Hook_LoadModuleBuffer() modname = %s freeram = %d\n", ((char *)ptr + 0x8e), QueryTotalFreeMemSize());
 
     mod = checkFakemodByName(((char *)ptr + 0x8e), modulefake_list);
-    if (mod != NULL && mod->flag)
+    if (mod != NULL && mod->flag) {
+        if (fakeModHideDev9() && fakeModIsNic(mod) && mod->id == FAKE_MODULE_ID_SMAP)
+            return -200;
         return mod->id;
+    }
 
     return LoadModuleBuffer(ptr);
 }
@@ -224,8 +252,11 @@ static int Hook_SearchModuleByName(char *modname)
     DPRINTF("Hook_SearchModuleByName() modname = %s\n", modname);
 
     mod = checkFakemodByName(modname, modulefake_list);
-    if (mod != NULL && mod->flag)
+    if (mod != NULL && mod->flag) {
+        if (fakeModHideDev9() && fakeModIsNic(mod))
+            return -202; /* not resident / not loaded */
         return mod->id;
+    }
 
     return SearchModuleByName(modname);
 }

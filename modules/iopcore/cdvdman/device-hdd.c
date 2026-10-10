@@ -89,8 +89,9 @@ int DeviceReady(void)
     return SCECdComplete;
 }
 
-void DeviceFSInit(void)
+int DeviceFSInit(void)
 {
+    return 0;
 }
 
 void DeviceLock(void)

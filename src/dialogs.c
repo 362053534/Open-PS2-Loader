@@ -137,7 +137,17 @@ struct UIItem diaNetConfig[] = {
 
 // Block Devices Settings Menu
 struct UIItem diaBlockDevicesConfig[] = {
-    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_BLOCKDEVICE_SETTINGS}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {"启动模式设置", -1}}},
+    {UI_SPLITTER},
+
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_BDMMODE}}},
+    {UI_SPACER},
+    {UI_ENUM, CFG_BDMMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BREAK},
+    {UI_BREAK},
+    {UI_BREAK},
+
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"设备开关 (未使用的设备应关闭，以提升启动速度)", -1}}},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"USB", -1}}},
@@ -157,7 +167,7 @@ struct UIItem diaBlockDevicesConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"HDD (exFAT)", -1}}},
     {UI_SPACER},
-    {UI_BOOL, CFG_ENABLEBDMHDD, 1, 1, _STR_HDD_HINT, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, CFG_ENABLEBDMHDD, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     // buttons
@@ -223,14 +233,12 @@ struct UIItem diaConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_BDMMODE}}},
     {UI_SPACER},
-    {UI_ENUM, CFG_BDMMODE, 1, 1, _STR_HINT_BDM_START, 0, 0, {.intvalue = {0, 0}}},
-    {UI_SPACER},
-    {UI_BUTTON, BLOCKDEVICE_BUTTON, 1, 1, _STR_HINT_BLOCK_DEVICES, 0, 0, {.label = {NULL, _STR_BLOCKDEVICE_SETTINGS}}},
+    {UI_BUTTON, CFG_BDMMODE, 1, 1, _STR_HINT_BDM_START, 0, 0, {.label = {NULL, -1}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_HDDMODE}}},
     {UI_SPACER},
-    {UI_ENUM, CFG_HDDMODE, 1, 1, _STR_HDD_HINT, 0, 0, {.intvalue = {0, 0}}},
+    {UI_ENUM, CFG_HDDMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_ETHMODE}}},
@@ -243,11 +251,23 @@ struct UIItem diaConfig[] = {
     {UI_ENUM, CFG_APPMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"APPS & PS1自动识别", -1}}},
+    {UI_SPACER},
+    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BREAK},
+
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_DEFDEVICE}}},
     {UI_SPACER},
     {UI_ENUM, CFG_DEFDEVICE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动开启模式1 (提高兼容性)", -1}}},
+    {UI_SPACER},
+    {UI_BOOL, CFG_AUTO_MODE1, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BREAK},
+
+    /* 暂时隐藏三个扇区缓存设置入口，保留底层缓存功能。 */
+    /*
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"扇区缓存(BDM)", -1}}},
     {UI_SPACER},
     {UI_INT, CFG_BDMCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 8, 0, 32, NULL}}},
@@ -260,11 +280,7 @@ struct UIItem diaConfig[] = {
     {UI_SPACER},
     {UI_INT, CFG_SMBCACHE, 1, 1, -1, 0, 0, {.intvalue = {16, 4, 0, 32, NULL}}},
     {UI_BREAK},
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动识别APPS & PS1", -1}}},
-    {UI_SPACER},
-    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
-    {UI_BREAK},
-
+    */
     // buttons
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
     {UI_BREAK},
@@ -302,16 +318,22 @@ struct UIItem diaUIConfig[] = {
     {UI_BOOL, UICFG_AUTOREFRESH, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_COVERART}}},
-    {UI_SPACER},
-    {UI_BOOL, UICFG_COVERART, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
-    {UI_SPACER},
-    {UI_ENUM, UICFG_COVERARTMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
-    {UI_BREAK},
-
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_ENABLE_NOTIFICATIONS}}},
     {UI_SPACER},
     {UI_BOOL, UICFG_NOTIFICATIONS, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_SPLITTER},
+    {UI_BREAK},
+
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_COVERART}}},
+    {UI_SPACER},
+    {UI_BOOL, UICFG_COVERART_BG, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_SPACER},
+    {UI_BOOL, UICFG_COVERART_COV, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_SPACER},
+    {UI_BOOL, UICFG_COVERART_ICO, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_SPACER},
+    {UI_BOOL, UICFG_COVERARTMODE, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BREAK},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, -30, 0, {.label = {NULL, _STR_TXTCOLOR}}},
@@ -398,7 +420,8 @@ struct UIItem diaCompatConfig[] = {
     {UI_BOOL, COMPAT_MODE_BASE + 5, 1, 1, _STR_HINT_MODE6, -10, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
-    {UI_BUTTON, COMPAT_DL_DEFAULTS, 1, 1, -1, 0, 0, {.label = {NULL, _STR_DL_DEFAULTS}}},
+    /* 关掉下载默认值入口，实现仍留在 guiShowNetCompatUpdateSingle。 */
+    {UI_BUTTON, COMPAT_DL_DEFAULTS, 0, 0, -1, 0, 0, {.label = {NULL, _STR_DL_DEFAULTS}}},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, -30, 0, {.label = {NULL, _STR_DMA_MODE}}},

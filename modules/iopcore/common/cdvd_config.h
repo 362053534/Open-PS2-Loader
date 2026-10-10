@@ -20,6 +20,7 @@
 #define FAKE_MODULE_FLAG_ATAD    (1 << 3) // not used, compiled in
 #define FAKE_MODULE_FLAG_CDVDSTM (1 << 4) // not used, compiled in
 #define FAKE_MODULE_FLAG_CDVDFSV (1 << 5) // not used, compiled in
+#define FAKE_MODULE_FLAG_HIDE_DEV9 (1 << 6) // UYA on SMB: refuse/hide NIC like neutrino i_dev9_hidden
 
 #define ISO_MAX_PARTS 10
 
@@ -62,12 +63,11 @@ struct cdvdman_settings_smb
 } __attribute__((packed));
 
 #define BDM_MAX_FILES 1  // ISO
-#define BDM_MAX_FRAGS 65 // 65 * 8bytes = 520bytes
 
 struct cdvdman_fragfile
 {
-    u8 frag_start; /// First fragment in the fragment table
-    u8 frag_count; /// Munber of fragments in the fragment table
+    u32 frag_start; /// First fragment in the fragment table
+    u32 frag_count; /// Munber of fragments in the fragment table
 } __attribute__((packed));
 
 struct cdvdman_settings_bdm
@@ -87,8 +87,22 @@ struct cdvdman_settings_bdm
     // Indicates that the fragment table uses 512-byte APA/PFS sectors.
     u32 fragsAre512ByteSectors;
 
-    // Fragment table, containing the fragments of all files
-    bd_fragment_t frags[BDM_MAX_FRAGS];
+    // 碎片表在启动后由 EE 传入 IOP，避免配置区被固定数组限制。
+    u32 frag_table_ee_addr;
+    u32 frag_table_bytes;
+} __attribute__((packed));
+
+#define BDM_FRAGMENT_RPC_ID      0x800005A0
+#define BDM_FRAGMENT_RPC_PREPARE 0
+#define BDM_FRAGMENT_RPC_COMMIT  1
+
+struct bdm_fragment_rpc
+{
+    u32 command;
+    u32 fragment_count;
+    u32 fragment_bytes;
+    u32 iop_address;
+    s32 result;
 } __attribute__((packed));
 
 #define CDVDMAN_SETTINGS_DEFAULT_COMMON                    \

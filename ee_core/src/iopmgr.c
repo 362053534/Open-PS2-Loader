@@ -8,6 +8,9 @@
 */
 
 #include <iopcontrol.h>
+#include <libcdvd-common.h>
+#include <sifcmd.h>
+#include <sifdma.h>
 
 #include "ee_core.h"
 #include "iopmgr.h"
@@ -16,10 +19,143 @@
 #include "util.h"
 #include "syshook.h"
 #include "coreconfig.h"
+#include "rc_uya.h"
+#include "../../modules/iopcore/common/cdvd_config.h"
 
 extern int _iop_reboot_count;
 static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
+
+#define CDVD_INIT_RPC_ID      0x80000592
+#define BDM_CDVD_INIT_RETRIES 3
+static SifRpcClientData_t cdvd_init_rpc_client __attribute__((aligned(64)));
+static int cdvd_init_rpc_mode __attribute__((aligned(64)));
+static int cdvd_init_rpc_result[4] __attribute__((aligned(64)));
+static SifRpcClientData_t bdm_fragment_rpc_client __attribute__((aligned(64)));
+static struct bdm_fragment_rpc bdm_fragment_rpc_packet __attribute__((aligned(64)));
+
+static int PushBDMFragmentTable(const struct EECoreConfig_t *config)
+{
+    int dma_id;
+    int rpc_result;
+    SifDmaTransfer_t dma;
+
+    if (config->BDMFragmentTable == NULL ||
+        config->BDMFragmentTableBytes == 0 ||
+        config->BDMFragmentTableCount == 0)
+        return -1;
+
+    memset(&bdm_fragment_rpc_client, 0, sizeof(bdm_fragment_rpc_client));
+    while (1) {
+        if (SifBindRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_ID, 0) >= 0 &&
+            bdm_fragment_rpc_client.server != NULL)
+            break;
+    }
+
+    memset(&bdm_fragment_rpc_packet, 0, sizeof(bdm_fragment_rpc_packet));
+    bdm_fragment_rpc_packet.command = BDM_FRAGMENT_RPC_PREPARE;
+    bdm_fragment_rpc_packet.fragment_count = config->BDMFragmentTableCount;
+    bdm_fragment_rpc_packet.fragment_bytes = config->BDMFragmentTableBytes;
+    rpc_result = SifCallRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_PREPARE, 0,
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            NULL, NULL);
+    if (rpc_result < 0 || bdm_fragment_rpc_packet.result < 0 ||
+        bdm_fragment_rpc_packet.iop_address == 0)
+        return -1;
+
+    SifWriteBackDCache(config->BDMFragmentTable, config->BDMFragmentTableBytes);
+    dma.src = config->BDMFragmentTable;
+    dma.dest = (void *)bdm_fragment_rpc_packet.iop_address;
+    dma.size = bdm_fragment_rpc_packet.fragment_bytes;
+    dma.attr = 0;
+    do {
+        dma_id = SifSetDma(&dma, 1);
+    } while (dma_id == 0);
+    while (SifDmaStat(dma_id) >= 0)
+        ;
+
+    bdm_fragment_rpc_packet.command = BDM_FRAGMENT_RPC_COMMIT;
+    rpc_result = SifCallRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_COMMIT, 0,
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
+                            NULL, NULL);
+    return (rpc_result >= 0 && bdm_fragment_rpc_packet.result == 0) ? 0 : -1;
+}
+
+static int InitBDMCDVDMan(void)
+{
+    int attempt;
+    int rpc_result = -1;
+
+    memset(&cdvd_init_rpc_client, 0, sizeof(cdvd_init_rpc_client));
+
+    /*
+     * 复用CDVDFSV现有初始化RPC，可让所有BDM设备在PS2LOGO运行前进入
+     * DeviceFSInit，同时避免EE Core引入完整libcdvd状态。
+     */
+    while (1) {
+        if (SifBindRpc(&cdvd_init_rpc_client, CDVD_INIT_RPC_ID, 0) >= 0 &&
+            cdvd_init_rpc_client.server != NULL)
+            break;
+    }
+
+    cdvd_init_rpc_mode = SCECdINIT;
+    for (attempt = 0; attempt < BDM_CDVD_INIT_RETRIES; attempt++) {
+        memset(cdvd_init_rpc_result, 0, sizeof(cdvd_init_rpc_result));
+        rpc_result = SifCallRpc(&cdvd_init_rpc_client, 0, 0,
+                                &cdvd_init_rpc_mode, sizeof(cdvd_init_rpc_mode),
+                                cdvd_init_rpc_result, sizeof(cdvd_init_rpc_result), NULL, NULL);
+        if (rpc_result >= 0 && cdvd_init_rpc_result[0] != 0)
+            return 0;
+
+        /* 短暂的SIF拉取失败不应直接把PS2LOGO交给未就绪的CDVDMAN。 */
+        DPRINTF("BDM CDVD initialization attempt %d failed (%d, %d)\n",
+                attempt + 1, rpc_result, cdvd_init_rpc_result[0]);
+    }
+
+    return rpc_result < 0 ? rpc_result : -1;
+}
+
+/*
+ * 0.9.3 之前只有通过 ROM UDNL 加载游戏 CDROM IOPRP 的请求会保留给第二轮
+ * UDNL。其余参数（包括 "rom0:UDNL rom0:EELOADCNF"）均复用 OPL 已准备
+ * 的 IOPRP 镜像，并走无参数路径。保持这一分流规则可避免 SIFCMD 未初始化。
+ *
+ * 此处同时统一两种 arglen 约定：可指向内容末尾，或把末尾 NUL 也计入长度。
+ */
+static int GetCDROMIOPRPArgs(const char *arg, int arglen, const char **args, unsigned int *argslen)
+{
+    static const char udnl_prefix[] = "rom0:UDNL ";
+    const int prefix_len = sizeof(udnl_prefix) - 1;
+
+    if (arg == NULL || arglen < prefix_len + 5)
+        return 0;
+
+    if (arglen > RESET_ARG_MAX)
+        arglen = RESET_ARG_MAX;
+
+    if (_strncmp(arg, udnl_prefix, prefix_len))
+        return 0;
+
+    arg += prefix_len;
+    arglen -= prefix_len;
+
+    if (arglen > 0 && arg[arglen - 1] == '\0')
+        arglen--;
+
+    /* 仅把游戏 CDROM IOPRP 请求交给带参数的第二轮 UDNL。 */
+    if (arglen < 5 || _strncmp(arg, "cdrom", 5))
+        return 0;
+
+    /* command 还需要一个分隔 NUL、"host0:" 和它的末尾 NUL。 */
+    if (arglen > RESET_ARG_MAX - sizeof("host0:"))
+        return 0;
+
+    *args = arg;
+    *argslen = arglen;
+    return 1;
+}
 
 static void ResetIopSpecial(const char *args, unsigned int arglen)
 {
@@ -29,12 +165,18 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     unsigned int length_rounded, CommandLen, size_IOPRP_img, size_imgdrv_irx;
     char command[RESET_ARG_MAX + 1];
 
+    if (arglen > RESET_ARG_MAX - sizeof("host0:")) {
+        /* 防御性回落：没有空间安全附加 host0:。 */
+        args = NULL;
+        arglen = 0;
+    }
+
     if (arglen > 0) {
-        strncpy(command, args, arglen);
+        memcpy(command, args, arglen);
         command[arglen] = '\0'; /* In a normal IOP reset process, the IOP reset command line will be NULL-terminated properly somewhere.
                         Since we're now taking things into our own hands, NULL terminate it here.
                         Some games like SOCOM3 will use a command line that isn't NULL terminated, resulting in things like "cdrom0:\RUN\IRX\DNAS300.IMGG;1" */
-        _strcpy(&command[arglen + 1], "host0:");
+        memcpy(&command[arglen + 1], "host0:", sizeof("host0:"));
         CommandLen = arglen + 7;
     } else {
         _strcpy(command, "host0:");
@@ -97,6 +239,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 
     DPRINTF("Loading extra IOP modules...\n");
 
+    /* 单人由原 EE 补丁处理；只有多人 ELF 才在设备模块之前预留固定地址。 */
+    if (RnC3_NeedsIopPatch())
+        LoadOPLModule(OPL_MODULE_ID_IOP_PATCH, 0, 0, NULL);
+
 #ifdef __LOAD_DEBUG_MODULES
 #if !defined(TTY_PPC)
     LoadOPLModule(OPL_MODULE_ID_SMSTCPIP, 0, 0, NULL);
@@ -143,13 +289,27 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             LoadOPLModule(OPL_MODULE_ID_ILINKBD, 0, 0, NULL);
             break;
         case BDM_M4S_MODE:
-            LoadOPLModule(OPL_MODULE_ID_MX4SIOBD, 0, 0, NULL);
+            LoadOPLModule(OPL_MODULE_ID_MX4SIOBD, 0, sizeof("g"), "g");
             break;
         case BDM_HDD_MODE:
             LoadOPLModule(OPL_MODULE_ID_USBD, 0, 11, "thpri=2,3");
             LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
             break;
     };
+
+    if (config->GameMode == BDM_USB_MODE ||
+        config->GameMode == BDM_ILK_MODE ||
+        config->GameMode == BDM_M4S_MODE ||
+        config->GameMode == BDM_HDD_MODE ||
+        config->GameMode == HDD_MODE) {
+        if (PushBDMFragmentTable(config) < 0) {
+            DPRINTF("BDM fragment table preload failed\n");
+            return;
+        }
+        if (InitBDMCDVDMan() < 0)
+            DPRINTF("BDM CDVD initialization RPC failed\n");
+    }
+
 }
 
 /*----------------------------------------------------------------*/
@@ -158,6 +318,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 int New_Reset_Iop(const char *arg, int arglen)
 {
     USE_LOCAL_EECORE_CONFIG;
+    const char *ioprp_args;
+    unsigned int ioprp_arglen;
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
         DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
@@ -183,8 +345,8 @@ int New_Reset_Iop(const char *arg, int arglen)
     if (EnableDebug)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
-    if (arglen > 0) {
-        ResetIopSpecial(&arg[10], arglen - 10);
+    if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
+        ResetIopSpecial(ioprp_args, ioprp_arglen);
         if (EnableDebug)
             DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
     }

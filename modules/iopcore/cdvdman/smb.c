@@ -35,9 +35,6 @@
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
 #define SMB_IO_TIMEOUT         30000
 #define SMB_KEEPALIVE_TIME     60000
-#ifndef SHUT_RDWR
-#define SHUT_RDWR 2
-#endif
 
 int smb_io_sema = -1;
 
@@ -52,7 +49,6 @@ extern int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen
 extern int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 extern int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
-extern int (*plwip_shutdown)(int s, int how);                                                                                                      // #46
 extern u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -137,11 +133,9 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-#if SMB_FEAT_TCP_KEEPALIVE
     plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
     opt = SMB_KEEPALIVE_TIME;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
-#endif
 #if SMB_FEAT_SOCK_TIMEOUT
     opt = SMB_IO_TIMEOUT;
     plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
@@ -157,12 +151,10 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     ret = plwip_connect(sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
     if (ret < 0) {
-        SMBDIAG("TCP connect fail");
         plwip_close(sock);
         return -2;
     }
 
-    SMBDIAG("TCP connect sock=%d tmo=%d", sock, SMB_FEAT_SOCK_TIMEOUT ? SMB_IO_TIMEOUT : 0);
     return sock;
 }
 
@@ -215,34 +207,26 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
     if (shdrlen == 0) {
         //Send the whole message, including the 4-byte direct transport packet header.
         rcv_size = SendData(main_socket, (char *)&SMB_buf, totalpkt_size);
-        if (rcv_size <= 0) {
-            SMBDIAG("REPLY send fail r=%d", rcv_size);
+        if (rcv_size <= 0)
             return -1;
-        }
     } else {
         size = shdrlen + 4;
 
         //Send the headers, followed by the payload.
         rcv_size = SendData(main_socket, (char *)&SMB_buf, size);
-        if (rcv_size <= 0) {
-            SMBDIAG("REPLY send-hdr fail r=%d", rcv_size);
+        if (rcv_size <= 0)
             return -1;
-        }
 
         rcv_size = SendData(main_socket, spayload, totalpkt_size - size);
-        if (rcv_size <= 0) {
-            SMBDIAG("REPLY send-pl fail r=%d", rcv_size);
+        if (rcv_size <= 0)
             return -1;
-        }
     }
 
     //Read NetBIOS session message header. Drop NBSS Session Keep alive messages (type == 0x85, with no body), but process session messages (type == 0x00).
     do {
         rcv_size = RecvData(main_socket, (char *)&SMB_buf.sessionHeader, sizeof(SMB_buf.sessionHeader));
-        if (rcv_size <= 0) {
-            SMBDIAG("REPLY recv-hdr fail r=%d", rcv_size);
+        if (rcv_size <= 0)
             return -2;
-        }
     } while (nb_GetPacketType() != 0);
 
     totalpkt_size = nb_GetSessionMessageLength();
@@ -250,10 +234,8 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
     //If rhdrlen is not specified, retrieve the whole packet. Otherwise, retrieve only the headers (caller will retrieve the payload separately).
     size = (rhdrlen == 0) ? totalpkt_size : rhdrlen;
     rcv_size = RecvData(main_socket, (char *)&SMB_buf.smb, size);
-    if (rcv_size <= 0) {
-        SMBDIAG("REPLY recv-body fail r=%d", rcv_size);
+    if (rcv_size <= 0)
         return -2;
-    }
 
     return totalpkt_size;
 }
@@ -682,19 +664,15 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 #ifdef USE_CUSTOM_RECV
     //Send the whole message, including the 4-byte direct transport packet header.
     r = SendData(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4);
-    if (r <= 0) {
-        SMBDIAG("RAX send fail r=%d off=%u len=%d", r, (unsigned int)offsetlow, nbytes);
+    if (r <= 0)
         return -1;
-    }
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
     do {
         rcv_size = plwip_recvfrom(main_socket, &SMB_buf, 49, readbuf, nbytes, 0, NULL, NULL);
-        if (rcv_size <= 0) {
-            SMBDIAG("RAX recv fail r=%d off=%u len=%d", rcv_size, (unsigned int)offsetlow, nbytes);
+        if (rcv_size <= 0)
             return -2;
-        }
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
     expected_size = nb_GetSessionMessageLength() + 4;
@@ -703,10 +681,8 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     // Handle fragmented packets
     while (rcv_size < expected_size) {
         r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL); // - rcv_size
-        if (r <= 0) {
-            SMBDIAG("RAX frag fail r=%d got=%d want=%d", r, rcv_size, expected_size);
+        if (r <= 0)
             return -2;
-        }
         rcv_size += r;
     }
 #else
@@ -751,19 +727,11 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
         toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
 
         result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
-#if SMB_FEAT_SHORTREAD_ZEROFILL
         if (result <= 0) {
             if (!result)
                 result = nbytes - remaining;
             break;
         }
-#else
-        // 恢复旧行为：读取失败立即返回错误（但补上旧代码漏掉的信号量释放，避免下一次读取死锁）
-        if (result <= 0) {
-            SIGNALIOSEMA(smb_io_sema);
-            return result;
-        }
-#endif
 
         //Check for and handle overflow.
         if (offsetlow + result < offsetlow)
@@ -775,11 +743,7 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
 
     SIGNALIOSEMA(smb_io_sema);
 
-#if SMB_FEAT_SHORTREAD_ZEROFILL
     return remaining > 0 ? result : nbytes;
-#else
-    return nbytes;
-#endif
 }
 
 //-------------------------------------------------------------------------
@@ -877,9 +841,8 @@ int smb_Echo(void)
     ER->EchoCount = 1;
     ER->ByteCount = 0;
 
-    /* SMB_FEAT_ECHO_TIMEOUT：把 30s 超时只装在 Echo 这一次往返上，
-     * 而不是常驻在套接字上。数据面（每一次 smb_ReadAndX 的收包）因此始终走
-     * conn->recv_timeout == 0 的裸 WaitSema 路径，没有 SetAlarm/CancelAlarm。 */
+    /* SMB_FEAT_ECHO_TIMEOUT：30s 超时只装在 Echo 这一次往返上，
+     * 而不是常驻在套接字上 —— 数据面的每一次收包因此始终是裸 WaitSema。 */
 #if SMB_FEAT_ECHO_TIMEOUT
     {
         int tmo = SMB_IO_TIMEOUT;
@@ -926,12 +889,4 @@ int smb_Disconnect(void)
     }
 
     return 1;
-}
-
-int smb_AbortConnection(void)
-{
-    if (main_socket >= 0 && plwip_shutdown)
-        return plwip_shutdown(main_socket, SHUT_RDWR);
-
-    return -1;
 }

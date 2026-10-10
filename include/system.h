@@ -11,8 +11,6 @@ unsigned int USBA_crc32(const char *string);
 int sysGetDiscID(char *discID);
 void sysInitDev9(void);
 void sysShutdownDev9(void);
-// 启动不依赖网卡的应用前调用：强制 DEV9 断电（当前为死等，便于排查）
-void sysForceShutdownDev9(void);
 void sysReset(int modload_mask);
 void sysExecExit(void);
 void sysPowerOff(void);
@@ -20,7 +18,7 @@ void sysPowerOff(void);
 int sysInitDECI2(void);
 #endif
 
-void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags);
+void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags, void *frag_table, unsigned int frag_count);
 
 int sysExecElf(const char *path);
 int sysLoadModuleBuffer(void *buffer, int size, int argc, char *argv);

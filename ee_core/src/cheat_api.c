@@ -26,6 +26,38 @@
 #include <syscallnr.h>
 #include "include/cheat_api.h"
 #include "coreconfig.h"
+#include "util.h"
+
+static const code_t ValkyrieProfile2GameGuardCodes[] = {
+    {0x9013A450, 0x0C04E8BC},
+    {0xD03897F4, 0x0000FFFA}, {0x203897F4, 0x00000000},
+    {0xD03DEB6C, 0x0000FFFA}, {0x203DEB6C, 0x00000000},
+    {0xD042D0AC, 0x0000FFFA}, {0x2042D0AC, 0x00000000},
+    {0xD04A5DEC, 0x0000FFFA}, {0x204A5DEC, 0x00000000},
+    {0xD04A5F54, 0x0000FFFA}, {0x204A5F54, 0x00000000},
+    {0xD04A60BC, 0x0000FFFA}, {0x204A60BC, 0x00000000},
+    {0xD0100208, 0x0010008C}, {0x20100208, 0x0C04008C},
+    {0xD03B1774, 0x0000FFFA}, {0x203B1774, 0x00000000},
+    {0xD03B49CC, 0x0000FFFA}, {0x203B49CC, 0x00000000},
+    {0xD03B4B64, 0x0000FFFA}, {0x203B4B64, 0x00000000},
+    {0xD03B4C24, 0x0000FFFA}, {0x203B4C24, 0x00000000},
+    {0xD03CB1C4, 0x0000FFFA}, {0x203CB1C4, 0x00000000},
+    {0xD03D57BC, 0x0000FFFA}, {0x203D57BC, 0x00000000},
+    {0xD03D7F44, 0x0000FFFA}, {0x203D7F44, 0x00000000},
+    {0xD03DA1B4, 0x0000FFFA}, {0x203DA1B4, 0x00000000},
+    {0xD0436084, 0x0000FFFA}, {0x20436084, 0x00000000},
+    {0xD04360EC, 0x0000FFFA}, {0x204360EC, 0x00000000},
+    {0xD039D468, 0x0000FFF9}, {0x2039D468, 0x00000000},
+    {0xD03DA680, 0x0000FFF9}, {0x203DA680, 0x00000000},
+    {0xD03B1758, 0x0000FFF9}, {0x203B1758, 0x00000000},
+};
+
+int HasBuiltInCheats(void)
+{
+    USE_LOCAL_EECORE_CONFIG;
+
+    return _strcmp(config->GameID, "SLPM_664.19") == 0;
+}
 
 /*---------------------------------*/
 /* Setup PS2RD Cheat Engine params */
@@ -41,7 +73,19 @@ void SetupCheats()
     k = 0;
     nextCodeCanBeHook = 1;
 
-    while (i < MAX_CHEATLIST) {
+    // 目标代码由游戏运行时展开，必须通过常驻处理器等待其出现后再改写。
+    if (HasBuiltInCheats()) {
+        hooklist[j++] = ValkyrieProfile2GameGuardCodes[0].addr & 0x01FFFFFC;
+        hooklist[j++] = ValkyrieProfile2GameGuardCodes[0].val;
+
+        for (i = 1; i < sizeof(ValkyrieProfile2GameGuardCodes) / sizeof(ValkyrieProfile2GameGuardCodes[0]); i++) {
+            codelist[k++] = ValkyrieProfile2GameGuardCodes[i].addr;
+            codelist[k++] = ValkyrieProfile2GameGuardCodes[i].val;
+        }
+    }
+
+    i = 0;
+    while (config->gCheatList != NULL && i < MAX_CHEATLIST) {
 
         code.addr = config->gCheatList[i];
         code.val = config->gCheatList[i + 1];
@@ -51,15 +95,19 @@ void SetupCheats()
             break;
 
         if (((code.addr & 0xfe000000) == 0x90000000) && nextCodeCanBeHook == 1) {
-            hooklist[j] = code.addr & 0x01FFFFFC;
-            j++;
-            hooklist[j] = code.val;
-            j++;
+            if (j < MAX_HOOKS * 2) {
+                hooklist[j] = code.addr & 0x01FFFFFC;
+                j++;
+                hooklist[j] = code.val;
+                j++;
+            }
         } else {
-            codelist[k] = code.addr;
-            k++;
-            codelist[k] = code.val;
-            k++;
+            if (k < MAX_CODES * 2) {
+                codelist[k] = code.addr;
+                k++;
+                codelist[k] = code.val;
+                k++;
+            }
         }
         // Discard any false positives from being possible hooks
         if ((code.addr & 0xf0000000) == 0x40000000 || (code.addr & 0xf0000000) == 0x30000000) {

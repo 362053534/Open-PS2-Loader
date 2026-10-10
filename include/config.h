@@ -34,6 +34,8 @@ enum CONFIG_INDEX {
 #define CONFIG_ITEM_ALTSTARTUP   "$AltStartup"
 #define CONFIG_ITEM_VMC          "$VMC"
 #define CONFIG_ITEM_COMPAT       "$Compatibility"
+/* 用户动过模式1后不再套用总开关；有此字段时模式1完全跟随 $Compatibility。 */
+#define CONFIG_ITEM_MANUAL_MODE1 "$ManualMode1"
 #define CONFIG_ITEM_DMA          "$DMA"
 #define CONFIG_ITEM_DNAS         "$DNAS"
 #define CONFIG_ITEM_CONFIGSOURCE "$ConfigSource"
@@ -76,6 +78,9 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_SEL_TEXTCOLOR        "sel_text_color"
 #define CONFIG_OPL_ENABLE_NOTIFICATIONS "enable_notifications"
 #define CONFIG_OPL_ENABLE_COVERART      "enable_coverart"
+#define CONFIG_OPL_ENABLE_ART_BG        "enable_art_bg"
+#define CONFIG_OPL_ENABLE_ART_COV       "enable_art_cov"
+#define CONFIG_OPL_ENABLE_ART_ICO       "enable_art_ico"
 #define CONFIG_OPL_ENABLE_JPG           "enable_jpg"
 #define CONFIG_OPL_WIDESCREEN           "wide_screen"
 #define CONFIG_OPL_VMODE                "vmode"
@@ -90,6 +95,7 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_AUTO_SORT            "autosort"
 #define CONFIG_OPL_AUTO_REFRESH         "autorefresh"
 #define CONFIG_OPL_DEFAULT_DEVICE       "default_device"
+#define CONFIG_OPL_AUTO_MODE1           "auto_mode1"
 #define CONFIG_OPL_ENABLE_WRITE         "enable_delete_rename"
 #define CONFIG_OPL_HDD_SPINDOWN         "hdd_spindown"
 #define CONFIG_OPL_BDM_PREFIX           "usb_prefix" // Leave this "usb" for compatibility

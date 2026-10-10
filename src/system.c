@@ -16,6 +16,7 @@
 #include "include/pad.h"
 #include "include/system.h"
 #include "include/ioman.h"
+#include "include/iosupport.h"
 #include "include/ioprp.h"
 #include "include/bdmsupport.h"
 #include "include/OSDHistory.h"
@@ -23,6 +24,7 @@
 #include "include/extern_irx.h"
 #include "../ee_core/include/modules.h"
 #include "../ee_core/include/coreconfig.h"
+#include "modules/iopcore/common/cdvd_config.h"
 #include <osd_config.h>
 #include "include/pggsm.h"
 #include "include/cheatman.h"
@@ -164,36 +166,18 @@ void sysInitDev9(void)
     dev9InitCount++;
 }
 
-static void sysDev9PowerOffOnce(void)
-{
-    if (!dev9Loaded)
-        return;
-
-    // 暂时保持死等，便于发现 DDIOC_OFF 失败/卡死问题（勿改为有限次重试）
-    while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
-    };
-}
-
 void sysShutdownDev9(void)
 {
     if (dev9InitCount > 0) {
         --dev9InitCount;
 
         if (dev9InitCount == 0) { /* Switch off DEV9 once nothing needs it. */
-            sysDev9PowerOffOnce();
+            if (dev9Loaded) {
+                while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
+                };
+            }
         }
     }
-}
-
-void sysForceShutdownDev9(void)
-{
-    // deinit 里 hddShutdown 可能已把计数减到 0 并成功 DDIOC_OFF；
-    // 若再关一次，第二次 OFF 常失败并在 while 里死等（卡在“处理中”）。
-    if (dev9InitCount == 0)
-        return;
-
-    dev9InitCount = 0;
-    sysDev9PowerOffOnce();
 }
 
 void sysReset(int modload_mask)
@@ -429,6 +413,9 @@ static const patchlist_t iop_patch_list[] = {
     {"SLUS_204.13", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (NTSC-U/C)
     {"SLES_504.46", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (PAL)
     {"SLES_506.08", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (PAL German)
+    {"SCUS_973.53", "", &rcuyapatch_irx, &size_rcuyapatch_irx},         // Ratchet & Clank: Up Your Arsenal (NTSC-U/C)
+    {"SCES_524.56", "", &rcuyapatch_irx, &size_rcuyapatch_irx},         // Ratchet & Clank: Up Your Arsenal (PAL)
+    {"SCPS_150.84", "", &rcuyapatch_irx, &size_rcuyapatch_irx},         // Ratchet & Clank 3 Galactic Rangers (NTSC-J)
     {NULL, NULL, NULL, NULL},                                           // Terminator
 };
 
@@ -478,13 +465,22 @@ static void *GetModStorageLocation(const char *startup, unsigned compatFlags)
     return ((void *)OPL_MOD_STORAGE);
 }
 
-static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, unsigned int modules, void *ModuleStorage, int size_cdvdman_irx, void **cdvdman_irx, int size_mcemu_irx, void **mcemu_irx)
+static void *bdmFragmentTableEEAddress;
+static unsigned int bdmFragmentTableBytes;
+static unsigned int bdmFragmentTableCount;
+
+static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, unsigned int modules, void *ModuleStorage, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, void *frag_table, unsigned int frag_count)
 { // Send IOP modules that core must use to Kernel RAM
     irxtab_t *irxtable;
     irxptr_t *irxptr_tab;
     void *irxptr, *ioprp_image;
     int i, modcount;
     unsigned int curIrxSize, size_ioprp_image, total_size;
+    unsigned int cdvdman_offset = 0;
+
+    bdmFragmentTableEEAddress = NULL;
+    bdmFragmentTableBytes = 0;
+    bdmFragmentTableCount = 0;
 
     if (!strcmp(mode_str, "BDM_USB_MODE"))
         modules |= CORE_IRX_USB;
@@ -504,7 +500,7 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
     size_ioprp_image = size_IOPRP_img + size_cdvdman_irx + size_cdvdfsv_irx + size_eesync_irx + 256;
     LOG("IOPRP image size calculated: %d\n", size_ioprp_image);
     ioprp_image = malloc(size_ioprp_image);
-    size_ioprp_image = patch_IOPRP_image(ioprp_image, cdvdman_irx, size_cdvdman_irx);
+    size_ioprp_image = patch_IOPRP_image(ioprp_image, cdvdman_irx, size_cdvdman_irx, &cdvdman_offset);
     LOG("IOPRP image size actual:     %d\n", size_ioprp_image);
 
     modcount = 0;
@@ -637,6 +633,30 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
             total_size += ((curIrxSize + 0xF) & ~0xF);
         } else {
             irxptr_tab[i].ptr = NULL;
+        }
+    }
+
+    if (frag_table != NULL && frag_count > 0) {
+        u64 frag_bytes64 = (u64)frag_count * sizeof(bd_fragment_t);
+        if (frag_bytes64 <= 0xFFFFFFFFULL) {
+            unsigned int frag_bytes = (unsigned int)frag_bytes64;
+            unsigned int frag_transfer_bytes = (frag_bytes + 0xF) & ~0xF;
+            void *frag_dst = irxptr;
+            struct cdvdman_settings_bdm *settings =
+                (struct cdvdman_settings_bdm *)((u8 *)irxptr_tab[1].ptr + cdvdman_offset + cdvdman_settings_offset);
+
+            memcpy(frag_dst, frag_table, frag_bytes);
+            if (frag_transfer_bytes > frag_bytes)
+                memset((u8 *)frag_dst + frag_bytes, 0, frag_transfer_bytes - frag_bytes);
+            settings->frag_table_ee_addr = 0;
+            settings->frag_table_bytes = frag_transfer_bytes;
+            settings->fragfile[0].frag_start = 0;
+            settings->fragfile[0].frag_count = frag_count;
+            bdmFragmentTableEEAddress = frag_dst;
+            bdmFragmentTableBytes = frag_transfer_bytes;
+            bdmFragmentTableCount = frag_count;
+            irxptr = (void *)((u8 *)irxptr + frag_transfer_bytes);
+            total_size += frag_transfer_bytes;
         }
     }
 
@@ -817,7 +837,7 @@ void sysPrintEECoreConfig(struct EECoreConfig_t *config)
 }
 #endif
 
-void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags)
+void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags, void *frag_table, unsigned int frag_count)
 {
     unsigned int modules, ModuleStorageSize;
     void *ModuleStorage, *ModuleStorageEnd;
@@ -831,6 +851,11 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     char *argv[4];
     void *eeloadCopy, *initUserMemory;
     struct GsmConfig_t gsm_config;
+
+    if (!strcmp(filename, "SLPM_664.19")) {
+        // 只为本次启动追加北欧女神2所需模式，保留用户已选择的其他模式。
+        compatflags |= COMPAT_MODE_3 | COMPAT_MODE_6;
+    }
 
     ethGetNetConfig(local_ip_address, local_netmask, local_gateway);
 #if (!defined(__DEBUG) && !defined(_DTL_T10000))
@@ -867,7 +892,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     modules |= CORE_IRX_VMC;
 
     LOG("SYSTEM LaunchLoaderElf loading modules\n");
-    ModuleStorageSize = (sendIrxKernelRAM(filename, mode_str, modules, ModuleStorage, size_cdvdman_irx, cdvdman_irx, size_mcemu_irx, mcemu_irx) + 0x3F) & ~0x3F;
+    ModuleStorageSize = (sendIrxKernelRAM(filename, mode_str, modules, ModuleStorage, size_cdvdman_irx, cdvdman_irx, cdvdman_settings_offset, size_mcemu_irx, mcemu_irx, frag_table, frag_count) + 0x3F) & ~0x3F;
 
     ModuleStorageEnd = (void *)((u8 *)ModuleStorage + ModuleStorageSize);
 
@@ -977,6 +1002,9 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
 
     config->ModStorageStart = ModuleStorage;
     config->ModStorageEnd = ModuleStorageEnd;
+    config->BDMFragmentTable = bdmFragmentTableEEAddress;
+    config->BDMFragmentTableBytes = bdmFragmentTableBytes;
+    config->BDMFragmentTableCount = bdmFragmentTableCount;
 
     strncpy(config->GameID, filename, CORE_GAME_ID_MAX_LEN);
 

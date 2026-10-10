@@ -14,6 +14,7 @@
 #include <loadcore.h>
 #include <stdio.h>
 #include <sifman.h>
+#include <sifcmd.h>
 #include <sysclib.h>
 #include <sysmem.h>
 #include <thbase.h>
@@ -102,11 +103,17 @@ typedef void (*StmCallback_t)(void);
 extern void SetStm0Callback(StmCallback_t callback);
 extern int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
+#ifdef SMB_DRIVER
+extern int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
+extern int cdvdman_StmIsWaiting(void);
+extern void cdvdman_StmRetry(void);
+extern void cdvdman_cancel_pending_read(void);
+#endif
 extern int cdvdman_sendSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 extern void cdvdman_cb_event(int reason);
 
-extern void cdvdman_init(void);
-extern void cdvdman_fs_init(void);
+extern int cdvdman_init(void);
+extern int cdvdman_fs_init(void);
 extern void cdvdman_searchfile_init(void);
 extern void cdvdman_initdev(void);
 

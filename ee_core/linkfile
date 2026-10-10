@@ -110,4 +110,8 @@ SECTIONS {
 
 	_end = _stack + _stack_size ;
 	PROVIDE(end = _end);
+
+	.ramD0 ORIGIN(ramD0) : {
+		*(.ramD0)
+	} >ramD0 :NONE
 }

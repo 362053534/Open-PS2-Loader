@@ -39,7 +39,7 @@ int oplRegisterShutdownCallback(oplShutdownCb_t cb);
 #define I_oplRegisterShutdownCallback DECLARE_IMPORT(5, oplRegisterShutdownCallback)
 
 /* BDM Transfer Imports */
-#ifdef BDM_DRIVER
+#if defined(BDM_DRIVER) || defined(PFS_BDM_DRIVER)
 
 void bdm_readSector(u32 lba, unsigned short int nsectors, unsigned char *buffer);
 #define I_bdm_readSector DECLARE_IMPORT(6, bdm_readSector)

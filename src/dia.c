@@ -511,7 +511,12 @@ static void diaRenderItem(int x, int y, struct UIItem *item, int selected, int h
         }
 
         case UI_BOOL: {
-            const char *txtval = _l((item->intvalue.current) ? _STR_ON : _STR_OFF);
+            // 设了 enumvalues 时用自定义开关文案，否则仍是开/关。
+            const char *txtval;
+            if (item->intvalue.enumvalues && item->intvalue.enumvalues[0] && item->intvalue.enumvalues[1])
+                txtval = item->intvalue.enumvalues[item->intvalue.current ? 1 : 0];
+            else
+                txtval = _l((item->intvalue.current) ? _STR_ON : _STR_OFF);
             *w = fntRenderString(gTheme->fonts[0], x, y, ALIGN_NONE, 0, 0, txtval, txtcol) - x;
             break;
         }
@@ -628,6 +633,7 @@ static void diaResetValue(struct UIItem *item)
     switch (item->type) {
         case UI_INT:
         case UI_BOOL:
+        case UI_ENUM:
             item->intvalue.current = item->intvalue.def;
             return;
         case UI_STRING:
@@ -644,7 +650,7 @@ static int diaHandleInput(struct UIItem *item, int *modified)
     // circle loses focus, sets old values first
     if (getKeyOn(gSelectButton == KEY_CIRCLE ? KEY_CROSS : KEY_CIRCLE)) {
         diaResetValue(item);
-        sfxPlay(SFX_CONFIRM);
+        sfxPlay(SFX_CANCEL);
         return 0;
     }
 
@@ -1130,7 +1136,8 @@ int diaSetEnum(struct UIItem *ui, int id, const char **enumvals)
     if (!item)
         return 0;
 
-    if (item->type != UI_ENUM)
+    // bool 也复用 enumvalues 作为开/关文案。
+    if (item->type != UI_ENUM && item->type != UI_BOOL)
         return 0;
 
     item->intvalue.enumvalues = enumvals;

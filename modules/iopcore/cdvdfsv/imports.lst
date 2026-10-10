@@ -68,6 +68,7 @@ thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
 I_DelayThread
+I_GetSystemTime
 I_ExitDeleteThread
 I_GetThreadId
 I_ChangeThreadPriority

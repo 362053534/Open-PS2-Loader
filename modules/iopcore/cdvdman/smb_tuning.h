@@ -1,101 +1,44 @@
 /*
- * SMB 模式 FMV 杂音排查——逐项减法(feature subtraction)开关矩阵
+ * SMB 模式 FMV 杂音修复——patch-1（f91c3cf）上的 D1/D2/D3 尝试开关。
  *
- * 用法：每次构建只把其中【一项】从 1 改为 0，烧录后在问题游戏上验证同一段 FMV。
- * 全部置 1 时与提交 6254970（“改进SMB-拔线模拟开关仓，断线后无限重连”）行为完全一致。
+ * 背景（在 6254970 那棵老树上用 OBSERVE 成对日志取到的证据）：
+ *   * BASE / CURR 两份日志在**数据面上完全一致** —— 读耗时 15.10 vs 15.44ms，
+ *     h50/h100/h250/h500 全 0，zero/shrt 全 0，吞吐 1018 vs 1017 KB/s。
+ *     ⇒ 6254970 既没让数据变慢，也没让数据变脏。
+ *   * 唯一落在"每一次收包"热路径上的差异是 SO_SNDTIMEO/SO_RCVTIMEO 生效后，
+ *     每次 netconn_recv() 都要走 sys_arch_sem_wait() 的超时分支
+ *     （GetSystemTime + USec2SysClock + SetAlarm + WaitSema + CancelAlarm
+ *       + GetSystemTime + SysClock2USec），而不再是裸 WaitSema。
+ *   * 把它降到"每次 recv 只装一次 alarm"（C2）仍然有杂音 ⇒ 问题不是装填频率，
+ *     而是这条分支存在本身。
+ *   * 第二个（较小的）来源在后台线程组里；patch-1 已经把 500ms 的链路监控线程
+ *     合并进重连线程、并且 Echo 改成"空闲 120s 才发"，所以那一半在这里已经消失。
  *
- * 排查基线（已由实机验证“无杂音”）：提交 6254970 的父提交 edf39ddc。
- * 该提交的精确改动面只有 7 个文件、四类行为变更，对应 T1–T4；
- * T5/T6 对应的行为早于问题提交即已存在，与本次回归无关。
- *
- * 依赖关系：
- *   - SMB_FEAT_ECHO_KEEPALIVE 依附于 SMB_FEAT_RECONNECT_THREADS；线程关掉后心跳自然消失。
+ * 本文件只放 3 个开关，供 CI 用 sed 逐项改动，生成 D1/D2/D3 三个构建。
  */
 #ifndef SMB_TUNING_H
 #define SMB_TUNING_H
 
-/* T1: 后台线程每 30 秒发送一次 SMB_COM_ECHO 保活包。
- *     嫌疑：Echo 持有 smb_io_sema 整整一个往返；服务器响应慢/不响应时，
- *     游戏读盘被憋住（最坏 30 秒），Echo 失败还会把整个会话标记为断线并触发全量重连。 */
-#define SMB_FEAT_ECHO_KEEPALIVE 1
-
-/* T2: SMB 套接字设置 SO_SNDTIMEO / SO_RCVTIMEO = 30 秒。
- *     嫌疑：旧代码永久阻塞等待；新代码超时即视为断线 -> 拆链重连，
- *     服务器偶发慢响应（磁盘休眠唤醒、网络抖动）会被放大成数秒级读盘停顿。*/
+/* ---- D1：数据面不带超时 ----------------------------------------------------
+ * 置 0 时不再 setsockopt(SO_SNDTIMEO / SO_RCVTIMEO)，
+ * conn->recv_timeout == 0 ⇒ 每一次收包退回裸 WaitSema，零额外系统调用。
+ * 代价：单次收发卡死时不会被超时打断（失联检测见 SMB_FEAT_ECHO_TIMEOUT）。 */
 #define SMB_FEAT_SOCK_TIMEOUT 1
 
-/* T2b: 只拆出 SO_RCVTIMEO（T2 的一半）。
- *      用于区分“收包方向的超时”与“发包方向的超时”——只有收包方向会落到
- *      netconn_recv()，也就是每一次 SMB 收包都要走的那条热路径。 */
+/* 只拆收方向（netconn_recv 是热路径；发方向几乎不触发）。 */
 #define SMB_FEAT_RCV_TIMEOUT 1
 
-/* T2c: 把超时从"常驻在套接字上"改成"只在 smb_Echo() 前后临时装上"。
- *      目的：保住 6254970 的"服务器失联能被发现"这个能力，但让数据面的
- *      每一次收包都退回零开销的裸 WaitSema。 */
+/* ---- D2：把超时从"常驻套接字"搬到"只在 Echo 这一次往返上" ------------------
+ * 置 1 时 smb_Echo() 前后临时 setsockopt 装上 30s 超时，用完立刻清回 0。
+ * 于是：数据面零开销，但"服务器失联 / 会话被回收"依旧能被 Echo 发现并触发重连。
+ * 需要 SMB_FEAT_SOCK_TIMEOUT=0 才有意义（否则超时本来就在套接字上）。 */
 #define SMB_FEAT_ECHO_TIMEOUT 0
 
-/* T4 的进一步拆分（v9：C1 干净而 B2/B4 单独都不干净 ⇒ T4 里还有第二个，较小的来源）
- *   SMB_FEAT_LINK_MONITOR   链路监控线程是否创建
- *   SMB_LINK_MONITOR_MS     链路监控线程轮询周期（默认 500ms）
- *   SMB_RECONNECT_POLL_MS   重连线程轮询周期（默认 2000ms）
- *   SMB_ECHO_INTERVAL_MS    Echo 保活间隔（默认 30000ms，与轮询周期解耦）
- *   SMB_THREAD_PRIORITY     两个后台线程的优先级（cdvdman 读线程是 0x0f=15，更高） */
-#define SMB_FEAT_LINK_MONITOR   1
-#define SMB_LINK_MONITOR_MS     500
-#define SMB_RECONNECT_POLL_MS   2000
-#define SMB_ECHO_INTERVAL_MS    30000
-#define SMB_THREAD_PRIORITY     40
-
-/* T3: SMB 套接字设置 SO_KEEPALIVE + TCP_KEEPALIVE = 60 秒（TCP 层保活探测）。*/
-#define SMB_FEAT_TCP_KEEPALIVE 1
-
-/* T4: 后台重连线程(2s 周期,优先级40) + 链路监控线程(0.5s 周期) + 读取失败静默等待重试。
- *     置 0：回到旧行为——不开线程，读失败立即向游戏返回读错误。*/
-#define SMB_FEAT_RECONNECT_THREADS 1
-
-/* T5: 短读(服务器返回 0 字节/读到文件尾)按“成功+补零”返回。
- *     【已排除】该行为在问题提交的父提交 edf39ddc 中已逐字存在，
- *     不属于本次回归范围——保持为 1，开关仅作留档。*/
-#define SMB_FEAT_SHORTREAD_ZEROFILL 1
-
-/* T6: 读取越过 PVD 标称容量时继续读、读不到补零（兼容 D9 转 D5 类魔改镜像）。
- *     【已排除】cdvdman.c 未被提交 6254970 触及，该语义早于问题提交——
- *     保持为 1，开关仅作留档。*/
-#define SMB_FEAT_OOB_READ_TOLERANT 1
-
-/* 诊断构建：置 1 后，SMB 读取路径的关键事件（慢读取/读取失败/重连/心跳/链路变化）
- *   带毫秒时间戳输出到 IOP stdout。
- *   需用 DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP 构建，
- *   日志经 UDP 广播到 255.255.255.255:18194，主机端用 ncat/nc -ul 18194 抓取。
- *   正常播放时近乎无输出；异常时按事件出现。正式版本必须保持为 0。*/
-#define SMB_DIAG_LOG 0
-
-#if SMB_DIAG_LOG
-#include <stdio.h>
-#include <sysclib.h>
-#include <thbase.h>
-
-extern void smbDiagEmit(const char *msg);
-
-static inline unsigned int smbDiagNowMs(void)
-{
-    iop_sys_clock_t now;
-    u32 sec, usec;
-
-    GetSystemTime(&now);
-    SysClock2USec(&now, &sec, &usec);
-    return sec * 1000 + usec / 1000;
-}
-
-#define SMBDIAG(fmt, ...)                                                                     \
-    do {                                                                                      \
-        char smbd_buf[192];                                                                   \
-        sprintf(smbd_buf, "SMBD %u " fmt "\n", smbDiagNowMs(), ##__VA_ARGS__);                \
-        smbDiagEmit(smbd_buf);                                                                \
-    } while (0)
-
-#else
-#define SMBDIAG(fmt, ...)
-#endif
+/* ---- D3：重连线程空闲轮询周期（微秒）--------------------------------------
+ * patch-1 默认 2000000（2s）。放慢到 5000000（5s）可以把周期性唤醒再降 2.5 倍。
+ * SMB_ECHO_IDLE_TICKS 由本文件一并给出，保证"空闲 120s 才 Echo"不变：
+ *   2s × 60 tick = 120s      5s × 24 tick = 120s */
+#define SMB_RECONNECT_INTERVAL_US 2000000
+#define SMB_ECHO_IDLE_TICKS       60
 
 #endif /* SMB_TUNING_H */

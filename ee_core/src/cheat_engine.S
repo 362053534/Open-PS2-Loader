@@ -486,6 +486,7 @@ type_e:
     sll     $at, 20
     or      $a2, $at
     srl     $at, $a0, 24
+    andi    $at, 1          # 只保留 E 码的位宽标志，避免类型位被高字节污染
     sll     $at, 16
     or      $a2, $at
     srl     $at, $a0, 16

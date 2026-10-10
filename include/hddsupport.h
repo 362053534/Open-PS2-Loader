@@ -15,7 +15,7 @@ typedef struct
 {
     char partition_name[APA_IDMAX + 1];
     char name[HDL_GAME_NAME_MAX + 1];
-    char startup[8 + 1 + 3 + 1];
+    char startup[32]; // Must match GENERAL_STARTUP_MAX (supportbase.h); wide enough for non-standard BOOT2 exec names.
     u8 hdl_compat_flags;
     u8 ops2l_compat_flags;
     u8 dma_type;
@@ -64,7 +64,14 @@ int hddDeleteHDLGame(hdl_game_info_t *ginfo);
 void hddInit(item_list_t *itemList);
 item_list_t *hddGetObject(int initOnly);
 void hddLoadModules(void);
+void hddLoadModulesBDM(void);
+void hddReleaseModulesBDM(void);
+int hddDetectNonSonyFileSystem(void);
 int hddLoadSupportModules(void);
+void hddReportSupportError(void);
+void hddSetConfigSource(void);
+int hddIsConfigSource(void);
+int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs);
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);
 
 extern int hddLoadModulesSuccess;

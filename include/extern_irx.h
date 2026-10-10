@@ -84,7 +84,10 @@ IMPORT_BIN2C(f2techioppatch_irx);
 
 IMPORT_BIN2C(padman_irx);
 
+IMPORT_BIN2C(pfs_bdm_mcemu_irx);
+
 IMPORT_BIN2C(poweroff_irx);
+
 IMPORT_BIN2C(popstarter_elf);
 
 IMPORT_BIN2C(popstarter_usbd_irx);
@@ -117,6 +120,8 @@ IMPORT_BIN2C(ps2ips_irx);
 IMPORT_BIN2C(ps2ip_irx);
 
 IMPORT_BIN2C(ps2link_irx);
+
+IMPORT_BIN2C(rcuyapatch_irx);
 
 IMPORT_BIN2C(resetspu_irx);
 

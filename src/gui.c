@@ -64,11 +64,7 @@ int GptFound = 0;
 int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 
-static int defaultDelayFrame = 600;
-// static int LongDelayTime = 18000;
-static int ShortDelayTime = 360;
-static int endIntroDelayFrame = 0;
-static int bdmTimeOut = 0;
+static int bdmDeviceAlertPending = 0;
 static int artLoadDelayTime = 200;
 
 #ifdef __DEBUG
@@ -458,6 +454,10 @@ void guiShowNetCompatUpdateSingle(int id, item_list_t *support, config_set_t *co
 static void guiShowBlockDeviceConfig(void)
 {
     int ret;
+    const char *deviceModes[] = {_l(_STR_OFF), _l(_STR_MANUAL), _l(_STR_AUTO), NULL};
+
+    diaSetEnum(diaBlockDevicesConfig, CFG_BDMMODE, deviceModes);
+    diaSetInt(diaBlockDevicesConfig, CFG_BDMMODE, gBDMStartMode);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, gEnableUSB);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEILK, gEnableILK);
     diaSetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, gEnableMX4SIO);
@@ -469,17 +469,23 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEUSB, &gEnableUSB);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEILK, &gEnableILK);
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEMX4SIO, &gEnableMX4SIO);
+        diaGetInt(diaBlockDevicesConfig, CFG_BDMMODE, &gBDMStartMode);
 
         // BDMHDD开启时，自动关闭APA
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (ret == UIID_BTN_OK) {
             if (gHDDStartMode && gEnableBdmHDD) {
                 gHDDStartMode = 0;
-                guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
+                // guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
             }
-            if (BdmStarted)
+            // APA 自动启动过之后，页还在链表里；先藏掉再纠正光标，避免仍停在 APA 页。
+            if (gEnableBdmHDD)
+                initSupport(hddGetObject(0), HDD_MODE, 0);
+            if (BdmStarted || (!BdmStarted && gBDMStartMode == START_MODE_AUTO &&
+                               (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)))
                 reFindBDM();
             applyConfig(-1, -1, 0);
+            refreshMenuPosition();
         }
     }
 }
@@ -493,8 +499,6 @@ static int guiUpdater(int modified)
         diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, showAutoStartLast);
         diaSetVisible(diaConfig, CFG_AUTOSTARTLAST, showAutoStartLast);
 
-        diaGetInt(diaConfig, CFG_BDMMODE, &gBDMStartMode);
-        diaSetVisible(diaConfig, BLOCKDEVICE_BUTTON, gBDMStartMode);
     }
     return 0;
 }
@@ -544,7 +548,6 @@ reConfig:
     const char *deviceModes[] = {_l(_STR_OFF), _l(_STR_MANUAL), _l(_STR_AUTO), NULL};
 
     diaSetEnum(diaConfig, CFG_DEFDEVICE, deviceNames);
-    diaSetEnum(diaConfig, CFG_BDMMODE, deviceModes);
     diaSetEnum(diaConfig, CFG_HDDMODE, deviceModes);
     diaSetEnum(diaConfig, CFG_ETHMODE, deviceModes);
     diaSetEnum(diaConfig, CFG_APPMODE, deviceModes);
@@ -568,8 +571,8 @@ reConfig:
     diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, gRememberLastPlayed);
     int deviceModeIndex = guiIoModeToDeviceType(gDefaultDevice);
     diaSetInt(diaConfig, CFG_DEFDEVICE, deviceModeIndex);
-    diaSetInt(diaConfig, CFG_BDMMODE, gBDMStartMode);
-    diaSetVisible(diaConfig, BLOCKDEVICE_BUTTON, gBDMStartMode);
+    diaSetInt(diaConfig, CFG_AUTO_MODE1, gAutoMode1);
+    diaSetLabel(diaConfig, CFG_BDMMODE, deviceModes[gBDMStartMode]);
     //diaSetEnabled(diaConfig, CFG_HDDMODE, !gEnableBdmHDD);
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
     diaSetInt(diaConfig, CFG_ETHMODE, gETHStartMode);
@@ -590,8 +593,9 @@ reConfig:
         DisableCron = 1; // Disable Auto Start Last Played counter (we don't want to call it right after enable it on GUI)
         diaGetInt(diaConfig, CFG_DEFDEVICE, &deviceModeIndex);
         gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
+        diaGetInt(diaConfig, CFG_AUTO_MODE1, &gAutoMode1);
 
-        // APA开启时，自动关闭BDMHDD
+        // 两边都开时，后面确认会关掉 APA，避免和 BDMHDD 并存
         diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
@@ -600,17 +604,19 @@ reConfig:
         diaGetInt(diaConfig, CFG_SMBCACHE, &smbCacheSize);
         diaGetInt(diaConfig, CFG_AUTODETECTPS1APPS, &gAutoDetectPS1Apps);
 
-        if (ret == BLOCKDEVICE_BUTTON) {
+        if (ret == CFG_BDMMODE) {
             guiShowBlockDeviceConfig();
 
             // 反回上个界面，并选中块设备
-            UiId = BLOCKDEVICE_BUTTON; // 块设备的uiid
+            UiId = CFG_BDMMODE; // 块设备的uiid
             goto reConfig;
         } else if (ret == UIID_BTN_OK) {
             if (gHDDStartMode && gEnableBdmHDD) {
-                gEnableBdmHDD = 0;
-                guiMsgBox("检测到冲突！已自动关闭BDMHDD模式！", 0, NULL);
+                gHDDStartMode = 0;
+                // guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
             }
+            if (gEnableBdmHDD)
+                initSupport(hddGetObject(0), HDD_MODE, 0);
             // BDM中途设为自动模式时
             if (!BdmStarted && (gBDMStartMode == START_MODE_AUTO)) {
                 if (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)
@@ -622,6 +628,7 @@ reConfig:
                  (previousAPPStartMode != START_MODE_AUTO && gAPPStartMode == START_MODE_AUTO)))
                 appForceRefresh();
             menuReinitMainMenu();
+            refreshMenuPosition();
         }
     }
     UiId = -1; // 还原uiid
@@ -725,6 +732,9 @@ void guiShowUIConfig(void)
     int previousTheme;
     int previousTxtRename;
 
+    const char *coverArtBG[] = {"背景关", "背景开", NULL};
+    const char *coverArtCOV[] = {"封面关", "封面开", NULL};
+    const char *coverArtICO[] = {"光碟关", "光碟开", NULL};
     const char *coverArtMode[] = {"性能模式(仅支持PNG)", "兼容模式(JPG & PNG)", NULL};
 
 reselect_video_mode:
@@ -740,8 +750,13 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_AUTOSORT, gAutosort);
     diaSetInt(diaUIConfig, UICFG_AUTOREFRESH, gAutoRefresh);
     diaSetInt(diaUIConfig, UICFG_NOTIFICATIONS, gEnableNotifications);
-    diaSetInt(diaUIConfig, UICFG_COVERART, gEnableArt);
+    diaSetEnum(diaUIConfig, UICFG_COVERART_BG, coverArtBG);
+    diaSetEnum(diaUIConfig, UICFG_COVERART_COV, coverArtCOV);
+    diaSetEnum(diaUIConfig, UICFG_COVERART_ICO, coverArtICO);
     diaSetEnum(diaUIConfig, UICFG_COVERARTMODE, coverArtMode);
+    diaSetInt(diaUIConfig, UICFG_COVERART_BG, gEnableArtBG);
+    diaSetInt(diaUIConfig, UICFG_COVERART_COV, gEnableArtCOV);
+    diaSetInt(diaUIConfig, UICFG_COVERART_ICO, gEnableArtICO);
     diaSetInt(diaUIConfig, UICFG_COVERARTMODE, gEnableJpg);
     diaSetInt(diaUIConfig, UICFG_WIDESCREEN, gWideScreen);
     diaSetInt(diaUIConfig, UICFG_VMODE, gVMode);
@@ -768,7 +783,9 @@ reselect_video_mode:
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
         diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);
-        diaGetInt(diaUIConfig, UICFG_COVERART, &gEnableArt);
+        diaGetInt(diaUIConfig, UICFG_COVERART_BG, &gEnableArtBG);
+        diaGetInt(diaUIConfig, UICFG_COVERART_COV, &gEnableArtCOV);
+        diaGetInt(diaUIConfig, UICFG_COVERART_ICO, &gEnableArtICO);
         diaGetInt(diaUIConfig, UICFG_COVERARTMODE, &gEnableJpg);
         diaGetInt(diaUIConfig, UICFG_WIDESCREEN, &gWideScreen);
         diaGetInt(diaUIConfig, UICFG_VMODE, &gVMode);
@@ -1065,6 +1082,49 @@ int guiDeferUpdate(struct gui_update_t *op)
     return ret;
 }
 
+// 按当前选中项所在页对齐 pagestart，避免“记住上次游戏”把它提到当前页第一项。
+static void submenuSetPageForCurrent(menu_item_t *menu)
+{
+    theme_element_t *itemsListElem = NULL;
+    item_list_t *list;
+    submenu_list_t *cur;
+    int displayedItems = 1;
+    int index = 0;
+
+    if (!menu || !menu->submenu || !menu->current)
+        return;
+
+    list = menu->userdata;
+    if (gTheme) {
+        if (list && list->mode == APP_MODE)
+            itemsListElem = gTheme->appsItemsList;
+        else
+            itemsListElem = gTheme->gamesItemsList;
+
+        if (!itemsListElem)
+            itemsListElem = gTheme->itemsList;
+    }
+
+    if (itemsListElem && itemsListElem->extended) {
+        displayedItems = ((items_list_t *)itemsListElem->extended)->displayedItems;
+        if (displayedItems < 1)
+            displayedItems = 1;
+    }
+
+    // 先数出选中项在当前页内的偏移，再沿 prev 回退到页首
+    for (cur = menu->submenu; cur && cur != menu->current; cur = cur->next)
+        index++;
+
+    index %= displayedItems;
+    cur = menu->current;
+    while (index > 0 && cur->prev) {
+        cur = cur->prev;
+        index--;
+    }
+
+    menu->pagestart = cur;
+}
+
 static void guiHandleOp(struct gui_update_t *item)
 {
     submenu_list_t *result = NULL;
@@ -1089,8 +1149,8 @@ static void guiHandleOp(struct gui_update_t *item)
             }
             if (item->submenu.selected) { // remember last played game feature
                 item->menu.menu->current = result;
-                item->menu.menu->pagestart = result;
                 item->menu.menu->remindLast = 1;
+                submenuSetPageForCurrent(item->menu.menu);
 
                 // Last Played Auto Start
                 if ((gAutoStartLastPlayed) && !(KeyPressedOnce))
@@ -1118,7 +1178,8 @@ static void guiHandleOp(struct gui_update_t *item)
             if (!item->menu.menu->remindLast)
                 item->menu.menu->current = item->menu.menu->submenu;
 
-            item->menu.menu->pagestart = item->menu.menu->current;
+            // 排序后按新顺序重算页起点，保持选中项在其真实页内位置
+            submenuSetPageForCurrent(item->menu.menu);
             break;
 
         case GUI_OP_ADD_HINT:
@@ -1673,28 +1734,18 @@ void reFindBDM()
     //    curShortDelayFrame = LongDelayTime;
     //}
 
-    // 根据设备的就绪状态来添加延迟
-    if ((gEnableMX4SIO > MX4SIOFound) || (gEnableBdmHDD > GptFound))
-        endIntroDelayFrame = defaultDelayFrame; // 需要更长时间搜寻设备
-    else if ((gEnableUSB > usbFound) || (gEnableILK > ILKFound))
-        endIntroDelayFrame = ShortDelayTime; // 搜寻设备的时间不需要太长
-    else
-        endIntroDelayFrame = 0;
-
     if (!BdmStarted) { // BDM未启动时的处理
         if (gBDMStartMode <= START_MODE_MANUAL) {
             if (bdmManualTrigger)
                 mainScreenInitDone = 0;
-            else
-                endIntroDelayFrame = 0;
         } else {
             mainScreenInitDone = 0;
         }
     } else { // BDM已启动后的处理
         mainScreenInitDone = 0;
-        if (!gBDMStartMode)
-            endIntroDelayFrame = 0;
     }
+
+    menuResetBDMStartup(BdmStarted);
 
     //// debug  打印debug信息
     //char debugFileDir[64];
@@ -1702,20 +1753,14 @@ void reFindBDM()
     //// sprintf(debugFileDir, "%sdebug.txt", prefix);
     //FILE *debugFile = fopen(debugFileDir, "ab+");
     //if (debugFile != NULL) {
-    //    fprintf(debugFile, "开始找设备时：最大延迟%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", endIntroDelayFrame, usbFound, GptFound);
+    //    fprintf(debugFile, "开始找设备时：%d\r\nUsbFound:%d  GptFound:%d\r\n\r\n", menuIsBDMDiscoveryPending(), usbFound, GptFound);
     //    fclose(debugFile);
     //}
 }
 
 void guiMainLoop(void)
 {
-    endIntroDelayFrame = defaultDelayFrame;
-
-    // 所有设备准备就绪，或BDM关闭或手动模式，就给最低启动延迟，为了预加载背景图和封面
-    if ((gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound))
-        endIntroDelayFrame = 0;
-    if (!gBDMStartMode || ((gBDMStartMode == START_MODE_MANUAL) && !BdmStarted))
-        endIntroDelayFrame = 0;
+    menuResetBDMStartup(BdmStarted);
 
     guiResetNotifications();
     guiCheckNotifications(1, 1);
@@ -1723,14 +1768,46 @@ void guiMainLoop(void)
     if (gOPLPart[0] != '\0')
         showPartPopup = 1;
 
-    if (gEnableBGM)
-        bgmStart();
+    // 首次启动时，待主界面初始化完成后再启动背景音乐。
+    // if (gEnableBGM)
+    //     bgmStart();
 
     //// debug
     //int delayFrameCount = 0;
 
     while (!gTerminate) {
         // 各种弹窗提示
+        if (bdmDeviceAlertPending && greetingAlpha <= 0x00) {
+            unsigned int unavailableTypes = menuGetBDMStartupUnavailableTypes();
+            char unavailableDevices[64] = "";
+            char deviceAlertMessage[96];
+            const int english = lngGetValue()[0] == 'E';
+            const char *separator = english ? ", " : "、";
+
+            bdmDeviceAlertPending = 0; // 防止重复弹窗
+            if (unavailableTypes & BDM_STARTUP_TYPE_USB)
+                strcat(unavailableDevices, "USB");
+            if (unavailableTypes & BDM_STARTUP_TYPE_ILINK) {
+                if (unavailableDevices[0])
+                    strcat(unavailableDevices, separator);
+                strcat(unavailableDevices, "iLink");
+            }
+            if (unavailableTypes & BDM_STARTUP_TYPE_SDC) {
+                if (unavailableDevices[0])
+                    strcat(unavailableDevices, separator);
+                strcat(unavailableDevices, "MX4SIO");
+            }
+            if (unavailableTypes & BDM_STARTUP_TYPE_ATA) {
+                if (unavailableDevices[0])
+                    strcat(unavailableDevices, separator);
+                strcat(unavailableDevices, "HDD(exFAT)");
+            }
+
+            if (unavailableDevices[0]) {
+                snprintf(deviceAlertMessage, sizeof(deviceAlertMessage), english ? "%s detection timed out. Device compatibility issue." : "%s 检测超时，可使用“手动刷新”重试", unavailableDevices);
+                guiMsgBox(deviceAlertMessage, 0, NULL);
+            }
+        }
         if (greetingAlpha <= 0x00) {
             // 如果txt被创建，则弹出提示框
             if (txtFileCreated) {
@@ -1746,58 +1823,38 @@ void guiMainLoop(void)
                 else
                     guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
             }
-            if (bdmTimeOut) {
-                bdmTimeOut = 0; // 防止重复弹窗
-                if (lngGetValue()[0] == 'E')
-                    guiMsgBox("Please close non-existent block devices!", 0, NULL);
-                else
-                    guiMsgBox("BDM块设备检测超时！", 0, NULL);
+            if (gHddFormatHint == HDD_FORMAT_HINT_NEED_BDMHDD) {
+                gHddFormatHint = HDD_FORMAT_HINT_NONE;
+                guiMsgBox(lngGetValue()[0] == 'E' ? "Internal HDD is exFAT. Enable HDD(exFAT) in BDM settings." : "内置exFAT硬盘，应启用BDM模式的HDD(exFAT)功能", 0, NULL);
+            } else if (gHddFormatHint == HDD_FORMAT_HINT_NEED_APA) {
+                gHddFormatHint = HDD_FORMAT_HINT_NONE;
+                guiMsgBox(lngGetValue()[0] == 'E' ? "Internal HDD is APA. Enable HDD(APA) start mode." : "内置APA硬盘，应启用HDD(APA)启动模式", 0, NULL);
             }
         }
 
         // 多线程初始化结束后，才开始处理设备
         if (theardInitDone) {
-            // 延迟显示游戏列表主界面，防止闪烁，delay期间让游戏列表有充分时间生成
-            if (endIntroDelayFrame > 0) {
-                // 所有设备准备就绪，才可以结束延迟
-                if ((gEnableUSB <= usbFound) && (gEnableILK <= ILKFound) && (gEnableMX4SIO <= MX4SIOFound) && (gEnableBdmHDD <= GptFound)) {
-                    //// debug  打印debug信息
-                    // char debugFileDir[64];
-                    // strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-                    //// sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    // FILE *debugFile = fopen(debugFileDir, "ab+");
-                    // if (debugFile != NULL) {
-                    //     fprintf(debugFile, "找到设备，耗时：%d帧\r\nUsbFound:%d  GptFound:%d\r\n\r\n", delayFrameCount, usbFound, GptFound);
-                    //     delayFrameCount = 0;
-                    //     fclose(debugFile);
-                    // }
-                    endIntroDelayFrame = 0;
-                } else {
-                    menuUpdateBDMSupport(); // 继续尝试检索bdm设备
-                    endIntroDelayFrame--;
-                    // BDM设备超时，弹出提示框
-                    if ((endIntroDelayFrame <= 0) && ((gBDMStartMode == START_MODE_AUTO) || BdmStarted || bdmManualTrigger))
-                        bdmTimeOut = 1;
+            int bdmStartupStatus = menuUpdateBDMSupport();
 
-                    //// debug  打印debug信息
-                    // delayFrameCount++;
-                    // if (endIntroDelayFrame <= 0) {
+            if (bdmStartupStatus & BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE)
+                bdmDeviceAlertPending = 1;
 
-                    //
-                    //    char debugFileDir[64];
-                    //    strcpy(debugFileDir, "smb:debug-BDMReady.txt");
-                    //    // sprintf(debugFileDir, "%sdebug.txt", prefix);
-                    //    FILE *debugFile = fopen(debugFileDir, "ab+");
-                    //    if (debugFile != NULL) {
-                    //        fprintf(debugFile, "设备寻找超时，耗时：%d帧\r\nUsbisOn:%d  GptisOn:%d\r\n\r\n", delayFrameCount, gEnableUSB, gEnableBdmHDD);
-                    //        delayFrameCount = 0;
-                    //        fclose(debugFile);
-                    //    }
-                    //}
-                }
-            } else {
+            //// debug  打印debug信息
+            // char debugFileDir[64];
+            // strcpy(debugFileDir, "smb:debug-BDMReady.txt");
+            //// sprintf(debugFileDir, "%sdebug.txt", prefix);
+            // FILE *debugFile = fopen(debugFileDir, "ab+");
+            // if (debugFile != NULL) {
+            //     fprintf(debugFile, "设备寻找状态：%d\r\nUsbFound:%d  GptFound:%d\r\n\r\n", menuIsBDMDiscoveryPending(), usbFound, GptFound);
+            //     fclose(debugFile);
+            // }
+
+            if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) &&
+                (gETHStartMode != START_MODE_AUTO || gDefaultDevice != ETH_MODE || !ethIsShareListPending()) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
+                    // 须在首次淡出前应用完整菜单，否则本帧仍会绘制旧列表。
+                    guiExecDeferredOps();
                     // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页
                     if (gBDMStartMode == START_MODE_AUTO)
                         bdmTryActivateStartupPlaceholder();
@@ -1810,14 +1867,14 @@ void guiMainLoop(void)
                             refreshMenuPosition(); // 纠正一下菜单位置，更保险。先切换screen，再刷新BDM菜单的停留位置才有效
                         }
                     }
+                    // 开错 HDD 模式会把启动开关关掉，上面的条件进不去，光标还得挪出隐藏页
+                    if (gHddFormatHint)
+                        refreshMenuPosition();
                     bdmDefaultNeedsCorrection = 0;
                     mainScreenInitDone = 1;
-                    // SMB自动模式且共享列表为空时，进入主界面后重新获取一次共享列表。
-                    if (!bdmManualTrigger && gETHStartMode == START_MODE_AUTO) {
-                        item_list_t *ethSupport = ethGetObject(1);
-                        if (ethSupport && ethSupport->itemGetCount(ethSupport) == 0)
-                            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &ethSupport->mode);
-                    }
+                    // 设备初始化完成后再启动背景音乐，避免音乐所在设备尚未挂载。
+                    if (gEnableBGM)
+                        bgmStart();
                     theardInitDone = 0;
                     // BDM自动模式时，启动变量直接改为1
                     if ((gBDMStartMode == START_MODE_AUTO) && !BdmStarted)
@@ -2008,8 +2065,8 @@ int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancel
 
         rmDrawRect(0, 0, screenWidth, screenHeight, gColDarker);
 
-        rmDrawLine(50, 75, screenWidth - 50, 75, gColWhite);
-        rmDrawLine(50, 410, screenWidth - 50, 410, gColWhite);
+        rmDrawLine(50, 200, screenWidth - 50, 200, gColWhite);
+        rmDrawLine(50, 280, screenWidth - 50, 280, gColWhite);
 
         fntRenderString(gTheme->fonts[0], screenWidth >> 1, gTheme->usedHeight >> 1, ALIGN_CENTER, 0, 0, text, gTheme->textColor);
         for (i = 0; i < 2; i++) {
@@ -2022,11 +2079,11 @@ int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancel
                 w = (iconTex->Width * 20) / iconTex->Height;
 
             if (iconTex && iconTex->Mem) {
-                rmDrawPixmap(iconTex, x, 427, ALIGN_VCENTER, w, h, SCALING_RATIO, gDefaultCol);
+                rmDrawPixmap(iconTex, x, 297, ALIGN_VCENTER, w, h, SCALING_RATIO, gDefaultCol);
                 x += rmWideScale(w) + 2;
             }
 
-            fntRenderString(gTheme->fonts[0], x, 427, ALIGN_VCENTER, 0, 0, buttonText[i], gTheme->selTextColor);
+            fntRenderString(gTheme->fonts[0], x, 297, ALIGN_VCENTER, 0, 0, buttonText[i], gTheme->selTextColor);
         }
 
         guiEndFrame();
@@ -2211,7 +2268,7 @@ void guiManageCheats(void)
 
     while (cheatCount < MAX_CODES && strlen(gCheats[cheatCount].name) > 0)
         cheatCount++;
-
+    fntRefreshCache(); // 刷新字模缓存
     sfxPlay(SFX_MESSAGE);
 
     while (!terminate) {
@@ -2274,6 +2331,6 @@ void guiManageCheats(void)
 
         guiEndFrame();
     }
-
+    fntRefreshCache(); // 刷新字模缓存
     sfxPlay(SFX_CONFIRM);
 }

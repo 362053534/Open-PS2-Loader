@@ -4,6 +4,7 @@
 #include "include/supportbase.h"
 #include "include/bdmsupport.h"
 #include "include/hdd.h"
+#include "include/hddsupport.h"
 #include "include/util.h"
 #include "include/themes.h"
 #include "include/textures.h"
@@ -21,6 +22,7 @@
 #include <fileXio_rpc.h> // fileXioIoctl, fileXioDevctl
 
 static int bdmModLoaded = 0;
+static int usbModLoaded = 0;
 static int iLinkModLoaded = 0;
 static int mx4sioModLoaded = 0;
 static int hddModLoaded = 0;
@@ -30,13 +32,35 @@ int bdmDeviceModeStarted;
 static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
 
-// 判断BDM设备是否使用ART2文件夹
-static int artUseBuckets_USB = 0;
-static int artUseBuckets_ILINK = 0;
-static int artUseBuckets_SDC = 0;
-static int artUseBuckets_ATA = 0;
+// 各BDM类型在设备初始化时探测一次 ART2 分桶
+static art_buckets_t artBuckets_USB;
+static art_buckets_t artBuckets_ILINK;
+static art_buckets_t artBuckets_SDC;
+static art_buckets_t artBuckets_ATA;
 
 void bdmInitDevicesData();
+
+int bdmIsIlinkSupported(void)
+{
+    static int supported = -1;
+
+    if (supported < 0) {
+        char romver[5];
+        int fd;
+
+        supported = 1;
+        fd = open("rom0:ROMVER", O_RDONLY);
+        if (fd >= 0) {
+            if (read(fd, romver, 4) == 4) {
+                romver[4] = '\0';
+                supported = strtoul(romver, NULL, 16) <= 0x160;
+            }
+            close(fd);
+        }
+    }
+
+    return supported;
+}
 
 // Identifies the partition that the specified file is stored on and generates a full path to it.
 int bdmFindPartition(char *target, const char *name, int write)
@@ -135,34 +159,38 @@ static void bdmLoadBlockDeviceModules(void)
 {
     int modulesLoaded = 0;
 
-    if (gEnableILK && !iLinkModLoaded) {
+    if (gEnableILK && bdmIsIlinkSupported() && !iLinkModLoaded) {
         // Load iLink Block Device drivers
         LOG("[ILINKMAN]:\n");
-        sysLoadModuleBuffer(&iLinkman_irx, size_iLinkman_irx, 0, NULL);
-        LOG("[IEEE1394_BD]:\n");
-        sysLoadModuleBuffer(&IEEE1394_bd_irx, size_IEEE1394_bd_irx, 0, NULL);
-
-        iLinkModLoaded = 1;
-        modulesLoaded = 1;
+        if (sysLoadModuleBuffer(&iLinkman_irx, size_iLinkman_irx, 0, NULL) == 0) {
+            LOG("[IEEE1394_BD]:\n");
+            if (sysLoadModuleBuffer(&IEEE1394_bd_irx, size_IEEE1394_bd_irx, 0, NULL) == 0) {
+                iLinkModLoaded = 1;
+                modulesLoaded = 1;
+            }
+        }
     }
 
     if (gEnableMX4SIO && !mx4sioModLoaded) {
         // Load MX4SIO Block Device drivers
         LOG("[MX4SIO_BD]:\n");
-        sysLoadModuleBuffer(&mx4sio_bd_irx, size_mx4sio_bd_irx, 0, NULL);
-
-        mx4sioModLoaded = 1;
-        modulesLoaded = 1;
+        if (sysLoadModuleBuffer(&mx4sio_bd_irx, size_mx4sio_bd_irx, 0, NULL) == 0) {
+            mx4sioModLoaded = 1;
+            modulesLoaded = 1;
+        }
     }
 
     if (gEnableBdmHDD && !hddModLoaded) {
         // Load dev9 and atad device drivers.
         LOG("bdmLoadBlockDeviceModules loading hdd drivers...\n");
-        hddLoadModules();
+        hddLoadModulesBDM();
 
         hddModLoaded = 1;
-        modulesLoaded = 1;
+        if (hddLoadModulesSuccess)
+            modulesLoaded = 1;
     }
+
+    fileXioDevctl("mass:", USBMASS_DEVCTL_SET_MX4SIO_PROBE, &gEnableMX4SIO, sizeof(gEnableMX4SIO), NULL, 0);
 
     // Give newly loaded block-device drivers time to initialize. Do not stall
     // periodic BDM refreshes once every optional driver is already loaded.
@@ -173,32 +201,59 @@ static void bdmLoadBlockDeviceModules(void)
 void bdmLoadModules(void)
 {
     if (!bdmModLoaded) {
-        bdmModLoaded = 1;
         LOG("BDMSUPPORT LoadModules\n");
 
         // Load Block Device Manager (BDM)
         LOG("[BDM]:\n");
-        sysLoadModuleBuffer(&bdm_irx, size_bdm_irx, 0, NULL);
+        if (sysLoadModuleBuffer(&bdm_irx, size_bdm_irx, 0, NULL) < 0)
+            return;
 
         // Load FATFS (mass:) driver
         LOG("[BDMFS_FATFS]:\n");
-        sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL);
+        if (sysLoadModuleBuffer(&bdmfs_fatfs_irx, size_bdmfs_fatfs_irx, 0, NULL) < 0)
+            return;
+
+        bdmModLoaded = 1;
 
         // Load USB Block Device drivers
         LOG("[USBD]:\n");
-        sysLoadModuleBuffer(&usbd_irx, size_usbd_irx, 0, NULL);
-        LOG("[USBMASS_BD]:\n");
-        sysLoadModuleBuffer(&usbmass_bd_irx, size_usbmass_bd_irx, 0, NULL);
+        if (sysLoadModuleBuffer(&usbd_irx, size_usbd_irx, 0, NULL) == 0) {
+            LOG("[USBMASS_BD]:\n");
+            if (sysLoadModuleBuffer(&usbmass_bd_irx, size_usbmass_bd_irx, 0, NULL) == 0)
+                usbModLoaded = 1;
+        }
 
         LOG("[BDMEVENT]:\n");
-        sysLoadModuleBuffer(&bdmevent_irx, size_bdmevent_irx, 0, NULL);
-        SifAddCmdHandler(0, &bdmEventHandler, NULL);
+        if (sysLoadModuleBuffer(&bdmevent_irx, size_bdmevent_irx, 0, NULL) == 0)
+            SifAddCmdHandler(0, &bdmEventHandler, NULL);
 
         LOG("BDMSUPPORT Modules loaded\n");
     }
+}
 
-    // Load Optional Block Device drivers
+void bdmLoadDeviceModules(void)
+{
+    // 加载可选块设备驱动
     bdmLoadBlockDeviceModules();
+}
+
+int bdmGetLoadedTypeMask(void)
+{
+    int result = 0;
+
+    if (!bdmModLoaded)
+        return -1;
+
+    if (usbModLoaded)
+        result |= BDM_STARTUP_TYPE_USB;
+    if (iLinkModLoaded)
+        result |= BDM_STARTUP_TYPE_ILINK;
+    if (mx4sioModLoaded)
+        result |= BDM_STARTUP_TYPE_SDC;
+    if (hddModLoaded && hddLoadModulesSuccess)
+        result |= BDM_STARTUP_TYPE_ATA;
+
+    return result;
 }
 
 void bdmInit(item_list_t *itemList)
@@ -279,7 +334,7 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     pDeviceData->bdmDeviceTick = BdmGeneration;
 
     // Check if the device has been connected or removed.
-    result = bdmUpdateDeviceData(itemList);
+    result = bdmUpdateDeviceData(itemList, 0);
     if (bdmDefaultNeedsCorrection && gInitComplete && !mainScreenInitDone && itemList->owner &&
         pDeviceData->bdmPrefix[0] != '\0' && ((opl_io_module_t *)itemList->owner)->menuItem.visible) {
         struct gui_update_t *id = guiOpCreate(GUI_OP_SELECT_MENU);
@@ -376,11 +431,50 @@ static int bdmUpdateGameList(item_list_t *itemList)
         } else { // 未初始化，或未知设备
             return 0;
         }
-        // 已知设备没开就返回0，开了就生成列表（只有USB会出现已知但未开的情况）
+        // 已加载的设备，没开就返回0，开了就返回生成列表后的游戏数量（只有USB会走进已加载但没开的这个分支条件）
         if (!bdmDeviceOn) {
             pDeviceData->bdmGameCount = -1;
             return 0;
         } else {
+            enum { BDMFS_NO_PATH = -5 };
+            char isoPath[256];
+            int rootDir, cdDir, dvdDir;
+
+            rootDir = fileXioDopen(pDeviceData->bdmPrefix);
+            if (rootDir < 0) {
+                pDeviceData->bdmGameCount = -1;
+                return 0;
+            }
+
+            if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
+                iox_dirent_t dirent;
+
+                // MX4SIO根目录为空时，继续保持未完成状态，等待下一次扫描。
+                if (fileXioDread(rootDir, &dirent) <= 0) {
+                    fileXioDclose(rootDir);
+                    pDeviceData->bdmGameCount = -1;
+                    return 0;
+                }
+            }
+            fileXioDclose(rootDir);
+
+            snprintf(isoPath, sizeof(isoPath), "%sCD", pDeviceData->bdmPrefix);
+            cdDir = fileXioDopen(isoPath);
+            if (cdDir >= 0)
+                fileXioDclose(cdDir);
+
+            snprintf(isoPath, sizeof(isoPath), "%sDVD", pDeviceData->bdmPrefix);
+            dvdDir = fileXioDopen(isoPath);
+            if (dvdDir >= 0)
+                fileXioDclose(dvdDir);
+
+            // bdmfs_fatfs会将FatFs的FRESULT取负后原样返回。
+            if ((cdDir < 0 && cdDir != BDMFS_NO_PATH) ||
+                (dvdDir < 0 && dvdDir != BDMFS_NO_PATH)) {
+                pDeviceData->bdmGameCount = -1;
+                return 0;
+            }
+
             int result = sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
 
             // 游戏列表生成完成后，再标记对应的BDM设备已完成初始化。
@@ -452,6 +546,40 @@ static void bdmRenameGame(item_list_t *itemList, int id, char *newName)
     pDeviceData->ForceRefresh = 1;
 }
 
+static int bdmGetFragmentList(int iop_fd, bd_fragment_t *fragments, int fragment_count)
+{
+    if ((unsigned int)fragment_count <= CTL_BUF_SIZE / sizeof(bd_fragment_t))
+        return fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0,
+                             fragments, fragment_count * sizeof(bd_fragment_t));
+
+    // fileXio控制返回缓冲区只有2048字节，大碎片表必须沿FAT游标分批取回。
+    unsigned char page_buffer[CTL_BUF_SIZE] __attribute__((aligned(64)));
+    bd_fraglist_page_t *page = (bd_fraglist_page_t *)page_buffer;
+    bd_fraglist_cursor_t cursor;
+    const int page_capacity = (CTL_BUF_SIZE - sizeof(*page)) / sizeof(bd_fragment_t);
+    int total = 0;
+
+    memset(&cursor, 0, sizeof(cursor));
+    while (total < fragment_count) {
+        int result = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST_PAGE,
+                                   &cursor, sizeof(cursor), page, sizeof(page_buffer));
+        if (result <= 0 || result != (int)page->fragment_count ||
+            result > page_capacity || total + result > fragment_count)
+            return -1;
+
+        memcpy(&fragments[total], page->fragments, result * sizeof(bd_fragment_t));
+        total += result;
+        cursor = page->cursor;
+
+        if ((cursor.clusters_remaining == 0) != (cursor.next_cluster == 0))
+            return -1;
+        if (cursor.clusters_remaining == 0)
+            break;
+    }
+
+    return total == fragment_count && cursor.clusters_remaining == 0 ? total : -1;
+}
+
 void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, fd, iop_fd, index, compatmask = 0;
@@ -465,8 +593,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     u32 layer1_start, layer1_offset;
     unsigned short int layer1_part;
     apa_sub_t parts[APA_MAXSUB + 1];
-    pfs_blockinfo_t blocks[BDM_MAX_FRAGS];
     int hddPartCount = 0;
+    bd_fragment_t *frag_table = NULL;
+    unsigned int frag_capacity = 0;
 
     bdm_device_data_t *pDeviceData = NULL;
 
@@ -480,8 +609,18 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     char vmc_name[32], vmc_path[256], have_error = 0;
     int vmc_id, size_mcemu_irx = 0;
+    int usePfsVMC = 0;
     bdm_vmc_infos_t bdm_vmc_infos;
     vmc_superblock_t vmc_superblock;
+
+    // APA ISO 的游戏读取走 BDM ATA，但 VMC 文件仍位于 PFS，需使用专用映射。
+    if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcmp(pDeviceData->bdmDriver, "ata")) {
+        size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchBDMGame == NULL);
+        if (size_mcemu_irx < 0)
+            return;
+        usePfsVMC = 1;
+        goto vmc_prepared;
+    }
 
     for (vmc_id = 0; vmc_id < 2; vmc_id++) {
         memset(&bdm_vmc_infos, 0, sizeof(bdm_vmc_infos_t));
@@ -552,6 +691,8 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         }
     }
 
+vmc_prepared:;
+
     void *irx = NULL;
     int irx_size = 0;
     if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
@@ -565,16 +706,19 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3))
         hddPartCount = hddGetPartitionInfo(gOPLPart, parts);
 
-    compatmask = sbPrepare(game, configSet, irx_size, irx, &index);
+    if (itemList != NULL)
+        compatmask = sbPrepare(game, configSet, irx_size, irx, &index, gAutoMode1);
+    else
+        compatmask = sbPrepare(game, configSet, irx_size, irx, &index, gAutoMode1);
     settings = (struct cdvdman_settings_bdm *)((u8 *)irx + index);
     if (settings == NULL) {
         return;
     }
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-    memset(&settings->frags[0], 0, sizeof(bd_fragment_t) * BDM_MAX_FRAGS);
-#pragma GCC diagnostic pop
-    u8 iTotalFragCount = 0;
+    settings->fragfile[0].frag_start = 0;
+    settings->fragfile[0].frag_count = 0;
+    settings->frag_table_ee_addr = 0;
+    settings->frag_table_bytes = 0;
+    int iTotalFragCount = 0;
 
     //
     // Add ISO as fragfile[0] to fragment list
@@ -586,39 +730,99 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         // Open file
         sbCreatePath(game, partname, pDeviceData->bdmPrefix, "/", i);
         fd = open(partname, O_RDONLY);
-        iop_fd = ps2sdk_get_iop_fd(fd);
         if (fd < 0) {
             sbUnprepare(&settings->common);
             guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
             return;
         }
+        iop_fd = ps2sdk_get_iop_fd(fd);
 
         // Get fragment list
         int iFragCount;
+        int iFragCapacity;
         if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3)) {
-            iFragCount = hddGetFileBlockInfo(partname, parts, blocks, BDM_MAX_FRAGS - iTotalFragCount);
+            pfs_blockinfo_t *blocks = NULL;
+            u32 sectors_per_zone = 0;
+
+            iFragCount = hddGetFileBlockList(partname, parts, hddPartCount, &blocks, &sectors_per_zone);
+            iFragCapacity = iFragCount > 0 ? iFragCount : 0;
             if (iFragCount > 0) {
                 int j;
+                unsigned int required_capacity = (unsigned int)iTotalFragCount + (unsigned int)iFragCount;
 
-                iFragCount--;
-                for (j = 0; j < iFragCount; j++) {
-                    if (blocks[j + 1].subpart >= hddPartCount) {
-                        iFragCount = -1;
-                        break;
+                if (required_capacity > frag_capacity) {
+                    unsigned int new_capacity = required_capacity;
+                    bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
+                    if (new_table == NULL) {
+                        free(blocks);
+                        close(fd);
+                        sbUnprepare(&settings->common);
+                        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+                        return;
                     }
-                    settings->frags[iTotalFragCount + j].sector = parts[blocks[j + 1].subpart].start + ((u64)blocks[j + 1].number << 4);
-                    settings->frags[iTotalFragCount + j].count = (u32)blocks[j + 1].count << 4;
+                    if (frag_table != NULL) {
+                        memcpy(new_table, frag_table, iTotalFragCount * sizeof(bd_fragment_t));
+                        free(frag_table);
+                    }
+                    frag_table = new_table;
+                    frag_capacity = new_capacity;
                 }
+                for (j = 0; j < iFragCount; j++) {
+                    frag_table[iTotalFragCount + j].sector = parts[blocks[j].subpart].start + (u64)blocks[j].number * sectors_per_zone;
+                    frag_table[iTotalFragCount + j].count = (u32)blocks[j].count * sectors_per_zone;
+                }
+                free(blocks);
                 settings->fragsAre512ByteSectors = 1;
             }
-        } else
-            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, (void *)&settings->frags[iTotalFragCount], sizeof(bd_fragment_t) * (BDM_MAX_FRAGS - iTotalFragCount));
-        if ((!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && iFragCount <= 0) || iFragCount > BDM_MAX_FRAGS) {
-            // Too many fragments
+        } else {
+            iFragCount = fileXioIoctl2(iop_fd, USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, NULL, 0);
+            iFragCapacity = iFragCount;
+            if (iFragCount > 0) {
+                unsigned int required_capacity = (unsigned int)iTotalFragCount + (unsigned int)iFragCount;
+                if (required_capacity > frag_capacity) {
+                    unsigned int new_capacity = required_capacity;
+                    bd_fragment_t *new_table = malloc(new_capacity * sizeof(bd_fragment_t));
+                    if (new_table == NULL) {
+                        close(fd);
+                        sbUnprepare(&settings->common);
+                        guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+                        return;
+                    }
+                    if (frag_table != NULL) {
+                        memcpy(new_table, frag_table, iTotalFragCount * sizeof(bd_fragment_t));
+                        free(frag_table);
+                    }
+                    frag_table = new_table;
+                    frag_capacity = new_capacity;
+                }
+                iFragCount = bdmGetFragmentList(iop_fd, &frag_table[iTotalFragCount], iFragCount);
+            }
+        }
+        if (iFragCount > iFragCapacity) {
+            char error[128];
+
+            snprintf(error, sizeof(error), _l(_STR_ERR_FRAGMENTED), iTotalFragCount + iFragCount);
             close(fd);
             sbUnprepare(&settings->common);
-            guiMsgBox(_l(_STR_ERR_FRAGMENTED), 0, NULL);
+            guiMsgBox(error, 0, NULL);
             return;
+        }
+        if (iFragCount <= 0) {
+            // 碎片表无效或不完整时无法安全启动游戏。
+            close(fd);
+            sbUnprepare(&settings->common);
+            guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+            return;
+        }
+
+        int j;
+        for (j = 0; j < iFragCount; j++) {
+            if (frag_table[iTotalFragCount + j].count == 0) {
+                close(fd);
+                sbUnprepare(&settings->common);
+                guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
+                return;
+            }
         }
         iso_frag->frag_count += iFragCount;
         iTotalFragCount += iFragCount;
@@ -675,7 +879,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     }
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
-        strcpy(filename, game->startup);
+        sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
 
     // deinit will free per device data.. copy driver name before free to compare for launch
     char bdmCurrentDriver[32];
@@ -712,12 +916,9 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         settings->hddIsLBA48 = pDeviceData->bdmHddIsLBA48;
     }
 
-    if (gAutoLaunchBDMGame == NULL) {
-        int bdmType = pDeviceData->bdmDeviceType;
-
+    if (gAutoLaunchBDMGame == NULL)
         deinit(NO_EXCEPTION, itemList->mode); // CAREFUL: deinit will call bdmCleanUp, so bdmGames/game will be freed
-        oplShutdownUnusedDev9(itemList->mode, bdmType);
-    } else {
+    else {
         miniDeinit(configSet);
 
         free(gAutoLaunchBDMGame);
@@ -730,17 +931,17 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     LOG("bdm pre sysLaunchLoaderElf\n");
     if (!strcmp(bdmCurrentDriver, "usb")) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_USBD;
-        sysLaunchLoaderElf(filename, "BDM_USB_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_USB_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "sd") && strlen(bdmCurrentDriver) == 2) {
         settings->common.fakemodule_flags |= 0 /* TODO! fake ilinkman ? */;
-        sysLaunchLoaderElf(filename, "BDM_ILK_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_ILK_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "sdc") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= 0;
-        sysLaunchLoaderElf(filename, "BDM_M4S_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_M4S_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
-        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, index, size_mcemu_irx, usePfsVMC ? pfs_bdm_mcemu_irx : bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     }
 }
 
@@ -750,37 +951,27 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&pDeviceData->bdmGames[id], pDeviceData->bdmPrefix, "/");
 }
 
-static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
+    const art_buckets_t *buckets = NULL;
+    char path[256];
+
+    (void)id;
 
     if (!value || pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)
         return ERR_BAD_FILE;
 
-    char path[256];
-    if (isRelative) {
-        // 根据BDM类型开启相应的分桶开关
-        int artUseBuckets = 0;
-        if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-            artUseBuckets = artUseBuckets_USB;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-            artUseBuckets = artUseBuckets_ILINK;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-            artUseBuckets = artUseBuckets_SDC;
-        else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-            artUseBuckets = artUseBuckets_ATA;
+    if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+        buckets = &artBuckets_USB;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+        buckets = &artBuckets_ILINK;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+        buckets = &artBuckets_SDC;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+        buckets = &artBuckets_ATA;
 
-        if (artUseBuckets) {
-            int len = strlen(value);
-            if (len >= 4 && (value[len - 1] == 'F' || value[len - 1] == 'f'))
-                snprintf(path, sizeof(path), "%sART2/APPS/%s/%s_%s", pDeviceData->bdmPrefix, value, value, suffix);
-            else
-                snprintf(path, sizeof(path), "%sART2/GAMES/%s/%s_%s", pDeviceData->bdmPrefix, value, value, suffix);
-        } else
-            snprintf(path, sizeof(path), "%s%s/%s_%s", pDeviceData->bdmPrefix, folder, value, suffix);
-    } else
-        snprintf(path, sizeof(path), "%s%s_%s", folder, value, suffix);
-
+    sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", buckets, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 
@@ -850,6 +1041,11 @@ static void bdmShutdown(item_list_t *itemList)
 
     // As required by some (typically 2.5") HDDs, issue the SCSI STOP UNIT command to avoid causing an emergency park.
     fileXioDevctl(path, USBMASS_DEVCTL_STOP_ALL, NULL, 0, NULL, 0);
+
+    // BDMHDD acquired one HDD/DEV9 reference through hddLoadModulesBDM().
+    // Release it only when this ATA-backed BDM slot is no longer the selected source.
+    if (pDeviceData != NULL && pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+        hddReleaseModulesBDM();
 
     if (itemList->enabled) {
         LOG("BDMSUPPORT Shutdown free data\n");
@@ -960,9 +1156,6 @@ void bdmEnumerateDevices()
     // Initialize the device list data if it hasn't been initialized yet.
     bdmInitDevicesData();
 
-    // Because bdmLoadModules is called before the config file is loaded bdmLoadBlockDeviceModules will not have loaded any
-    // optional bdm modules. Now that the config file has been loaded try loading any optional modules that weren't previously loaded.
-
     LOG("bdmEnumerateDevices done\n");
 }
 
@@ -1008,7 +1201,7 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
 
 //static int bdmHddCheckDone = 0;
 //static int bdmHddRetryCount = 0;
-int bdmUpdateDeviceData(item_list_t *itemList)
+int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
 {
     // If bdm mode is disabled bail out as we don't want to update the visibility state of the device pages.
     if (gBDMStartMode == START_MODE_DISABLED)
@@ -1026,14 +1219,12 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
+    if (dir < 0 && discoveryOnly)
+        return 0;
+
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
         if (pDeviceData->bdmPrefix[0] == '\0') {
-            if (gBDMPrefix[0] != '\0')
-                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
-            else
-                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
-
             // Get the name of the underlying device driver that backs the fat fs.
             fileXioIoctl2(dir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, &pDeviceData->bdmDriver, sizeof(pDeviceData->bdmDriver) - 1);
             fileXioIoctl2(dir, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &pDeviceData->massDeviceIndex, sizeof(pDeviceData->massDeviceIndex));
@@ -1053,24 +1244,30 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             } else
                 pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
 
-            // 根据BDM类型开启相应的分桶开关
-            char art2Path[128];
-            snprintf(art2Path, sizeof(art2Path), "%sART2", pDeviceData->bdmPrefix);
+            // 第一阶段只记录设备是否存在，不执行初始化和列表生成。
+            if (discoveryOnly) {
+                fileXioDclose(dir);
+                return pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN;
+            }
+
+            if (gBDMPrefix[0] != '\0')
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
+            else
+                snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
+
+            // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
-                DIR *art2Dir = opendir(art2Path);
-                int artUseBuckets = art2Dir ? 1 : 0;
+                art_buckets_t buckets;
 
-                if (art2Dir)
-                    closedir(art2Dir);
-
+                sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                    artUseBuckets_USB = artUseBuckets;
+                    artBuckets_USB = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                    artUseBuckets_ILINK = artUseBuckets;
+                    artBuckets_ILINK = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                    artUseBuckets_SDC = artUseBuckets;
+                    artBuckets_SDC = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                    artUseBuckets_ATA = artUseBuckets;
+                    artBuckets_ATA = buckets;
             }
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.
@@ -1106,6 +1303,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             // Close the device handle.
             fileXioDclose(dir);
             return 1;
+        } else if (discoveryOnly) {
+            fileXioDclose(dir);
+            return pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN;
         } else { // 如果已经初始化
             // 设备从关到开，才需要return1，否则不更新
             int result = 0;

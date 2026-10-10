@@ -33,6 +33,7 @@ DETAILED_CHANGELOG
 !.editorconfig
 !.clang-format
 !.clang-format-ignore
+!src/popstarter_smb_vfs.S
 !modules/debug/*.irx
 !modules/popstarter/
 !modules/popstarter/**

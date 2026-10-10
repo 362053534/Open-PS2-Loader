@@ -4,13 +4,18 @@
 #include "include/iosupport.h"
 #include "include/system.h"
 #include "include/supportbase.h"
+#include "include/bdmsupport.h"
 #include "include/ioman.h"
+#include <string.h>
 #include "modules/iopcore/common/cdvd_config.h"
 #include "include/cheatman.h"
 #include "include/pggsm.h"
 #include "include/cheatman.h"
 #include "include/ps2cnf.h"
 #include "include/gui.h"
+#include "pops_legacy_id_map.h"
+
+#include <dirent.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -114,12 +119,8 @@ static int GetStartupExecName(const char *path, char *filename, int maxlength)
             key++;
         }
 
-        if (length > maxlength) {
-            length = maxlength;
-        }
-
-        if (length == 0) {
-            LOG("GetStartupExecName: serial len 0 ':' (%s).\n", ps2disc_boot);
+        if (length == 0 || length > maxlength) {
+            LOG("GetStartupExecName: invalid startup name length %d (%s).\n", length, ps2disc_boot);
             return -1;
         }
 
@@ -133,6 +134,8 @@ static int GetStartupExecName(const char *path, char *filename, int maxlength)
         return ret;
     }
 }
+
+static int GetStartupExecNameFromISO(const char *path, char *filename, int maxlength);
 
 static void freeISOGameListCache(struct game_cache_list *cache);
 
@@ -325,7 +328,23 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
 
     char fullName[256];
 
-    if ((dir = opendir(path)) != NULL) {
+    dir = opendir(path);
+    if (!dir) {
+        size_t pathLen = strlen(path);
+
+        // 部分区分大小写的文件系统使用小写目录名，扫描失败时仅回退到约定的小写形式。
+        if (type == SCECdPS2CD && pathLen >= 2) {
+            path[pathLen - 2] = 'c';
+            path[pathLen - 1] = 'd';
+        } else if (type == SCECdPS2DVD && pathLen >= 3) {
+            path[pathLen - 3] = 'd';
+            path[pathLen - 2] = 'v';
+            path[pathLen - 1] = 'd';
+        }
+        dir = opendir(path);
+    }
+
+    if (dir) {
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
@@ -440,11 +459,11 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                     }
                 }
             } else {
-                // need to mount and read SYSTEM.CNF
-                char startup[GAME_STARTUP_MAX];
+                char startup[GENERAL_STARTUP_MAX];
                 int reopenApaTxt = 0;
+                int MountFD = -1;
 
-                // APA PFS：挂载前临时关闭同分区 txt，避免多开导致挂载失败；BDM/SMB 不改
+                // APA PFS：读取镜像前临时关闭同分区 txt，避免多开导致失败；BDM/SMB 不改
                 if (file && pFile && txtPath && strncmp(path, "pfs", 3) == 0) {
                     fclose(file);
                     *pFile = NULL;
@@ -452,26 +471,29 @@ static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **
                     reopenApaTxt = 1;
                 }
 
-                int MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
+                if (GetStartupExecNameFromISO(fullpath, startup, GENERAL_STARTUP_MAX - 1) != 0) {
+                    MountFD = fileXioMount("iso:", fullpath, FIO_MT_RDONLY);
 
-                if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GAME_STARTUP_MAX - 1) != 0) {
-                    fileXioUmount("iso:");
-                    // 挂载失败也要重开，保证后续缓存回填/追加仍能写 txt
-                    if (reopenApaTxt) {
-                        *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
-                        file = *pFile;
+                    if (MountFD < 0 || GetStartupExecName("iso:/SYSTEM.CNF;1", startup, GENERAL_STARTUP_MAX - 1) != 0) {
+                        fileXioUmount("iso:");
+                        // 挂载失败也要重开，保证后续缓存回填/追加仍能写 txt
+                        if (reopenApaTxt) {
+                            *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
+                            file = *pFile;
+                        }
+                        *glist = next->next;
+                        free(next);
+                        continue;
                     }
-                    *glist = next->next;
-                    free(next);
-                    continue;
                 }
-                strncpy(game->startup, startup, GAME_STARTUP_MAX - 1);
-                game->startup[GAME_STARTUP_MAX - 1] = '\0';
+                strncpy(game->startup, startup, GENERAL_STARTUP_MAX - 1);
+                game->startup[GENERAL_STARTUP_MAX - 1] = '\0';
                 strncpy(game->name, dirent->d_name, NameLen);
                 game->name[NameLen] = '\0';
                 strncpy(game->extension, &dirent->d_name[NameLen], sizeof(game->extension) - 1);
                 game->extension[sizeof(game->extension) - 1] = '\0';
-                fileXioUmount("iso:");
+                if (MountFD >= 0)
+                    fileXioUmount("iso:");
                 if (reopenApaTxt) {
                     *pFile = fopen(txtPath, "ab+, ccs=UTF-8");
                     file = *pFile;
@@ -590,97 +612,143 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // 将bdm hdd的txt优先在U盘进行读写
         bdmHddTxtPath[0] = '0';
         if (strncmp(prefix, "mass", 4) == 0) {
-            if (prefix[4] == '0') {
-                // 如果找到usb，且usb开关为关闭，则跳过扫描，不生成任何东西
-                if (usbFound && !gEnableUSB)
-                    return 0;
-            } else if (usbFound && prefix[4] != '0') {
-                // 如果插了U盘，那么寻找bdm hdd硬盘
-                char bdmType[32];
-                sprintf(bdmType, "%s/", prefix);
-                int massDir = fileXioDopen(bdmType);
-                if (massDir >= 0) {
-                    fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1);
-                    // 找到bdmhdd后的处理。
-                    if (strncmp(bdmType, "ata", 3) == 0) {
-                        strcpy(bdmHddTxtPath, "mass0:GameListTranslator_BdmHdd.txt");
-                        char curTxtPath[256];
-                        sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
-                        FILE *bdmTxt = fopen(bdmHddTxtPath, "rb");
-                        FILE *curTxt = fopen(curTxtPath, "rb");
-                        // 如果U盘里没有txt，但硬盘里有，则复制一份到硬盘里，再删除硬盘里的txt
-                        if ((bdmTxt == NULL) && (curTxt != NULL)) {
-                            bdmTxt = fopen(bdmHddTxtPath, "wb");
-                            if ((bdmTxt != NULL) && (curTxt != NULL)) {
-                                fseek(curTxt, 0, SEEK_END);
-                                u32 curTxtFileSize = ftell(curTxt);
-                                rewind(curTxt);
-                                char *buf = malloc(curTxtFileSize * sizeof(char));
-                                if (buf != NULL) {
-                                    fread(buf, curTxtFileSize, 1, curTxt);
-                                    fwrite(buf, curTxtFileSize, 1, bdmTxt);
-                                    // 删除硬盘txt之前备份一个，以防万一。
-                                    char BackupTxtPath[256];
-                                    sprintf(BackupTxtPath, "%sBackup.txt", prefix);
-                                    FILE *bakTxt = fopen(BackupTxtPath, "wb");
-                                    if (bakTxt != NULL) {
-                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                        fclose(bakTxt);
+            char bdmType[32] = "";
+            char bdmPath[256];
+            int massDir;
+
+            sprintf(bdmPath, "%s/", prefix);
+            massDir = fileXioDopen(bdmPath);
+            if (massDir >= 0) {
+                if (fileXioIoctl2(massDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, bdmType, sizeof(bdmType) - 1) >= 0) {
+                    bdmType[sizeof(bdmType) - 1] = '\0';
+                    // 找到bdmhdd后，再按实际驱动类型寻找U盘，不依赖USB开关或固定mass编号。
+                    if (!strcmp(bdmType, "ata")) {
+                        char usbPrefix[8] = "";
+
+                        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                            char usbPath[16];
+                            char usbType[32] = "";
+                            int usbDir;
+
+                            snprintf(usbPath, sizeof(usbPath), "mass%d:/", i);
+                            usbDir = fileXioDopen(usbPath);
+                            if (usbDir >= 0) {
+                                if (fileXioIoctl2(usbDir, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, usbType, sizeof(usbType) - 1) >= 0) {
+                                    usbType[sizeof(usbType) - 1] = '\0';
+                                    if (!strcmp(usbType, "usb"))
+                                        snprintf(usbPrefix, sizeof(usbPrefix), "mass%d:", i);
+                                }
+                                fileXioDclose(usbDir);
+                            }
+
+                            if (usbPrefix[0])
+                                break;
+                        }
+
+                        if (usbPrefix[0]) {
+                            char curTxtPath[256];
+                            FILE *bdmTxt;
+                            FILE *curTxt;
+
+                            snprintf(bdmHddTxtPath, sizeof(bdmHddTxtPath), "%sGameListTranslator_BdmHdd.txt", usbPrefix);
+                            sprintf(curTxtPath, "%sGameListTranslator.txt", prefix);
+                            bdmTxt = fopen(bdmHddTxtPath, "rb");
+                            curTxt = fopen(curTxtPath, "rb");
+
+                            // U盘里没有txt、硬盘里有时，成功复制后才删除硬盘原文件。
+                            if (!bdmTxt && curTxt) {
+                                int copySucceeded = 0;
+                                int backupSucceeded = 0;
+
+                                bdmTxt = fopen(bdmHddTxtPath, "wb");
+                                if (bdmTxt) {
+                                    fseek(curTxt, 0, SEEK_END);
+                                    u32 curTxtFileSize = ftell(curTxt);
+                                    rewind(curTxt);
+                                    char *buf = curTxtFileSize > 0 ? malloc(curTxtFileSize) : NULL;
+
+                                    if (curTxtFileSize == 0 || (buf && fread(buf, 1, curTxtFileSize, curTxt) == curTxtFileSize)) {
+                                        if (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bdmTxt) == curTxtFileSize)
+                                            copySucceeded = 1;
+
+                                        if (copySucceeded) {
+                                            char BackupTxtPath[256];
+                                            FILE *bakTxt;
+
+                                            sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                                            bakTxt = fopen(BackupTxtPath, "wb");
+                                            if (bakTxt) {
+                                                if (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bakTxt) == curTxtFileSize)
+                                                    backupSucceeded = 1;
+                                                fclose(bakTxt);
+                                            }
+                                        }
                                     }
+
                                     free(buf);
-                                }
-                                fclose(bdmTxt);
-                                fclose(curTxt);
-                                remove(curTxtPath);
-                                forceUpdateCache = 1;
-                            } else {
-                                fclose(curTxt);
-                            }
-                            // 检测是否同时存在两个txt，把较大的txt保留在U盘，并删除硬盘里的txt
-                        } else if ((bdmTxt != NULL) && (curTxt != NULL)) {
-                            fseek(bdmTxt, 0, SEEK_END);
-                            fseek(curTxt, 0, SEEK_END);
-                            u32 bdmTxtFileSize = ftell(bdmTxt);
-                            u32 curTxtFileSize = ftell(curTxt);
-                            rewind(bdmTxt);
-                            rewind(curTxt);
-                            char *buf = malloc(curTxtFileSize * sizeof(char));
-                            if (buf != NULL) {
-                                char BackupTxtPath[256];
-                                sprintf(BackupTxtPath, "%sBackup.txt", prefix);
-                                FILE *bakTxt = fopen(BackupTxtPath, "wb");
-                                fread(buf, curTxtFileSize, 1, curTxt);
-                                // 比较两个txt文件的大小
-                                if (bdmTxtFileSize < curTxtFileSize) {
                                     fclose(bdmTxt);
-                                    bdmTxt = fopen(bdmHddTxtPath, "wb");
-                                    fwrite(buf, curTxtFileSize, 1, bdmTxt);
-                                    // 删除硬盘txt之前备份一个，以防万一。
-                                    if (bakTxt != NULL) {
-                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
+                                }
+                                fclose(curTxt);
+
+                                if (copySucceeded) {
+                                    forceUpdateCache = 1;
+                                    if (backupSucceeded)
+                                        remove(curTxtPath);
+                                } else
+                                    bdmHddTxtPath[0] = '0';
+                                // 两边同时存在时保留较大的文件，备份和目标文件都有效后才删除硬盘原文件。
+                            } else if (bdmTxt && curTxt) {
+                                int backupSucceeded = 0;
+                                int usbReady;
+
+                                fseek(bdmTxt, 0, SEEK_END);
+                                fseek(curTxt, 0, SEEK_END);
+                                u32 bdmTxtFileSize = ftell(bdmTxt);
+                                u32 curTxtFileSize = ftell(curTxt);
+                                rewind(bdmTxt);
+                                rewind(curTxt);
+                                usbReady = bdmTxtFileSize >= curTxtFileSize;
+                                char *buf = curTxtFileSize > 0 ? malloc(curTxtFileSize) : NULL;
+
+                                if (curTxtFileSize == 0 || (buf && fread(buf, 1, curTxtFileSize, curTxt) == curTxtFileSize)) {
+                                    char BackupTxtPath[256];
+                                    FILE *bakTxt;
+
+                                    sprintf(BackupTxtPath, "%sBackup.txt", prefix);
+                                    bakTxt = fopen(BackupTxtPath, "wb");
+                                    if (bakTxt) {
+                                        if (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bakTxt) == curTxtFileSize)
+                                            backupSucceeded = 1;
                                         fclose(bakTxt);
                                     }
-                                } else {
-                                    // 删除硬盘txt之前备份一个，以防万一。
-                                    if (bakTxt != NULL) {
-                                        fwrite(buf, curTxtFileSize, 1, bakTxt);
-                                        fclose(bakTxt);
+
+                                    if (!usbReady) {
+                                        fclose(bdmTxt);
+                                        bdmTxt = fopen(bdmHddTxtPath, "wb");
+                                        if (bdmTxt && (curTxtFileSize == 0 || fwrite(buf, 1, curTxtFileSize, bdmTxt) == curTxtFileSize)) {
+                                            usbReady = 1;
+                                            forceUpdateCache = 1;
+                                        }
                                     }
                                 }
+
                                 free(buf);
-                            }
-                            fclose(bdmTxt);
-                            fclose(curTxt);
-                            remove(curTxtPath);
-                            forceUpdateCache = 1;
-                        } else {
-                            if (bdmTxt != NULL) {
+                                if (bdmTxt)
+                                    fclose(bdmTxt);
+                                fclose(curTxt);
+
+                                if (usbReady && backupSucceeded) {
+                                    remove(curTxtPath);
+                                    forceUpdateCache = 1;
+                                } else if (!usbReady)
+                                    bdmHddTxtPath[0] = '0';
+                            } else if (bdmTxt) {
                                 fclose(bdmTxt);
                             }
                         }
                     }
-                    fileXioDclose(massDir);
                 }
+                fileXioDclose(massDir);
             }
         }
         //// debug  在smb目录下打印debug信息，方便调试
@@ -1092,6 +1160,641 @@ static int ProbeZISO(int fd)
     }
 }
 
+static u16 ReadLE16(const u8 *data)
+{
+    u16 value;
+
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+static u32 ReadLE32(const u8 *data)
+{
+    u32 value;
+
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+static u64 ReadLE64(const u8 *data)
+{
+    u64 value;
+
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+int sbIsValidStartupExecName(const char *startup)
+{
+    int i;
+
+    if (startup == NULL || strlen(startup) != GAME_STARTUP_MAX - 1)
+        return -1;
+
+    for (i = 0; i < 4; i++) {
+        if ((startup[i] < 'A' || startup[i] > 'Z') && (startup[i] < 'a' || startup[i] > 'z'))
+            return -1;
+    }
+
+    if (startup[4] != '_' || startup[8] != '.' ||
+        startup[5] < '0' || startup[5] > '9' || startup[6] < '0' || startup[6] > '9' || startup[7] < '0' || startup[7] > '9' ||
+        startup[9] < '0' || startup[9] > '9' || startup[10] < '0' || startup[10] > '9')
+        return -1;
+
+    return 0;
+}
+
+static int ReadImageSector(int fd, int compressed, u32 sector)
+{
+    if (compressed)
+        return ziso_read_sector(IOBuffer, sector, 1) == 1 ? 0 : -1;
+
+    u64 offset = (u64)sector * 2048;
+    return lseek64(fd, offset, SEEK_SET) == offset && read(fd, IOBuffer, sizeof(IOBuffer)) == sizeof(IOBuffer) ? 0 : -1;
+}
+
+static int CopyStartupName(const u8 *name, u32 nameLength, int udf, char *filename, int maxlength)
+{
+    char startup[GAME_STARTUP_MAX];
+    int i;
+
+    if (maxlength < GAME_STARTUP_MAX - 1)
+        return -1;
+
+    if (udf) {
+        if (nameLength == GAME_STARTUP_MAX && name[0] == 8) {
+            memcpy(startup, &name[1], GAME_STARTUP_MAX - 1);
+        } else if (nameLength == GAME_STARTUP_MAX * 2 - 1 && name[0] == 16) {
+            for (i = 0; i < GAME_STARTUP_MAX - 1; i++) {
+                if (name[i * 2 + 1] != 0)
+                    return -1;
+                startup[i] = name[i * 2 + 2];
+            }
+        } else {
+            return -1;
+        }
+    } else {
+        if (nameLength < GAME_STARTUP_MAX - 1 ||
+            (nameLength > GAME_STARTUP_MAX - 1 && name[GAME_STARTUP_MAX - 1] != ';'))
+            return -1;
+        memcpy(startup, name, GAME_STARTUP_MAX - 1);
+    }
+
+    for (i = 0; i < 4; i++) {
+        if (startup[i] >= 'a' && startup[i] <= 'z')
+            startup[i] -= 'a' - 'A';
+    }
+
+    startup[GAME_STARTUP_MAX - 1] = '\0';
+    if (sbIsValidStartupExecName(startup) != 0)
+        return -1;
+
+    memcpy(filename, startup, GAME_STARTUP_MAX - 1);
+    filename[GAME_STARTUP_MAX - 1] = '\0';
+    return 0;
+}
+
+static int ReadPOPSVCDData(int fd, u8 *buffer, int length)
+{
+    int total = 0;
+    int result;
+
+    /* 各设备都可能短读，必须循环直到本批数据完整读入。 */
+    while (total < length) {
+        result = read(fd, &buffer[total], length - total);
+        if (result <= 0)
+            return -1;
+        total += result;
+    }
+
+    return 0;
+}
+
+static int ReadPOPSVCDSector(int fd, u32 sector)
+{
+    u64 offset = 0x100000ULL + (u64)sector * 2352ULL + 24ULL;
+
+    if (lseek64(fd, offset, SEEK_SET) != offset)
+        return -1;
+
+    return ReadPOPSVCDData(fd, IOBuffer, sizeof(IOBuffer));
+}
+
+static int CopyPOPSVolumeId(const u8 *volumeId, char *filename, int maxlength)
+{
+    char startup[GAME_STARTUP_MAX];
+    int length = 0;
+    int i;
+
+    if (maxlength < GAME_STARTUP_MAX - 1)
+        return -1;
+
+    while (length < 32 && volumeId[length] != '\0' && volumeId[length] != ' ')
+        length++;
+
+    if (length == 9) {
+        memcpy(startup, volumeId, 4);
+        startup[4] = '_';
+        memcpy(&startup[5], &volumeId[4], 3);
+        startup[8] = '.';
+        memcpy(&startup[9], &volumeId[7], 2);
+    } else if (length == GAME_STARTUP_MAX - 1) {
+        memcpy(startup, volumeId, GAME_STARTUP_MAX - 1);
+    } else {
+        return -1;
+    }
+
+    startup[GAME_STARTUP_MAX - 1] = '\0';
+    for (i = 0; i < 4; i++) {
+        if (startup[i] >= 'a' && startup[i] <= 'z')
+            startup[i] -= 'a' - 'A';
+    }
+
+    if (sbIsValidStartupExecName(startup) != 0)
+        return -1;
+
+    memcpy(filename, startup, GAME_STARTUP_MAX);
+    return 0;
+}
+
+static int IsPOPSVolumeCreationTimestampValid(const char *timestamp)
+{
+    int i;
+
+    for (i = 0; i < 16; i++) {
+        if (timestamp[i] < '0' || timestamp[i] > '9')
+            return -1;
+    }
+
+    return 0;
+}
+
+static int LookupPOPSLegacyIdByTimestamp(const char *timestamp, char *filename, int maxlength)
+{
+    unsigned int i;
+
+    if (maxlength < GAME_STARTUP_MAX - 1)
+        return -1;
+
+    for (i = 0; i < POPS_LEGACY_ID_MAP_COUNT; i++) {
+        if (!memcmp(popsLegacyIdMap[i].timestamp, timestamp, 16)) {
+            if (sbIsValidStartupExecName(popsLegacyIdMap[i].startup) != 0)
+                return -1;
+            memcpy(filename, popsLegacyIdMap[i].startup, GAME_STARTUP_MAX);
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+static int IsPOPSSYSTEMCNFName(const u8 *name, u8 nameLength)
+{
+    static const char systemCnf[] = "SYSTEM.CNF";
+    unsigned int i;
+
+    if (nameLength < sizeof(systemCnf) - 1)
+        return 0;
+    if (nameLength > sizeof(systemCnf) - 1 && name[sizeof(systemCnf) - 1] != ';')
+        return 0;
+
+    for (i = 0; i < sizeof(systemCnf) - 1; i++) {
+        char c = (char)name[i];
+        if (c >= 'a' && c <= 'z')
+            c -= 'a' - 'A';
+        if (c != systemCnf[i])
+            return 0;
+    }
+
+    return 1;
+}
+
+/* Parse PS1 SYSTEM.CNF BOOT= (not BOOT2) and keep the final executable name. */
+static int CopyPOPSStartupFromCnfBoot(const char *cnf, u32 length, char *filename, int maxlength)
+{
+    const char *end = cnf + length;
+    const char *line = cnf;
+
+    while (line < end) {
+        const char *cursor = line;
+        const char *boot;
+        const char *nameStart;
+        const char *nameEnd;
+        const char *slash;
+        char bootName[64];
+        unsigned int bootLength;
+
+        while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r'))
+            cursor++;
+
+        /* Match BOOT but not BOOT2. */
+        if (cursor + 4 <= end &&
+            (cursor[0] == 'B' || cursor[0] == 'b') &&
+            (cursor[1] == 'O' || cursor[1] == 'o') &&
+            (cursor[2] == 'O' || cursor[2] == 'o') &&
+            (cursor[3] == 'T' || cursor[3] == 't') &&
+            (cursor + 4 == end || cursor[4] != '2')) {
+            boot = cursor + 4;
+            while (boot < end && (*boot == ' ' || *boot == '\t'))
+                boot++;
+            if (boot < end && *boot == '=') {
+                boot++;
+                while (boot < end && (*boot == ' ' || *boot == '\t'))
+                    boot++;
+
+                nameStart = boot;
+                while (nameStart < end && *nameStart != ':' && *nameStart != '\r' && *nameStart != '\n' && *nameStart != '\0')
+                    nameStart++;
+                if (nameStart < end && *nameStart == ':')
+                    nameStart++;
+                while (nameStart < end && (*nameStart == '\\' || *nameStart == '/'))
+                    nameStart++;
+
+                nameEnd = nameStart;
+                while (nameEnd < end && *nameEnd != ';' && *nameEnd != '\r' && *nameEnd != '\n' &&
+                       *nameEnd != '\0' && *nameEnd != ' ' && *nameEnd != '\t')
+                    nameEnd++;
+
+                if (nameEnd > nameStart) {
+                    slash = nameStart;
+                    while (slash < nameEnd) {
+                        if (*slash == '\\' || *slash == '/')
+                            nameStart = slash + 1;
+                        slash++;
+                    }
+
+                    bootLength = (unsigned int)(nameEnd - nameStart);
+                    if (bootLength > 0 && bootLength < sizeof(bootName)) {
+                        memcpy(bootName, nameStart, bootLength);
+                        if (nameEnd < end && *nameEnd == ';' && bootLength + 2 < sizeof(bootName)) {
+                            bootName[bootLength++] = ';';
+                            if (nameEnd + 1 < end && nameEnd[1] >= '0' && nameEnd[1] <= '9')
+                                bootName[bootLength++] = nameEnd[1];
+                            else
+                                bootName[bootLength++] = '1';
+                        }
+                        return CopyStartupName((const u8 *)bootName, bootLength, 0, filename, maxlength);
+                    }
+                }
+            }
+        }
+
+        while (line < end && *line != '\n' && *line != '\0')
+            line++;
+        if (line < end && *line == '\n')
+            line++;
+        else
+            break;
+    }
+
+    return -1;
+}
+
+static int LookupPOPSStartupFromSYSTEMCNF(int fd, u32 cnfLBA, u32 cnfSize, char *filename, int maxlength)
+{
+    u32 sectorCount;
+    u32 sector;
+    u32 offset = 0;
+    char cnf[1024];
+
+    if (cnfSize == 0)
+        return -1;
+    if (cnfSize > sizeof(cnf) - 1)
+        cnfSize = sizeof(cnf) - 1;
+
+    sectorCount = (cnfSize + 2047) / 2048;
+    for (sector = 0; sector < sectorCount; sector++) {
+        u32 chunk = cnfSize - offset;
+
+        if (chunk > 2048)
+            chunk = 2048;
+        if (ReadPOPSVCDSector(fd, cnfLBA + sector) != 0)
+            return -1;
+        memcpy(&cnf[offset], IOBuffer, chunk);
+        offset += chunk;
+    }
+
+    cnf[offset] = '\0';
+    return CopyPOPSStartupFromCnfBoot(cnf, offset, filename, maxlength);
+}
+
+/* Root ID first; if missing, parse BOOT= from marked SYSTEM.CNF. */
+
+/* 旧的三级 EXE 内容扫描已由 PVD 卷创建时间查表替代。 */
+
+int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength)
+{
+    int fd, result = -1;
+    u8 volumeId[32];
+    u32 rootLBA, rootSize, sector;
+    char volumeTimestamp[17];
+    int hasSystemCnf = 0;
+    u32 systemCnfLBA = 0;
+    u32 systemCnfSize = 0;
+
+    if (maxlength < GAME_STARTUP_MAX - 1 || (fd = open(path, O_RDONLY, 0666)) < 0)
+        return -1;
+
+    /* POPS VCD的ISO数据位于固定头部之后，物理扇区包含24字节附加头。 */
+    if (ReadPOPSVCDSector(fd, 16) == 0 && IOBuffer[0] == 1 && !memcmp(&IOBuffer[1], "CD001", 5) && IOBuffer[156] >= 34) {
+        memcpy(volumeId, &IOBuffer[40], sizeof(volumeId));
+        memcpy(volumeTimestamp, &IOBuffer[813], 16);
+        volumeTimestamp[16] = '\0';
+        rootLBA = ReadLE32(&IOBuffer[158]);
+        rootSize = ReadLE32(&IOBuffer[166]);
+
+        for (sector = 0; sector < (rootSize + 2047) / 2048 && result != 0; sector++) {
+            u32 position = 0;
+            u32 sectorSize = rootSize - sector * 2048;
+
+            if (sectorSize > 2048)
+                sectorSize = 2048;
+            if (ReadPOPSVCDSector(fd, rootLBA + sector) != 0)
+                break;
+
+            while (position < sectorSize) {
+                const u8 recordLength = IOBuffer[position];
+                const u8 *name;
+                u8 nameLength;
+
+                if (!recordLength)
+                    break;
+                if (recordLength < 34 || position + recordLength > sectorSize)
+                    break;
+
+                nameLength = IOBuffer[position + 32];
+                name = &IOBuffer[position + 33];
+                if (33 + nameLength > recordLength) {
+                    position += recordLength;
+                    continue;
+                }
+
+                if (!(IOBuffer[position + 25] & 2)) {
+                    if (!hasSystemCnf && IsPOPSSYSTEMCNFName(name, nameLength)) {
+                        hasSystemCnf = 1;
+                        systemCnfLBA = ReadLE32(&IOBuffer[position + 2]);
+                        systemCnfSize = ReadLE32(&IOBuffer[position + 10]);
+                    }
+                    if (CopyStartupName(name, nameLength, 0, filename, maxlength) == 0) {
+                        result = 0;
+                        break;
+                    }
+                }
+
+                position += recordLength;
+            }
+        }
+
+        if (result != 0 && hasSystemCnf)
+            result = LookupPOPSStartupFromSYSTEMCNF(fd, systemCnfLBA, systemCnfSize, filename, maxlength);
+        if (result != 0)
+            result = CopyPOPSVolumeId(volumeId, filename, maxlength);
+        if (result != 0 && IsPOPSVolumeCreationTimestampValid(volumeTimestamp) == 0)
+            result = LookupPOPSLegacyIdByTimestamp(volumeTimestamp, filename, maxlength);
+    }
+
+    close(fd);
+    return result;
+}
+
+static int HasUDF(int fd, int compressed)
+{
+    u32 sector;
+
+    for (sector = 16; sector < 32; sector++) {
+        if (ReadImageSector(fd, compressed, sector) != 0)
+            return 0;
+        if (!memcmp(&IOBuffer[1], "NSR02", 5) || !memcmp(&IOBuffer[1], "NSR03", 5))
+            return 1;
+    }
+
+    return 0;
+}
+
+static int GetStartupExecNameFromISO9660(int fd, int compressed, char *filename, int maxlength)
+{
+    u32 rootLBA, rootSize, sector;
+
+    if (ReadImageSector(fd, compressed, 16) != 0 ||
+        IOBuffer[0] != 1 || memcmp(&IOBuffer[1], "CD001", 5) || IOBuffer[156] < 34)
+        return -1;
+
+    rootLBA = ReadLE32(&IOBuffer[158]);
+    rootSize = ReadLE32(&IOBuffer[166]);
+
+    for (sector = 0; sector < (rootSize + 2047) / 2048; sector++) {
+        u32 position = 0;
+        u32 sectorSize = rootSize - sector * 2048;
+
+        if (sectorSize > 2048)
+            sectorSize = 2048;
+        if (ReadImageSector(fd, compressed, rootLBA + sector) != 0)
+            return -1;
+
+        while (position < sectorSize) {
+            const u8 recordLength = IOBuffer[position];
+            const u8 *name;
+            u8 nameLength;
+
+            if (!recordLength)
+                break;
+            if (recordLength < 34 || position + recordLength > sectorSize)
+                return -1;
+
+            nameLength = IOBuffer[position + 32];
+            name = &IOBuffer[position + 33];
+            if (!(IOBuffer[position + 25] & 2) && 33 + nameLength <= recordLength &&
+                CopyStartupName(name, nameLength, 0, filename, maxlength) == 0)
+                return 0;
+
+            position += recordLength;
+        }
+    }
+
+    return -1;
+}
+
+static int GetStartupExecNameFromUDF(int fd, int compressed, char *filename, int maxlength)
+{
+    u32 mainLength, mainLocation, partitionStart[16] = {0};
+    u16 partitionNumber[16] = {0}, partitionMap[16] = {0};
+    u32 fileSetLocation = 0, rootLocation, rootSize, position;
+    u16 fileSetPartition = 0, rootPartition;
+    u8 partitionCount = 0, partitionMapCount = 0;
+    u8 *allocationDescriptors = NULL, *rootData = NULL;
+    int result = -1;
+    u32 sector;
+
+    if (ReadImageSector(fd, compressed, 256) != 0 || ReadLE16(IOBuffer) != 2)
+        return -1;
+
+    mainLength = ReadLE32(&IOBuffer[16]);
+    mainLocation = ReadLE32(&IOBuffer[20]);
+
+    for (sector = mainLocation; sector < mainLocation + (mainLength + 2047) / 2048; sector++) {
+        u16 tag;
+
+        if (ReadImageSector(fd, compressed, sector) != 0)
+            return -1;
+
+        tag = ReadLE16(IOBuffer);
+        if (tag == 5 && partitionCount < 16) {
+            partitionNumber[partitionCount] = ReadLE16(&IOBuffer[22]);
+            partitionStart[partitionCount] = ReadLE32(&IOBuffer[188]);
+            partitionCount++;
+        } else if (tag == 6) {
+            u32 mapLength = ReadLE32(&IOBuffer[264]);
+            u32 mapPosition = 440;
+            u32 mapEnd = mapPosition + mapLength;
+
+            if (ReadLE32(&IOBuffer[212]) != 2048 || mapEnd > sizeof(IOBuffer))
+                return -1;
+
+            fileSetLocation = ReadLE32(&IOBuffer[252]);
+            fileSetPartition = ReadLE16(&IOBuffer[256]);
+            while (mapPosition + 2 <= mapEnd && partitionMapCount < 16) {
+                u8 mapType = IOBuffer[mapPosition];
+                u8 mapSize = IOBuffer[mapPosition + 1];
+
+                if (mapType != 1 || mapSize < 6 || mapPosition + mapSize > mapEnd)
+                    return -1;
+                partitionMap[partitionMapCount++] = ReadLE16(&IOBuffer[mapPosition + 4]);
+                mapPosition += mapSize;
+            }
+        } else if (tag == 8) {
+            break;
+        }
+    }
+
+    if (fileSetPartition >= partitionMapCount)
+        return -1;
+
+    for (sector = 0; sector < partitionCount; sector++) {
+        if (partitionNumber[sector] == partitionMap[fileSetPartition])
+            break;
+    }
+    if (sector == partitionCount || ReadImageSector(fd, compressed, partitionStart[sector] + fileSetLocation) != 0 || ReadLE16(IOBuffer) != 256)
+        return -1;
+
+    rootLocation = ReadLE32(&IOBuffer[404]);
+    rootPartition = ReadLE16(&IOBuffer[408]);
+    if (rootPartition >= partitionMapCount)
+        return -1;
+
+    for (sector = 0; sector < partitionCount; sector++) {
+        if (partitionNumber[sector] == partitionMap[rootPartition])
+            break;
+    }
+    if (sector == partitionCount || ReadImageSector(fd, compressed, partitionStart[sector] + rootLocation) != 0 || ReadLE16(IOBuffer) != 261)
+        return -1;
+
+    rootSize = (u32)ReadLE64(&IOBuffer[56]);
+    u32 extendedAttributesLength = ReadLE32(&IOBuffer[168]);
+    u32 allocationDescriptorsLength = ReadLE32(&IOBuffer[172]);
+    u32 allocationDescriptorsPosition = 176 + extendedAttributesLength;
+    u16 allocationType = ReadLE16(&IOBuffer[34]) & 7;
+
+    if (!rootSize || allocationDescriptorsPosition + allocationDescriptorsLength > sizeof(IOBuffer))
+        return -1;
+
+    allocationDescriptors = malloc(allocationDescriptorsLength);
+    rootData = malloc(rootSize);
+    if (!allocationDescriptors || !rootData)
+        goto end;
+
+    memcpy(allocationDescriptors, &IOBuffer[allocationDescriptorsPosition], allocationDescriptorsLength);
+    if (allocationType == 3) {
+        if (allocationDescriptorsLength < rootSize)
+            goto end;
+        memcpy(rootData, allocationDescriptors, rootSize);
+    } else if (allocationType == 0) {
+        u32 copied = 0;
+
+        for (position = 0; position + 8 <= allocationDescriptorsLength && copied < rootSize; position += 8) {
+            u32 extentLength = ReadLE32(&allocationDescriptors[position]) & 0x3fffffff;
+            u32 extentLocation = ReadLE32(&allocationDescriptors[position + 4]);
+            u32 extentSector;
+
+            for (extentSector = 0; extentSector < (extentLength + 2047) / 2048 && copied < rootSize; extentSector++) {
+                u32 copySize = rootSize - copied;
+                if (copySize > 2048)
+                    copySize = 2048;
+                if (ReadImageSector(fd, compressed, partitionStart[sector] + extentLocation + extentSector) != 0)
+                    goto end;
+                memcpy(&rootData[copied], IOBuffer, copySize);
+                copied += copySize;
+            }
+        }
+
+        if (copied < rootSize)
+            goto end;
+    } else {
+        goto end;
+    }
+
+    for (position = 0; position + 38 <= rootSize;) {
+        u8 fileCharacteristics, nameLength;
+        u16 implementationUseLength;
+        u32 recordLength;
+
+        if (ReadLE16(&rootData[position]) != 257)
+            break;
+
+        fileCharacteristics = rootData[position + 18];
+        nameLength = rootData[position + 19];
+        implementationUseLength = ReadLE16(&rootData[position + 36]);
+        recordLength = (38 + implementationUseLength + nameLength + 3) & ~3;
+        if (position + recordLength > rootSize)
+            break;
+
+        if (!(fileCharacteristics & 6) &&
+            CopyStartupName(&rootData[position + 38 + implementationUseLength], nameLength, 1, filename, maxlength) == 0) {
+            result = 0;
+            break;
+        }
+
+        position += recordLength;
+    }
+
+end:
+    free(rootData);
+    free(allocationDescriptors);
+    return result;
+}
+
+static int GetStartupExecNameFromISO(const char *path, char *filename, int maxlength)
+{
+    int fd, compressed, result;
+
+    if ((fd = open(path, O_RDONLY, 0666)) < 0)
+        return -1;
+
+    compressed = ProbeZISO(fd);
+    if (HasUDF(fd, compressed))
+        result = GetStartupExecNameFromUDF(fd, compressed, filename, maxlength);
+    else
+        result = GetStartupExecNameFromISO9660(fd, compressed, filename, maxlength);
+
+    close(fd);
+    return result;
+}
+
+void sbGetStartupExecNameForLaunch(const char *path, const char *startup, char *filename, int maxlength)
+{
+    int fd, compressed;
+
+    strncpy(filename, startup, maxlength);
+    filename[maxlength] = '\0';
+
+    if ((fd = open(path, O_RDONLY, 0666)) < 0)
+        return;
+
+    compressed = ProbeZISO(fd);
+    GetStartupExecNameFromISO9660(fd, compressed, filename, maxlength);
+
+    close(fd);
+}
+
 u32 sbGetISO9660MaxLBA(const char *path)
 {
     u32 maxLBA;
@@ -1148,13 +1851,24 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
 
 static const struct cdvdman_settings_common cdvdman_settings_common_sample = CDVDMAN_SETTINGS_DEFAULT_COMMON;
 
-int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex)
+int sbGetCompatMask(config_set_t *configSet, int defaultMode1)
+{
+    int compatmask = 0;
+    int manualMode1 = 0;
+
+    configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatmask);
+    /* 没有 $ManualMode1 才套用总开关；有字段说明用户接管过模式1。 */
+    if (defaultMode1 && !configGetInt(configSet, CONFIG_ITEM_MANUAL_MODE1, &manualMode1))
+        compatmask |= COMPAT_MODE_1;
+    return compatmask;
+}
+
+int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex, int defaultMode1)
 {
     int i;
     struct cdvdman_settings_common *settings;
 
-    int compatmask = 0;
-    configGetInt(configSet, CONFIG_ITEM_COMPAT, &compatmask);
+    int compatmask = sbGetCompatMask(configSet, defaultMode1);
 
     char gameid[5];
     configGetDiscIDBinary(configSet, gameid);
@@ -1296,6 +2010,23 @@ void sbRebuildULCfg(base_game_info_t **list, const char *prefix, int gamecount, 
     }
 }
 
+static const char *sbGetISODirectoryName(const char *prefix, char media)
+{
+    const char *directory = media == SCECdPS2CD ? "CD" : "DVD";
+    char path[256];
+    DIR *dir;
+
+    snprintf(path, sizeof(path), "%s%s", prefix, directory);
+    dir = opendir(path);
+    if (dir) {
+        closedir(dir);
+        return directory;
+    }
+
+    // 后续文件操作必须沿用扫描阶段找到的小写目录，否则列表存在但镜像无法打开。
+    return media == SCECdPS2CD ? "cd" : "dvd";
+}
+
 static void sbCreatePath_name(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part, const char *game_name)
 {
     switch (game->format) {
@@ -1304,10 +2035,10 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
-            snprintf(path, 256, "%s%s%s%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, gTxtRename ? game->indexName : game->name, game->extension);
+            snprintf(path, 256, "%s%s%s%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, gTxtRename ? game->indexName : game->name, game->extension);
             break;
         case GAME_FORMAT_OLD_ISO:
-            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, (game->media == SCECdPS2CD) ? "CD" : "DVD", sep, game->startup, gTxtRename ? game->indexName : game->name, game->extension);
+            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, game->startup, gTxtRename ? game->indexName : game->name, game->extension);
             break;
     }
 }
@@ -1365,7 +2096,7 @@ config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const
     if ((game->sizeMB == 0) && (game->format != GAME_FORMAT_OLD_ISO)) {
         char gamepath[256];
 
-        snprintf(gamepath, sizeof(gamepath), "%s%s%s%s%s%s", prefix, sep, game->media == SCECdPS2CD ? "CD" : "DVD", sep, game->indexName, game->extension);
+        snprintf(gamepath, sizeof(gamepath), "%s%s%s%s%s%s", prefix, sep, sbGetISODirectoryName(prefix, game->media), sep, game->indexName, game->extension);
 
         if (stat(gamepath, &st) == 0)
             game->sizeMB = st.st_size >> 20;
@@ -1377,9 +2108,9 @@ config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const
     configSetInt(config, CONFIG_ITEM_SIZE, game->sizeMB);
 
     if (game->format != GAME_FORMAT_USBLD) {
-        if (!strcmp(game->extension, ".iso"))
+        if (!strcasecmp(game->extension, ".iso"))
             configSetStr(config, CONFIG_ITEM_FORMAT, "ISO");
-        else if (!strcmp(game->extension, ".zso"))
+        else if (!strcasecmp(game->extension, ".zso"))
             configSetStr(config, CONFIG_ITEM_FORMAT, "ZSO");
     } else if (game->format == GAME_FORMAT_USBLD)
         configSetStr(config, CONFIG_ITEM_FORMAT, "UL");
@@ -1405,12 +2136,104 @@ static void sbCreateFoldersFromList(const char *path, const char **folders)
 void sbCreateFolders(const char *path, int createDiscImgFolders)
 {
     const char *basicFolders[] = {"CFG", "THM", "LNG", "ART", "VMC", "CHT", "APPS", "CACHE", NULL};
-    const char *discImgFolders[] = {"CD", "DVD", NULL};
+    const char *discImgFolders[] = {"CD", "DVD", "POPS", NULL};
 
     sbCreateFoldersFromList(path, basicFolders);
 
     if (createDiscImgFolders)
         sbCreateFoldersFromList(path, discImgFolders);
+}
+
+static int sbArtDirExists(const char *path)
+{
+    DIR *dir = opendir(path);
+
+    if (!dir)
+        return 0;
+
+    closedir(dir);
+    return 1;
+}
+
+void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)
+{
+    char path[128];
+
+    if (!buckets)
+        return;
+
+    memset(buckets, 0, sizeof(*buckets));
+    if (!prefix || !sep)
+        return;
+
+    snprintf(path, sizeof(path), "%sART2", prefix);
+    if (!sbArtDirExists(path))
+        return;
+
+    buckets->useBuckets = 1;
+
+    snprintf(path, sizeof(path), "%sART2%sPS2", prefix, sep);
+    buckets->hasPS2 = sbArtDirExists(path);
+
+    snprintf(path, sizeof(path), "%sART2%sPS1", prefix, sep);
+    buckets->hasPS1 = sbArtDirExists(path);
+
+    snprintf(path, sizeof(path), "%sART2%sAPPS", prefix, sep);
+    buckets->hasAPPS = sbArtDirExists(path);
+
+    snprintf(path, sizeof(path), "%sART2%sGAMES", prefix, sep);
+    buckets->hasGAMES = sbArtDirExists(path);
+}
+
+void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
+                         const art_buckets_t *buckets, const char *folder, int isRelative,
+                         const char *value, const char *suffix)
+{
+    const char *bucket = NULL;
+    const char *artFolder = folder;
+
+    if (!isRelative) {
+        snprintf(path, pathSize, "%s%s_%s", folder, value, suffix);
+        return;
+    }
+
+    /* ART_PS1 / ART_ELF 只用来选桶，落回旧 ART 时必须还原成真实目录名。 */
+    if (folder && (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_ELF)))
+        artFolder = ART_FOLDER_NAME;
+
+    if (buckets && buckets->useBuckets && folder) {
+        if (!strcmp(folder, ART_FOLDER_ELF)) {
+            if (buckets->hasAPPS)
+                bucket = "APPS";
+        } else if (!strcmp(folder, ART_FOLDER_PS1)) {
+            /* POPS：GAMES 优先，没有才进 PS1。 */
+            if (buckets->hasGAMES)
+                bucket = "GAMES";
+            else if (buckets->hasPS1)
+                bucket = "PS1";
+        } else if (!strcmp(folder, ART_FOLDER_NAME)) {
+            /* 游戏列表进不了 ELF，这里不看文件名后缀，避免误进 ART2/APPS。
+               PS2：GAMES 优先，没有才进 PS2。 */
+            if (buckets->hasGAMES)
+                bucket = "GAMES";
+            else if (buckets->hasPS2)
+                bucket = "PS2";
+        }
+    }
+
+    if (bucket) {
+        /* 只有落到 PS1/PS2 时 BG/SCR 才带序号；GAMES 仍用旧后缀。 */
+        if ((!strcmp(bucket, "PS1") || !strcmp(bucket, "PS2")) && suffix) {
+            if (!strcmp(suffix, "BG"))
+                suffix = "BG_00";
+            else if (!strcmp(suffix, "SCR"))
+                suffix = "SCR_00";
+            else if (!strcmp(suffix, "SCR2"))
+                suffix = "SCR_01";
+        }
+        snprintf(path, pathSize, "%sART2%s%s%s%s%s%s_%s", prefix, sep, bucket, sep, value, sep, value, suffix);
+    } else
+        snprintf(path, pathSize, "%s%s%s%s_%s", prefix, artFolder, sep, value, suffix);
 }
 
 int sbLoadCheats(const char *path, const char *file)

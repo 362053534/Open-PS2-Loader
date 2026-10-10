@@ -53,6 +53,21 @@
 #define IO_CACHE_LOAD_ART         3 // io call to handle the loading of covers
 #define IO_COMPAT_UPDATE_DEFFERED 4
 #define IO_itemExecSelect         5
+#define IO_BDM_DISCOVERY          6
+#define IO_BDM_STARTUP_LIST       7
+#define IO_BDM_MODULE_LOAD        8
+
+#define BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE 0x01
+#define BDM_STARTUP_STATUS_READY              0x02
+
+#define BDM_STARTUP_TYPE_USB   0x01
+#define BDM_STARTUP_TYPE_ILINK 0x02
+#define BDM_STARTUP_TYPE_SDC   0x04
+#define BDM_STARTUP_TYPE_ATA   0x08
+
+#define HDD_FORMAT_HINT_NONE        0
+#define HDD_FORMAT_HINT_NEED_BDMHDD 1
+#define HDD_FORMAT_HINT_NEED_APA    2
 
 // Codes have been planned to fit the design of the GUI functions within gui.c.
 #define OPL_COMPAT_UPDATE_STAT_WIP        0
@@ -63,20 +78,28 @@
 
 #define OPL_VMODE_CHANGE_CONFIRMATION_TIMEOUT_MS 10000
 #define OPL_HDD_POPS_PARTITION                  "hdd0:__.POPS"
-#define OPL_HDD_POPS_MOUNTPOINT                 "pfs0:"
+#define OPL_HDD_POPS_SCRATCH_MOUNTPOINT         "pfs1:"
+
+#define OPL_HDD_POPS_SOURCE_NONE   0
+#define OPL_HDD_POPS_SOURCE_LEGACY 1
+#define OPL_HDD_POPS_SOURCE_OPL    2
 
 int oplPath2Mode(const char *path);
+int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm);
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg);
+int oplScanTitleCfgByMode(int mode, int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg);
 int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
+int oplScanBDMAppsByMode(int mode, int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanSMBApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg);
 int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
+int oplScanBDMPOPSByMode(int mode, int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
-int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg);
-int oplMountHDDPOPS(void);
-int oplRestoreHDDOPLPartition(void);
+int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg), void *arg);
+const char *oplGetPOPSCachePrefix(int sourceMode);
+int oplEnsureHDDPOPSScratchPartition(const char *partition);
 int oplShouldAppsUpdate(void);
 config_set_t *oplGetLegacyAppsConfig(void);
 config_set_t *oplGetLegacyAppsInfo(char *name);
@@ -90,8 +113,6 @@ void menuDeferredUpdate(void *data);
 void moduleUpdateMenu(int mode, int themeChanged, int langChanged);
 void handleLwnbdSrv();
 void deinit(int exception, int modeSelected);
-// 启动目标不需要 DEV9 时，在 deinit 之后断电（当前 DDIOC_OFF 为死等）
-void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType);
 
 // Shutdown minimal services initiated for auto loading.
 void miniDeinit(config_set_t *configSet);
@@ -121,6 +142,7 @@ extern int gPCPort;
 extern char gPCShareNBAddress[17];
 extern char gPCShareName[32];
 extern char gPCUserName[32];
+extern char gPCLoginUser[32];
 extern char gPCPassword[32];
 
 //// Settings
@@ -142,12 +164,15 @@ extern int gEnableUSB;
 extern int gEnableILK;
 extern int gEnableMX4SIO;
 extern int gEnableBdmHDD;
+extern volatile int gHddFormatHint;
 
 extern int gTxtRename;
 extern int gAutosort;
 extern int gAutoRefresh;
 extern int gEnableNotifications;
-extern int gEnableArt;
+extern int gEnableArtBG;
+extern int gEnableArtCOV;
+extern int gEnableArtICO;
 extern int gEnableJpg;
 extern int gWideScreen;
 extern int gVMode; // 0 - Auto, 1 - PAL, 2 - NTSC
@@ -207,6 +232,7 @@ extern int gPS2Logo;
 
 // Default device
 extern int gDefaultDevice;
+extern int gAutoMode1;
 
 extern int gEnableWrite;
 
@@ -242,7 +268,10 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit);
 
 void setDefaultColors(void);
 
-void menuUpdateBDMSupport(void);
+int menuResetBDMStartup(int bdmStarted);
+int menuUpdateBDMSupport(void);
+int menuIsBDMDiscoveryPending(void);
+unsigned int menuGetBDMStartupUnavailableTypes(void);
 void menuMarkGameListsForRefresh(void);
 void menuRefreshGameLists(void);
 

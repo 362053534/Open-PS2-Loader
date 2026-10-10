@@ -21,6 +21,13 @@ IOP_OBJS += device-bdm.o
 IOP_CFLAGS += -DBDM_DRIVER
 endif
 
+ifeq ($(USE_PFS_BDM),1)
+IOP_BIN  = pfs_bdm_mcemu.irx
+IOP_OBJS_DIR = obj.pfs_bdm/
+IOP_OBJS += device-pfs-bdm.o
+IOP_CFLAGS += -DPFS_BDM_DRIVER
+endif
+
 ifeq ($(IOPCORE_DEBUG),1)
 IOP_CFLAGS += -DDEBUG
 endif

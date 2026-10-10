@@ -22,6 +22,10 @@ I_oplRegisterShutdownCallback
 I_bdm_readSector
 I_bdm_writeSector
 #endif
+#ifdef PFS_BDM_DRIVER
+I_bdm_readSector
+I_bdm_writeSector
+#endif
 #ifdef HDD_DRIVER
 I_sceAtaDmaTransfer
 #endif

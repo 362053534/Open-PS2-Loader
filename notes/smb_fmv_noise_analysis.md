@@ -480,3 +480,54 @@ C1 干净而 C2 仍有杂音 ⇒ 必须砍掉/改造收包超时本身（改成�
 
 用 `ingame_debug` + UDP TTY 构建，在 `smbReconnectThread` 的状态切换处与 `smb_Echo()` 调用处加
 `DPRINTF`，把杂音时刻与内部事件对齐到同一时间轴，可直接区分 H1/H2。
+
+---
+
+# 第二阶段：把修复落到 `362053534-patch-1`（f91c3cf）
+
+> 用户说明：`arena/aac22127-open-ps2-loader` 只是"最早引入问题的时间节点"，
+> 用来定位；**正式修复要在 patch-1 的最新提交上进行**。
+> 本会话只能推 `arena/…`，所以做法是把这边的树整体换成 `f91c3cf`，
+> 在其上做 D1/D2/D3，产物从这边出，改动再由用户合回 patch-1。
+
+## patch-1 与 6254970 那棵老树的差异（影响排查结论）
+
+| 项 | 6254970 老树 | patch-1 (f91c3cf) |
+|---|---|---|
+| 后台线程 | **2 个**：重连线程(2s) + 链路监控线程(500ms) | **1 个**：重连线程(2s)，链路监控已合并进去 |
+| 链路状态来源 | `netman` 导出 14（**游戏内根本不加载 netman ⇒ 恒为 NULL**） | 新增 `pSmapGetLinkStatus`（smap-ingame 导出），链路检测真的能用 |
+| Echo 触发 | 每 30s，不管忙不忙 | **空闲 120s 才发**（`SMB_ECHO_IDLE_TICKS=60` × 2s），且连续失败 2 次才判定断线 |
+| `SO_SNDTIMEO/SO_RCVTIMEO = 30000` | 有（**主因 Y**） | **仍然有**（`smb.c:138-140`），主因 Y 依旧存在 |
+| `netconn_recv` 超时分支 | 有 | 有（`api_lib.c:436/482`） |
+
+⇒ **第二个（较小的）来源 X 在 patch-1 上已经消失**（500ms 的链路监控线程没了）。
+所以 patch-1 上大概率只剩 Y 一个来源，D1 一次就应该能干净；
+D2/D3 是在"确认干净"之后把功能补回来 / 再压一层。
+
+## D1 / D2 / D3（在 patch-1 上）
+
+新增 `modules/iopcore/cdvdman/smb_tuning.h`（patch-1 此前没有这个文件），
+3 个开关 + 2 个可覆盖常量：
+
+| 宏 | 默认 | 说明 |
+|---|---|---|
+| `SMB_FEAT_SOCK_TIMEOUT` | 1 | 置 0 ⇒ 不再 `setsockopt(SO_SNDTIMEO/SO_RCVTIMEO)`，`conn->recv_timeout == 0`，每次收包退回**裸 `WaitSema`** |
+| `SMB_FEAT_RCV_TIMEOUT` | 1 | 只拆收方向（`netconn_recv` 才是热路径） |
+| `SMB_FEAT_ECHO_TIMEOUT` | 0 | 置 1 ⇒ 30s 超时**只在 `smb_Echo()` 这一次往返前后临时装上**，用完清回 0。数据面零开销，失联检测保住 |
+| `SMB_RECONNECT_INTERVAL_US` | 2000000 | 重连线程轮询周期（`device-smb.c` 里改成 `#ifndef` 可覆盖） |
+| `SMB_ECHO_IDLE_TICKS` | 60 | Echo 空闲阈值；配合上面保证"空闲 120s 才 Echo"（5s × 24 tick = 120s） |
+
+| 构建 | defines | 含义 |
+|---|---|---|
+| `D1-NO-SOCKTMO` | `SMB_FEAT_SOCK_TIMEOUT=0` | 最小改动：数据面零开销。失联检测暂时没有 |
+| `D2-NO-SOCKTMO+ECHOTMO` | `+ SMB_FEAT_ECHO_TIMEOUT=1` | **功能完整的修复候选**：数据面零开销 + Echo 仍能发现失联并触发重连 |
+| `D3-D2+SLOWPOLL5s` | `+ SMB_RECONNECT_INTERVAL_US=5000000 SMB_ECHO_IDLE_TICKS=24` | 再压一层周期性唤醒（2s→5s），Echo 空闲时长仍为 120s |
+
+参照：`CURR-RELEASE`（patch-1 原样，应当有杂音）、`BASE-RELEASE`（edf39ddc 老基线，应当无杂音）。
+
+**判据**
+- D1 干净 ⇒ Y 在 patch-1 上仍是唯一主因 → D2 就是可以直接合的版本。
+- D1 干净、D2 有杂音 ⇒ `smb_Echo()` 那一次带超时的往返会污染后续（Echo 之间隔 120s，
+  理论上影响很小，但如果真有，就把超时改成只装在 `SO_SNDTIMEO` 上、收方向不装）。
+- D1 仍有杂音 ⇒ patch-1 上还有别的来源，需要重新做一轮 OBSERVE 成对日志
+  （`tools/smb-diag/instrument.py` 的注入锚点需要按 patch-1 的代码形状更新）。

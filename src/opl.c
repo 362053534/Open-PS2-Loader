@@ -102,6 +102,7 @@ static void clearIOModuleT(opl_io_module_t *mod)
 
 // forward decl
 static void clearMenuGameList(opl_io_module_t *mdl);
+static void supportCleanup(item_list_t *support, int exception, int modeSelected);
 static void moduleCleanup(opl_io_module_t *mod, int exception, int modeSelected);
 static void reset(void);
 static void deferredAudioInit(void);
@@ -135,6 +136,7 @@ int gPCPort;
 char gPCShareNBAddress[17];
 char gPCShareName[32];
 char gPCUserName[32];
+char gPCLoginUser[32];
 char gPCPassword[32];
 int gNetworkStartup;
 int gHDDSpindown;
@@ -150,11 +152,14 @@ int gEnableUSB;
 int gEnableILK;
 int gEnableMX4SIO;
 int gEnableBdmHDD;
+volatile int gHddFormatHint;
 int gTxtRename;
 int gAutosort;
 int gAutoRefresh;
 int gEnableNotifications;
-int gEnableArt;
+int gEnableArtBG;
+int gEnableArtCOV;
+int gEnableArtICO;
 int gEnableJpg;
 int gWideScreen;
 int gVMode; // 0 - Auto, 1 - PAL, 2 - NTSC
@@ -188,6 +193,7 @@ char gExitPath[256];
 int gEnableDebug;
 int gPS2Logo;
 int gDefaultDevice;
+int gAutoMode1;
 int gEnableWrite;
 char gBDMPrefix[32];
 char gETHPrefix[32];
@@ -268,7 +274,8 @@ static void itemInitSupport(item_list_t *support)
     support->itemInit(support);
     moduleUpdateMenuInternal((opl_io_module_t *)support->owner, 0, 0);
     // Manual refreshing can only be done if either auto refresh is disabled or auto refresh is disabled for the item.
-    menuDeferredUpdate(&support->mode);
+    if (!(bdmManualTrigger && support->mode >= BDM_MODE && support->mode <= BDM_MODE4))
+        menuDeferredUpdate(&support->mode);
     //ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
 }
 
@@ -330,25 +337,82 @@ static void itemExecSelect(struct menu_item *curMenu)
     }   
 }
 
-static void itemExecRefresh(struct menu_item *curMenu)
+static void retryBDMErrors(void)
 {
-    //// 只刷新当前页面
-    //item_list_t *support = curMenu->userdata;
-    //if (support && support->enabled) {
-    //    ioPutRequest(IO_MENU_UPDATE_DEFFERED, &support->mode);
-    //    sfxPlay(SFX_CONFIRM);
-    //}
+    unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
 
-    // 停留在SMB/ETH页时强制重建当前列表（SMB目录mtime常不可靠）
-    if (curMenu && curMenu->userdata) {
-        item_list_t *support = curMenu->userdata;
-        if (support->enabled && support->mode == ETH_MODE)
-            forcedMenuUpdates[ETH_MODE] = 1;
+    if (!retryTypes || fileXioDevctl("mass:", USBMASS_DEVCTL_RESET_PROBE, &retryTypes, sizeof(retryTypes), NULL, 0) != 0) {
+        bdmManualTrigger = 0;
+        return;
     }
 
-    // 刷新所有页面
+    reFindBDM();
+}
+
+static void itemExecRefresh(struct menu_item *curMenu)
+{
+    item_list_t *support;
+    int isBDMMode;
+
+    if (!curMenu || !curMenu->userdata) {
+        sfxPlay(SFX_CONFIRM);
+        return;
+    }
+
+    support = curMenu->userdata;
+    if (!support->enabled || support->mode < BDM_MODE || support->mode >= MODE_COUNT) {
+        sfxPlay(SFX_CONFIRM);
+        return;
+    }
+
+    if (support->mode == APP_MODE) {
+        appForceRefresh();
+        sfxPlay(SFX_CONFIRM);
+        return;
+    }
+
+    isBDMMode = support->mode >= BDM_MODE && support->mode <= BDM_MODE4;
+    if (isBDMMode) {
+        bdm_device_data_t *pDeviceData = support->priv;
+        unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();
+
+        // 错误恢复只由BDM页触发，避免刷新其他页时重置BDM初始化。
+        if (bdmManualTrigger) {
+            sfxPlay(SFX_CONFIRM);
+            return;
+        }
+
+        if (pDeviceData && pDeviceData->bdmPrefix[0] != '\0') {
+            forcedMenuUpdates[support->mode] = 1;
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+        } else if (!retryTypes) {
+            // 空页不强制重建，但仍允许已到达的插拔事件驱动设备识别。
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+        }
+
+        if (retryTypes && gBDMStartMode != START_MODE_DISABLED) {
+            bdmManualTrigger = 1;
+            if (ioPutRequestUnique(IO_CUSTOM_SIMPLEACTION, &retryBDMErrors) != IO_OK)
+                bdmManualTrigger = 0;
+        }
+    } else {
+        // 手动刷新必须重建当前页，不依赖目录时间戳是否可靠。
+        forcedMenuUpdates[support->mode] = 1;
+        ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
+    }
+
+    sfxPlay(SFX_CONFIRM);
+}
+
+void menuRefreshGameLists(void)
+{
+    // TXT映射改变了所有条目的显示名，这里保留独立的全局重建入口。
     for (int i = 0; i < MODE_COUNT; i++) {
         int deviceType = bdmGetDeviceType(i);
+        if (i == APP_MODE && gAutoDetectPS1Apps && list_support[i].support && list_support[i].support->enabled) {
+            appForceRefresh();
+            continue;
+        }
         if (list_support[i].support && list_support[i].support->enabled &&
             (!((i >= BDM_MODE && i <= BDM_MODE4) &&
                ((!gEnableUSB && !gEnableILK && !gEnableMX4SIO && !gEnableBdmHDD) ||
@@ -356,14 +420,9 @@ static void itemExecRefresh(struct menu_item *curMenu)
                 (deviceType == BDM_TYPE_ILINK && !gEnableILK) ||
                 (deviceType == BDM_TYPE_SDC && !gEnableMX4SIO) ||
                 (deviceType == BDM_TYPE_ATA && !gEnableBdmHDD)))))
-            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+            ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     }
     sfxPlay(SFX_CONFIRM);
-}
-
-void menuRefreshGameLists(void)
-{
-    itemExecRefresh(NULL);
 }
 
 static void itemExecCross(struct menu_item *curMenu)
@@ -526,7 +585,10 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
             mod->support->itemInit(mod->support);
             moduleUpdateMenuInternal(mod, 0, 0);
             // ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[mode].support->mode); // can't use mode as the variable will die at end of execution
-            menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
+            // 自动识别的首次APPS扫描统一等待BDM列表阶段完成，避免每个来源各触发一次扫描。
+            if ((mode < BDM_MODE || mode > BDM_MODE4 || mainScreenInitDone) &&
+                !(mode == APP_MODE && gAutoDetectPS1Apps && gAPPStartMode == START_MODE_AUTO && !mainScreenInitDone))
+                menuDeferredUpdate(&list_support[mode].support->mode); // 使用单线程，防止初始化时，数据不同步问题。
         }
     } else {
         // If the module has a valid menu instance try to refresh the visibility state.
@@ -573,6 +635,11 @@ static void deinitAllSupport(int exception, int modeSelected)
         if (list_support[i].support != NULL)
             moduleCleanup(&list_support[i], exception, modeSelected);
     }
+
+    // 即使HDD support未注册，从HDD读取配置也会加载并挂载HDD模块栈。
+    // 遇到这种情况时，仍交由原有清理逻辑决定是关闭还是仅清理。
+    if (list_support[HDD_MODE].support == NULL && hddIsConfigSource())
+        supportCleanup(hddGetObject(0), exception, modeSelected);
 }
 
 // For resolving the mode, given an app's path
@@ -602,22 +669,26 @@ int oplPath2Mode(const char *path)
     return -1;
 }
 
-int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
 {
-    //int i, remaining, elfbootmode;
-    //char priority;
     item_list_t *listSupport;
 
-    if (device != NULL) {
-        int elfbootmode = oplPath2Mode(device);
-        if (elfbootmode >= 0) {
-            listSupport = list_support[elfbootmode].support;
-            if ((listSupport != NULL) && (listSupport->enabled)) {
-                if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm) >= 0)
-                    return 0;
-            }
-        }
+    if (mode < BDM_MODE || mode > HDD_MODE)
+        return -1;
+
+    listSupport = list_support[mode].support;
+    if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
+        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1) >= 0)
+            return 0;
     }
+
+    return -1;
+}
+
+int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+{
+    if (device != NULL)
+        return oplGetAppImageByMode(oplPath2Mode(device), folder, isRelative, value, suffix, resultTex, psm);
     // device为NULL时的全设备扫描分支已不再使用（MC现改为本卡ART/）
     //else {
     //    //// We search on ever devices from fatest to slowest.
@@ -696,9 +767,10 @@ static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void 
 {
     struct dirent *pdirent;
     DIR *pdir;
-    int count, ret, nameLength;
+    int count, ret, nameLength, failed;
 
     count = 0;
+    failed = 0;
     if ((pdir = opendir(popsPath)) != NULL) {
         while ((pdirent = readdir(pdir)) != NULL) {
             if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
@@ -711,23 +783,26 @@ static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void 
             ret = callback(popsPath, pdirent->d_name, arg);
             if (ret == 0)
                 count++;
-            else if (ret < 0) // Stopped because of unrecoverable error.
+            else if (ret < 0) { // Stopped because of unrecoverable error.
+                failed = 1;
                 break;
+            }
         }
 
         closedir(pdir);
     }
 
-    return count;
+    return failed ? -1 : count;
 }
 
 static int scanAppELFs(int (*callback)(const char *path, const char *elfName, void *arg), void *arg, const char *appsPath)
 {
     struct dirent *pdirent;
     DIR *pdir;
-    int count, ret, nameLength;
+    int count, ret, nameLength, failed;
 
     count = 0;
+    failed = 0;
     if ((pdir = opendir(appsPath)) != NULL) {
         while ((pdirent = readdir(pdir)) != NULL) {
             if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
@@ -740,14 +815,16 @@ static int scanAppELFs(int (*callback)(const char *path, const char *elfName, vo
             ret = callback(appsPath, pdirent->d_name, arg);
             if (ret == 0)
                 count++;
-            else if (ret < 0) // Stopped because of unrecoverable error.
+            else if (ret < 0) { // Stopped because of unrecoverable error.
+                failed = 1;
                 break;
+            }
         }
 
         closedir(pdir);
     }
 
-    return count;
+    return failed ? -1 : count;
 }
 
 int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
@@ -761,6 +838,9 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
         listSupport = list_support[i].support;
         if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
+            if (!prefix || !prefix[0])
+                continue;
+
             snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
             count += scanApps(callback, arg, appsPath, 0);
         }
@@ -776,59 +856,88 @@ int oplScanApps(int (*callback)(const char *path, config_set_t *appConfig, void 
 
 int oplScanBDMPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
-    int i, count;
-    item_list_t *listSupport;
-    char popsPath[128];
+    int i, count, result;
 
     count = 0;
     for (i = BDM_MODE; i <= BDM_MODE4; i++) {
-        listSupport = list_support[i].support;
-        if ((gBDMStartMode != START_MODE_DISABLED) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
-            char *prefix = listSupport->itemGetPrefix(listSupport);
-
-            if (prefix[0] == '\0')
-                continue;
-
-            snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
-            count += scanPOPS(callback, arg, popsPath);
-        }
+        result = oplScanBDMPOPSByMode(i, callback, arg);
+        if (result < 0)
+            return result;
+        count += result;
     }
 
     return count;
+}
+
+int oplScanBDMPOPSByMode(int mode, int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char popsPath[128];
+    char *prefix;
+
+    if (mode < BDM_MODE || mode > BDM_MODE4 || gBDMStartMode == START_MODE_DISABLED)
+        return 0;
+
+    listSupport = list_support[mode].support;
+    if (!listSupport || !listSupport->enabled || !listSupport->itemGetPrefix)
+        return 0;
+
+    prefix = listSupport->itemGetPrefix(listSupport);
+    if (!prefix || !prefix[0])
+        return 0;
+
+    snprintf(popsPath, sizeof(popsPath), "%sPOPS", prefix);
+    return scanPOPS(callback, arg, popsPath);
 }
 
 int oplScanBDMApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
 {
-    int i, count;
-    item_list_t *listSupport;
-    char appsPath[128];
+    int i, count, result;
 
     count = 0;
     for (i = BDM_MODE; i <= BDM_MODE4; i++) {
-        listSupport = list_support[i].support;
-        if ((gBDMStartMode != START_MODE_DISABLED) && (listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
-            char *prefix = listSupport->itemGetPrefix(listSupport);
-
-            if (prefix[0] == '\0')
-                continue;
-
-            snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
-            count += scanAppELFs(callback, arg, appsPath);
-        }
+        result = oplScanBDMAppsByMode(i, callback, arg);
+        if (result < 0)
+            return result;
+        count += result;
     }
 
     return count;
 }
 
+int oplScanBDMAppsByMode(int mode, int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char appsPath[128];
+    char *prefix;
+
+    if (mode < BDM_MODE || mode > BDM_MODE4 || gBDMStartMode == START_MODE_DISABLED)
+        return 0;
+
+    listSupport = list_support[mode].support;
+    if (!listSupport || !listSupport->enabled || !listSupport->itemGetPrefix)
+        return 0;
+
+    prefix = listSupport->itemGetPrefix(listSupport);
+    if (!prefix || !prefix[0])
+        return 0;
+
+    snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+    return scanAppELFs(callback, arg, appsPath);
+}
+
 int oplScanMCApps(int (*callback)(const char *path, const char *elfName, void *arg), void *arg)
 {
-    int i, count;
+    int i, count, result;
     char appsPath[128];
 
     count = 0;
     for (i = 0; i < 2; i++) {
         snprintf(appsPath, sizeof(appsPath), "mc%d:APPS", i);
-        count += scanAppELFs(callback, arg, appsPath);
+        result = scanAppELFs(callback, arg, appsPath);
+        if (result < 0)
+            return result;
+        count += result;
     }
 
     return count;
@@ -867,6 +976,65 @@ int oplScanHDDApps(int (*callback)(const char *path, const char *elfName, void *
     return scanAppELFs(callback, arg, appsPath);
 }
 
+int oplScanTitleCfgByMode(int mode, int (*callback)(const char *path, config_set_t *appConfig, void *arg), void *arg)
+{
+    item_list_t *listSupport;
+    char appsPath[128];
+    char *prefix;
+    int i, count;
+
+    // 按来源扫 title.cfg，路径规则与旧式 oplScanApps 保持一致。
+    if (mode == APP_MODE) {
+        count = 0;
+        for (i = 0; i < 2; i++) {
+            snprintf(appsPath, sizeof(appsPath), "mc%d:", i);
+            count += scanApps(callback, arg, appsPath, 1);
+        }
+        return count;
+    }
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4) {
+        if (gBDMStartMode == START_MODE_DISABLED)
+            return 0;
+
+        listSupport = list_support[mode].support;
+        if (!listSupport || !listSupport->enabled || !listSupport->itemGetPrefix)
+            return 0;
+
+        prefix = listSupport->itemGetPrefix(listSupport);
+        if (!prefix || !prefix[0])
+            return 0;
+
+        snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+        return scanApps(callback, arg, appsPath, 0);
+    }
+
+    if (mode == ETH_MODE) {
+        listSupport = list_support[ETH_MODE].support;
+        if ((gETHStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (listSupport->itemGetPrefix == NULL))
+            return 0;
+
+        prefix = listSupport->itemGetPrefix(listSupport);
+        if (prefix[0] == '\0')
+            return 0;
+
+        // SMB 前缀末尾已带反斜杠。
+        snprintf(appsPath, sizeof(appsPath), "%sAPPS", prefix);
+        return scanApps(callback, arg, appsPath, 0);
+    }
+
+    if (mode == HDD_MODE) {
+        listSupport = list_support[HDD_MODE].support;
+        if ((gHDDStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled || (gHDDPrefix == NULL) || (gHDDPrefix[0] == '\0'))
+            return 0;
+
+        snprintf(appsPath, sizeof(appsPath), "%sAPPS", gHDDPrefix);
+        return scanApps(callback, arg, appsPath, 0);
+    }
+
+    return 0;
+}
+
 int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
 {
     item_list_t *listSupport;
@@ -886,39 +1054,136 @@ int oplScanSMBPOPS(int (*callback)(const char *path, const char *vcdName, void *
     return scanPOPS(callback, arg, popsPath);
 }
 
-int oplMountHDDPOPS(void)
+static char hddPOPSScratchPartition[128];
+
+static void oplReleaseHDDPOPSScratchPartition(void)
 {
-    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-    return fileXioMount(OPL_HDD_POPS_MOUNTPOINT, OPL_HDD_POPS_PARTITION, FIO_MT_RDWR);
+    int result;
+
+    if (hddPOPSScratchPartition[0] == '\0')
+        return;
+
+    result = fileXioUmount(OPL_HDD_POPS_SCRATCH_MOUNTPOINT);
+    if (result == 0)
+        hddPOPSScratchPartition[0] = '\0';
 }
 
-int oplRestoreHDDOPLPartition(void)
+int oplEnsureHDDPOPSScratchPartition(const char *partition)
 {
-    fileXioUmount(OPL_HDD_POPS_MOUNTPOINT);
-    return fileXioMount(OPL_HDD_POPS_MOUNTPOINT, gOPLPart, FIO_MT_RDWR);
+    int result;
+
+    if (partition == NULL || partition[0] == '\0' || strlen(partition) >= sizeof(hddPOPSScratchPartition))
+        return -1;
+
+    /* pfs1由本模块独占管理，目标未变化时保留缓存和现有挂载。 */
+    if (strcmp(hddPOPSScratchPartition, partition) == 0)
+        return 0;
+
+    if (hddPOPSScratchPartition[0] != '\0') {
+        result = fileXioUmount(OPL_HDD_POPS_SCRATCH_MOUNTPOINT);
+        if (result < 0)
+            return result;
+        hddPOPSScratchPartition[0] = '\0';
+    }
+
+    result = fileXioMount(OPL_HDD_POPS_SCRATCH_MOUNTPOINT, partition, FIO_MT_RDWR);
+    if (result == 0)
+        strcpy(hddPOPSScratchPartition, partition);
+
+    return result;
 }
 
-int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, void *arg), void *arg)
+typedef struct
+{
+    int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg);
+    void *arg;
+    int source;
+    const char *partition;
+} hdd_pops_scan_context_t;
+
+static int oplScanHDDPOPSCallback(const char *path, const char *vcdName, void *arg)
+{
+    hdd_pops_scan_context_t *context = (hdd_pops_scan_context_t *)arg;
+
+    return context->callback(path, vcdName, context->source, context->partition, context->arg);
+}
+
+static int oplScanHDDPOPSPath(const char *path, int source, const char *partition,
+                              int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg), void *arg)
+{
+    hdd_pops_scan_context_t context;
+
+    context.callback = callback;
+    context.arg = arg;
+    context.source = source;
+    context.partition = partition;
+    return scanPOPS(&oplScanHDDPOPSCallback, &context, path);
+}
+
+static int oplScanHDDPOPSPartition(const char *partition, const char *path, int source,
+                                   int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg), void *arg)
+{
+    if (oplEnsureHDDPOPSScratchPartition(partition) < 0)
+        return 0;
+
+    return oplScanHDDPOPSPath(path, source, partition, callback, arg);
+}
+
+int oplScanHDDPOPS(int (*callback)(const char *path, const char *vcdName, int source, const char *partition, void *arg), void *arg)
 {
     item_list_t *listSupport;
+    iox_stat_t stat;
+    char popsPath[128];
     int result;
 
     listSupport = list_support[HDD_MODE].support;
     if ((gHDDStartMode == START_MODE_DISABLED) || (listSupport == NULL) || !listSupport->enabled)
         return 0;
 
-    result = oplMountHDDPOPS();
-    if (result < 0) {
-        oplRestoreHDDOPLPartition();
+    if (gOPLPart[0] == '\0' || gHDDPrefix == NULL ||
+        snprintf(popsPath, sizeof(popsPath), "%sPOPS", gHDDPrefix) >= (int)sizeof(popsPath))
         return 0;
+
+    /* 目录式POPS始终使用当前配置的OPL分区，不能回退到写死的+OPL。 */
+    result = oplScanHDDPOPSPath(popsPath, OPL_HDD_POPS_SOURCE_OPL, gOPLPart, callback, arg);
+    if (result < 0)
+        return result;
+    /* 直接查询APA分区表，避免用一次失败的挂载来判断__.POPS是否存在。 */
+    if (strcmp(gOPLPart, OPL_HDD_POPS_PARTITION) != 0 && fileXioGetStat(OPL_HDD_POPS_PARTITION, &stat) >= 0) {
+        int legacyResult = oplScanHDDPOPSPartition(OPL_HDD_POPS_PARTITION, OPL_HDD_POPS_SCRATCH_MOUNTPOINT,
+                                                   OPL_HDD_POPS_SOURCE_LEGACY, callback, arg);
+        if (legacyResult < 0)
+            return legacyResult;
+        result += legacyResult;
     }
 
-    result = scanPOPS(callback, arg, OPL_HDD_POPS_MOUNTPOINT);
-
-    if (oplRestoreHDDOPLPartition() < 0)
-        return 0;
-
     return result;
+}
+
+const char *oplGetPOPSCachePrefix(int sourceMode)
+{
+    item_list_t *listSupport;
+
+    // APA 的两个 POPS 来源共用已挂载的 OPL 分区根目录。
+    if (sourceMode == HDD_MODE) {
+        listSupport = list_support[HDD_MODE].support;
+        if (listSupport == NULL || !listSupport->enabled || gOPLPart[0] == '\0' ||
+            gHDDPrefix == NULL || gHDDPrefix[0] == '\0')
+            return NULL;
+        return "pfs0:";
+    }
+
+    if (sourceMode >= BDM_MODE && sourceMode <= BDM_MODE4)
+        listSupport = list_support[sourceMode].support;
+    else if (sourceMode == ETH_MODE)
+        listSupport = list_support[ETH_MODE].support;
+    else
+        return NULL;
+
+    if (listSupport == NULL || !listSupport->enabled || listSupport->itemGetPrefix == NULL)
+        return NULL;
+
+    return listSupport->itemGetPrefix(listSupport);
 }
 
 int oplShouldAppsUpdate(void)
@@ -950,6 +1215,9 @@ config_set_t *oplGetLegacyAppsConfig(void)
         listSupport = list_support[i].support;
         if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetPrefix != NULL)) {
             char *prefix = listSupport->itemGetPrefix(listSupport);
+            if (!prefix || !prefix[0])
+                continue;
+
             snprintf(appsPath, sizeof(appsPath), "%sconf_apps.cfg", prefix);
 
             fd = openFile(appsPath, O_RDONLY);
@@ -973,7 +1241,7 @@ config_set_t *oplGetLegacyAppsInfo(char *name)
     int i, fd;
     item_list_t *listSupport;
     config_set_t *appConfig;
-    char appsPath[128];
+    char appsPath[128] = "";
 
     for (i = MODE_COUNT - 1; i >= 0; i--) {
         listSupport = list_support[i].support;
@@ -1003,6 +1271,8 @@ config_set_t *oplGetLegacyAppsInfo(char *name)
 static void updateMenuFromGameList(opl_io_module_t *mdl)
 {
     guiExecDeferredOps();
+    // 列表重建后旧游戏可能复用相同索引，先强制丢弃上一轮ART缓存状态。
+    ForceRefreshPrevTexCache = 1;
     clearMenuGameList(mdl);
 
     const char *temp = NULL;
@@ -1051,30 +1321,32 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
 void menuDeferredUpdate(void *data)
 {
     short int *mode = data;
+    int forcedUpdate;
+    int needsUpdate;
 
     opl_io_module_t *mod = &list_support[*mode];
     if (!mod->support)
         return;
 
-    // A settings change can request one full rebuild even when no source files
-    // have changed. This is used by TXT mapping after the user presses Refresh.
-    if (forcedMenuUpdates[*mode] || mod->support->itemNeedsUpdate(mod->support)) {
+    forcedUpdate = forcedMenuUpdates[*mode];
+    // 强制重建不能跳过设备状态检查，否则同时发生的热插拔事件会被遗留。
+    needsUpdate = mod->support->itemNeedsUpdate(mod->support);
+    if (forcedUpdate || needsUpdate) {
         forcedMenuUpdates[*mode] = 0;
         updateMenuFromGameList(mod);
 
+        if (mod->support->mode == APP_MODE)
+            appPostUpdateCallback(mod->support->mode);
+
         // If other modes have been updated, then the apps list should be updated too.
         if (mod->support->mode != APP_MODE) {
-            shouldAppsUpdate = 1;
-
-            // 来源设备更新后重建自动识别的APPS列表。
-            if (gAutoDetectPS1Apps && gAPPStartMode != START_MODE_DISABLED &&
-                list_support[APP_MODE].support && list_support[APP_MODE].support->enabled)
-                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[APP_MODE].support->mode);
+            if (gAutoDetectPS1Apps)
+                appRequestSourceRefresh(mod->support->mode);
+            else
+                shouldAppsUpdate = 1;
         }
     }
 }
-
-#define BDM_HOTPLUG_CHECK_DELAY 300
 
 void menuMarkGameListsForRefresh(void)
 {
@@ -1086,17 +1358,418 @@ void menuMarkGameListsForRefresh(void)
     }
 }
 
-void menuUpdateBDMSupport(void)
+enum {
+    BDM_STARTUP_MODULE_LOAD,
+    BDM_STARTUP_DISCOVERY,
+    BDM_STARTUP_DISCOVERY_DRAINING,
+    BDM_STARTUP_LISTS,
+    BDM_STARTUP_LISTS_VALIDATING,
+    BDM_STARTUP_COMPLETE
+};
+
+#define BDM_DISCOVERY_SLOT_MASK ((1 << MAX_BDM_DEVICES) - 1)
+#define BDM_MODULE_LOAD_NOT_STARTED -2
+
+static int bdmStartupStage = BDM_STARTUP_COMPLETE;
+static int bdmDiscoveryPending;
+static int bdmDiscoveryMode;
+static volatile int bdmDiscoveryResult;
+static volatile int bdmDiscoveryRequestPending;
+static volatile unsigned int bdmProbeCompletedMask;
+static volatile unsigned int bdmProbePresentMask;
+static volatile unsigned int bdmProbeErrorMask;
+static unsigned int bdmDiscoveryExpectedTypeMask;
+static unsigned int bdmDiscoveryModuleErrorMask;
+static usbmass_bd_info_t bdmDiscoveredDevices[MAX_BDM_DEVICES];
+static volatile int bdmDiscoveredDeviceCount;
+static volatile unsigned int bdmDiscoveredDeviceMask;
+static volatile unsigned int bdmDiscoveredDeviceReadyMask;
+static volatile unsigned int bdmDevicePresentMask;
+static volatile int bdmListRequestPending;
+static volatile unsigned int bdmListCheckedMask;
+static volatile unsigned int bdmDeviceListReadyMask;
+static volatile int bdmAtaIsApa;
+
+static int bdmGetDeviceTypeFromDriver(const char *driver)
 {
-    // BDM设备会在欢迎界面或手动启动时不断尝试初始化，直到成功或超时为止
-    for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-        if (list_support[i].support) {
-            bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-            if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
-                ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
+    if (!strcmp(driver, "usb"))
+        return BDM_TYPE_USB;
+    if (!strcmp(driver, "sd"))
+        return BDM_TYPE_ILINK;
+    if (!strcmp(driver, "sdc"))
+        return BDM_TYPE_SDC;
+    if (!strcmp(driver, "ata"))
+        return BDM_TYPE_ATA;
+
+    return BDM_TYPE_UNKNOWN;
+}
+
+static unsigned int bdmGetEnabledTypeMask(void)
+{
+    unsigned int result = 0;
+
+    if (gEnableUSB)
+        result |= BDM_STARTUP_TYPE_USB;
+    if (gEnableILK && bdmIsIlinkSupported())
+        result |= BDM_STARTUP_TYPE_ILINK;
+    if (gEnableMX4SIO)
+        result |= BDM_STARTUP_TYPE_SDC;
+    if (gEnableBdmHDD)
+        result |= BDM_STARTUP_TYPE_ATA;
+
+    return result;
+}
+
+static int bdmDeviceTypeEnabled(int deviceType)
+{
+    return (deviceType == BDM_TYPE_USB && gEnableUSB) ||
+           (deviceType == BDM_TYPE_ILINK && gEnableILK) ||
+           (deviceType == BDM_TYPE_SDC && gEnableMX4SIO) ||
+           (deviceType == BDM_TYPE_ATA && gEnableBdmHDD);
+}
+
+static void bdmTurnOffWrongExfatSwitch(void)
+{
+    int i;
+
+    // APA 盘上开了 HDD(exFAT)，当场把开关和对应页关掉，避免和后面的 APA 模式冲突。
+    gEnableBdmHDD = 0;
+    for (i = BDM_MODE; i <= BDM_MODE4; i++) {
+        bdm_device_data_t *pDeviceData;
+
+        if (!list_support[i].support)
+            continue;
+        pDeviceData = list_support[i].support->priv;
+        if (pDeviceData && pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+            list_support[i].menuItem.visible = 0;
+    }
+    guiLock();
+    refreshMenuPosition();
+    guiUnlock();
+}
+
+static void bdmStartupModuleLoad(void *data)
+{
+    (void)data;
+
+    bdmDiscoveryResult = bdmGetLoadedTypeMask();
+    if (bdmDiscoveryResult >= 0) {
+        bdmLoadDeviceModules();
+        bdmDiscoveryResult = bdmGetLoadedTypeMask();
+    }
+    bdmDiscoveryRequestPending = 0;
+}
+
+static void bdmStartupDiscovery(void *data)
+{
+    usbmass_bd_probe_status_t probeStatus;
+    usbmass_bd_info_t devices[USBMASS_BD_MAX_DEVICES];
+    usbmass_bd_info_t discoveredDevices[MAX_BDM_DEVICES];
+    int count;
+    int discoveredDeviceCount = 0;
+
+    (void)data;
+
+    bdmDiscoveryResult = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_PROBE_STATUS, NULL, 0, &probeStatus, sizeof(probeStatus));
+    if (bdmDiscoveryResult >= 0) {
+        bdmProbeCompletedMask = probeStatus.completed;
+        bdmProbePresentMask = probeStatus.present;
+        bdmProbeErrorMask = probeStatus.error | bdmDiscoveryModuleErrorMask;
+
+        if ((bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask) {
+            // ATA 硬件在，不等于 FAT 已挂上。APA 盘不能进 mass 等待，否则欢迎界面会一直转圈。
+            if (!bdmAtaIsApa && gEnableBdmHDD && (bdmProbePresentMask & BDM_STARTUP_TYPE_ATA) &&
+                hddDetectNonSonyFileSystem() == 0) {
+                bdmAtaIsApa = 1;
+                gHddFormatHint = HDD_FORMAT_HINT_NEED_APA;
+                bdmTurnOffWrongExfatSwitch();
+            }
+
+            count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
+            if (count >= 0) {
+                for (int i = 0; i < count; i++) {
+                    int deviceType = bdmGetDeviceTypeFromDriver(devices[i].name);
+                    int found = 0;
+
+                    if (!bdmDeviceTypeEnabled(deviceType))
+                        continue;
+                    if (bdmAtaIsApa && deviceType == BDM_TYPE_ATA)
+                        continue;
+
+                    // 同一物理设备的整盘与分区会同时注册，只记录一次。
+                    for (int j = 0; j < discoveredDeviceCount; j++) {
+                        if (!strcmp(discoveredDevices[j].name, devices[i].name) && discoveredDevices[j].devNr == devices[i].devNr) {
+                            found = 1;
+                            break;
+                        }
+                    }
+
+                    if (!found && discoveredDeviceCount < MAX_BDM_DEVICES)
+                        discoveredDevices[discoveredDeviceCount++] = devices[i];
+                }
+
+                memcpy(bdmDiscoveredDevices, discoveredDevices, sizeof(usbmass_bd_info_t) * discoveredDeviceCount);
+                bdmDiscoveredDeviceCount = discoveredDeviceCount;
+                bdmDiscoveredDeviceMask = discoveredDeviceCount ? (1 << discoveredDeviceCount) - 1 : 0;
+            } else
+                bdmDiscoveryResult = count;
         }
     }
+
+    bdmDiscoveryRequestPending = 0;
 }
+
+static void bdmStartupListUpdate(void *data)
+{
+    short int mode = *(short int *)data;
+
+    if (mode >= BDM_MODE && mode <= BDM_MODE4 && list_support[mode].support) {
+        item_list_t *support = list_support[mode].support;
+        bdm_device_data_t *pDeviceData = (bdm_device_data_t *)support->priv;
+        int hadDevice = pDeviceData->bdmPrefix[0] != '\0';
+        int deviceFound = bdmUpdateDeviceData(support, 1);
+        unsigned int discoveredDevice = 0;
+
+        if (deviceFound > 0 && bdmDeviceTypeEnabled(pDeviceData->bdmDeviceType)) {
+            for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                if ((bdmDiscoveredDeviceMask & (1 << i)) && !strcmp(bdmDiscoveredDevices[i].name, pDeviceData->bdmDriver) &&
+                    bdmDiscoveredDevices[i].devNr == (unsigned int)pDeviceData->massDeviceIndex) {
+                    discoveredDevice |= 1 << i;
+                }
+            }
+        }
+
+        if (discoveredDevice) {
+            bdmDevicePresentMask |= 1 << mode;
+            menuDeferredUpdate(data);
+            if (support->itemGetPrefix(support)[0] != '\0' && support->itemGetCount(support) >= 0) {
+                bdmDeviceListReadyMask |= 1 << mode;
+                bdmDiscoveredDeviceReadyMask |= discoveredDevice;
+            } else {
+                bdmDeviceListReadyMask &= ~(1 << mode);
+                bdmDiscoveredDeviceReadyMask &= ~discoveredDevice;
+            }
+        } else {
+            if (hadDevice && deviceFound <= 0) {
+                for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                    if (!strcmp(bdmDiscoveredDevices[i].name, pDeviceData->bdmDriver) &&
+                        bdmDiscoveredDevices[i].devNr == (unsigned int)pDeviceData->massDeviceIndex) {
+                        bdmDiscoveredDeviceMask &= ~(1 << i);
+                        bdmDiscoveredDeviceReadyMask &= ~(1 << i);
+                    }
+                }
+                menuDeferredUpdate(data);
+            }
+            bdmDevicePresentMask &= ~(1 << mode);
+            bdmDeviceListReadyMask &= ~(1 << mode);
+        }
+
+        if (mode == BDM_MODE4) {
+            usbmass_bd_info_t devices[USBMASS_BD_MAX_DEVICES];
+            int count = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
+
+            // 第二阶段只移除已拔出的设备，不接收第一阶段结束后新出现的设备。
+            if (count >= 0) {
+                for (int i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                    int found = 0;
+
+                    if (!(bdmDiscoveredDeviceMask & (1 << i)))
+                        continue;
+
+                    for (int j = 0; j < count; j++) {
+                        if (!strcmp(bdmDiscoveredDevices[i].name, devices[j].name) &&
+                            bdmDiscoveredDevices[i].devNr == devices[j].devNr) {
+                            found = 1;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        bdmDiscoveredDeviceMask &= ~(1 << i);
+                        bdmDiscoveredDeviceReadyMask &= ~(1 << i);
+                    }
+                }
+            }
+
+            // 首轮列表时 xhdd 可能还没就绪，再探一次，避免 APA 盘卡在 mass 等待。
+            if (!bdmAtaIsApa && gEnableBdmHDD &&
+                (bdmDiscoveredDeviceMask & ~bdmDiscoveredDeviceReadyMask) &&
+                hddDetectNonSonyFileSystem() == 0) {
+                int i;
+
+                bdmAtaIsApa = 1;
+                gHddFormatHint = HDD_FORMAT_HINT_NEED_APA;
+                bdmTurnOffWrongExfatSwitch();
+                for (i = 0; i < bdmDiscoveredDeviceCount; i++) {
+                    if (bdmGetDeviceTypeFromDriver(bdmDiscoveredDevices[i].name) == BDM_TYPE_ATA) {
+                        bdmDiscoveredDeviceMask &= ~(1 << i);
+                        bdmDiscoveredDeviceReadyMask &= ~(1 << i);
+                    }
+                }
+            }
+        }
+        bdmListCheckedMask |= 1 << mode;
+    }
+
+    bdmListRequestPending = 0;
+}
+
+int menuResetBDMStartup(int bdmStarted)
+{
+    unsigned int enabledTypes = bdmGetEnabledTypeMask();
+
+    bdmDiscoveryPending = enabledTypes != 0;
+    bdmDiscoveryMode = BDM_MODE;
+    bdmDiscoveryResult = BDM_MODULE_LOAD_NOT_STARTED;
+    bdmDiscoveryRequestPending = 0;
+    bdmProbeCompletedMask = 0;
+    bdmProbePresentMask = 0;
+    bdmProbeErrorMask = 0;
+    bdmDiscoveryExpectedTypeMask = 0;
+    bdmDiscoveryModuleErrorMask = 0;
+    bdmDiscoveredDeviceCount = 0;
+    bdmDiscoveredDeviceMask = 0;
+    bdmDiscoveredDeviceReadyMask = 0;
+    bdmDevicePresentMask = 0;
+    bdmListRequestPending = 0;
+    bdmListCheckedMask = 0;
+    bdmDeviceListReadyMask = 0;
+    bdmAtaIsApa = 0;
+
+    if (!enabledTypes || gBDMStartMode == START_MODE_DISABLED ||
+        (gBDMStartMode == START_MODE_MANUAL && !bdmStarted && !bdmManualTrigger)) {
+        bdmStartupStage = BDM_STARTUP_COMPLETE;
+        bdmDiscoveryPending = 0;
+    } else
+        bdmStartupStage = BDM_STARTUP_MODULE_LOAD;
+
+    return bdmDiscoveryPending;
+}
+
+int menuIsBDMDiscoveryPending(void)
+{
+    return bdmDiscoveryPending;
+}
+
+unsigned int menuGetBDMStartupUnavailableTypes(void)
+{
+    unsigned int enabledTypes = bdmGetEnabledTypeMask();
+
+    return enabledTypes & bdmProbeErrorMask;
+}
+
+int menuUpdateBDMSupport(void)
+{
+    int status = 0;
+    unsigned int enabledTypes;
+
+    if (bdmStartupStage == BDM_STARTUP_COMPLETE)
+        return BDM_STARTUP_STATUS_READY;
+
+    enabledTypes = bdmGetEnabledTypeMask();
+
+    if (bdmStartupStage == BDM_STARTUP_MODULE_LOAD) {
+        if (bdmDiscoveryResult == BDM_MODULE_LOAD_NOT_STARTED) {
+            if (!bdmDiscoveryRequestPending) {
+                bdmDiscoveryRequestPending = 1;
+                if (ioPutRequestUnique(IO_BDM_MODULE_LOAD, &bdmDiscoveryMode) != IO_OK)
+                    bdmDiscoveryRequestPending = 0;
+            }
+        } else if (!bdmDiscoveryRequestPending) {
+            int loadedTypes = bdmDiscoveryResult;
+
+            if (loadedTypes < 0) {
+                bdmDiscoveryModuleErrorMask = enabledTypes;
+                bdmProbeErrorMask |= bdmDiscoveryModuleErrorMask;
+                bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
+            } else {
+                bdmDiscoveryExpectedTypeMask = enabledTypes & loadedTypes;
+                bdmDiscoveryModuleErrorMask = enabledTypes & ~loadedTypes;
+                bdmProbeErrorMask |= bdmDiscoveryModuleErrorMask;
+                bdmDiscoveryResult = 0;
+                bdmStartupStage = bdmDiscoveryExpectedTypeMask ? BDM_STARTUP_DISCOVERY : BDM_STARTUP_DISCOVERY_DRAINING;
+            }
+        }
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_DISCOVERY) {
+        if (bdmDiscoveryResult < 0 ||
+            (bdmProbeCompletedMask & bdmDiscoveryExpectedTypeMask) == bdmDiscoveryExpectedTypeMask)
+            bdmStartupStage = BDM_STARTUP_DISCOVERY_DRAINING;
+        else if (!bdmDiscoveryRequestPending) {
+            bdmDiscoveryRequestPending = 1;
+            if (ioPutRequestUnique(IO_BDM_DISCOVERY, &bdmDiscoveryMode) != IO_OK)
+                bdmDiscoveryRequestPending = 0;
+        }
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_DISCOVERY_DRAINING && !bdmDiscoveryRequestPending) {
+        bdmDiscoveryPending = 0;
+        if (menuGetBDMStartupUnavailableTypes())
+            status |= BDM_STARTUP_STATUS_DEVICE_UNAVAILABLE;
+
+        bdmStartupStage = BDM_STARTUP_LISTS;
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_LISTS) {
+        if (bdmDiscoveredDeviceMask && !bdmListRequestPending) {
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if (!(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
+                    bdmListRequestPending = 1;
+                    if (ioPutRequestUnique(IO_BDM_STARTUP_LIST, &list_support[i].support->mode) != IO_OK)
+                        bdmListRequestPending = 0;
+                    break;
+                }
+            }
+        }
+
+        if (!bdmListRequestPending && (bdmDiscoveredDeviceReadyMask & bdmDiscoveredDeviceMask) == bdmDiscoveredDeviceMask &&
+            (bdmDeviceListReadyMask & bdmDevicePresentMask) == bdmDevicePresentMask) {
+            bdmListCheckedMask = 0;
+            bdmStartupStage = BDM_STARTUP_LISTS_VALIDATING;
+        } else if (!bdmListRequestPending && bdmListCheckedMask == BDM_DISCOVERY_SLOT_MASK)
+            bdmListCheckedMask = bdmDeviceListReadyMask & bdmDevicePresentMask;
+    }
+
+    if (bdmStartupStage == BDM_STARTUP_LISTS_VALIDATING) {
+        if (!bdmListRequestPending) {
+            for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                if ((bdmDevicePresentMask & (1 << i)) && !(bdmListCheckedMask & (1 << i)) && list_support[i].support) {
+                    bdmListRequestPending = 1;
+                    if (ioPutRequestUnique(IO_BDM_STARTUP_LIST, &list_support[i].support->mode) != IO_OK)
+                        bdmListRequestPending = 0;
+                    break;
+                }
+            }
+        }
+
+        if (!bdmListRequestPending && (bdmListCheckedMask & bdmDevicePresentMask) == bdmDevicePresentMask) {
+            int deviceChanged = 0;
+
+            if ((bdmDeviceListReadyMask & bdmDevicePresentMask) != bdmDevicePresentMask) {
+                bdmListCheckedMask = bdmDeviceListReadyMask & bdmDevicePresentMask;
+                bdmStartupStage = BDM_STARTUP_LISTS;
+            } else {
+                for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
+                    if ((bdmDevicePresentMask & (1 << i)) && list_support[i].support && bdmHasDeviceEvent(list_support[i].support)) {
+                        deviceChanged = 1;
+                        break;
+                    }
+                }
+
+                if (deviceChanged)
+                    bdmListCheckedMask = 0;
+                else {
+                    bdmStartupStage = BDM_STARTUP_COMPLETE;
+                    status |= BDM_STARTUP_STATUS_READY;
+                }
+            }
+        }
+    }
+
+    return status;
+}
+
 static void menuUpdateHook()
 {
     int i;
@@ -1104,20 +1777,16 @@ static void menuUpdateHook()
     // if timer exceeds some threshold, schedule updates of the available input sources
     frameCounter++;
 
-    // Treat automatic refresh as BDM hotplug detection. BDM events are handled
-    // immediately, while a low-frequency probe catches any missed event. The probe
-    // only opens massN:/ for already connected devices; it does not rescan ISO files.
+    // 将自动刷新作为BDM热插拔检测，收到真实插拔事件后更新一次设备页面。
     if (gAutoRefresh && mainScreenInitDone && (gEnableUSB || gEnableILK || gEnableMX4SIO || gEnableBdmHDD)) {
-        const int fallbackCheck = frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0;
-
         for (i = BDM_MODE; i <= BDM_MODE4; i++) {
             item_list_t *support = list_support[i].support;
+            bdm_device_data_t *pDeviceData = support ? support->priv : NULL;
+            int deviceType = bdmGetDeviceType(i);
 
-            if (support != NULL && support->enabled && (bdmHasDeviceEvent(support) || fallbackCheck)) {
-                if (fallbackCheck)
-                    bdmRequestDeviceCheck(support);
+            if (support && support->enabled && bdmHasDeviceEvent(support) && pDeviceData &&
+                (pDeviceData->bdmPrefix[0] == '\0' || bdmDeviceTypeEnabled(deviceType)))
                 ioPutRequestUnique(IO_MENU_UPDATE_DEFFERED, &support->mode);
-            }
         }
     }
 
@@ -1136,7 +1805,6 @@ static void menuUpdateHook()
     //            ioPutRequest(IO_MENU_UPDATE_DEFFERED, &list_support[i].support->mode);
     //    }
     //} else
-    //if ((frameCounter % BDM_HOTPLUG_CHECK_DELAY == 0) || !mainScreenInitDone) {
 }
 
 static void clearErrorMessage(void)
@@ -1192,20 +1860,21 @@ static int checkLoadConfigBDM(int types)
 
 static int checkLoadConfigHDD(int types)
 {
-    int value;
+    int value, supportResult, retryCount = 0;
     char path[64];
 
     hddLoadModules();
+    if (!hddLoadModulesSuccess)
+        return 0;
+
     // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
-    if (hddLoadModulesSuccess) {
-        int retryCount = 0;
-        while (hddLoadSupportModules()) {
-            if (++retryCount >= 20)
-                break;
-            usleep(100000);
+    while ((supportResult = hddLoadSupportModules())) {
+        if (++retryCount >= 20) {
+            hddReportSupportError();
+            return 0;
         }
-    } else
-        hddLoadSupportModules();
+        usleep(100000);
+    }
 
     snprintf(path, sizeof(path), "%sconf_opl.cfg", gHDDPrefix);
     value = open(path, O_RDONLY);
@@ -1214,6 +1883,7 @@ static int checkLoadConfigHDD(int types)
         configEnd();
         configInit(gHDDPrefix);
         value = configReadMulti(types);
+        hddSetConfigSource();
         // 配置文件所在设备不应覆盖用户设置的APA HDD启动模式。
         //config_set_t *configOPL = configGetByType(CONFIG_OPL);
         //configSetInt(configOPL, CONFIG_OPL_HDD_MODE, START_MODE_AUTO);
@@ -1297,7 +1967,9 @@ static void _loadConfig(void)
             configGetColor(configOPL, CONFIG_OPL_UI_TEXTCOLOR, gDefaultUITextColor);
             configGetColor(configOPL, CONFIG_OPL_SEL_TEXTCOLOR, gDefaultSelTextColor);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_NOTIFICATIONS, &gEnableNotifications);
-            configGetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, &gEnableArt);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, &gEnableArtBG);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, &gEnableArtCOV);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, &gEnableArtICO);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_JPG, &gEnableJpg);
             configGetInt(configOPL, CONFIG_OPL_WIDESCREEN, &gWideScreen);
 
@@ -1337,6 +2009,7 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_AUTO_SORT, &gAutosort);
             configGetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, &gAutoRefresh);
             configGetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, &gDefaultDevice);
+            configGetInt(configOPL, CONFIG_OPL_AUTO_MODE1, &gAutoMode1);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_WRITE, &gEnableWrite);
             configGetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, &gHDDSpindown);
             configGetStrCopy(configOPL, CONFIG_OPL_BDM_PREFIX, gBDMPrefix, sizeof(gBDMPrefix));
@@ -1426,7 +2099,7 @@ static int trySaveConfigHDD(int types)
 {
     hddLoadModules();
     // Check that the formatted & usable HDD is connected.
-    if (hddCheck() == 0) {
+    if (hddLoadModulesSuccess && hddCheck() == 0) {
         configSetMove(gHDDPrefix);
         return configWriteMulti(types);
     }
@@ -1487,7 +2160,11 @@ static void _saveConfig()
         configSetColor(configOPL, CONFIG_OPL_UI_TEXTCOLOR, gDefaultUITextColor);
         configSetColor(configOPL, CONFIG_OPL_SEL_TEXTCOLOR, gDefaultSelTextColor);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_NOTIFICATIONS, gEnableNotifications);
-        configSetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, gEnableArt);
+        // 运行时不再用总开关；写 1 只是避免其它 OPL 读到旧的 enable_coverart=0。
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_COVERART, 1);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, gEnableArtBG);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, gEnableArtCOV);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, gEnableArtICO);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_JPG, gEnableJpg);
         configSetInt(configOPL, CONFIG_OPL_WIDESCREEN, gWideScreen);
         configSetInt(configOPL, CONFIG_OPL_VMODE, gVMode);
@@ -1502,6 +2179,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_AUTO_SORT, gAutosort);
         configSetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, gAutoRefresh);
         configSetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, gDefaultDevice);
+        configSetInt(configOPL, CONFIG_OPL_AUTO_MODE1, gAutoMode1);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_WRITE, gEnableWrite);
         configSetInt(configOPL, CONFIG_OPL_HDD_SPINDOWN, gHDDSpindown);
         configSetStr(configOPL, CONFIG_OPL_BDM_PREFIX, gBDMPrefix);
@@ -1588,17 +2266,12 @@ static void loadSupportsBackground(void)
         deferredAudioInit();
         deferredInit();
     }
-    // BDM设备还需要刷新一下列表
-    if (!mainScreenInitDone) {
-        for (int i = BDM_MODE; i <= BDM_MODE4; i++) {
-            if (list_support[i].support) {
-                bdm_device_data_t *pDeviceData = (bdm_device_data_t *)list_support[i].support->priv;
-                if (list_support[i].support->enabled && (pDeviceData->bdmPrefix[0] == '\0' || (pDeviceData->bdmDeviceType == BDM_TYPE_USB && gEnableUSB && pDeviceData->bdmGameCount == -1)))
-                    menuDeferredUpdate(&list_support[i].support->mode);
-            }
-        }
-    }
+    // 欢迎阶段由BDM三阶段流程统一发现设备和生成列表，此处不提前刷新BDM。
     theardInitDone = 1;
+    // APA 页被关掉后，若光标还停在上面，主界面会继续画那一页。
+    guiLock();
+    refreshMenuPosition();
+    guiUnlock();
 }
 void applyConfig(int themeID, int langID, int skipDeviceRefresh)
 {
@@ -1625,26 +2298,15 @@ void applyConfig(int themeID, int langID, int skipDeviceRefresh)
 
     guiUpdateScreenScale();
 
-    // 刚启动OPL时，如果不用多线程，就需要显示一帧启动画面，再进行初始化
+    // 刚启动OPL时，先显示一帧启动画面，再提交后台初始化
     if (firstOpenOPL)
         guiIntroFrame();
 
     // Check if we should refresh device support as well.
     if (skipDeviceRefresh == 0) {
-        if (firstOpenOPL) { // 第一次启动，用单线程加载所有设备，防止无限转圈
-            initAllSupport(0);
-
-            for (int i = 0; i < MODE_COUNT; i++) {
-                if (list_support[i].support == NULL)
-                    continue;
-
-                moduleUpdateMenuInternal(&list_support[i], changed, langChanged);
-            }
-        } else {
-            changed_backLoad = changed;
-            langChanged_backLoad = langChanged;
-            ioPutRequest(IO_CUSTOM_SIMPLEACTION, &loadSupportsBackground);
-        }
+        changed_backLoad = changed;
+        langChanged_backLoad = langChanged;
+        ioPutRequest(IO_CUSTOM_SIMPLEACTION, &loadSupportsBackground);
     } else {
         if (changed) {
             for (int i = 0; i < MODE_COUNT; i++) {
@@ -2076,19 +2738,27 @@ static void reset(void)
     mcInit(MC_TYPE_XMC);
 }
 
+static void supportCleanup(item_list_t *support, int exception, int modeSelected)
+{
+    if (!support)
+        return;
+
+    // 如果后续不再需要该设备，则将其关闭。
+    if ((support->mode != modeSelected) && (modeSelected != IO_MODE_SELECTED_ALL)) {
+        if (support->itemShutdown)
+            support->itemShutdown(support);
+    } else {
+        if (support->itemCleanUp)
+            support->itemCleanUp(support, exception);
+    }
+}
+
 static void moduleCleanup(opl_io_module_t *mod, int exception, int modeSelected)
 {
     if (!mod->support)
         return;
 
-    // Shutdown if not required anymore.
-    if ((mod->support->mode != modeSelected) && (modeSelected != IO_MODE_SELECTED_ALL)) {
-        if (mod->support->itemShutdown)
-            mod->support->itemShutdown(mod->support);
-    } else {
-        if (mod->support->itemCleanUp)
-            mod->support->itemCleanUp(mod->support, exception);
-    }
+    supportCleanup(mod->support, exception, modeSelected);
 
     clearMenuGameList(mod);
 }
@@ -2106,6 +2776,13 @@ void deinit(int exception, int modeSelected)
 #endif
     unloadPads();
 
+    /*
+     * 仅在 APA HDD POPS 交接时保留 pfs1:。UNMOUNT_EXCEPTION 也会用于
+     * USB、MX4SIO、SMB、BDMHDD 等非 APA 启动链路；如果继续保留 APA
+     * 句柄，关闭 DEV9 时可能触发 ATA 超时等待。
+     */
+    if (!((exception & UNMOUNT_EXCEPTION) && (modeSelected == HDD_MODE)))
+        oplReleaseHDDPOPSScratchPartition();
     deinitAllSupport(exception, modeSelected);
 
     audioEnd();
@@ -2117,17 +2794,6 @@ void deinit(int exception, int modeSelected)
     texFinish();
     configEnd();
     ioEnd();
-}
-
-void oplShutdownUnusedDev9(int modeSelected, int bdmDeviceType)
-{
-    // ETH / APA / BDM-ATA 仍需要网卡，不能关
-    if (modeSelected == ETH_MODE || modeSelected == HDD_MODE || bdmDeviceType == BDM_TYPE_ATA)
-        return;
-
-    // 不在此处调 hddSetIdleImmediate：BDM/GPT 场景下对 hdd0: 的 IDLEIMM 可能卡住。
-    // 仅在 DEV9 引用仍残留时断电（例如 ETH 占用但未在 ethShutdown 里减计数）。
-    sysForceShutdownDev9();
 }
 
 void setDefaultColors(void)
@@ -2199,6 +2865,7 @@ static void setDefaults(void)
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
+    gAutoMode1 = 1;
     gTxtRename = 0;
     gAutosort = 1;
     gAutoRefresh = 1;
@@ -2212,7 +2879,9 @@ static void setDefaults(void)
     gBDMPrefix[0] = '\0';
     gETHPrefix[0] = '\0';
     gEnableNotifications = 0;
-    gEnableArt = 1;
+    gEnableArtBG = 1;
+    gEnableArtCOV = 1;
+    gEnableArtICO = 1;
     gEnableJpg = 1;
     gWideScreen = 0;
     gEnableSFX = 1;
@@ -2230,10 +2899,11 @@ static void setDefaults(void)
     gETHStartMode = START_MODE_DISABLED;
     gAPPStartMode = START_MODE_DISABLED;
 
-    gEnableUSB = 1;
+    gEnableUSB = 0;
     gEnableILK = 0;
     gEnableMX4SIO = 0;
     gEnableBdmHDD = 0;
+    gHddFormatHint = HDD_FORMAT_HINT_NONE;
 
     frameCounter = 0;
 
@@ -2277,6 +2947,9 @@ static void init(void)
     // handler for deffered menu updates
     ioRegisterHandler(IO_MENU_UPDATE_DEFFERED, &menuDeferredUpdate);
     ioRegisterHandler(IO_itemExecSelect, &itemExecSelect_background);
+    ioRegisterHandler(IO_BDM_MODULE_LOAD, &bdmStartupModuleLoad);
+    ioRegisterHandler(IO_BDM_DISCOVERY, &bdmStartupDiscovery);
+    ioRegisterHandler(IO_BDM_STARTUP_LIST, &bdmStartupListUpdate);
     cacheInit();
 
     gSelectButton = (InitConsoleRegionData() == CONSOLE_REGION_JAPAN) ? KEY_CIRCLE : KEY_CROSS;
@@ -2292,12 +2965,9 @@ static void init(void)
         applyConfig(-1, -1, 0);
     }
 
-    // 第一次启动时，用单线程初始化
+    // 第一次启动的初始化已交给IO后台线程处理
     if (firstOpenOPL) {
-        deferredAudioInit();
-        deferredInit();
         firstOpenOPL = 0;
-        theardInitDone = 1;
     }
 }
 //int defaultSupportInitDone(void)
@@ -2384,19 +3054,21 @@ static void miniInit(int mode)
         gEnableMX4SIO = 1;
         gEnableBdmHDD = 1;
         bdmLoadModules();
+        bdmLoadDeviceModules();
 
     } else if (mode == HDD_MODE) {
         hddLoadModules();
         // 如果驱动加载成功，就不断重试hddLoadSupportModules，直到超时2秒
         if (hddLoadModulesSuccess) {
-            int retryCount = 0;
-            while (hddLoadSupportModules()) {
+            int supportResult, retryCount = 0;
+            while ((supportResult = hddLoadSupportModules())) {
                 if (++retryCount >= 20)
                     break;
                 usleep(100000);
             }
-        } else
-            hddLoadSupportModules();
+            if (supportResult)
+                hddReportSupportError();
+        }
     }
 
     InitConsoleRegionData();
@@ -2433,6 +3105,7 @@ void miniDeinit(config_set_t *configSet)
     ds34bt_reset();
 #endif
     configFree(configSet);
+    oplReleaseHDDPOPSScratchPartition();
 
     ioEnd();
     configEnd();

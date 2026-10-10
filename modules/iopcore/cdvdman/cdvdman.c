@@ -6,7 +6,6 @@
 
 #include "internal.h"
 #include "../../isofs/zso.h"
-#include "smb_tuning.h"
 
 #define MODNAME "cdvd_driver"
 IRX_ID(MODNAME, 1, 1);
@@ -33,8 +32,13 @@ int (*DeviceReadSectorsPtr)(u32 sector, void *buffer, unsigned int count) = &Dev
 static void oplShutdown(int poff);
 static int cdvdman_writeSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 static unsigned int event_alarm_cb(void *args);
+#ifdef SMB_DRIVER
+static int cdvdman_signal_read_end(void);
+static int cdvdman_signal_read_end_intr(void);
+#else
 static void cdvdman_signal_read_end(void);
 static void cdvdman_signal_read_end_intr(void);
+#endif
 static void cdvdman_startThreads(void);
 static void cdvdman_create_semaphores(void);
 static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf);
@@ -71,6 +75,26 @@ static int cdvdman_debug_print_flag = 0;
 unsigned char sync_flag;
 unsigned char cdvdman_cdinited = 0;
 static unsigned int ReadPos = 0; /* Current buffer offset in 2048-byte sectors. */
+
+#ifdef SMB_DRIVER
+enum smb_read_owner {
+    SMB_READ_OWNER_NORMAL = 0,
+    SMB_READ_OWNER_STREAM
+};
+
+/* 请求所有者随队列项保存，完成时不能用当前全局回调反推已经完成的请求。 */
+static u8 cdread_pending;
+static u8 cdread_pending_used;
+static u8 cdread_io_busy;
+static u8 cdread_outstand;
+static u8 cdread_owner;
+static u32 cdread_stream_generation;
+static u32 stream_generation;
+static u32 cdread_pending_lba;
+static u32 cdread_pending_sectors;
+static u16 cdread_pending_size;
+static void *cdread_pending_buf;
+#endif
 
 #ifdef __USE_DEV9
 static int POFFThreadID;
@@ -121,36 +145,39 @@ static void cdvdman_poff_thread(void *arg)
 }
 #endif
 
-void cdvdman_init(void)
+int cdvdman_init(void)
 {
 #ifdef __USE_DEV9
     iop_thread_t ThreadData;
 #endif
 
-    if (!cdvdman_cdinited) {
-        cdvdman_stat.err = SCECdErNO;
+    if (cdvdman_cdinited)
+        return 1;
 
-        cdvdman_fs_init();
+    cdvdman_stat.err = SCECdErNO;
+
+    /* 失败时不锁定初始化状态，后续sceCdInit仍可重新传输碎片表。 */
+    if (!cdvdman_fs_init())
+        return 0;
 
 #ifdef __USE_DEV9
-        if (cdvdman_settings.common.flags & IOPCORE_ENABLE_POFF) {
-            ThreadData.attr = TH_C;
-            ThreadData.option = 0xABCD0001;
-            ThreadData.priority = 1;
-            ThreadData.stacksize = 0x1000;
-            ThreadData.thread = &cdvdman_poff_thread;
-            StartThread(POFFThreadID = CreateThread(&ThreadData), NULL);
-        }
+    if (cdvdman_settings.common.flags & IOPCORE_ENABLE_POFF) {
+        ThreadData.attr = TH_C;
+        ThreadData.option = 0xABCD0001;
+        ThreadData.priority = 1;
+        ThreadData.stacksize = 0x1000;
+        ThreadData.thread = &cdvdman_poff_thread;
+        StartThread(POFFThreadID = CreateThread(&ThreadData), NULL);
+    }
 #endif
 
-        cdvdman_cdinited = 1;
-    }
+    cdvdman_cdinited = 1;
+    return 1;
 }
 
 int sceCdInit(int init_mode)
 {
-    cdvdman_init();
-    return 1;
+    return cdvdman_init();
 }
 
 //-------------------------------------------------------------------------
@@ -241,7 +268,6 @@ int read_raw_data(u8 *addr, u32 size, u32 offset, u32 shift)
 
 int DeviceReadSectorsCompressed(u32 lsn, void *addr, unsigned int count)
 {
-#if SMB_FEAT_OOB_READ_TOLERANT
     unsigned int sectors;
 
     if (lsn >= ziso_total_block) {
@@ -258,10 +284,6 @@ int DeviceReadSectorsCompressed(u32 lsn, void *addr, unsigned int count)
         memset((u8 *)addr + sectors * 2048, 0, (count - sectors) * 2048);
 
     return SCECdErNO;
-#else
-    // 恢复旧行为：逐段解压失败即报EOM错误
-    return (ziso_read_sector(addr, lsn, count) == count) ? SCECdErNO : SCECdErEOM;
-#endif
 }
 
 static int probed = 0;
@@ -281,15 +303,103 @@ static int ProbeZSO(u8 *buffer)
     return 1;
 }
 
+/* 模式1：按 8 扇区 闹钟→读→等（对齐官方），ticks 用 CAV。
+ * 不做机芯预读：扣空闲会让流式视频每隔几秒抖一下。
+ * seek 只加在第一块（时间目前为 0）。
+ * 余数 1 扇区保底在 cdvdfsv（按游戏一笔 EE 读判断），不放这里：ncmd 会把 9 扇区拆成 8+1。
+ * 下面这些宏是调试旋钮：改毫秒/扇区即可。 */
+#define ACCU_PSXCLK 36864000u
+#define ACCU_MS_TO_TICKS(ms) ((ACCU_PSXCLK * (ms)) / 1000u)
+
+/* Seek：对齐 PCSX2 分档，时间目前为 0（与官方模式1一样不寻道）。 */
+#define ACCU_FAST_SEEK_MS     0u
+#define ACCU_FULL_SEEK_MS     0u
+#define ACCU_FAST_SEEK_TICKS  ACCU_MS_TO_TICKS(ACCU_FAST_SEEK_MS)
+#define ACCU_FULL_SEEK_TICKS  ACCU_MS_TO_TICKS(ACCU_FULL_SEEK_MS)
+#define ACCU_CONTIG_DELTA_CD  8u
+#define ACCU_CONTIG_DELTA_DVD 16u
+#define ACCU_FAST_DELTA_CD    4371u
+#define ACCU_FAST_DELTA_DVD   14764u
+
+/* 模式1 下每次 DeviceRead 的扇区上限，原版就是 8。 */
+#define ACCU_DEVICE_CHUNK_SECTORS 8u
+
+static u32 accu_next_lsn;
+static int accu_have_pos;
+
+static u32 accu_add_sat(u32 a, u32 b)
+{
+    if (a > 0xFFFFFFFFu - b)
+        return 0xFFFFFFFFu;
+    return a + b;
+}
+
+static u32 accu_mul_sat(u32 a, u32 b)
+{
+    if (b != 0 && a > 0xFFFFFFFFu / b)
+        return 0xFFFFFFFFu;
+    return a * b;
+}
+
+static u32 accu_cav_ticks_per_sector(u32 lsn)
+{
+    u32 usec;
+
+    if (cdvdman_settings.common.media == 0x12) {
+        /* CD CAV 内 10x / 外 24x，常数预先除好，避免 IOP 上算 64 位。 */
+        usec = 317142857u / (237857u + lsn);
+        if (usec < 667)
+            usec = 667;
+    } else if (cdvdman_settings.common.layer1_start != 0) {
+        u32 effective = lsn;
+
+        /* DVD-DL PTP：第二层折回内圈。 */
+        if (effective >= cdvdman_settings.common.layer1_start)
+            effective -= cdvdman_settings.common.layer1_start;
+        usec = 1323784126u / (1489257u + effective);
+    } else {
+        /* DVD 单层 CAV 内 1.67x / 外 4x。 */
+        usec = 1459362539u / (1641782u + lsn);
+    }
+
+    /* 36.864MHz：usec * 36864 / 1000，拆开以免中间溢出。 */
+    return (usec * 36u) + (usec * 864u) / 1000u;
+}
+
+static u32 accu_seek_ticks(u32 lsn)
+{
+    u32 delta;
+    int is_cd = (cdvdman_settings.common.media == 0x12);
+
+    if (!accu_have_pos)
+        return 0;
+
+    delta = (lsn >= accu_next_lsn) ? (lsn - accu_next_lsn) : (accu_next_lsn - lsn);
+    if (delta < (is_cd ? ACCU_CONTIG_DELTA_CD : ACCU_CONTIG_DELTA_DVD))
+        return 0;
+    if (delta < (is_cd ? ACCU_FAST_DELTA_CD : ACCU_FAST_DELTA_DVD))
+        return ACCU_FAST_SEEK_TICKS;
+    return ACCU_FULL_SEEK_TICKS;
+}
+
+static u32 accu_transfer_ticks(u32 lsn, unsigned int sectors)
+{
+    if (sectors == 0)
+        return 0;
+    return accu_mul_sat(accu_cav_ticks_per_sector(lsn), sectors);
+}
+
 static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 {
     unsigned int remaining;
     void *ptr;
     int endOfMedia = 0;
+    int accu = (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) != 0;
+    int accu_first = 1;
+    u32 start_lsn = lsn;
 
     DPRINTF("cdvdman_read lsn=%lu sectors=%u buf=%p\n", lsn, sectors, buf);
 
-#if SMB_FEAT_OOB_READ_TOLERANT
     // PVD容量仅作为辅助边界，底层能够完整读取时兼容D9转D5等魔改镜像。
     if (mediaLsnCount) {
         if (lsn >= mediaLsnCount) {
@@ -300,22 +410,6 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
             endOfMedia = 1;
         }
     }
-#else
-    // 恢复旧行为：起始位置越界直接报错；跨界读取截断并在读完后报EOM错误
-    if (mediaLsnCount) {
-        if (lsn >= mediaLsnCount) {
-            DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
-            cdvdman_stat.err = SCECdErIPI;
-            return 1;
-        }
-
-        if ((lsn + sectors) > mediaLsnCount) {
-            DPRINTF("cdvdman_read eom lsn=%d sectors=%d leftsectors=%d MaxLsn=%d \n", lsn, sectors, mediaLsnCount - lsn, mediaLsnCount);
-            endOfMedia = 1;
-            sectors = mediaLsnCount - lsn;
-        }
-    }
-#endif
 
     if (probed == 0) { // Probe for ZSO before first read
         // check for ZSO
@@ -324,28 +418,35 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     }
 
     cdvdman_stat.err = SCECdErNO;
+
     for (ptr = buf, remaining = sectors; remaining > 0;) {
         unsigned int SectorsToRead = remaining;
+        int accu_armed = 0;
 
-        if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
-            // Limit transfers to a maximum length of 8, with a restricted transfer rate.
-            iop_sys_clock_t TargetTime;
+        if (accu && SectorsToRead > ACCU_DEVICE_CHUNK_SECTORS)
+            SectorsToRead = ACCU_DEVICE_CHUNK_SECTORS;
 
-            if (SectorsToRead > 8)
-                SectorsToRead = 8;
+        /* 每 8 扇区一块：闹钟与读重叠，总时间 max(这一块设备, 这一块光盘)。 */
+        if (accu) {
+            u32 accu_budget = accu_transfer_ticks(lsn, SectorsToRead);
 
-            TargetTime.hi = 0;
-            TargetTime.lo = (cdvdman_settings.common.media == 0x12 ? 81920 : 33512) * SectorsToRead;
-            // SP193: approximately 2KB/3600KB/s = 555us required per 2048-byte data sector at 3600KB/s, so 555 * 36.864 = 20460 ticks per sector with a 36.864MHz clock.
-            /* AKuHAK: 3600KB/s is too fast, it is CD 24x - theoretical maximum on CD
-               However, when setting SCECdSpinMax we will get 900KB/s (81920) for CD, and 2200KB/s (33512) for DVD */
-            ClearEventFlag(cdvdman_stat.intr_ef, ~0x1000);
-            SetAlarm(&TargetTime, &cdvdemu_read_end_cb, NULL);
+            if (accu_first)
+                accu_budget = accu_add_sat(accu_seek_ticks(lsn), accu_budget);
+            accu_first = 0;
+            if (accu_budget) {
+                iop_sys_clock_t TargetTime;
+
+                TargetTime.hi = 0;
+                TargetTime.lo = accu_budget;
+                ClearEventFlag(cdvdman_stat.intr_ef, ~0x1000);
+                SetAlarm(&TargetTime, &cdvdemu_read_end_cb, NULL);
+                accu_armed = 1;
+            }
         }
 
         cdvdman_stat.err = DeviceReadSectorsPtr(lsn, ptr, SectorsToRead);
         if (cdvdman_stat.err != SCECdErNO) {
-            if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS)
+            if (accu_armed)
                 CancelAlarm(&cdvdemu_read_end_cb, NULL);
             break;
         }
@@ -374,20 +475,19 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
         lsn += SectorsToRead;
         ReadPos += SectorsToRead * 2048;
 
-        if (cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) {
-            // Sleep until the required amount of time has been spent.
+        if (accu_armed)
             WaitEventFlag(cdvdman_stat.intr_ef, 0x1000, WEF_AND, NULL);
-        }
+    }
+
+    /* 只给 seek 分档记头位置，不再记虚拟盘片时刻。 */
+    if (accu && lsn != start_lsn) {
+        accu_have_pos = 1;
+        accu_next_lsn = lsn;
     }
 
     // If we had a read that went past the end of media, after reading what we can, set the end of media error.
-#if SMB_FEAT_OOB_READ_TOLERANT
     if (endOfMedia && cdvdman_stat.err != SCECdErNO)
         cdvdman_stat.err = endOfMedia == 2 ? SCECdErIPI : SCECdErEOM;
-#else
-    if (endOfMedia)
-        cdvdman_stat.err = SCECdErEOM;
-#endif
 
     return (cdvdman_stat.err == SCECdErNO ? 0 : 1);
 }
@@ -485,6 +585,100 @@ static int cdvdman_common_lock(int IntrContext)
     return 1;
 }
 
+#ifdef SMB_DRIVER
+static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *buf, enum smb_read_owner owner)
+{
+    int IsIntrContext, OldState;
+
+    IsIntrContext = QueryIntrContext();
+
+    CpuSuspendIntr(&OldState);
+
+    if (sync_flag) {
+        /* 普通读在设备 I/O 或完成回调窗口都可排一条，避免新流首笔请求丢失。 */
+        /* 流补填已等待时，本批次只能接收一条普通 pending，避免回调无限续接。 */
+        if (owner == SMB_READ_OWNER_NORMAL && !cdread_pending &&
+            !(cdread_pending_used && cdvdman_StmIsWaiting())) {
+            cdread_pending_lba = lsn;
+            cdread_pending_sectors = sectors;
+            cdread_pending_size = sector_size;
+            cdread_pending_buf = buf;
+            cdread_pending = 1;
+            cdread_pending_used = 1;
+            cdread_outstand++;
+            CpuResumeIntr(OldState);
+            return 1;
+        }
+        CpuResumeIntr(OldState);
+        DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
+        return 0;
+    }
+
+    if (!cdvdman_common_lock(IsIntrContext)) {
+        CpuResumeIntr(OldState);
+        DPRINTF("cdvdman_AsyncRead: exiting (sync_flag)...\n");
+        return 0;
+    }
+
+    cdread_io_busy = 1;
+    cdread_outstand = 1;
+    cdread_owner = owner;
+    if (owner == SMB_READ_OWNER_STREAM)
+        cdread_stream_generation = stream_generation;
+    cdvdman_stat.cdread_lba = lsn;
+    cdvdman_stat.cdread_sectors = sectors;
+    cdvdman_stat.sector_size = sector_size;
+    cdvdman_stat.cdread_buf = buf;
+
+    CpuResumeIntr(OldState);
+
+    if (IsIntrContext)
+        iSignalSema(cdrom_rthread_sema);
+    else
+        SignalSema(cdrom_rthread_sema);
+
+    return 1;
+}
+
+int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
+{
+    return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, SMB_READ_OWNER_NORMAL);
+}
+
+int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
+{
+    return cdvdman_smb_start_read(lsn, sectors, sector_size, buf, SMB_READ_OWNER_STREAM);
+}
+
+/* 调用方必须已关中断；用于 I/O 完成前后两个 pending 到达窗口。 */
+static int cdvdman_promote_pending(void)
+{
+    if (cdread_io_busy || !cdread_pending)
+        return 0;
+
+    cdvdman_stat.cdread_lba = cdread_pending_lba;
+    cdvdman_stat.cdread_sectors = cdread_pending_sectors;
+    cdvdman_stat.sector_size = cdread_pending_size;
+    cdvdman_stat.cdread_buf = cdread_pending_buf;
+    cdread_owner = SMB_READ_OWNER_NORMAL;
+    cdread_pending = 0;
+    cdread_io_busy = 1;
+    return 1;
+}
+
+void cdvdman_cancel_pending_read(void)
+{
+    int OldState;
+
+    CpuSuspendIntr(&OldState);
+    if (cdread_pending) {
+        cdread_pending = 0;
+        if (cdread_outstand > 0)
+            cdread_outstand--;
+    }
+    CpuResumeIntr(OldState);
+}
+#else
 int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
     int IsIntrContext, OldState;
@@ -513,6 +707,7 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
     return 1;
 }
+#endif
 
 int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
@@ -732,7 +927,12 @@ void cdvdman_cb_event(int reason)
         else
             SetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data);
     } else {
+#ifdef SMB_DRIVER
+        if (cdvdman_signal_read_end())
+            cdvdman_StmRetry();
+#else
         cdvdman_signal_read_end();
+#endif
     }
 }
 
@@ -740,7 +940,12 @@ static unsigned int event_alarm_cb(void *args)
 {
     struct cdvdman_cb_data *cb_data = args;
 
+#ifdef SMB_DRIVER
+    if (cdvdman_signal_read_end_intr())
+        cdvdman_StmRetry();
+#else
     cdvdman_signal_read_end_intr();
+#endif
     if (cb_data->user_cb != NULL) // This interrupt does not occur immediately, hence check for the callback again here.
         cb_data->user_cb(cb_data->reason);
     return 0;
@@ -753,6 +958,83 @@ static unsigned int event_alarm_cb(void *args)
    after the drive becomes visibly ready via the libcdvd API.
    Hence if a user callback is registered, signal completion from
    within the interrupt handler, before the user callback is run. */
+#ifdef SMB_DRIVER
+static int cdvdman_signal_read_end(void)
+{
+    int OldState;
+    int kick;
+
+    CpuSuspendIntr(&OldState);
+    if (cdread_outstand > 0)
+        cdread_outstand--;
+    /* I/O 已结束后才到达的 pending 必须在释放 sync 前重新启动。 */
+    kick = cdvdman_promote_pending();
+    if (kick || cdread_outstand > 0) {
+        CpuResumeIntr(OldState);
+        if (kick)
+            SignalSema(cdrom_rthread_sema);
+        return 0;
+    }
+    cdread_pending_used = 0;
+    sync_flag = 0;
+    CpuResumeIntr(OldState);
+    SetEventFlag(cdvdman_stat.intr_ef, 9);
+    return 1;
+}
+
+static int cdvdman_signal_read_end_intr(void)
+{
+    int kick;
+
+    if (cdread_outstand > 0)
+        cdread_outstand--;
+    /* alarm 回调内使用中断版信号，保证 late pending 不会滞留。 */
+    kick = cdvdman_promote_pending();
+    if (kick || cdread_outstand > 0) {
+        if (kick)
+            iSignalSema(cdrom_rthread_sema);
+        return 0;
+    }
+    cdread_pending_used = 0;
+    sync_flag = 0;
+    iSetEventFlag(cdvdman_stat.intr_ef, 9);
+    return 1;
+}
+
+static void cdvdman_cdread_Thread(void *args)
+{
+    int OldState;
+    int kick;
+    u8 completed_owner;
+    u32 completed_generation;
+
+    while (1) {
+        WaitSema(cdrom_rthread_sema);
+
+        do {
+            cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+
+            CpuSuspendIntr(&OldState);
+            /* 提升待处理请求前先冻结完成项身份，否则新请求会偷走旧请求的完成通知。 */
+            completed_owner = cdread_owner;
+            completed_generation = cdread_stream_generation;
+            cdread_io_busy = 0;
+            kick = cdvdman_promote_pending();
+            CpuResumeIntr(OldState);
+
+            if (completed_owner == SMB_READ_OWNER_STREAM) {
+                cdvdman_signal_read_end();
+
+                /* 停止、暂停或重新启动会换代，旧 I/O 不得推进新流的环形缓冲。 */
+                if (completed_generation == stream_generation && Stm0Callback != NULL)
+                    Stm0Callback();
+            } else {
+                cdvdman_cb_event(SCECdFuncRead);
+            }
+        } while (kick);
+    }
+}
+#else
 static void cdvdman_signal_read_end(void)
 {
     sync_flag = 0;
@@ -786,6 +1068,7 @@ static void cdvdman_cdread_Thread(void *args)
             cdvdman_cb_event(SCECdFuncRead); // Only runs if streaming is not in action.
     }
 }
+#endif
 
 //-------------------------------------------------------------------------
 static void cdvdman_startThreads(void)
@@ -912,14 +1195,25 @@ int _start(int argc, char **argv)
     // init disk type stuff
     cdvdman_initDiskType();
 
-    FanSpeedChange_2(0x00);
+    // 风扇控制命令暂时停用，待实机确认不同型号上的实际效果后再启用。
+    // FanSpeedChange_2(0x00);
     return MODULE_RESIDENT_END;
 }
 
 //-------------------------------------------------------------------------
 void SetStm0Callback(StmCallback_t callback)
 {
+#ifdef SMB_DRIVER
+    int OldState;
+
+    CpuSuspendIntr(&OldState);
+    /* 每次流状态切换都换代，让切换前已经发出的 SMB 请求失效。 */
+    stream_generation++;
     Stm0Callback = callback;
+    CpuResumeIntr(OldState);
+#else
+    Stm0Callback = callback;
+#endif
 }
 
 //-------------------------------------------------------------------------

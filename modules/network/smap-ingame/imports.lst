@@ -4,6 +4,10 @@ I_dmac_transfer
 I_dmac_ch_get_chcr
 dmacman_IMPORTS_end
 
+loadcore_IMPORTS_start
+I_RegisterLibraryEntries
+loadcore_IMPORTS_end
+
 thbase_IMPORTS_start
 I_DelayThread
 I_SetAlarm

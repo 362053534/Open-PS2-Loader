@@ -13,7 +13,6 @@
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
 #include "modules/iopcore/common/cdvd_config.h"
-
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioDevctl(ethBase, SMB_***)
 
@@ -28,6 +27,10 @@ static time_t ethModifiedDVDPrev;
 static int ethGameCount = 0;
 static unsigned char ethModulesLoaded = 0;
 static base_game_info_t *ethGames = NULL;
+
+// 共享列表需要区分“尚未返回”和“返回空列表”，否则主界面无法确定初始化是否结束。
+static int ethShareListPending = 1;
+static int ethShareListRetryUsed = 0;
 
 static struct ip4_addr lastIP;
 static struct ip4_addr lastNM;
@@ -44,8 +47,8 @@ static int ethReadNetConfig(void);
 
 static int ethInitSemaID = -1;
 
-// 判断SMB设备是否使用ART2文件夹
-static int artUseBuckets_SMB = 0;
+// SMB 连接成功后探测一次 ART2 分桶
+static art_buckets_t artBuckets_SMB;
 
 // Initializes locking semaphore for network support (not for just SMB support, but for the network subsystem).
 static int ethInitSema(void)
@@ -65,6 +68,13 @@ static void ethSMBConnect(void)
     smbEcho_in_t echo;
     smbOpenShare_in_t openshare;
     int result;
+    int echoResult = -1;
+    int retryPS2 = !gPCUserName[0] && !gPCPassword[0];
+
+    memset(&logon, 0, sizeof(logon));
+    memset(&echo, 0, sizeof(echo));
+    memset(&openshare, 0, sizeof(openshare));
+    gPCLoginUser[0] = '\0';
 
     if (gETHPrefix[0] != '\0')
         sprintf(ethPrefix, "%s%s\\", ethBase, gETHPrefix);
@@ -112,45 +122,58 @@ static void ethSMBConnect(void)
         openshare.PasswordType = NO_PASSWORD;
     }
 
-    if ((result = fileXioDevctl(ethBase, SMB_DEVCTL_LOGON, (void *)&logon, sizeof(logon), NULL, 0)) >= 0) {
-        // SMB server alive test
-        strcpy(echo.echo, "ALIVE ECHO TEST");
-        echo.len = strlen("ALIVE ECHO TEST");
+    // 用户名和密码均为空时，匿名登录失败后使用PS2用户名重试。
+    while (1) {
+        if ((result = fileXioDevctl(ethBase, SMB_DEVCTL_LOGON, (void *)&logon, sizeof(logon), NULL, 0)) >= 0) {
+            // SMB server alive test
+            strcpy(echo.echo, "ALIVE ECHO TEST");
+            echo.len = strlen("ALIVE ECHO TEST");
 
-        if (gPCShareAddressIsNetBIOS) {
-            // Since the SMB server can be connected to, update the IP address.
-            pc_ip[0] = share_ip_address[0];
-            pc_ip[1] = share_ip_address[1];
-            pc_ip[2] = share_ip_address[2];
-            pc_ip[3] = share_ip_address[3];
-        }
-
-        if (fileXioDevctl(ethBase, SMB_DEVCTL_ECHO, (void *)&echo, sizeof(echo), NULL, 0) >= 0) {
-            gNetworkStartup = ERROR_ETH_SMB_OPENSHARE;
-
-            if (gPCShareName[0]) {
-                // connect to the share
-                strcpy(openshare.ShareName, gPCShareName);
-
-                if (fileXioDevctl(ethBase, SMB_DEVCTL_OPENSHARE, (void *)&openshare, sizeof(openshare), NULL, 0) >= 0) {
-                    // everything is ok
-                    gNetworkStartup = 0;
-                }
+            if (gPCShareAddressIsNetBIOS) {
+                // Since the SMB server can be connected to, update the IP address.
+                pc_ip[0] = share_ip_address[0];
+                pc_ip[1] = share_ip_address[1];
+                pc_ip[2] = share_ip_address[2];
+                pc_ip[3] = share_ip_address[3];
             }
-        } else {
+
+            echoResult = fileXioDevctl(ethBase, SMB_DEVCTL_ECHO, (void *)&echo, sizeof(echo), NULL, 0);
+            if (echoResult >= 0)
+                break;
+
             gNetworkStartup = ERROR_ETH_SMB_ECHO;
+        } else {
+            gNetworkStartup = (result == -SMB_DEVCTL_LOGON_ERR_CONN) ? ERROR_ETH_SMB_CONN : ERROR_ETH_SMB_LOGON;
         }
-    } else {
-        gNetworkStartup = (result == -SMB_DEVCTL_LOGON_ERR_CONN) ? ERROR_ETH_SMB_CONN : ERROR_ETH_SMB_LOGON;
+
+        if (!retryPS2 || (result < 0 && (result == -SMB_DEVCTL_LOGON_ERR_CONN || result == -SMB_DEVCTL_LOGON_ERR_PROT)))
+            break;
+
+        retryPS2 = 0;
+        strcpy(logon.User, "PS2");
     }
 
-    // 判断是否存在ART2，提升图片读取效率
-    char art2Path[128];
-    snprintf(art2Path, sizeof(art2Path), "%sART2", ethPrefix);
-    DIR *art2Dir = opendir(art2Path);
-    artUseBuckets_SMB = art2Dir ? 1 : 0;
-    if (art2Dir)
-        closedir(art2Dir);
+    if (echoResult >= 0) {
+        strncpy(gPCLoginUser, logon.User, sizeof(gPCLoginUser));
+        gPCLoginUser[sizeof(gPCLoginUser) - 1] = '\0';
+        gNetworkStartup = ERROR_ETH_SMB_OPENSHARE;
+
+        if (gPCShareName[0]) {
+            // connect to the share
+            strcpy(openshare.ShareName, gPCShareName);
+
+            if (fileXioDevctl(ethBase, SMB_DEVCTL_OPENSHARE, (void *)&openshare, sizeof(openshare), NULL, 0) >= 0) {
+                // everything is ok
+                gNetworkStartup = 0;
+            }
+        }
+    }
+
+    if (gNetworkStartup == 0) {
+        // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
+        sbDetectArtBuckets(ethPrefix, "\\", &artBuckets_SMB);
+    } else
+        memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
 }
 
 static int ethSMBDisconnect(void)
@@ -170,36 +193,19 @@ static int ethSMBDisconnect(void)
     return 0;
 }
 
-static void EthStatusCheckCb(s32 alarm_id, u16 time, void *common)
-{
-    iSignalSema(*(int *)common);
-}
-
 static int WaitValidNetState(int (*checkingFunction)(void))
 {
-    int SemaID, retry_cycles;
-    ee_sema_t SemaData;
+    int retry_cycles;
 
-    // Wait for a valid network status;
-    SemaData.option = SemaData.attr = 0;
-    SemaData.init_count = 0;
-    SemaData.max_count = 1;
-    if ((SemaID = CreateSema(&SemaData)) < 0)
-        return SemaID;
+    // 定时器回调丢失会让信号量永久等待，改用有限次数轮询保证初始化必定返回。
+    for (retry_cycles = 0; retry_cycles < 30; retry_cycles++) {
+        if (checkingFunction() != 0)
+            return 0;
 
-    for (retry_cycles = 0; checkingFunction() == 0; retry_cycles++) {
-        SetAlarm(1000 * rmGetHsync(), &EthStatusCheckCb, &SemaID);
-        WaitSema(SemaID);
-
-        if (retry_cycles >= 30) // 30s = 30*1000ms
-        {
-            DeleteSema(SemaID);
-            return -1;
-        }
+        usleep(1000000);
     }
 
-    DeleteSema(SemaID);
-    return 0;
+    return checkingFunction() != 0 ? 0 : -1;
 }
 
 static int ethWaitValidNetIFLinkState(void)
@@ -214,14 +220,27 @@ static int ethWaitValidDHCPState(void)
 
 static int ethInitApplyConfig(void)
 {
+    int retry_cycles;
+
     LOG("ETHSUPPORT ApplyConfig\n");
 
-    do {
+    for (retry_cycles = 0; retry_cycles < 30; retry_cycles++) {
         if (ethWaitValidNetIFLinkState() != 0) {
             gNetworkStartup = ERROR_ETH_LINK_FAIL;
             return ERROR_ETH_LINK_FAIL;
         }
-    } while (ethApplyNetIFConfig() != 0);
+
+        if (ethApplyNetIFConfig() == 0)
+            break;
+
+        // 链路模式应用失败时留出重试间隔，避免异常状态下无限占用后台线程。
+        usleep(100000);
+    }
+
+    if (retry_cycles >= 30) {
+        gNetworkStartup = ERROR_ETH_LINK_FAIL;
+        return ERROR_ETH_LINK_FAIL;
+    }
 
     // Before the network configuration is applied, wait for a valid link status.
     if (ethWaitValidNetIFLinkState() != 0) {
@@ -255,31 +274,30 @@ static void ethInitSMB(void)
 {
     int ret;
 
-    // WaitSema(ethInitSemaID);
+    WaitSema(ethInitSemaID);
     ret = ethInitApplyConfig();
-    // SignalSema(ethInitSemaID);
 
-    if (ret != 0) {
-        ethDisplayErrorStatus();
-        return;
+    if (ret == 0) {
+        // connect
+        ethSMBConnect();
+
+        if (gNetworkStartup == 0) {
+            // update Themes
+            char path[256];
+            sprintf(path, "%sTHM", ethPrefix);
+            thmAddElements(path, "\\", 1);
+
+            sprintf(path, "%sLNG", ethPrefix);
+            lngAddLanguages(path, "\\", ethGameList.mode);
+
+            sbCreateFolders(ethPrefix, 1);
+        }
     }
 
-    // connect
-    ethSMBConnect();
+    SignalSema(ethInitSemaID);
 
-    if (gNetworkStartup == 0) {
-        // update Themes
-        char path[256];
-        sprintf(path, "%sTHM", ethPrefix);
-        thmAddElements(path, "\\", 1);
-
-        sprintf(path, "%sLNG", ethPrefix);
-        lngAddLanguages(path, "\\", ethGameList.mode);
-
-        sbCreateFolders(ethPrefix, 1);
-    } else if (gPCShareName[0] || !(gNetworkStartup >= ERROR_ETH_SMB_OPENSHARE)) {
+    if (ret != 0 || (gNetworkStartup != 0 && (gPCShareName[0] || !(gNetworkStartup >= ERROR_ETH_SMB_OPENSHARE))))
         ethDisplayErrorStatus();
-    }
 }
 
 static int ethLoadModules(void)
@@ -287,8 +305,6 @@ static int ethLoadModules(void)
     LOG("ETHSUPPORT LoadModules\n");
 
     if (!ethModulesLoaded) {
-        ethModulesLoaded = 1;
-
         sysInitDev9();
 
         LOG("[NETMAN]:\n");
@@ -310,6 +326,7 @@ static int ethLoadModules(void)
                     ps2ip_init();
                     HttpInit();
 
+                    ethModulesLoaded = 1;
                     LOG("ETHSUPPORT Modules loaded\n");
                     usleep(100000); // 加载完驱动后，延迟100毫秒再进行后续初始化
                     return 0;
@@ -430,14 +447,19 @@ static void smbLoadModules(void)
 
 void ethInit(item_list_t *itemList)
 {
-    if (ethInitSema() < 0)
+    if (ethInitSema() < 0) {
+        // 初始化入口失败后必须结束等待，否则默认SMB页面会永久停留在欢迎界面。
+        ethShareListPending = 0;
         return;
+    }
 
     if (gNetworkStartup >= ERROR_ETH_SMB_CONN) {
         LOG("ETHSUPPORT Re-Init\n");
         thmReinit(ethBase);
         ethULSizePrev = -2;
         ethGameCount = 0;
+        ethShareListPending = 1;
+        ethShareListRetryUsed = 0;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &ethInitSMB);
         ethInitSMB();
     } else {
@@ -448,6 +470,8 @@ void ethInit(item_list_t *itemList)
         ethModifiedDVDPrev = 0;
         ethGameCount = 0;
         ethGames = NULL;
+        ethShareListPending = 1;
+        ethShareListRetryUsed = 0;
         configGetInt(configGetByType(CONFIG_OPL), "eth_frames_delay", &ethGameList.delay);
         gNetworkStartup = ERROR_ETH_NOT_STARTED;
         // ioPutRequest(IO_CUSTOM_SIMPLEACTION, &smbLoadModules);
@@ -461,6 +485,11 @@ item_list_t *ethGetObject(int initOnly)
     if (initOnly && !ethGameList.enabled)
         return NULL;
     return &ethGameList;
+}
+
+int ethIsShareListPending(void)
+{
+    return !gPCShareName[0] && ethShareListPending;
 }
 
 static int ethNeedsUpdate(item_list_t *itemList)
@@ -510,17 +539,33 @@ static int ethUpdateGameList(item_list_t *itemList)
             ethDisplayErrorStatus();
         }
     } else {
-        int i, count;
-        ShareEntry_t sharelist[128];
+        int i, count, attempt;
+        int shareListAttempts = gETHStartMode == START_MODE_AUTO && ethShareListPending && !ethShareListRetryUsed ? 2 : 1;
+        ShareEntry_t sharelist[128] __attribute__((aligned(64)));
         smbGetShareList_in_t getsharelist;
-
-        if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
-            return 0;
 
         getsharelist.EE_addr = (void *)&sharelist[0];
         getsharelist.maxent = 128;
 
-        count = fileXioDevctl(ethBase, SMB_DEVCTL_GETSHARELIST, (void *)&getsharelist, sizeof(getsharelist), NULL, 0);
+        // 显式限制为最多两次，避免GUI与IO线程分别追加请求后失去次数边界。
+        for (attempt = 0; attempt < shareListAttempts; attempt++) {
+            if (attempt > 0) {
+                ethShareListRetryUsed = 1;
+
+                // 首次连接未完成时，唯一一次重试先补做网络初始化，避免对无效会话枚举共享。
+                if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
+                    ethInitSMB();
+            }
+
+            if (gNetworkStartup < ERROR_ETH_SMB_OPENSHARE)
+                count = -1;
+            else
+                count = fileXioDevctl(ethBase, SMB_DEVCTL_GETSHARELIST, (void *)&getsharelist, sizeof(getsharelist), NULL, 0);
+
+            if (count > 0)
+                break;
+        }
+
         if (count > 0) {
             free(ethGames);
             ethGames = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count);
@@ -537,9 +582,16 @@ static int ethUpdateGameList(item_list_t *itemList)
                 g->sizeMB = 0;
             }
             ethGameCount = count;
+            ethShareListPending = 0;
         } else if (count < 0) {
             gNetworkStartup = ERROR_ETH_SMB_LISTSHARES;
             ethDisplayErrorStatus();
+            ethShareListPending = 0;
+        } else {
+            free(ethGames);
+            ethGames = NULL;
+            ethGameCount = 0;
+            ethShareListPending = 0;
         }
     }
     return ethGameCount;
@@ -654,7 +706,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
         saveConfig(CONFIG_LAST, 0);
     }
 
-    compatmask = sbPrepare(game, configSet, size_smb_cdvdman_irx, smb_cdvdman_irx, &i);
+    compatmask = sbPrepare(game, configSet, size_smb_cdvdman_irx, smb_cdvdman_irx, &i, gAutoMode1);
 
     if ((result = sbLoadCheats(ethPrefix, game->startup)) < 0) {
         switch (result) {
@@ -721,15 +773,35 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     settings->common.layer1_start = layer1_start;
 
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
-        strcpy(filename, game->startup);
-    deinit(NO_EXCEPTION, ETH_MODE); // CAREFUL: deinit will call ethCleanUp, so ethGames/game will be freed
+        sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
 
-    settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
-    settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
+    /* UYA local multiplayer on SMB needs DEV9 hidden: OPL owns the NIC. */
+    {
+        int uyaHideDev9 = !strcmp(game->startup, "SCUS_973.53") ||
+                          !strcmp(game->startup, "SCES_524.56") ||
+                          !strcmp(game->startup, "SCPS_150.84");
+        int splinterCellHideDev9 = !strcmp(game->startup, "SLUS_213.56") ||
+                          !strcmp(game->startup, "SLES_538.26") ||
+                          !strcmp(game->startup, "SLES_538.27") ||
+                          !strcmp(game->startup, "SLPM_666.72") ||
+                          !strcmp(game->startup, "SLUS_211.37") ||
+                          !strcmp(game->startup, "SLES_530.07") ||
+                          !strcmp(game->startup, "SLES_532.87") ||
+                          !strcmp(game->startup, "SLPM_661.30") ||
+                          !strcmp(game->startup, "SLUS_209.58") ||
+                          !strcmp(game->startup, "SLES_521.49") ||
+                          !strcmp(game->startup, "SLPM_658.15");
+        deinit(NO_EXCEPTION, ETH_MODE); // CAREFUL: deinit will call ethCleanUp, so ethGames/game will be freed
 
-    // adjust ZSO cache
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
+        if (uyaHideDev9 || splinterCellHideDev9)
+            settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_HIDE_DEV9;
+    }
+
+    // 普通 ISO 不再同步预读；该设置只保留给原有 ZSO 解压缓存。
     settings->common.zso_cache = smbCacheSize;
-    sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask);
+    sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, 0, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask, NULL, 0);
 }
 
 static config_set_t *ethGetConfig(item_list_t *itemList, int id)
@@ -737,25 +809,17 @@ static config_set_t *ethGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&ethGames[id], ethPrefix, "\\");
 }
 
-static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
 {
+    (void)itemList;
+    (void)id;
+
     if (!value)
         return ERR_BAD_FILE;
 
     char path[256];
-    if (isRelative) {
-        // 判断是否读取ART2文件夹
-        if (artUseBuckets_SMB) {
-            int len = strlen(value);
-            if (len >= 4 && (value[len - 1] == 'F' || value[len - 1] == 'f'))
-                snprintf(path, sizeof(path), "%sART2\\APPS\\%s\\%s_%s", ethPrefix, value, value, suffix);
-            else
-                snprintf(path, sizeof(path), "%sART2\\GAMES\\%s\\%s_%s", ethPrefix, value, value, suffix);
-        } else
-            snprintf(path, sizeof(path), "%s%s\\%s_%s", ethPrefix, folder, value, suffix);
-    } else
-        snprintf(path, sizeof(path), "%s%s_%s", folder, value, suffix);
 
+    sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", &artBuckets_SMB, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 
@@ -799,8 +863,7 @@ static void ethShutdown(item_list_t *itemList)
     }
 
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
-    // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9，再配对 sysShutdownDev9。
-    // 仅当引用减到 0 时才会 DDIOC_OFF；若后面 hddShutdown 还会再减，这里通常只减计数不关电。
+    // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9
     {
         int ethOwnedDev9 = ethModulesLoaded;
 

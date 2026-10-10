@@ -20,12 +20,6 @@ ifeq ($(INGAME_DRIVER),1)
 IOP_CFLAGS += -DINGAME_DRIVER
 endif
 
-# sys_arch_mbox_fetch() 的单次装填版本：整个 fetch 只做一次 SetAlarm/CancelAlarm
-# 而不是每次唤醒都做。需要配合设置了 SO_RCVTIMEO 的套接字才有效果。
-ifeq ($(LWIP_MBOX_SINGLE_ALARM),1)
-IOP_CFLAGS += -DLWIP_MBOX_SINGLE_ALARM
-endif
-
 ifeq ($(INTERRUPT_CTX_INPKT),1)
 IOP_CFLAGS += -DINTERRUPT_CTX_INPKT
 endif

@@ -517,7 +517,6 @@ int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
 int smb_Echo(void);
 void smb_CloseAll(void);
 int smb_Disconnect(void);
-int smb_AbortConnection(void);
 
 #define MAX_SMB_BUF     896 // must fit on u16 !!!
 #define MAX_SMB_BUF_HDR 128 //Must be at least as large as the largest header structure.
