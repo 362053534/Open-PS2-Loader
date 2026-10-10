@@ -1,0 +1,141 @@
+diff --git a/modules/iopcore/cdvdman/smb.c b/modules/iopcore/cdvdman/smb.c
+index 920727f..663bc57 100644
+--- a/modules/iopcore/cdvdman/smb.c
++++ b/modules/iopcore/cdvdman/smb.c
+@@ -22,6 +22,11 @@
+ 
+ #define USE_CUSTOM_RECV 1
+ 
++/* 模式 2 的轮询收包要用；smstcpip.h 通常已经给了，这里只是兜底。 */
++#ifndef MSG_DONTWAIT
++#define MSG_DONTWAIT 0x40
++#endif
++
+ //Round up the erasure amount, so that memset can erase memory word-by-word.
+ #define ZERO_PKT_ALIGNED(hdr, hdrSize) memset((hdr), 0, ((hdrSize) + 3) & ~3)
+ 
+@@ -32,8 +37,12 @@
+ #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
+ #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
+ #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
+-#define SMB_IO_TIMEOUT         30000
+ #define SMB_KEEPALIVE_TIME     60000
++/* Echo 保活探测的超时上限：不能用 setsockopt(SO_RCVTIMEO) —— 那会让 lwip 的每一次
++ * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
++ * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
++#define SMB_ECHO_TIMEOUT_MS    3000
++#define SMB_ECHO_POLL_MS       20
+ 
+ int smb_io_sema = -1;
+ 
+@@ -135,9 +144,7 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
+     plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
+     opt = SMB_KEEPALIVE_TIME;
+     plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
+-    opt = SMB_IO_TIMEOUT;
+-    plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
+-    plwip_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
++    /* 注意：不要设 SO_SNDTIMEO / SO_RCVTIMEO。见 SMB_ECHO_TIMEOUT_MS 的注释。 */
+ 
+     memset(&sock_addr, 0, sizeof(sock_addr));
+     sock_addr.sin_addr = dst_IP;
+@@ -173,25 +180,46 @@ static int SendData(int sock, char *buf, int size)
+     return size;
+ }
+ 
+-static int RecvData(int sock, char *buf, int size)
++/* flags == 0 时是原来的阻塞收包；flags == MSG_DONTWAIT 时自己轮询，
++ * 超时上限 timeout_ms —— 这样就不必去 setsockopt(SO_RCVTIMEO)，
++ * 那会让 lwip 走 sys_arch_sem_wait() 的 alarm 分支。 */
++static int RecvDataEx(int sock, char *buf, int size, unsigned int flags, int timeout_ms)
+ {
+-    int remaining, result;
++    int remaining, result, waited;
+     char *ptr;
+ 
+     ptr = buf;
+     remaining = size;
++    waited = 0;
+     while (remaining > 0) {
+-        result = plwip_recv(sock, ptr, remaining, 0);
+-        if (result <= 0)
+-            return result;
++        result = plwip_recv(sock, ptr, remaining, flags);
++        if (result > 0) {
++            ptr += result;
++            remaining -= result;
++            continue;
++        }
+ 
+-        ptr += result;
+-        remaining -= result;
++        if (result == 0) /* 对端关闭 */
++            return 0;
++
++        if (!(flags & MSG_DONTWAIT))
++            return result; /* 阻塞模式下出错就是出错 */
++
++        if (waited >= timeout_ms)
++            return 0; /* 轮询超时，不把半包当错误丢掉 */
++
++        DelayThread(SMB_ECHO_POLL_MS * 1000);
++        waited += SMB_ECHO_POLL_MS;
+     }
+ 
+     return size;
+ }
+ 
++static int RecvData(int sock, char *buf, int size)
++{
++    return RecvDataEx(sock, buf, size, 0, 0);
++}
++
+ //-------------------------------------------------------------------------
+ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
+ {
+@@ -235,6 +263,36 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
+     return totalpkt_size;
+ }
+ 
++/* GetSMBServerReply(0, NULL, 0) 的非阻塞轮询版：一次发完整包、收 NetBIOS 头、
++ * 再收 SMB 回包，全程不设 SO_RCVTIMEO，超时上限由 timeout_ms 决定。
++ * 只给 smb_Echo() 用，数据面继续走原来的阻塞 GetSMBServerReply()。 */
++static int GetSMBServerReplyTimed(int timeout_ms)
++{
++    int rcv_size, totalpkt_size;
++
++    totalpkt_size = nb_GetSessionMessageLength() + 4;
++
++    rcv_size = SendData(main_socket, (char *)&SMB_buf, totalpkt_size);
++    if (rcv_size <= 0)
++        return -1;
++
++    do {
++        rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.sessionHeader,
++                              sizeof(SMB_buf.sessionHeader), MSG_DONTWAIT, timeout_ms);
++        if (rcv_size <= 0)
++            return -2;
++    } while (nb_GetPacketType() != 0);
++
++    totalpkt_size = nb_GetSessionMessageLength();
++
++    rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.smb, totalpkt_size,
++                          MSG_DONTWAIT, timeout_ms);
++    if (rcv_size <= 0)
++        return -2;
++
++    return totalpkt_size;
++}
++
+ //-------------------------------------------------------------------------
+ //These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+ static int asciiToUtf16(char *out, const char *in)
+@@ -837,7 +895,7 @@ int smb_Echo(void)
+     ER->ByteCount = 0;
+ 
+     nb_SetSessionMessage(sizeof(EchoRequest_t));
+-    result = GetSMBServerReply(0, NULL, 0) > 0 ? 1 : -1;
++    result = GetSMBServerReplyTimed(SMB_ECHO_TIMEOUT_MS) > 0 ? 1 : -1;
+ 
+     SIGNALIOSEMA(smb_io_sema);
+ 
