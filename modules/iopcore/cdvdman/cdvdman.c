@@ -5,6 +5,7 @@
 */
 
 #include "internal.h"
+#include "smb_tuning.h"
 #include "../../isofs/zso.h"
 
 #define MODNAME "cdvd_driver"
@@ -32,7 +33,7 @@ int (*DeviceReadSectorsPtr)(u32 sector, void *buffer, unsigned int count) = &Dev
 static void oplShutdown(int poff);
 static int cdvdman_writeSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 static unsigned int event_alarm_cb(void *args);
-#ifdef SMB_DRIVER
+#if defined(SMB_DRIVER) && SMB_FEAT_ASYNC_READ
 static int cdvdman_signal_read_end(void);
 static int cdvdman_signal_read_end_intr(void);
 #else
@@ -585,7 +586,7 @@ static int cdvdman_common_lock(int IntrContext)
     return 1;
 }
 
-#ifdef SMB_DRIVER
+#if defined(SMB_DRIVER) && SMB_FEAT_ASYNC_READ
 static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *buf, enum smb_read_owner owner)
 {
     int IsIntrContext, OldState;
@@ -927,7 +928,7 @@ void cdvdman_cb_event(int reason)
         else
             SetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data);
     } else {
-#ifdef SMB_DRIVER
+#if defined(SMB_DRIVER) && SMB_FEAT_ASYNC_READ
         if (cdvdman_signal_read_end())
             cdvdman_StmRetry();
 #else
@@ -940,7 +941,7 @@ static unsigned int event_alarm_cb(void *args)
 {
     struct cdvdman_cb_data *cb_data = args;
 
-#ifdef SMB_DRIVER
+#if defined(SMB_DRIVER) && SMB_FEAT_ASYNC_READ
     if (cdvdman_signal_read_end_intr())
         cdvdman_StmRetry();
 #else
@@ -958,7 +959,7 @@ static unsigned int event_alarm_cb(void *args)
    after the drive becomes visibly ready via the libcdvd API.
    Hence if a user callback is registered, signal completion from
    within the interrupt handler, before the user callback is run. */
-#ifdef SMB_DRIVER
+#if defined(SMB_DRIVER) && SMB_FEAT_ASYNC_READ
 static int cdvdman_signal_read_end(void)
 {
     int OldState;

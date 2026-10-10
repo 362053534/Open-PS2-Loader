@@ -97,6 +97,11 @@ jobs:
           - { id: E6, tag: "FORCED-ECHO+SETSOCKOPT", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_FEAT_ECHO_FORCE=1" }
           - { id: E7, tag: "FORCED-ECHO+POLL-NB", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2 SMB_FEAT_ECHO_FORCE=1" }
           - { id: E1, tag: "ECHO-NEVER", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=3600" }
+          # 第四轮：E1 也出现杂音 ⇒ Echo/setsockopt 不是唯一原因。下面三个都是
+          # "E2 + 只改一处"，用来定位 6254970/patch-1 剩下的另一样东西。
+          - { id: H2, tag: "E2+WAKEUP-X10", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2 SMB_RECONNECT_INTERVAL_US=200000 SMB_ECHO_IDLE_TICKS=600" }
+          - { id: H3, tag: "E2+NO-KEEPALIVE", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2 SMB_FEAT_KEEPALIVE=0" }
+          - { id: H4, tag: "E2+SYNC-READ", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2 SMB_FEAT_ASYNC_READ=0" }
           - { id: E4, tag: "ECHO-AMPLIFY-2s", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=1" }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main

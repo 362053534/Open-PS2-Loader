@@ -138,9 +138,11 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
+#if SMB_FEAT_KEEPALIVE
     plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
     opt = SMB_KEEPALIVE_TIME;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
+#endif
 #if SMB_FEAT_SOCK_TIMEOUT
     opt = SMB_IO_TIMEOUT;
     plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));

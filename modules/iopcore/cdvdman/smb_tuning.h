@@ -53,6 +53,15 @@
  * 需要 SMB_FEAT_SOCK_TIMEOUT=0 才有意义（否则超时本来就在套接字上）。 */
 #define SMB_FEAT_ECHO_TIMEOUT 2
 
+/* ---- 6254970 带进来的另外两样东西，之前一直没单独验过 ----------------------
+ * 置 0 时不再 setsockopt(SO_KEEPALIVE / TCP_KEEPALIVE=60s)。
+ * 保活探针由 lwip 的 tcp_slowtmr 在"连接空闲 60s"后发出，EDF39DDC 里完全没有。 */
+#define SMB_FEAT_KEEPALIVE 1
+
+/* ---- patch-1 新增的 SMB 专用异步读完成流水线 --------------------------------
+ * 置 0 时 cdvdman 回到 edf39ddc 那套"一次一读、读完直接置完成标志"的同步路径。 */
+#define SMB_FEAT_ASYNC_READ 1
+
 /* 诊断用：置 1 时不管空闲与否，游戏启动后尽早强制发一次 Echo。
  * 用来判定"某次 Echo 到底有没有真的执行过"，不受测试流程影响。 */
 #define SMB_FEAT_ECHO_FORCE 0
