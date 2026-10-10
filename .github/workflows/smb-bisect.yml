@@ -67,15 +67,24 @@ jobs:
           pattern: OPNPS2LD-SMB-Bisect-B*
           delete-merged: true
 
-  # 杂音对照构建（BASE=基线 edf39ddc / CURR=当前 HEAD）×（RELEASE=原样 / QUIET=稀疏观测）。
+  # 杂音对照构建（BASE=基线 edf39ddc / CURR=当前 HEAD）×（RELEASE / QUIET / OBSERVE）。
   #
-  # 为什么要分 RELEASE 与 QUIET：带 __IOPCORE_DEBUG 的诊断构建会把每次 sceCdRead /
-  # sceCdGetError / sceCdStatus 都变成一次 WaitSema + 阻塞式 UDP sendto，FMV 下每秒上千次，
-  # 光是打印本身就会把音频拖到欠载 —— 实测连"基线"版本都会出现杂音，A/B 因此失真。
+  # 为什么要分三种：
   #   RELEASE: 完全不带调试，用于确认"你的环境里基线当前是否真的无杂音"（基准校验）。
-  #   QUIET  : cdvdman 不带 __IOPCORE_DEBUG（逐读 DPRINTF 全空，时序≈release），
-  #            只用 -DDIAG_OBSERVE=1 打开 tools/smb-diag/instrument.py 注入的稀疏观测点，
-  #            用于真正做"有杂音 / 无杂音"的日志对照。
+  #   QUIET  : cdvdman 不带 __IOPCORE_DEBUG（逐读 DPRINTF 全空），只用 -DDIAG_OBSERVE=1
+  #            打开稀疏观测点，日志仍走 IOP stdout -> udptty。
+  #            !! 实测 BASE-QUIET 也会出现杂音 —— 不是打印太多（实测只有 ~5 行/秒），
+  #            而是 INGAME_DEBUG 构建链顺手做了两件改变时序的事：
+  #              (1) 加载 udptty-ingame.irx（自带 KPRTTY：连 IOP 内核的 kprintf 都会被
+  #                  一个 priority-8 线程搬到 UDP 上）+ ioptrap.irx；
+  #              (2) Makefile:198 把 SMSTCPIP_INGAME_CFLAGS 清空，游戏内 SMSTCPIP 不再
+  #                  是 INGAME_DRIVER 版本 —— PBUF_POOL 25(vs 8)、TCP_WND 32768(vs
+  #                  10240)、软件校验和全开、LWIP_UDP 打开。等于换了一整套 TCP/IP 栈。
+  #            所以 QUIET 只能用来做"日志内容"对照，不能做"有/无杂音"对照。
+  #   OBSERVE: 整机保持 release（不加载 udptty/ioptrap/ps2link，EE 侧无 __DEBUG 打印，
+  #            游戏内 SMSTCPIP 仍是 INGAME_DRIVER=1，只额外打开 UDP 与一个 netconn），
+  #            日志由 diag_net.c 直接调 ps2ip 的 lwip_sendto 单播到 SMB 服务器 IP:18194，
+  #            且每 500ms/64 次读只聚合发一包（稳态 2 包/秒）。这才是可信的杂音对照。
   # ELF 文件名里带树的 7 位 SHA（BASE 应为 edf39ddc），下载时可自证版本没弄错。
   build-compare:
     strategy:
@@ -86,6 +95,8 @@ jobs:
           - { id: CURR-RELEASE, tree: CURR, ref: "", mode: release }
           - { id: BASE-QUIET, tree: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, mode: quiet }
           - { id: CURR-QUIET, tree: CURR, ref: "", mode: quiet }
+          - { id: BASE-OBSERVE, tree: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, mode: observe }
+          - { id: CURR-OBSERVE, tree: CURR, ref: "", mode: observe }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -112,8 +123,8 @@ jobs:
         echo "TREE_SHA=$TREE_SHA" >> $GITHUB_ENV
         echo "::notice::${{ matrix.id }} tree = $TREE_SHA ($(git log -1 --format=%s))"
 
-    - name: Apply read-cadence instrumentation (quiet mode only)
-      if: matrix.mode == 'quiet'
+    - name: Apply read-cadence instrumentation (quiet/observe only)
+      if: matrix.mode != 'release'
       run: |
         mkdir -p tools
         cp -r /tmp/smb-diag-tools tools/smb-diag
@@ -164,6 +175,26 @@ jobs:
         fi
         mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-tree${{ env.TREE_SHA }}.elf
         ls -l OPNPS2LD-*.elf
+
+    - name: "Compile (observe - release tree, direct-UDP aggregate stats)"
+      if: matrix.mode == 'observe'
+      run: |
+        set +e
+        make clean release CDVDMAN_DEBUG_FLAGS="DIAG_OBSERVE=1" SMSTCPIP_INGAME_CFLAGS="INGAME_DRIVER=1 INGAME_DRIVER_UDP=1" > build.log 2>&1
+        ret=$?
+        if [ $ret -ne 0 ]; then
+          echo "build failed with $ret, first errors:"
+          grep -n -iE "error|undefined|No rule|assert" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          tail -80 build.log | while IFS= read -r line; do echo "::notice::$line"; done
+          exit $ret
+        fi
+        # 自证观测代码真的编进了 SMB 变体（非 SMB 变体应为空目标）
+        echo "::notice::diag_net.o CDVDS hits = $(grep -a -c 'CDVDS w=' modules/iopcore/cdvdman/obj.smb/diag_net.o || true)"
+        echo "::notice::smb_cdvdman.irx DIAG hits = $(grep -a -c 'CDVDZ ms=' modules/iopcore/cdvdman/smb_cdvdman.irx || true)"
+        mv OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-tree${{ env.TREE_SHA }}.ELF
+        ls -l OPNPS2LD-*.ELF
 
     - name: Upload ${{ matrix.id }}
       uses: actions/upload-artifact@v7

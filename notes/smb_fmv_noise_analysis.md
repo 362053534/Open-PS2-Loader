@@ -226,6 +226,114 @@ ELF 文件名里带**树的 7 位 SHA**（BASE 应为 `edf39ddc`），下载时�
 后续预案（视取证结果选择）：提高/移除超时、超时后只重试当前请求而不拆链、
 把重连恢复路径改回“先报错给游戏”、或针对服务器慢响应做读缓冲优化。
 
+### v6 实机结果（2026-10-10）：`BASE-RELEASE` 无杂音，`BASE-QUIET` **有杂音**
+
+日志原文：`notes/logs/base-quiet-siren.log`（Siren，stereo，约 69 秒）。
+
+**日志内容本身是干净的** —— 整段没有一条 `CDVD SLOW`（没有单次读 ≥100ms）、
+没有一条 `CDVD ZERO`（没有短读补零）、没有一条 `CDVD SHORT`（服务器没有短回）。
+也就是说：在这份构建里，SMB 数据面没有丢数据、没有明显卡顿。
+
+**但日志也证明了“QUIET 版并不 quiet”**，量化如下：
+
+| 指标 | 数值 |
+|---|---|
+| `CDVD GAP` 行数 | 336 条 / 69.15s ≈ **4.9 行/秒** |
+| `CDVD N` 行数 | 8 条 |
+| `WARNING: WaitSema KE_CAN_NOT_WAIT` | **46 条** |
+| `padman: *** VBLANK OVERLAP ***` | 1 条 |
+| gap 分布 | 50–59ms: 214，60–99: 86，100–249: 9，250–499: 22，≥500: 5（中位 59ms） |
+| 稳态读节奏 | 256 次读 / 7.26s ⇒ **28.4ms/次 ≈ 35 次/秒**（16 扇区 = 32KB/次 ⇒ ~1.15MB/s） |
+
+两个直接结论：
+
+1. **`GAP` 阈值 50ms 定得太低。** 游戏 FMV 的自然请求间隔中位数就是 ~59ms，
+   于是 18% 的请求都会打一行 —— “稀疏”实际是 5 行/秒。这个数字本身不至于压垮
+   IOP，但说明阈值没有区分“异常”和“常态”，日志的信噪比很差。**已废弃逐事件 GAP
+   打印，改为按窗口聚合**（见 v7）。
+
+2. **`WARNING: WaitSema KE_CAN_NOT_WAIT` 不是我们的代码打出来的。**
+   它是 IOP 内核调试串口的固定文案（当 `WaitSema` 在不可等待的上下文被调用时）。
+   链路是：`udptty-ingame` 的 `tty_write()` = `WaitSema(tty_sema)` + 阻塞式
+   `lwip_sendto(255.255.255.255:18194)`；一旦有模块在**中断上下文**调用 printf，
+   `WaitSema` 立刻返回 `KE_CAN_NOT_WAIT`，内核再 kprintf 一条告警 —— 而
+   `udptty-ingame` 是**带 `-DKPRTTY`** 编译的（`modules/debug/udptty-ingame/Makefile:5`），
+   它 `KprintfSet()` 把 IOP 内核的 kprintf 也接到 UDP 上，并由一个 **priority-8 线程**
+   （`KPRTTY_Thread`）搬运。日志里 `padman: *** VBLANK OVERLAP ***` 就是这类
+   中断上下文 printf 的样本。所以“装了 udptty”等于把整个 IOP 内核的调试输出也
+   变成了高优先级线程里的阻塞式网络发送。
+
+### ⚠ 更重要：`INGAME_DEBUG` 会把游戏内的 TCP/IP 栈整套换掉
+
+Makefile 第 194–198 行，`INGAME_DEBUG=1` 分支里有一句
+`SMSTCPIP_INGAME_CFLAGS =` —— 把 release 时的 `INGAME_DRIVER=1` **清空**了。
+而 `SMSTCPIP_INGAME_CFLAGS` 正是用来编 `modules/network/SMSTCPIP/SMSTCPIP.irx`
+（内嵌为 `ingame_smstcpip`，游戏里跑的那套栈）的（Makefile:629）。
+
+两份配置的实际差异（`modules/network/SMSTCPIP/include/lwipopts.h`）：
+
+| 宏 | release（`INGAME_DRIVER=1`） | QUIET（未定义 `INGAME_DRIVER`） |
+|---|---|---|
+| `PBUF_POOL_SIZE` | 8 | **25** |
+| `TCP_WND` | 10240 | **32768** |
+| `MEM_SIZE` | 0x400 | `TCP_SND_BUF*2` |
+| `MEMP_NUM_TCPIP_MSG` | 15 | **40** |
+| `MEMP_NUM_TCP_PCB` / `_LISTEN` | 1 / 1 | 2 / 2 |
+| `ARP_TABLE_SIZE` | 2 | 3 |
+| `TCP_QUEUE_OOSEQ` | 关 | 开 |
+| `LWIP_UDP` | **0** | 1（udptty 需要） |
+| `CHECKSUM_CHECK_IP/UDP/TCP/ICMP` | **0**（靠 SMAP 硬件校验） | **1**（IOP 上软件算） |
+
+也就是说 QUIET 构建根本不是“release + 打印”，而是**换了一套 TCP/IP 栈**：
+接收窗口大 3.2 倍、pbuf 池大 3 倍、还要在 37MHz 的 IOP 上逐包做软件校验和。
+`BASE-QUIET` 出现杂音完全可以由这一项单独解释，与 6254970 无关。
+
+**推论（待验证，但很值得优先验证）**：杂音可能是“在途数据太多 / IOP 来不及收包”
+这一类**窗口与突发**问题，而不是某个具体 bug。若属实，则 6254970 里真正要盯的
+就不是 Echo / 超时 / 线程，而是它改到的
+`SMSTCPIP/api_lib.c`、`SMSTCPIP/sockets.c`、`SMSTCPIP/include/lwip/api.h`
+（把 `SO_SNDTIMEO/SO_RCVTIMEO` 从空操作变成真正实现）—— 那三处会改变 recv 侧
+何时把窗口交还给对端、以及短读/超时的语义。
+
+### v7：`OBSERVE` 剖面（release 树 + 直发 UDP + 聚合统计）
+
+针对上面两条，观测方式重做：
+
+* **整机保持 release**：`make clean release CDVDMAN_DEBUG_FLAGS="DIAG_OBSERVE=1"
+  SMSTCPIP_INGAME_CFLAGS="INGAME_DRIVER=1 INGAME_DRIVER_UDP=1"`。
+  不加载 `udptty-ingame` / `ioptrap` / `ps2link`，EE 侧无 `__DEBUG` 打印；
+  游戏内 SMSTCPIP 仍是 `INGAME_DRIVER=1`，**只额外打开 `LWIP_UDP` 与一个 netconn**
+  （`lwipopts.h` 新增 `INGAME_DRIVER_UDP` 分支：UDP 1、NETCONN 2、MEM_SIZE 0x800；
+  TCP 侧的 PBUF_POOL / TCP_WND / 校验和与 release 逐字节一致）。
+* **日志不走 printf/tty**：新增 `modules/iopcore/cdvdman/diag_net.c`（由
+  `instrument.py` 生成），直接调 ps2ip 导出表的 `lwip_sendto`，**单播**到 SMB 服务器
+  IP:18194，不 WaitSema、不广播、不经过 KPRTTY。
+* **不逐事件打印**：每 500ms 或 64 次读聚合发**一包**，稳态 2 包/秒、约 110 字节：
+
+  ```
+  CDVDS w=<窗口号> ms=<结束时刻> win=<窗口时长ms> n=<读次数> sec=<扇区数> \
+        dur=<平均读耗时>/<最大读耗时> h50/h100/h250/h500=<各档计数，互斥> \
+        gap=<窗口内最大读间隔> zero=<短读补零次数> shrt=<服务器短回次数>
+  CDVDZ  ms=<now> lsn=<lsn> got=<实际> want=<请求>    短读补零（立即上报，每窗口≤4 条）
+  CDVDSH ms=<now> off=<偏移> want=<请求> got=<实际>   服务器短回（同上）
+  ```
+
+  抓包方式不变：`ncat -l -u -p 18194`（防火墙放行 UDP 18194）。
+
+新增产物（run 里与 v6 的四联并列）：
+
+| 产物 | 树 | 用途 |
+|---|---|---|
+| `OPNPS2LD-SMB-Cmp-BASE-OBSERVE` | `edf39ddc` | **先看它是否无杂音**；有杂音则说明连“直发 UDP + 聚合”都嫌重，需再退一步到计数不上报 |
+| `OPNPS2LD-SMB-Cmp-CURR-OBSERVE` | 当前 HEAD | 与上面逐窗口做差：`dur` 均值/最大值、`h100/h250/h500`、`gap` 最大值、`zero`/`shrt` 是否为 0 |
+
+**判据**：
+- `BASE-OBSERVE` 无杂音、`CURR-OBSERVE` 有杂音 ⇒ 回归坐实在 6254970；
+  再看两份 `CDVDS` 的 `dur` 分档与 `gap` 差在哪。
+- 若 `CURR-OBSERVE` 的 `zero`/`shrt` 出现非 0 ⇒ 数据面真的被填了 0，
+  杂音就是解码器收到了静音/垃圾数据，直接盯 `SO_RCVTIMEO` 那三处改动。
+- 若两份 `CDVDS` 都平静但 CURR 仍杂音 ⇒ 不在 SMB 数据面，转解码/缓冲侧。
+
 ## 4. 根因确定后的收敛方向（预案）
 
 - H1 成立：删除 Echo 心跳（SMB 服务器极少在分钟级回收会话，TCP 层 KeepAlive 足够兜底）；或把 Echo 失败与“判定断线”解耦（失败仅计数，连续多次才拆链），并把 Echo 移到确认空闲的更保守策略。
