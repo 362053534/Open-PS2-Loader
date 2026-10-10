@@ -172,6 +172,9 @@ jobs:
           - label: seek-200-0ms
             fast_ms: 200
             full_ms: 0
+          - label: seek-1000-1000ms
+            fast_ms: 1000
+            full_ms: 1000
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
