@@ -9,11 +9,6 @@
 //-------------------------------------------------------------------------
 int sceCdSync(int mode)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.sync_calls++;
-    if (sync_flag)
-        bdm_cdread_api_diag.sync_busy++;
-#endif
     DPRINTF("sceCdSync %d sync flag = %d\n", mode, sync_flag);
 
     if (!sync_flag)
@@ -53,10 +48,6 @@ int sceCdRead(u32 lsn, u32 sectors, void *buf, sceCdRMode *mode)
         result = cdvdman_SyncRead(lsn, sectors, sector_size, buf);
     }
 
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    if (result == 0)
-        bdm_cdread_api_diag.read_rejected++;
-#endif
     return result;
 }
 

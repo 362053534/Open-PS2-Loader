@@ -40,10 +40,6 @@
 #define iDPRINTF(args...)
 #endif
 
-#if defined(SMB_DRIVER) && defined(__CDREAD_DIAG)
-void cdvdman_diag_short_read(u32 expected, u32 actual);
-#endif
-
 #ifdef HDD_DRIVER
 #define CDVDMAN_SETTINGS_TYPE                    cdvdman_settings_hdd
 #define CDVDMAN_SETTINGS_DEFAULT_DEVICE_SETTINGS CDVDMAN_SETTINGS_DEFAULT_HDD,
@@ -108,7 +104,7 @@ extern void SetStm0Callback(StmCallback_t callback);
 extern int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 #ifdef SMB_DRIVER
-extern int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
+extern int cdvdman_AsyncReadNoPending(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern void cdvdman_cancel_pending_read(void);
 #endif
 extern int cdvdman_sendSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
@@ -136,30 +132,6 @@ extern int cdvdman_searchfilesema;
 extern cdvdman_status_t cdvdman_stat;
 
 extern unsigned char sync_flag;
-
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-struct bdm_cdread_api_diag {
-    volatile u32 sync_calls;
-    volatile u32 sync_busy;
-    volatile u32 geterror_calls;
-    volatile u32 callback_set;
-    volatile u32 callback_clear;
-    volatile u32 read_rejected;
-    volatile u32 st_init;
-    volatile u32 st_start;
-    volatile u32 st_stat;
-    volatile u32 st_stop;
-    volatile u32 st_pause;
-    volatile u32 st_resume;
-    volatile u32 st_seek;
-    volatile u32 st_read;
-    volatile u32 st_underrun;
-    volatile u32 prefetch_hit;
-    volatile u32 prefetch_fill;
-    volatile u32 prefetch_fail;
-};
-extern struct bdm_cdread_api_diag bdm_cdread_api_diag;
-#endif
 extern unsigned char cdvdman_cdinited;
 extern u32 mediaLsnCount;
 

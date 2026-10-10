@@ -19,7 +19,6 @@ static unsigned int StmScheduleCb(void *arg)
 static void StmCallback(void)
 {
     int OldState;
-    int completed = 0;
 
     // Only update parameters if the streaming system was reading. Otherwise, this callback might have been triggered by the game reading data (BUG!)
     if (cdvdman_stat.StreamingData.StIsReading) {
@@ -30,13 +29,8 @@ static void StmCallback(void)
         if (cdvdman_stat.StreamingData.StWritePtr >= cdvdman_stat.StreamingData.StBufmax)
             cdvdman_stat.StreamingData.StWritePtr = 0;
         cdvdman_stat.StreamingData.StIsReading = 0;
-        completed = 1;
         CpuResumeIntr(OldState);
     }
-
-    /* 数据记账完成后再次通知消费者，避免提前事件被清除后永久等待。 */
-    if (completed)
-        SetEventFlag(cdvdman_stat.intr_ef, 8);
 
     DPRINTF("StmCallback: %08lx, wr: %u, rd: %u, streamed: %u\n", cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StWritePtr, cdvdman_stat.StreamingData.StReadPtr, cdvdman_stat.StreamingData.StStreamed);
 
@@ -78,7 +72,7 @@ static int StFillStreamBuffer(void)
         // iDPRINTF("Stream fill buffer: Stream lsn 0x%08x - %u sectors:%p\n", cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, ptr);
 #ifdef SMB_DRIVER
         /* sceCdSt 填缓冲不能排队，否则游戏自己的 sceCdSync 会等到流缓冲填满才返回。 */
-        if (cdvdman_AsyncStreamRead(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
+        if (cdvdman_AsyncReadNoPending(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
 #else
         if (cdvdman_AsyncRead(cdvdman_stat.StreamingData.Stlsn, cdvdman_stat.StreamingData.StBanksize, 2048, ptr) == 0) {
 #endif
@@ -110,13 +104,8 @@ static void StStartFillStreamBuffer(void)
     }
 }
 
-
-
 int sceCdStInit(u32 bufmax, u32 bankmax, void *iop_bufaddr)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_init++;
-#endif
     int OldState;
 
     cdvdman_stat.err = SCECdErNO;
@@ -278,9 +267,6 @@ static int ReadSectors(int maxcount, void *buffer)
 
 int sceCdStStart(u32 lsn, sceCdRMode *mode)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_start++;
-#endif
     int OldState;
 
     DPRINTF("StStart called. lsn: 0x%08lx\n", lsn);
@@ -304,9 +290,6 @@ int sceCdStStart(u32 lsn, sceCdRMode *mode)
 
 int sceCdStStat(void)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_stat++;
-#endif
     DPRINTF("StStat called: %u\n", cdvdman_stat.StreamingData.StStreamed);
     cdvdman_stat.err = SCECdErNO;
     return cdvdman_stat.StreamingData.StStreamed;
@@ -314,9 +297,6 @@ int sceCdStStat(void)
 
 int sceCdStStop(void)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_stop++;
-#endif
     int OldState;
 
     DPRINTF("StStop called. Stat: 0x%x\n", cdvdman_stat.StreamingData.StStat);
@@ -344,9 +324,6 @@ int sceCdStStop(void)
 
 int sceCdStPause(void)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_pause++;
-#endif
     int OldState;
 
     DPRINTF("StPause called. Stat: 0x%x\n", cdvdman_stat.StreamingData.StStat);
@@ -372,9 +349,6 @@ int sceCdStPause(void)
 
 int sceCdStResume(void)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_resume++;
-#endif
     int OldState;
 
     DPRINTF("StResume called. Stat: 0x%x\n", cdvdman_stat.StreamingData.StStat);
@@ -397,9 +371,6 @@ int sceCdStResume(void)
 
 int sceCdStSeek(u32 lsn)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_seek++;
-#endif
     DPRINTF("StSeek: %lu\n", lsn);
 
     cdvdman_stat.err = SCECdErNO;
@@ -413,9 +384,6 @@ int sceCdStSeek(u32 lsn)
 
 int sceCdStRead(u32 sectors, u32 *buffer, u32 mode, u32 *error)
 {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-    bdm_cdread_api_diag.st_read++;
-#endif
     int SectorsRead, SectorsToRead, result;
     void *ptr;
 
@@ -435,12 +403,8 @@ int sceCdStRead(u32 sectors, u32 *buffer, u32 mode, u32 *error)
                 SectorsRead = ReadSectors(SectorsToRead, ptr);
             //		DPRINTF(", Read: %u\n", SectorsRead);
 
-            if (SectorsRead == 0) {
-#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
-                bdm_cdread_api_diag.st_underrun++;
-#endif
+            if (SectorsRead == 0)
                 DPRINTF("StRead: buffer underrun. %u/%lu read.\n", result, sectors);
-            }
 
             result += SectorsRead;
             // if(mode == STMNBLK) break;

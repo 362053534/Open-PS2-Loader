@@ -181,7 +181,7 @@ ifeq ($(DEBUG),1)
   MOD_DEBUG_FLAGS = DEBUG=1
   ifeq ($(IOPCORE_DEBUG),1)
     EE_CFLAGS += -D__INGAME_DEBUG
-    EECORE_EXTRA_FLAGS += LOAD_DEBUG_MODULES=1 "TTY_APPROACH=$(TTY_APPROACH)"
+    EECORE_EXTRA_FLAGS += LOAD_DEBUG_MODULES=1
     CDVDMAN_DEBUG_FLAGS = IOPCORE_DEBUG=1
     MCEMU_DEBUG_FLAGS = IOPCORE_DEBUG=1
     SMSTCPIP_INGAME_CFLAGS =
@@ -194,12 +194,7 @@ ifeq ($(DEBUG),1)
   else ifeq ($(INGAME_DEBUG),1)
     EE_CFLAGS += -D__INGAME_DEBUG
     EECORE_EXTRA_FLAGS += LOAD_DEBUG_MODULES=1
-    ifeq ($(CDREAD_DIAG),1)
-      EE_CFLAGS += -D__CDREAD_DIAG
-      CDVDMAN_DEBUG_FLAGS = CDREAD_DIAG=1
-    else
-      CDVDMAN_DEBUG_FLAGS = IOPCORE_DEBUG=1
-    endif
+    CDVDMAN_DEBUG_FLAGS = IOPCORE_DEBUG=1
     SMSTCPIP_INGAME_CFLAGS =
     ifeq ($(DECI2_DEBUG),1)
       EE_CFLAGS += -D__DECI2_DEBUG
@@ -235,7 +230,7 @@ EE_LDFLAGS += -fdata-sections -ffunction-sections -Wl,--gc-sections
 
 .SILENT:
 
-.PHONY: all release debug iopcore_debug cdread_diag eesio_debug ingame_debug deci2_debug debug_ppctty iopcore_ppctty_debug ingame_ppctty_debug clean rebuild pc_tools pc_tools_win32 oplversion format format-check ps2sdk-not-setup download_lng download_lwNBD languages
+.PHONY: all release debug iopcore_debug eesio_debug ingame_debug deci2_debug debug_ppctty iopcore_ppctty_debug ingame_ppctty_debug clean rebuild pc_tools pc_tools_win32 oplversion format format-check ps2sdk-not-setup download_lng download_lwNBD languages
 
 ifdef PS2SDK
 
@@ -255,9 +250,6 @@ debug:
 
 iopcore_debug:
 	$(MAKE) DEBUG=1 IOPCORE_DEBUG=1 all
-
-cdread_diag:
-	$(MAKE) DEBUG=1 INGAME_DEBUG=1 CDREAD_DIAG=1 all
 
 eesio_debug:
 	$(MAKE) DEBUG=1 EESIO_DEBUG=1 all

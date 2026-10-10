@@ -555,13 +555,6 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
     return SCECdErNO;
 }
 
-#if defined(__CDREAD_DIAG) && !defined(USE_BDM_ATA)
-int DeviceIsUSB(void)
-{
-    return g_bd != NULL && g_bd->name[0] == 'u' && g_bd->name[1] == 's' && g_bd->name[2] == 'b';
-}
-#endif
-
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     int rv = SCECdErNO;

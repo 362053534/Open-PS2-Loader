@@ -571,7 +571,6 @@ reConfig:
     diaSetVisible(diaConfig, CFG_LBL_AUTOSTARTLAST, gRememberLastPlayed);
     int deviceModeIndex = guiIoModeToDeviceType(gDefaultDevice);
     diaSetInt(diaConfig, CFG_DEFDEVICE, deviceModeIndex);
-    diaSetInt(diaConfig, CFG_AUTO_MODE1, gAutoMode1);
     diaSetLabel(diaConfig, CFG_BDMMODE, deviceModes[gBDMStartMode]);
     //diaSetEnabled(diaConfig, CFG_HDDMODE, !gEnableBdmHDD);
     diaSetInt(diaConfig, CFG_HDDMODE, gHDDStartMode);
@@ -593,7 +592,6 @@ reConfig:
         DisableCron = 1; // Disable Auto Start Last Played counter (we don't want to call it right after enable it on GUI)
         diaGetInt(diaConfig, CFG_DEFDEVICE, &deviceModeIndex);
         gDefaultDevice = guiDeviceTypeToIoMode(deviceModeIndex);
-        diaGetInt(diaConfig, CFG_AUTO_MODE1, &gAutoMode1);
 
         // 两边都开时，后面确认会关掉 APA，避免和 BDMHDD 并存
         diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);

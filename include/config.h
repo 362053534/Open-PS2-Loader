@@ -34,7 +34,7 @@ enum CONFIG_INDEX {
 #define CONFIG_ITEM_ALTSTARTUP   "$AltStartup"
 #define CONFIG_ITEM_VMC          "$VMC"
 #define CONFIG_ITEM_COMPAT       "$Compatibility"
-/* 用户动过模式1后不再套用总开关；有此字段时模式1完全跟随 $Compatibility。 */
+/* 快设备上用户动过模式1后不再套默认开。有此字段则模式1完全跟 $Compatibility。 */
 #define CONFIG_ITEM_MANUAL_MODE1 "$ManualMode1"
 #define CONFIG_ITEM_DMA          "$DMA"
 #define CONFIG_ITEM_DNAS         "$DNAS"
@@ -95,7 +95,6 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_AUTO_SORT            "autosort"
 #define CONFIG_OPL_AUTO_REFRESH         "autorefresh"
 #define CONFIG_OPL_DEFAULT_DEVICE       "default_device"
-#define CONFIG_OPL_AUTO_MODE1           "auto_mode1"
 #define CONFIG_OPL_ENABLE_WRITE         "enable_delete_rename"
 #define CONFIG_OPL_HDD_SPINDOWN         "hdd_spindown"
 #define CONFIG_OPL_BDM_PREFIX           "usb_prefix" // Leave this "usb" for compatibility

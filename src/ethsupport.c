@@ -706,7 +706,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
         saveConfig(CONFIG_LAST, 0);
     }
 
-    compatmask = sbPrepare(game, configSet, size_smb_cdvdman_irx, smb_cdvdman_irx, &i, gAutoMode1);
+    compatmask = sbPrepare(game, configSet, size_smb_cdvdman_irx, smb_cdvdman_irx, &i, 0);
 
     if ((result = sbLoadCheats(ethPrefix, game->startup)) < 0) {
         switch (result) {
@@ -782,8 +782,8 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_HIDE_DEV9;
 
-    // 普通 ISO 不再同步预读；该设置只保留给原有 ZSO 解压缓存。
-    settings->common.zso_cache = smbCacheSize;
+    // 游戏内 ISO/ZSO 共用这块扇区缓存；SMB 需要至少 32 扇区才能接住 1+16 语音流。
+    settings->common.zso_cache = 32;
     sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, 0, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask, NULL, 0);
 }
 
@@ -845,10 +845,6 @@ static void ethShutdown(item_list_t *itemList)
         ethSMBDisconnect();
     }
 
-#ifdef __INGAME_DEBUG
-    /* 游戏内 UDP 调试依赖现有 DEV9；IOP 重置会统一替换旧网络模块。 */
-    LOG("ETHSUPPORT Keep network and DEV9 for in-game debug\n");
-#else
     // UI may have initialized modules outside of ETH mode, so deinitialize regardless of the enabled status.
     // ethDeinitModules 会清掉 ethModulesLoaded，须先记下是否由 ETH 拉起过 DEV9
     {
@@ -859,7 +855,6 @@ static void ethShutdown(item_list_t *itemList)
         if (ethOwnedDev9)
             sysShutdownDev9();
     }
-#endif
 }
 
 static int ethCheckVMC(item_list_t *itemList, char *name, int createSize)

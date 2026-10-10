@@ -16,7 +16,6 @@
 #include "padhook.h"
 #include "syshook.h"
 #include "coreconfig.h"
-#include "rc_uya.h"
 
 #include <syscallnr.h>
 #include <ee_regs.h>
@@ -75,9 +74,6 @@ void sysLoadElf(char *filename, int argc, char **argv)
     DPRINTF("t_loadElf()\n");
 
     DPRINTF("t_loadElf: Resetting IOP...\n");
-
-    /* 必须在重启 IOP 前识别下一 ELF，否则单人也会预留多人缓冲区。 */
-    RnC3_SetCurrentElf(config->GameID, filename);
 
     set_reg_disabled = 0;
     New_Reset_Iop(NULL, 0);

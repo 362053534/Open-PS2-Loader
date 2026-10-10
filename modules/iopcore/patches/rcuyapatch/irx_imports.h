@@ -5,6 +5,5 @@
 
 #include <intrman.h>
 #include <loadcore.h>
-#include <sysmem.h>
 
 #endif /* IOP_IRX_IMPORTS_H */

@@ -261,11 +261,6 @@ struct UIItem diaConfig[] = {
     {UI_ENUM, CFG_DEFDEVICE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动开启模式1 (提高兼容性)", -1}}},
-    {UI_SPACER},
-    {UI_BOOL, CFG_AUTO_MODE1, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
-    {UI_BREAK},
-
     /* 暂时隐藏三个扇区缓存设置入口，保留底层缓存功能。 */
     /*
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"扇区缓存(BDM)", -1}}},

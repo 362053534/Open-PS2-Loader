@@ -378,12 +378,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 rv = SCECdErTRMOPN;
                 break;
             }
-            if (result < bytes_to_read) {
-#ifdef __CDREAD_DIAG
-                cdvdman_diag_short_read(bytes_to_read, result);
-#endif
+            if (result < bytes_to_read)
                 memset(&p[r + result], 0, bytes_to_read - result);
-            }
 
             r += bytes_to_read;
             offslsn += sectors_to_read;
