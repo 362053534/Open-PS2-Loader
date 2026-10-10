@@ -23,6 +23,11 @@
 
 #define USE_CUSTOM_RECV 1
 
+/* 模式 2 的轮询收包要用；smstcpip.h 通常已经给了，这里只是兜底。 */
+#ifndef MSG_DONTWAIT
+#define MSG_DONTWAIT 0x40
+#endif
+
 //Round up the erasure amount, so that memset can erase memory word-by-word.
 #define ZERO_PKT_ALIGNED(hdr, hdrSize) memset((hdr), 0, ((hdrSize) + 3) & ~3)
 
@@ -178,23 +183,44 @@ static int SendData(int sock, char *buf, int size)
     return size;
 }
 
-static int RecvData(int sock, char *buf, int size)
+/* flags == 0 时是原来的阻塞收包；flags == MSG_DONTWAIT 时自己轮询，
+ * 超时上限 timeout_ms —— 这样就不必去 setsockopt(SO_RCVTIMEO)，
+ * 那会让 lwip 走 sys_arch_sem_wait() 的 alarm 分支。 */
+static int RecvDataEx(int sock, char *buf, int size, unsigned int flags, int timeout_ms)
 {
-    int remaining, result;
+    int remaining, result, waited;
     char *ptr;
 
     ptr = buf;
     remaining = size;
+    waited = 0;
     while (remaining > 0) {
-        result = plwip_recv(sock, ptr, remaining, 0);
-        if (result <= 0)
-            return result;
+        result = plwip_recv(sock, ptr, remaining, flags);
+        if (result > 0) {
+            ptr += result;
+            remaining -= result;
+            continue;
+        }
 
-        ptr += result;
-        remaining -= result;
+        if (result == 0) /* 对端关闭 */
+            return 0;
+
+        if (!(flags & MSG_DONTWAIT))
+            return result; /* 阻塞模式下出错就是出错 */
+
+        if (waited >= timeout_ms)
+            return 0; /* 轮询超时，不把半包当错误丢掉 */
+
+        DelayThread(SMB_ECHO_POLL_MS * 1000);
+        waited += SMB_ECHO_POLL_MS;
     }
 
     return size;
+}
+
+static int RecvData(int sock, char *buf, int size)
+{
+    return RecvDataEx(sock, buf, size, 0, 0);
 }
 
 //-------------------------------------------------------------------------
@@ -239,6 +265,39 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 
     return totalpkt_size;
 }
+
+#if SMB_FEAT_ECHO_TIMEOUT == 2
+
+/* GetSMBServerReply(0, NULL, 0) 的非阻塞轮询版：一次发完整包、收 NetBIOS 头、
+ * 再收 SMB 回包，全程不设 SO_RCVTIMEO，超时上限由 timeout_ms 决定。
+ * 只给 smb_Echo() 用，数据面继续走原来的阻塞 GetSMBServerReply()。 */
+static int GetSMBServerReplyTimed(int timeout_ms)
+{
+    int rcv_size, totalpkt_size;
+
+    totalpkt_size = nb_GetSessionMessageLength() + 4;
+
+    rcv_size = SendData(main_socket, (char *)&SMB_buf, totalpkt_size);
+    if (rcv_size <= 0)
+        return -1;
+
+    do {
+        rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.sessionHeader,
+                              sizeof(SMB_buf.sessionHeader), MSG_DONTWAIT, timeout_ms);
+        if (rcv_size <= 0)
+            return -2;
+    } while (nb_GetPacketType() != 0);
+
+    totalpkt_size = nb_GetSessionMessageLength();
+
+    rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.smb, totalpkt_size,
+                          MSG_DONTWAIT, timeout_ms);
+    if (rcv_size <= 0)
+        return -2;
+
+    return totalpkt_size;
+}
+#endif
 
 //-------------------------------------------------------------------------
 //These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
@@ -852,7 +911,11 @@ int smb_Echo(void)
 #endif
 
     nb_SetSessionMessage(sizeof(EchoRequest_t));
+#if SMB_FEAT_ECHO_TIMEOUT == 2
+    result = GetSMBServerReplyTimed(SMB_ECHO_TIMEOUT_MS) > 0 ? 1 : -1;
+#else
     result = GetSMBServerReply(0, NULL, 0) > 0 ? 1 : -1;
+#endif
 
 #if SMB_FEAT_ECHO_TIMEOUT
     {

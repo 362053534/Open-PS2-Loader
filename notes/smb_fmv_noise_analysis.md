@@ -531,3 +531,52 @@ D2/D3 是在"确认干净"之后把功能补回来 / 再压一层。
   理论上影响很小，但如果真有，就把超时改成只装在 `SO_SNDTIMEO` 上、收方向不装）。
 - D1 仍有杂音 ⇒ patch-1 上还有别的来源，需要重新做一轮 OBSERVE 成对日志
   （`tools/smb-diag/instrument.py` 的注入锚点需要按 patch-1 的代码形状更新）。
+
+---
+
+# 第三轮（v11）：D1 干净 / D2 概率杂音 / D3 待确认
+
+## 实机结果
+
+| 构建 | 结果 |
+|---|---|
+| `D1-NO-SOCKTMO` | 无杂音 |
+| `D2-NO-SOCKTMO+ECHOTMO` | **概率性杂音，集中在动画最后几秒** |
+| `D3-D2+SLOWPOLL5s` | 暂未遇到杂音（测试次数可能不够） |
+
+## 由此得到的判断
+
+D2 与 D1 的**唯一**代码差别就是 `smb_Echo()` 前后那两组
+`setsockopt(SO_SNDTIMEO/SO_RCVTIMEO)`。而 D3 与 D2 的 Echo 行为**完全相同**
+（`SMB_ECHO_IDLE_TICKS × SMB_RECONNECT_INTERVAL_US` 都是 120s 空闲才发），
+所以 D3 与 D2 只差"线程每 2s 还是每 5s 醒一次" —— 而 D1（2s 唤醒 + 无 Echo 超时）
+是干净的，说明单纯的 2s 唤醒本身不产生杂音。
+
+⇒ **D3"干净"极可能只是样本不够**，不应据此认为 5s 轮询解决了问题。
+
+## v11 的 3 个新构建：用放大/对照代替碰运气
+
+不再靠多跑几次去抓小概率事件，而是改变 Echo 的触发频率让信号变大：
+
+| 构建 | defines | 目的 |
+|---|---|---|
+| `E4-ECHO-AMPLIFY-2s` | `SMB_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=1` | **放大器**：空闲 2s 就发一次 Echo（原为 120s，频率 ×60）。若 Echo 是元凶，这份应该明显更吵，一两次播放就能听出来 |
+| `E1-ECHO-NEVER` | `SMB_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=3600` | **反向对照**：要空闲 2 小时才发 Echo，实测期间一次都不会发。若仍干净 ⇒ 杂音确实需要 Echo 真的发生 |
+| `E2-NO-SOCKTMO+ECHO-POLL-NB` | `SMB_FEAT_ECHO_TIMEOUT=2` | **修法候选**：完全不碰 `setsockopt`，改用 `plwip_recv(MSG_PEEK 不可用，所以直接收, MSG_DONTWAIT)` 轮询等回包，上限 `SMB_ECHO_TIMEOUT_MS`。数据面与 D1 完全一致，失联检测保留 |
+
+`E2` 的实现要点（`smb.c`）：
+* 新增 `RecvDataEx(sock, buf, size, flags, timeout_ms)`：
+  `flags == 0` 时是原来的阻塞收包；`flags == MSG_DONTWAIT` 时自己
+  `DelayThread(20ms)` 轮询，超时返回 0。原来的 `RecvData()` 退化成它的一个包装。
+* 新增 `GetSMBServerReplyTimed()`：`GetSMBServerReply(0, NULL, 0)` 的非阻塞版，
+  只给 `smb_Echo()` 用；数据面继续走原来的阻塞版本。
+* `SMB_FEAT_ECHO_TIMEOUT`：0 = 不设上限 / 1 = setsockopt / 2 = 轮询（新）。
+* 此 lwip 不支持 `MSG_PEEK`，所以轮询是真的把字节收进 `SMB_buf`；
+  超时后残留的半包在 `smb_Disconnect()` 关 socket 时一并丢弃。
+
+**判据**
+- E4 明显更吵 + E1 干净 ⇒ Echo 确认是元凶 → **E2 就是最终修复**。
+- E4 干净 ⇒ Echo 不是元凶，D2 的杂音另有来源（需要重新上 OBSERVE 日志）。
+- E2 干净 ⇒ 可直接合入 patch-1。
+- E2 仍吵 ⇒ "Echo 这个动作本身"会干扰（而不是它身上的 setsockopt），
+  那就要改成"Echo 期间挂起读线程"或干脆去掉空闲 Echo、只靠链路状态 + 读失败判定断线。

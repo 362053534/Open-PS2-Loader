@@ -28,11 +28,19 @@
 /* 只拆收方向（netconn_recv 是热路径；发方向几乎不触发）。 */
 #define SMB_FEAT_RCV_TIMEOUT 1
 
-/* ---- D2：把超时从"常驻套接字"搬到"只在 Echo 这一次往返上" ------------------
- * 置 1 时 smb_Echo() 前后临时 setsockopt 装上 30s 超时，用完立刻清回 0。
- * 于是：数据面零开销，但"服务器失联 / 会话被回收"依旧能被 Echo 发现并触发重连。
+/* ---- D2：让 Echo 这一次往返有超时上限 --------------------------------------
+ *   0 = 不设上限（收包用裸 WaitSema，服务器不回就一直等）
+ *   1 = smb_Echo() 前后临时 setsockopt(SO_RCVTIMEO/SO_SNDTIMEO)，用完清回 0。
+ *       数据面零开销，但那一次收包会走 lwip 的 sys_arch_sem_wait alarm 分支。
+ *   2 = 完全不碰 setsockopt：用 plwip_recv(MSG_DONTWAIT) 自己轮询等回包，
+ *       收到就交给正常解析。数据面与 0 完全一致，且超时上限可控。
+ *
  * 需要 SMB_FEAT_SOCK_TIMEOUT=0 才有意义（否则超时本来就在套接字上）。 */
 #define SMB_FEAT_ECHO_TIMEOUT 0
+
+/* 模式 2 用：等 Echo 回包的上限（毫秒）与轮询间隔（毫秒）。 */
+#define SMB_ECHO_TIMEOUT_MS 3000
+#define SMB_ECHO_POLL_MS   20
 
 /* ---- D3：重连线程空闲轮询周期（微秒）--------------------------------------
  * patch-1 默认 2000000（2s）。放慢到 5000000（5s）可以把周期性唤醒再降 2.5 倍。

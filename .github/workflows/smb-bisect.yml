@@ -12,9 +12,15 @@ name: SMB-bisect-builds
 #     （6 个额外系统调用 + 2 次 SetAlarm/CancelAlarm），而不再是裸 WaitSema。
 #   * 把它优化成“每次 recv 只装一次 alarm”仍然有杂音 ⇒ 不是频率问题，是存在性问题。
 #
-# D1 = 数据面不带超时（最小改动，确认主因在这棵树上依然成立）
-# D2 = D1 + 30s 超时只在 smb_Echo() 这一次往返上临时装上（功能完整的修复候选）
-# D3 = D2 + 重连线程空闲轮询 2s→5s（再压一层周期性唤醒）
+# 第一轮实机结果：D1 无杂音；D2 概率性杂音（集中在动画最后几秒）；D3 暂时没遇到。
+#
+# D2 与 D1 的唯一差别就是 smb_Echo() 前后那两组 setsockopt(SO_RCVTIMEO/SO_SNDTIMEO)，
+# 而 D3 与 D2 的 Echo 行为完全相同（120s 空闲才发），所以 D3"干净"很可能是样本不够。
+# 这一轮不再靠碰运气抓小概率事件，而是：
+#   E4 = 把 Echo 频率放大 60 倍（每 2s 空闲就发一次）—— 若 Echo 是元凶，它会明显更吵；
+#   E1 = 把 Echo 彻底关掉（要空闲 2 小时才发）—— 反向对照；
+#   E2 = 修法：完全不碰 setsockopt，改用 plwip_recv(MSG_DONTWAIT) 自己轮询等回包，
+#        数据面与 D1 一模一样，同时保留"服务器失联能被发现并触发重连"。
 
 on:
   push:
@@ -83,7 +89,9 @@ jobs:
         include:
           - { id: D1, tag: "NO-SOCKTMO", defines: "SMB_FEAT_SOCK_TIMEOUT=0" }
           - { id: D2, tag: "NO-SOCKTMO+ECHOTMO", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1" }
-          - { id: D3, tag: "D2+SLOWPOLL5s", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_RECONNECT_INTERVAL_US=5000000 SMB_ECHO_IDLE_TICKS=24" }
+          - { id: E2, tag: "NO-SOCKTMO+ECHO-POLL-NB", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=2" }
+          - { id: E1, tag: "ECHO-NEVER", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=3600" }
+          - { id: E4, tag: "ECHO-AMPLIFY-2s", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_ECHO_TIMEOUT=1 SMB_ECHO_IDLE_TICKS=1" }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
