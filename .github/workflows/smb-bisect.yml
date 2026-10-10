@@ -98,7 +98,7 @@ jobs:
         uses: actions/upload-artifact/merge@v7
         with:
           name: OPNPS2LD-SMB-Bisect
-          pattern: OPNPS2LD-SMB-Bisect-B*
+          pattern: OPNPS2LD-SMB-Bisect-*
           delete-merged: true
 
   # 杂音对照构建（BASE=基线 edf39ddc / CURR=当前 HEAD）×（RELEASE / QUIET / OBSERVE）。
