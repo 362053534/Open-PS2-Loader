@@ -161,6 +161,70 @@ jobs:
           pattern: opl-*
           delete-merged: true
 
+  build-transformers-seek-diag:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: seek-0-200ms
+            fast_ms: 0
+            full_ms: 200
+          - label: seek-200-0ms
+            fast_ms: 200
+            full_ms: 0
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v6
+
+    - name: Restore legacy SMB reads and select seek timing
+      env:
+        FAST_MS: ${{ matrix.fast_ms }}
+        FULL_MS: ${{ matrix.full_ms }}
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git fetch --prune --unshallow
+        git show 71271cffb3e1ae54b872b8fa29b505e03cd07be6:modules/iopcore/cdvdman/cdvdman.c > modules/iopcore/cdvdman/cdvdman.c
+        git show 71271cffb3e1ae54b872b8fa29b505e03cd07be6:modules/iopcore/cdvdman/streaming.c > modules/iopcore/cdvdman/streaming.c
+        python3 - <<'PY'
+        import os
+        from pathlib import Path
+
+        path = Path("modules/iopcore/cdvdman/cdvdman.c")
+        source = path.read_text()
+        seek_values = "#define ACCU_FAST_SEEK_MS     0u\n#define ACCU_FULL_SEEK_MS     0u"
+        seek_guard = "    if (!accu_have_pos)\n        return 0;"
+        assert seek_values in source
+        assert seek_guard in source
+        source = source.replace(
+            seek_values,
+            f"#define ACCU_FAST_SEEK_MS     {os.environ['FAST_MS']}u\n"
+            f"#define ACCU_FULL_SEEK_MS     {os.environ['FULL_MS']}u",
+        )
+        source = source.replace(
+            seek_guard,
+            "    if (!(cdvdman_settings.common.flags & IOPCORE_COMPAT_SLOW_SEEK) || !accu_have_pos)\n"
+            "        return 0;",
+            1,
+        )
+        path.write_text(source)
+        PY
+
+    - name: Get version
+      run: echo "OPL_VERSION=$(make oplversion)" >> "$GITHUB_ENV"
+
+    - name: Compile Transformers seek diagnostic
+      run: |
+        make DEBUG=1 INGAME_DEBUG=1 all --trace
+        mv opl.elf opl-transformers-${{ matrix.label }}-${{ env.OPL_VERSION }}.elf
+
+    - name: Upload Transformers seek diagnostic
+      uses: actions/upload-artifact@v7
+      with:
+        name: opl-transformers-${{ matrix.label }}
+        path: opl-transformers-${{ matrix.label }}-*.elf
+
   release:
     needs: [build, merge-variants, build-lang]
     runs-on: ubuntu-latest
