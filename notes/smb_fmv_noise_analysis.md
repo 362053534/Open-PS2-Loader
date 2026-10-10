@@ -705,3 +705,59 @@ D2 在进游戏之前就已经把那次 setsockopt 执行过了。）
 2. 在任意菜单停 3 分钟以上再进同一段 FMV → 预测有杂音
 
 成立即说明"120 秒空闲窗口"确实存在，只是没被注意到。
+
+---
+
+# 最终结论（用户 2026-10 定案）
+
+## 范围收敛
+
+用户实测**官方老版本也有同样的问题** ⇒ 那种"随机、偶发、测很多次才碰上"的杂音
+是**网络抖动的固有底噪**，不是任何提交引入的回归，**不在修复范围内**。
+
+要修的只是**百分百必现的那一部分**：patch-1 原样必现，去掉数据面的 socket 超时后
+掉回与官方老版本相同的"偶发"水平（D1 / D2 / E1 / E2 四组构建都验证了这一点）。
+
+## 根因（百分百必现的那部分）
+
+`OpenTCPSession()` 里这两行：
+
+```c
+opt = SMB_IO_TIMEOUT;                                    /* 30000 */
+plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, ...);
+plwip_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, ...);
+```
+
+一旦生效，`conn->recv_timeout != 0`，ps2ip 的**每一次** `netconn_recv()` 都会走
+`sys_arch_mbox_fetch()` 的 alarm 分支（GetSystemTime + USec2SysClock + SetAlarm
++ WaitSema + CancelAlarm + GetSystemTime + SysClock2USec），而不再是裸 `WaitSema`。
+edf39ddc 及更早的 OPL 从来没有这两行。
+
+## 修复
+
+去掉这两行，同时保证保活探测仍有界（否则服务器失联时 `smb_Echo()` 会卡死在 recv 上）：
+
+* `RecvDataEx(sock, buf, size, flags, timeout_ms)`：`flags == 0` 是原来的阻塞收包；
+  `flags == MSG_DONTWAIT` 时自己 `DelayThread(20ms)` 轮询，超时返回 0。
+  原 `RecvData()` 退化为它的包装，**数据面行为一字未改**。
+* `GetSMBServerReplyTimed()`：`GetSMBServerReply(0, NULL, 0)` 的非阻塞版，
+  **只给 `smb_Echo()` 用**，上限 `SMB_ECHO_TIMEOUT_MS` = 3s。
+* 该 lwip 不支持 `MSG_PEEK`，轮询是真的把字节收进 `SMB_buf`；
+  超时残留的半包由随后的 `smb_Disconnect()` 关 socket 时一并丢弃。
+* `SO_KEEPALIVE` / `TCP_KEEPALIVE` / `TCP_NODELAY` 保持不变。
+
+⇒ 相对于 `362053534-patch-1` 的 `f91c3cf`，**只改 `modules/iopcore/cdvdman/smb.c`
+一个文件（+82 / -12）**，补丁见仓库根目录 `smb-fmv-noise-fix.patch`。
+
+## 走过的弯路（留档，别再重来）
+
+1. 前三轮一直在"Echo 那次 setsockopt 污染了后续数据面"上打转。E1（Echo 永不触发）
+   多测几次仍然有杂音，该模型被证伪。教训：**概率性症状下，几轮"干净"的观测没有统计意义**。
+2. 因此 D1 / E2 / D3 早先报的"干净"都要打折看待。
+3. 追查过程中另外发现两件 patch-1 相对 edf39ddc 的差异，**未验证、也未纳入本次修复**：
+   * `SO_KEEPALIVE` + `TCP_KEEPALIVE=60000`（6254970 引入）
+   * patch-1 新增的 SMB 专用异步读完成流水线（`cdvdman_smb_start_read` /
+     `cdvdman_promote_pending` / `cdread_outstand` / stream generation），
+     **6254970 也没有**，只存在于 patch-1。用户最初对 B2 的描述是
+     "杂音未根除、延后、伴音画不同步"，音画不同步是时序症状 —— 如果将来要继续压
+     偶发杂音，这两处（尤其后者）是下一步的入口。
