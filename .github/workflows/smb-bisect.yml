@@ -67,19 +67,25 @@ jobs:
           pattern: OPNPS2LD-SMB-Bisect-B*
           delete-merged: true
 
-  # 诊断构建（成对产出）：
-  #   BASE = 基线 edf39ddc（实机无杂音）
-  #   CURR = 当前分支 HEAD（= 提交 6254970 行为，实机有杂音）
-  # 两棵树注入同一份观测点（tools/smb-diag/instrument.py），字段名/单位/触发条件完全一致，
-  # 因此两份日志可以逐行做差，定位"杂音版本的读盘节奏到底哪里变了"。
-  # 日志走 IOP stdout -> udptty UDP 广播 18194（当前树的 SMBD 行额外单播一份到 SMB 服务器 IP）。
-  build-diag-pair:
+  # 杂音对照构建（BASE=基线 edf39ddc / CURR=当前 HEAD）×（RELEASE=原样 / QUIET=稀疏观测）。
+  #
+  # 为什么要分 RELEASE 与 QUIET：带 __IOPCORE_DEBUG 的诊断构建会把每次 sceCdRead /
+  # sceCdGetError / sceCdStatus 都变成一次 WaitSema + 阻塞式 UDP sendto，FMV 下每秒上千次，
+  # 光是打印本身就会把音频拖到欠载 —— 实测连"基线"版本都会出现杂音，A/B 因此失真。
+  #   RELEASE: 完全不带调试，用于确认"你的环境里基线当前是否真的无杂音"（基准校验）。
+  #   QUIET  : cdvdman 不带 __IOPCORE_DEBUG（逐读 DPRINTF 全空，时序≈release），
+  #            只用 -DDIAG_OBSERVE=1 打开 tools/smb-diag/instrument.py 注入的稀疏观测点，
+  #            用于真正做"有杂音 / 无杂音"的日志对照。
+  # ELF 文件名里带树的 7 位 SHA（BASE 应为 edf39ddc），下载时可自证版本没弄错。
+  build-compare:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { id: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, desc: baseline-edf39ddc-no-noise }
-          - { id: CURR, ref: "", desc: current-6254970-with-noise }
+          - { id: BASE-RELEASE, tree: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, mode: release }
+          - { id: CURR-RELEASE, tree: CURR, ref: "", mode: release }
+          - { id: BASE-QUIET, tree: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, mode: quiet }
+          - { id: CURR-QUIET, tree: CURR, ref: "", mode: quiet }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -94,7 +100,7 @@ jobs:
         cp -r tools/smb-diag /tmp/smb-diag-tools
         ls -l /tmp/smb-diag-tools
 
-    - name: Checkout ${{ matrix.id }} tree (${{ matrix.desc }})
+    - name: Checkout ${{ matrix.tree }} tree
       run: |
         set -e
         REF="${{ matrix.ref }}"
@@ -102,19 +108,21 @@ jobs:
         echo "fetching $REF"
         git fetch --depth 1 origin "$REF" || git fetch origin "$REF"
         git checkout -f FETCH_HEAD
-        git log --oneline -1
-        git status --short | head -5
+        TREE_SHA=$(git rev-parse --short=7 HEAD)
+        echo "TREE_SHA=$TREE_SHA" >> $GITHUB_ENV
+        echo "::notice::${{ matrix.id }} tree = $TREE_SHA ($(git log -1 --format=%s))"
 
-    - name: Apply read-cadence instrumentation
+    - name: Apply read-cadence instrumentation (quiet mode only)
+      if: matrix.mode == 'quiet'
       run: |
         mkdir -p tools
         cp -r /tmp/smb-diag-tools tools/smb-diag
         python3 tools/smb-diag/instrument.py .
         git --no-pager diff --stat
 
-    # 当前树独有：SMB 内部事件（Echo 耗时 / 重连 / 读延迟统计）。
-    - name: Enable SMB_DIAG_LOG (current tree only)
-      if: matrix.id == 'CURR'
+    # 当前树独有：SMB 内部事件（Echo 耗时 / 重连 / 读延迟统计）。仅 QUIET 模式。
+    - name: Enable SMB_DIAG_LOG (current tree, quiet mode)
+      if: matrix.mode == 'quiet' && matrix.tree == 'CURR'
       run: |
         sed -i "s/#define SMB_DIAG_LOG 0/#define SMB_DIAG_LOG 1/" modules/iopcore/cdvdman/smb_tuning.h
         grep -n "define SMB_DIAG_LOG" modules/iopcore/cdvdman/smb_tuning.h
@@ -123,10 +131,11 @@ jobs:
       run: |
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
-    - name: Compile -> DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP
+    - name: Compile (release)
+      if: matrix.mode == 'release'
       run: |
         set +e
-        make DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP > build.log 2>&1
+        make --trace clean release > build.log 2>&1
         ret=$?
         if [ $ret -ne 0 ]; then
           echo "build failed with $ret, first errors:"
@@ -136,11 +145,28 @@ jobs:
           tail -60 build.log | while IFS= read -r line; do echo "::notice::$line"; done
           exit $ret
         fi
-        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-DIAG-UDP-TTY.elf
+        mv OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-tree${{ env.TREE_SHA }}.ELF
+        ls -l OPNPS2LD-*.ELF
+
+    - name: "Compile (quiet debug - cdvdman without __IOPCORE_DEBUG)"
+      if: matrix.mode == 'quiet'
+      run: |
+        set +e
+        make DEBUG=1 INGAME_DEBUG=1 TTY_APPROACH=UDP CDVDMAN_DEBUG_FLAGS="DIAG_OBSERVE=1" > build.log 2>&1
+        ret=$?
+        if [ $ret -ne 0 ]; then
+          echo "build failed with $ret, first errors:"
+          grep -n -iE "error|undefined|No rule|assert" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          tail -60 build.log | while IFS= read -r line; do echo "::notice::$line"; done
+          exit $ret
+        fi
+        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-tree${{ env.TREE_SHA }}.elf
         ls -l OPNPS2LD-*.elf
 
-    - name: Upload ${{ matrix.id }} diag artifact ELF
+    - name: Upload ${{ matrix.id }}
       uses: actions/upload-artifact@v7
       with:
-        name: OPNPS2LD-SMB-Diag-${{ matrix.id }}
-        path: OPNPS2LD-*-DIAG-UDP-TTY.elf
+        name: OPNPS2LD-SMB-Cmp-${{ matrix.id }}
+        path: OPNPS2LD-*-${{ matrix.id }}-tree*.[Ee][Ll][Ff]

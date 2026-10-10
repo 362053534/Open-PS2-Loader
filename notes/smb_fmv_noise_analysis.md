@@ -181,6 +181,43 @@ SMB 路径关键事件带毫秒时间戳输出：
 （CURR 额外保留 SMB 内部事件：`SMBD ECHO res=… ms=…`、`SMBD RD done … ms=…`、
 `SMBD RECONNECT …`、`SMBD HB n=… fail=… max=…ms avg=…ms s100/s250/s1k=…`。）
 
+### ⚠ 重要发现：带 `__IOPCORE_DEBUG` 的诊断构建本身就是杂音源（BASE 版也有杂音）
+
+用户实机反馈：**BASE 版（基线 `edf39ddc`）同样出现杂音**——而基线在 release 构建下是确认无杂音的。
+排查结论：**不是版本弄错，是诊断构建的打印开销改变了时序**。
+
+- `DPRINTF` 只在 `__IOPCORE_DEBUG` 下展开，而 `INGAME_DEBUG=1` 会通过
+  `CDVDMAN_DEBUG_FLAGS = IOPCORE_DEBUG=1` 把它打开（Makefile:182-197）。
+- 于是**每次** `sceCdRead` / `cdvdman_read` / `cdvdman_cb_event` / `sceCdGetError` /
+  `sceCdStatus` 都会 `printf`；`sceCdStatus`/`sceCdGetError` 是游戏紧循环轮询的。
+- 每条 `printf` 的代价是 `WaitSema(tty_sema)` + 一次**阻塞式** UDP `sendto`
+  （`modules/debug/udptty-ingame/udptty.c: tty_write → udp_send`，广播 255.255.255.255）。
+- FMV 下每秒成百上千次读 × 每条数个打印 = **每秒上千次阻塞式 UDP 发送**，
+  足以把音频流拖到欠载 ⇒ 杂音。**BASE 与 CURR 都会中招**，A/B 因此失真。
+
+修法：把"观测"与"逐读打印"解耦——cdvdman 编译为**不带** `__IOPCORE_DEBUG`
+（逐读 `DPRINTF` 全空，时序≈release），只靠新增的 `-DDIAG_OBSERVE=1` 打开
+`instrument.py` 注入的稀疏观测点（`tools/smb-diag/instrument.py` 的守卫已改为
+`#if defined(__IOPCORE_DEBUG) || defined(DIAG_OBSERVE)`，并给 cdvdman 的 Makefile
+加了 `DIAG_OBSERVE` 开关）。
+
+### v6：四联对照构建（CI job `build-compare`）
+
+| 产物 | 树 | 构建方式 | 用途 |
+|---|---|---|---|
+| `OPNPS2LD-SMB-Cmp-BASE-RELEASE` | `edf39ddc` | `make clean release`，零调试 | **环境基准**：确认"你现在这套网络/服务器下，基线是否仍然无杂音" |
+| `OPNPS2LD-SMB-Cmp-CURR-RELEASE` | 当前 HEAD | `make clean release`，零调试 | 已知有杂音的对照（同 run 的现成参照） |
+| `OPNPS2LD-SMB-Cmp-BASE-QUIET` | `edf39ddc` | 调试版但 cdvdman **不带** `__IOPCORE_DEBUG`，仅稀疏观测 | 无杂音对照组（抓日志） |
+| `OPNPS2LD-SMB-Cmp-CURR-QUIET` | 当前 HEAD | 同上 + `SMB_DIAG_LOG=1` | 有杂音实验组（抓日志） |
+
+ELF 文件名里带**树的 7 位 SHA**（BASE 应为 `edf39ddc`），下载时可自证版本没弄错。
+
+**建议测试顺序**：
+1. `BASE-RELEASE` —— 若**有杂音** ⇒ 环境（网络/服务器/线材）自上次验证后已变化，
+   先修环境，否则任何代码层面的 A/B 都不可信。
+2. `CURR-RELEASE` —— 应当有杂音（确认实验仍可复现）。
+3. 1、2 成立后再用 `BASE-QUIET` / `CURR-QUIET` 各录一份日志做逐行对比。
+
 **对比方法**：同一个游戏、同一段 FMV，分别用 BASE / CURR 各录一份日志：
 - 若 CURR 出现 `GAP`/`SLOW`/`ZERO`/`SHORT` 而 BASE 没有 ⇒ 差异就在这几行的时刻与规模上；
 - 若两者都平静但 CURR 有杂音 ⇒ 问题不在读盘数据面，转向解码/缓冲侧；
