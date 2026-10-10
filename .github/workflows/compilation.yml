@@ -186,6 +186,7 @@ jobs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         git fetch --prune --unshallow
         git show 71271cffb3e1ae54b872b8fa29b505e03cd07be6:modules/iopcore/cdvdman/cdvdman.c > modules/iopcore/cdvdman/cdvdman.c
+        git show 71271cffb3e1ae54b872b8fa29b505e03cd07be6:modules/iopcore/cdvdman/scmd.c > modules/iopcore/cdvdman/scmd.c
         git show 71271cffb3e1ae54b872b8fa29b505e03cd07be6:modules/iopcore/cdvdman/streaming.c > modules/iopcore/cdvdman/streaming.c
         python3 - <<'PY'
         import os
