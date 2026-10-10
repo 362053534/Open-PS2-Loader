@@ -408,6 +408,9 @@ void sys_mbox_post(sys_mbox_t pMBox, void *pvMSG)
 } /* end sys_mbox_post */
 
 #ifdef LWIP_MBOX_SINGLE_ALARM
+/* sys_arch_sem_wait() 用的 alarm 回调定义在下面，这里提前声明。 */
+static unsigned int TimeoutHandler(void *pvArg);
+
 /*
  * 单次装填版 sys_arch_mbox_fetch（整个 fetch 只做一次 SetAlarm / CancelAlarm）。
  *
