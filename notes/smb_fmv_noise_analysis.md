@@ -401,6 +401,68 @@ CURR 缺 79/99/104/108/117/172/179 —— 那是抓包侧 UDP 丢包，与 PS2 �
 C1 干净而 C2 仍有杂音 ⇒ 必须砍掉/改造收包超时本身（改成只在重连路径用带超时的 recv，
 数据面继续用无限等待）；C4 干净 ⇒ smbinit 常驻也有份，单独处理。
 
+### v8 实机结果（2026-10-10）：只有 `C1` 干净，其余全有杂音
+
+| 构建 | 内容 | 结果 |
+|---|---|---|
+| `C1`（`SOCK_TIMEOUT=0` + `RECONNECT_THREADS=0`） | 关掉超时 **且** 关掉后台线程 | **干净，无杂音** |
+| `C2`（`LWIP_MBOX_SINGLE_ALARM=1`） | 保留 30s 超时，只是把 alarm 从"每唤醒一次"降到"每次 recv 一次" | 有杂音 |
+| `C3`（`SMB_FEAT_RCV_TIMEOUT=0`，只留 `SO_SNDTIMEO`） | 关掉收方向超时 | 有杂音 |
+| `C4`（`smbinit` 改回 `MODULE_NO_RESIDENT_END`） | 只改常驻 | 有杂音 |
+| （此前）`B2` = `SOCK_TIMEOUT=0` 单独 | | 部分有效（杂音减轻/延后，伴音画不同步） |
+| （此前）`B4` = `RECONNECT_THREADS=0` 单独 | | 完全无效 |
+
+把三份结果放在一起推：
+
+```
+关超时(Y)  关线程(X)   结果
+  否         否        满杂音
+  是         否        部分杂音     ← Y 是主因
+  否         是        满杂音       ← X 单独被 Y 完全掩盖
+  是         是        干净         ← X 是小但独立的第二因
+```
+
+所以是**两个相互独立的来源，Y 主 X 次**：
+* **Y（主因）**：`SO_SNDTIMEO/SO_RCVTIMEO` 生效后，每一次 `netconn_recv()` 都要
+  走 `sys_arch_sem_wait()` 的超时分支。C2 把 alarm 频率降了一个数量级仍然有杂音，
+  说明**不是"装填次数太多"，而是"只要有"就不行** —— 那 6 个系统调用 + 2 次 alarm
+  操作本身就已经越过了这台机器的余量。
+* **X（次因）**：在 `SMB_FEAT_RECONNECT_THREADS` 这一组里面。
+  注意 `src/system.c` 里**完全没有 netman** —— 游戏内不加载 netman，
+  所以 `pNetManGetGlobalNetIFLinkState == NULL`，链路监控线程其实只是
+  每 500ms 醒一次、什么也不做。也就是说 X 不是"读 PHY 太贵"，
+  而更像是**多两个后台线程周期性唤醒本身**造成的调度扰动
+  （两个线程优先级 40；cdvdman 读线程是 0x0f=15，比它们高，所以它们抢不到读线程，
+  但会抢占优先级低于 40 的游戏侧线程）。
+
+### v9：D 系列 —— 拆开 X，并给出"既保功能又无杂音"的修复候选
+
+`modules/iopcore/cdvdman/smb_tuning.h` 新增可调项：
+
+| 宏 | 默认 | 说明 |
+|---|---|---|
+| `SMB_FEAT_LINK_MONITOR` | 1 | 链路监控线程是否创建 |
+| `SMB_LINK_MONITOR_MS` | 500 | 链路监控轮询周期 |
+| `SMB_RECONNECT_POLL_MS` | 2000 | 重连线程轮询周期（Echo 间隔已从"15 次轮询"解耦成 `SMB_ECHO_INTERVAL_MS`） |
+| `SMB_ECHO_INTERVAL_MS` | 30000 | Echo 保活间隔 |
+| `SMB_THREAD_PRIORITY` | 40 | 两个后台线程优先级 |
+| `SMB_FEAT_ECHO_TIMEOUT` | 0 | **只在 `smb_Echo()` 这一次往返前后临时装上 30s 超时**，装完立刻清回 0 |
+
+新增构建：
+
+| 产物 | 内容 | 验证什么 |
+|---|---|---|
+| `D1-TMO0+NOLINKMON` | `SOCK_TIMEOUT=0` + `LINK_MONITOR=0` | X 是不是那个 500ms 唤醒的链路监控线程？ |
+| `D2-TMO0+SLOWPOLL` | `SOCK_TIMEOUT=0` + 链路 500→3000ms、重连 2000→10000ms | 不删功能、只把唤醒放慢 6×/5× 是否就够了？ |
+| `D3-FIX-CANDIDATE` | D2 + `SMB_FEAT_ECHO_TIMEOUT=1` | **正式修复候选**：数据面零开销（裸 WaitSema），但服务器失联依旧能被 30s 的 Echo 发现并触发重连；拔线模拟开关仓也还在 |
+
+**判据**
+- D1 干净、D2 也干净 ⇒ X = 周期性唤醒，D3 就是可以合入的版本。
+- D1 干净、D2 仍有杂音 ⇒ 必须彻底去掉链路监控线程（或者把它改成事件驱动，
+  比如只在读失败时才去查链路，而不是定时轮询）。
+- D1 仍有杂音 ⇒ X 不在链路监控线程，而在重连线程（2s 唤醒）或
+  `DeviceReadSectors` 的重试循环 / `DeviceReady()` 的状态依赖上，需要再拆一轮。
+
 ## 4. 根因确定后的收敛方向（预案）
 
 - H1 成立：删除 Echo 心跳（SMB 服务器极少在分钟级回收会话，TCP 层 KeepAlive 足够兜底）；或把 Echo 失败与“判定断线”解耦（失败仅计数，连续多次才拆链），并把 Echo 移到确认空闲的更保守策略。

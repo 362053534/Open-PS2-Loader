@@ -19,16 +19,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: B1, tag: "SMB_FEAT_ECHO_KEEPALIVE=0", switch: "SMB_FEAT_ECHO_KEEPALIVE" }
-          - { id: B2, tag: "SMB_FEAT_SOCK_TIMEOUT=0", switch: "SMB_FEAT_SOCK_TIMEOUT" }
-          - { id: B3, tag: "SMB_FEAT_TCP_KEEPALIVE=0", switch: "SMB_FEAT_TCP_KEEPALIVE" }
-          - { id: B4, tag: "SMB_FEAT_RECONNECT_THREADS=0", switch: "SMB_FEAT_RECONNECT_THREADS" }
+          - { id: B1, tag: "ECHO=0", defines: "SMB_FEAT_ECHO_KEEPALIVE=0" }
+          - { id: B2, tag: "TMO=0", defines: "SMB_FEAT_SOCK_TIMEOUT=0" }
+          - { id: B3, tag: "KPALV=0", defines: "SMB_FEAT_TCP_KEEPALIVE=0" }
+          - { id: B4, tag: "THREADS=0", defines: "SMB_FEAT_RECONNECT_THREADS=0" }
           # ---- C 系列：针对“OBSERVE 日志证明数据面无差异”之后的第二轮减法 ----
           # 见 notes/smb_fmv_noise_analysis.md 的 v8 段。
-          - { id: C1, tag: "TMO0+THREADS0", switch: "SMB_FEAT_SOCK_TIMEOUT SMB_FEAT_RECONNECT_THREADS" }
-          - { id: C2, tag: "SINGLE-ALARM", switch: "", extra: "SMSTCPIP_INGAME_CFLAGS=\"INGAME_DRIVER=1 LWIP_MBOX_SINGLE_ALARM=1\"" }
-          - { id: C3, tag: "NO-RCVTMO", switch: "SMB_FEAT_RCV_TIMEOUT" }
-          - { id: C4, tag: "SMBINIT-UNLOAD", switch: "", patch: "smbinit-unload" }
+          - { id: C1, tag: "TMO0+THREADS0", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_RECONNECT_THREADS=0" }
+          - { id: C2, tag: "SINGLE-ALARM", defines: "", extra: "SMSTCPIP_INGAME_CFLAGS=\"INGAME_DRIVER=1 LWIP_MBOX_SINGLE_ALARM=1\"" }
+          - { id: C3, tag: "NO-RCVTMO", defines: "SMB_FEAT_RCV_TIMEOUT=0" }
+          - { id: C4, tag: "SMBINIT-UNLOAD", defines: "", patch: "smbinit-unload" }
+          # ---- D 系列：C1 干净、B2/B4 单独都不干净 ⇒ T4 里还有第二个(较小)来源。
+          #      把 T4 拆成“链路监控线程 / 轮询周期”，并给出正式修复候选。
+          #      见 notes/smb_fmv_noise_analysis.md 的 v9 段。
+          - { id: D1, tag: "TMO0+NOLINKMON", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_FEAT_LINK_MONITOR=0" }
+          - { id: D2, tag: "TMO0+SLOWPOLL", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_LINK_MONITOR_MS=3000 SMB_RECONNECT_POLL_MS=10000" }
+          - { id: D3, tag: "FIX-CANDIDATE", defines: "SMB_FEAT_SOCK_TIMEOUT=0 SMB_LINK_MONITOR_MS=3000 SMB_RECONNECT_POLL_MS=10000 SMB_FEAT_ECHO_TIMEOUT=1" }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -39,12 +45,14 @@ jobs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         git fetch --prune --unshallow
 
-    - name: "Flip switches for ${{ matrix.id }} (${{ matrix.switch }} -> 0)"
-      if: matrix.switch != ''
+    - name: "Set defines for ${{ matrix.id }} (${{ matrix.defines }})"
+      if: matrix.defines != ''
       run: |
-        for sw in ${{ matrix.switch }}; do
-          sed -i "s/#define $sw 1/#define $sw 0/" modules/iopcore/cdvdman/smb_tuning.h
-          grep -n "define $sw" modules/iopcore/cdvdman/smb_tuning.h
+        for kv in ${{ matrix.defines }}; do
+          n="${kv%%=*}"
+          v="${kv##*=}"
+          sed -i -E "s/^#define $n .*/#define $n $v/" modules/iopcore/cdvdman/smb_tuning.h
+          grep -n "^#define $n" modules/iopcore/cdvdman/smb_tuning.h
         done
 
     - name: "Apply source patch (${{ matrix.patch }})"

@@ -76,7 +76,9 @@ static volatile int smbTrayOpen;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static void smbReconnectThread(void *arg);
+#if SMB_FEAT_LINK_MONITOR
 static void smbLinkMonitorThread(void *arg);
+#endif
 #endif
 
 static int smbOpenGame(void);
@@ -169,7 +171,7 @@ static void smbReconnectThread(void *arg)
 #if SMB_FEAT_ECHO_KEEPALIVE
         if (smbReconnectEnabled && smbConnectionState == 1 && !smbPhysicalLinkDown) {
             // 每30秒发送一次SMB保活请求，防止服务器回收长时间空闲的会话。
-            if (++keepAliveCounter >= 15) {
+            if (++keepAliveCounter * SMB_RECONNECT_POLL_MS >= SMB_ECHO_INTERVAL_MS) {
 #if SMB_DIAG_LOG
                 unsigned int echoStart = smbDiagNowMs();
 #endif
@@ -229,10 +231,11 @@ static void smbReconnectThread(void *arg)
         smbRdCount = smbRdFail = smbRdMaxMs = smbRdSumMs = 0;
         smbRdSlow100 = smbRdSlow250 = smbRdSlow1000 = 0;
 #endif
-        DelayThread(2000000);
+        DelayThread(SMB_RECONNECT_POLL_MS * 1000);
     }
 }
 
+#if SMB_FEAT_LINK_MONITOR
 static void smbLinkMonitorThread(void *arg)
 {
     (void)arg;
@@ -255,9 +258,10 @@ static void smbLinkMonitorThread(void *arg)
             }
         }
 
-        DelayThread(500000);
+        DelayThread(SMB_LINK_MONITOR_MS * 1000);
     }
 }
+#endif /* SMB_FEAT_LINK_MONITOR */
 #endif /* SMB_FEAT_RECONNECT_THREADS */
 
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
@@ -291,12 +295,14 @@ void DeviceInit(void)
     thread.option = 0;
     thread.thread = smbReconnectThread;
     thread.stacksize = 0x1000;
-    thread.priority = 40;
+    thread.priority = SMB_THREAD_PRIORITY;
 
     StartThread(CreateThread(&thread), NULL);
 
+#if SMB_FEAT_LINK_MONITOR
     thread.thread = smbLinkMonitorThread;
     StartThread(CreateThread(&thread), NULL);
+#endif
 #endif
 }
 

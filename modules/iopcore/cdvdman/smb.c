@@ -877,8 +877,27 @@ int smb_Echo(void)
     ER->EchoCount = 1;
     ER->ByteCount = 0;
 
+    /* SMB_FEAT_ECHO_TIMEOUT：把 30s 超时只装在 Echo 这一次往返上，
+     * 而不是常驻在套接字上。数据面（每一次 smb_ReadAndX 的收包）因此始终走
+     * conn->recv_timeout == 0 的裸 WaitSema 路径，没有 SetAlarm/CancelAlarm。 */
+#if SMB_FEAT_ECHO_TIMEOUT
+    {
+        int tmo = SMB_IO_TIMEOUT;
+        plwip_setsockopt(main_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tmo, sizeof(tmo));
+        plwip_setsockopt(main_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&tmo, sizeof(tmo));
+    }
+#endif
+
     nb_SetSessionMessage(sizeof(EchoRequest_t));
     result = GetSMBServerReply(0, NULL, 0) > 0 ? 1 : -1;
+
+#if SMB_FEAT_ECHO_TIMEOUT
+    {
+        int tmo = 0;
+        plwip_setsockopt(main_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tmo, sizeof(tmo));
+        plwip_setsockopt(main_socket, SOL_SOCKET, SO_SNDTIMEO, (char *)&tmo, sizeof(tmo));
+    }
+#endif
 
     SIGNALIOSEMA(smb_io_sema);
 

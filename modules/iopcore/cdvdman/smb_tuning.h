@@ -29,6 +29,23 @@
  *      netconn_recv()，也就是每一次 SMB 收包都要走的那条热路径。 */
 #define SMB_FEAT_RCV_TIMEOUT 1
 
+/* T2c: 把超时从"常驻在套接字上"改成"只在 smb_Echo() 前后临时装上"。
+ *      目的：保住 6254970 的"服务器失联能被发现"这个能力，但让数据面的
+ *      每一次收包都退回零开销的裸 WaitSema。 */
+#define SMB_FEAT_ECHO_TIMEOUT 0
+
+/* T4 的进一步拆分（v9：C1 干净而 B2/B4 单独都不干净 ⇒ T4 里还有第二个，较小的来源）
+ *   SMB_FEAT_LINK_MONITOR   链路监控线程是否创建
+ *   SMB_LINK_MONITOR_MS     链路监控线程轮询周期（默认 500ms）
+ *   SMB_RECONNECT_POLL_MS   重连线程轮询周期（默认 2000ms）
+ *   SMB_ECHO_INTERVAL_MS    Echo 保活间隔（默认 30000ms，与轮询周期解耦）
+ *   SMB_THREAD_PRIORITY     两个后台线程的优先级（cdvdman 读线程是 0x0f=15，更高） */
+#define SMB_FEAT_LINK_MONITOR   1
+#define SMB_LINK_MONITOR_MS     500
+#define SMB_RECONNECT_POLL_MS   2000
+#define SMB_ECHO_INTERVAL_MS    30000
+#define SMB_THREAD_PRIORITY     40
+
 /* T3: SMB 套接字设置 SO_KEEPALIVE + TCP_KEEPALIVE = 60 秒（TCP 层保活探测）。*/
 #define SMB_FEAT_TCP_KEEPALIVE 1
 
