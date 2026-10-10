@@ -145,7 +145,9 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 #if SMB_FEAT_SOCK_TIMEOUT
     opt = SMB_IO_TIMEOUT;
     plwip_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&opt, sizeof(opt));
+#if SMB_FEAT_RCV_TIMEOUT
     plwip_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&opt, sizeof(opt));
+#endif
 #endif
 
     memset(&sock_addr, 0, sizeof(sock_addr));

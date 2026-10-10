@@ -407,8 +407,75 @@ void sys_mbox_post(sys_mbox_t pMBox, void *pvMSG)
 
 } /* end sys_mbox_post */
 
+#ifdef LWIP_MBOX_SINGLE_ALARM
+/*
+ * 单次装填版 sys_arch_mbox_fetch（整个 fetch 只做一次 SetAlarm / CancelAlarm）。
+ *
+ * 原实现在 while 循环里每次都调 sys_arch_sem_wait()，于是每唤醒一次就要
+ * GetSystemTime + USec2SysClock + SetAlarm + WaitSema + CancelAlarm +
+ * GetSystemTime + SysClock2USec —— 6 个系统调用 + 2 次 alarm 队列操作。
+ * 一旦给套接字设了 SO_RCVTIMEO（OPL 的 SMB 驱动设的是 30 秒），
+ * 每一次 netconn_recv() 都会走这条路径；SMB 流式读 FMV 时约 100+ 次/秒，
+ * 等于每秒数百次 alarm 装填/撤销。这里改成整段 fetch 只装填一次：
+ * 语义完全一致（总超时不变，超时由 alarm 回调 iReleaseWaitThread 打断
+ * WaitSema 来触发），但把 alarm 操作从"每唤醒一次"降到"每次 recv 一次"。
+ */
+static u32_t mbox_fetch_timed(sys_mbox_t pMBox, void **ppvMSG, u32_t u32Timeout)
+{
+    sys_prot_t Flags;
+    sys_sem_t sem = SYS_SEM_NULL;
+    iop_sys_clock_t lTimeout;
+    int lTID = GetThreadId();
+    int timedOut = 0;
+
+    USec2SysClock(u32Timeout * 1000, &lTimeout);
+    SetAlarm(&lTimeout, &TimeoutHandler, (void *)lTID);
+
+    CpuSuspendIntr(&Flags);
+
+    while (!timedOut && IsMessageBoxEmpty(pMBox)) {
+
+        ++pMBox->iWaitFetch;
+
+        CpuResumeIntr(Flags);
+        if (WaitSema(pMBox->Mail) != 0)
+            timedOut = 1;
+        CpuSuspendIntr(&Flags);
+
+        --pMBox->iWaitFetch;
+    }
+
+    if (timedOut) {
+        CpuResumeIntr(Flags);
+        return SYS_ARCH_TIMEOUT;
+    }
+
+    if (ppvMSG != NULL) // This pointer may be NULL.
+        *ppvMSG = pMBox->apvMSG[pMBox->u16First];
+    pMBox->u16First = GenNextMBoxIndex(pMBox->u16First);
+
+    sem = (pMBox->iWaitPost > 0) ? pMBox->Mail : SYS_SEM_NULL;
+
+    CpuResumeIntr(Flags);
+
+    /* alarm 已经触发过时这里自然无事可做；正常路径下撤销掉即可。 */
+    CancelAlarm(&TimeoutHandler, (void *)lTID);
+
+    if (sem != SYS_SEM_NULL)
+        SignalSema(sem);
+
+    return 0;
+
+} /* end mbox_fetch_timed */
+#endif
+
 u32_t sys_arch_mbox_fetch(sys_mbox_t pMBox, void **ppvMSG, u32_t u32Timeout)
 {
+#ifdef LWIP_MBOX_SINGLE_ALARM
+    /* timeout==1 是"轮询"语义，仍走原路径。 */
+    if (u32Timeout > 1)
+        return mbox_fetch_timed(pMBox, ppvMSG, u32Timeout);
+#endif
 
     sys_prot_t Flags;
     sys_sem_t sem = SYS_SEM_NULL;

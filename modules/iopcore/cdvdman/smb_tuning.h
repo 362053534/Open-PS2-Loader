@@ -24,6 +24,11 @@
  *     服务器偶发慢响应（磁盘休眠唤醒、网络抖动）会被放大成数秒级读盘停顿。*/
 #define SMB_FEAT_SOCK_TIMEOUT 1
 
+/* T2b: 只拆出 SO_RCVTIMEO（T2 的一半）。
+ *      用于区分“收包方向的超时”与“发包方向的超时”——只有收包方向会落到
+ *      netconn_recv()，也就是每一次 SMB 收包都要走的那条热路径。 */
+#define SMB_FEAT_RCV_TIMEOUT 1
+
 /* T3: SMB 套接字设置 SO_KEEPALIVE + TCP_KEEPALIVE = 60 秒（TCP 层保活探测）。*/
 #define SMB_FEAT_TCP_KEEPALIVE 1
 

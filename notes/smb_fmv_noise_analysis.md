@@ -334,6 +334,73 @@ Makefile 第 194–198 行，`INGAME_DEBUG=1` 分支里有一句
   杂音就是解码器收到了静音/垃圾数据，直接盯 `SO_RCVTIMEO` 那三处改动。
 - 若两份 `CDVDS` 都平静但 CURR 仍杂音 ⇒ 不在 SMB 数据面，转解码/缓冲侧。
 
+### v7 实机结果（2026-10-10）：两份 OBSERVE 日志**在数据面上完全一致**
+
+日志原文：`notes/logs/observe-base.log`（无杂音）、`notes/logs/observe-curr.log`（有杂音）。
+同一段 FMV，各约 70 秒，~123 个统计窗口。稳态窗口（每次 ≥8 读、gap<200ms）的统计：
+
+| 指标 | BASE-OBSERVE（无杂音） | CURR-OBSERVE（有杂音） |
+|---|---|---|
+| `dur` 均值 | 15.10 ms | 15.44 ms |
+| `dur` 最大值（窗口内）均值 | 20.61 ms | 21.03 ms |
+| `dur` 史上最大 | 30 ms | 40 ms |
+| `h50/h100/h250/h500` | 全 0 | 全 0 |
+| `gap` 均值 / 最大 | 62.6 / 142 ms | 61.3 / 147 ms |
+| 每窗口读次数 | 18.4 | 18.5 |
+| 吞吐 | 1018 KB/s | 1017 KB/s |
+| `zero`（短读补零） | 0 | 0 |
+| `shrt`（服务器短回） | 0 | 0 |
+
+**结论：SMB 读数据面不是回归所在。**
+没有一次读超过 50ms（连 `h50` 都是 0）、没有补零、没有短回、没有重连停顿
+（重连会让读卡在 `DelayThread(100ms)` 的等待循环里，`dur` 必然炸到秒级）、
+吞吐与请求节奏逐项相同。也就是说 6254970 **既没有让数据变慢，也没有让数据变脏**。
+
+（两份日志都有窗口号缺号 —— BASE 缺 119/120/156/165/180/200/204，
+CURR 缺 79/99/104/108/117/172/179 —— 那是抓包侧 UDP 丢包，与 PS2 无关。）
+
+### v8：既然不在数据面，嫌疑收敛到“每一次收包都在多做的事”
+
+既然延迟/吞吐/正确性都一样，问题只能是**开销的形态**：不是“某一次很慢”，
+而是“每一次都多花一点”。重读 `edf39ddc → 6254970` 的 diff，唯一落在
+**每一次 SMB 收包热路径**上的变更是 T2（`SO_SNDTIMEO/SO_RCVTIMEO = 30s`）：
+
+* 旧代码：`setsockopt(SO_RCVTIMEO)` 是空操作，`conn->recv_timeout == 0`，
+  `sys_arch_mbox_fetch()` 走 `sys_arch_sem_wait(sem, 0)` → 一次裸 `WaitSema`。
+* 新代码：`conn->recv_timeout = 30000`，于是 **每一次** `netconn_recv()` 都落到
+  `modules/network/SMSTCPIP/ps2ip.c` 的 `sys_arch_sem_wait()` 超时分支：
+
+  ```
+  GetSystemTime() → USec2SysClock() → SetAlarm() → WaitSema() → CancelAlarm()
+                  → GetSystemTime() → SysClock2USec()
+  ```
+
+  即 **6 个额外系统调用 + 2 次 alarm 队列操作**，而不是 1 次 `WaitSema`。
+* 频率：`smb_ReadFile()` 每次 32KB 读约 3 次 `netconn_recv`（netbios 头 / SMB 头 /
+  数据体），FMV 稳态 36 次读/秒 ⇒ **~110 次/秒**，每次都可能命中空邮箱而走上面那条路。
+* 更糟的是 `sys_arch_mbox_fetch()` 的 while 循环**每唤醒一次就重来一遍**，
+  所以一次 `netconn_recv` 里可能装填/撤销好几轮 alarm。
+
+这与实机结果对得上：
+* **B2（`SMB_FEAT_SOCK_TIMEOUT=0`）部分有效** —— 正好就是关掉这一条路。
+* **B1/B3/B4 无效** —— Echo（30s 一次，且用 `PollSema` 抢不到就跳过）、
+  TCP keepalive（60s 一次）、重连线程（大部分时间在 `DelayThread`）都不在热路径上。
+* **OBSERVE 日志里 `dur` 只涨了 0.34ms** —— 说明代价是“细水长流”而不是“卡顿”，
+  这也解释了为什么 B2 只是“部分”有效（还有别的细水长流项，见下）。
+
+#### 新的减法矩阵（CI job `build-smb-bisect` 的 C 系列）
+
+| 产物 | 改动 | 验证什么 |
+|---|---|---|
+| `C1-TMO0+THREADS0` | `SOCK_TIMEOUT=0` **且** `RECONNECT_THREADS=0` | B2 单独只是部分有效，B4 单独无效 —— 两个一起关是否彻底干净？ |
+| `C2-SINGLE-ALARM` | `SMSTCPIP_INGAME_CFLAGS="INGAME_DRIVER=1 LWIP_MBOX_SINGLE_ALARM=1"` | **保留 30s 超时语义**，只把 `sys_arch_mbox_fetch()` 改成整段 fetch 装填一次 alarm（新增 `mbox_fetch_timed()`）。若干净 ⇒ 元凶就是 alarm 装填频率，而且这个改法能保住 6254970 的全部功能 |
+| `C3-NO-RCVTMO` | `SMB_FEAT_RCV_TIMEOUT=0`（只留 `SO_SNDTIMEO`） | 确认是收方向（热路径）而不是发方向 |
+| `C4-SMBINIT-UNLOAD` | `modules/network/smbinit/main.c` 改回 `MODULE_NO_RESIDENT_END` | diff 里另一处无条件改动：smbinit 从“协商完就卸载”变成“常驻 IOP”。与任何开关都无关，单独验一下 |
+
+**判据**：C2 干净而 C1 只是“更干净” ⇒ 直接采用 `LWIP_MBOX_SINGLE_ALARM` 作为正式修复；
+C1 干净而 C2 仍有杂音 ⇒ 必须砍掉/改造收包超时本身（改成只在重连路径用带超时的 recv，
+数据面继续用无限等待）；C4 干净 ⇒ smbinit 常驻也有份，单独处理。
+
 ## 4. 根因确定后的收敛方向（预案）
 
 - H1 成立：删除 Echo 心跳（SMB 服务器极少在分钟级回收会话，TCP 层 KeepAlive 足够兜底）；或把 Echo 失败与“判定断线”解耦（失败仅计数，连续多次才拆链），并把 Echo 移到确认空闲的更保守策略。

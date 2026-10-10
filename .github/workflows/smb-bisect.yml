@@ -19,10 +19,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: B1, switch: SMB_FEAT_ECHO_KEEPALIVE }
-          - { id: B2, switch: SMB_FEAT_SOCK_TIMEOUT }
-          - { id: B3, switch: SMB_FEAT_TCP_KEEPALIVE }
-          - { id: B4, switch: SMB_FEAT_RECONNECT_THREADS }
+          - { id: B1, tag: "SMB_FEAT_ECHO_KEEPALIVE=0", switch: "SMB_FEAT_ECHO_KEEPALIVE" }
+          - { id: B2, tag: "SMB_FEAT_SOCK_TIMEOUT=0", switch: "SMB_FEAT_SOCK_TIMEOUT" }
+          - { id: B3, tag: "SMB_FEAT_TCP_KEEPALIVE=0", switch: "SMB_FEAT_TCP_KEEPALIVE" }
+          - { id: B4, tag: "SMB_FEAT_RECONNECT_THREADS=0", switch: "SMB_FEAT_RECONNECT_THREADS" }
+          # ---- C 系列：针对“OBSERVE 日志证明数据面无差异”之后的第二轮减法 ----
+          # 见 notes/smb_fmv_noise_analysis.md 的 v8 段。
+          - { id: C1, tag: "TMO0+THREADS0", switch: "SMB_FEAT_SOCK_TIMEOUT SMB_FEAT_RECONNECT_THREADS" }
+          - { id: C2, tag: "SINGLE-ALARM", switch: "", extra: "SMSTCPIP_INGAME_CFLAGS=\"INGAME_DRIVER=1 LWIP_MBOX_SINGLE_ALARM=1\"" }
+          - { id: C3, tag: "NO-RCVTMO", switch: "SMB_FEAT_RCV_TIMEOUT" }
+          - { id: C4, tag: "SMBINIT-UNLOAD", switch: "", patch: "smbinit-unload" }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
@@ -33,28 +39,56 @@ jobs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         git fetch --prune --unshallow
 
-    - name: Flip switch for ${{ matrix.id }} (${{ matrix.switch }} -> 0)
+    - name: "Flip switches for ${{ matrix.id }} (${{ matrix.switch }} -> 0)"
+      if: matrix.switch != ''
       run: |
-        sed -i "s/#define ${{ matrix.switch }} 1/#define ${{ matrix.switch }} 0/" modules/iopcore/cdvdman/smb_tuning.h
-        grep -n "define ${{ matrix.switch }}" modules/iopcore/cdvdman/smb_tuning.h
+        for sw in ${{ matrix.switch }}; do
+          sed -i "s/#define $sw 1/#define $sw 0/" modules/iopcore/cdvdman/smb_tuning.h
+          grep -n "define $sw" modules/iopcore/cdvdman/smb_tuning.h
+        done
+
+    - name: "Apply source patch (${{ matrix.patch }})"
+      if: matrix.patch != ''
+      run: |
+        case "${{ matrix.patch }}" in
+          smbinit-unload)
+            sed -i "s/return MODULE_RESIDENT_END;/return MODULE_NO_RESIDENT_END;/" modules/network/smbinit/main.c
+            grep -n "RESIDENT_END" modules/network/smbinit/main.c
+            ;;
+          *)
+            echo "::error::unknown patch ${{ matrix.patch }}"
+            exit 1
+            ;;
+        esac
 
     - name: Get version
       run: |
         echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
-    - name: Compile -> make clean release
-      run: make --trace clean release
+    - name: "Compile -> make clean release ${{ matrix.extra }}"
+      run: |
+        set +e
+        make clean release ${{ matrix.extra }} > build.log 2>&1
+        ret=$?
+        if [ $ret -ne 0 ]; then
+          echo "build failed with $ret, first errors:"
+          grep -n -iE "error|undefined|No rule|assert" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          tail -80 build.log | while IFS= read -r line; do echo "::notice::$line"; done
+          exit $ret
+        fi
 
     - name: Rename ELF with bisect tag
       run: |
-        mv OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-${{ matrix.switch }}=0.ELF
+        mv OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.id }}-${{ matrix.tag }}.ELF
         ls -l OPNPS2LD-*.ELF
 
     - name: Upload bisect artifact ELF
       uses: actions/upload-artifact@v7
       with:
         name: OPNPS2LD-SMB-Bisect-${{ matrix.id }}
-        path: OPNPS2LD-*-B?-*.ELF
+        path: OPNPS2LD-*-${{ matrix.id }}-*.ELF
 
   merge-smb-bisect:
     runs-on: ubuntu-latest
