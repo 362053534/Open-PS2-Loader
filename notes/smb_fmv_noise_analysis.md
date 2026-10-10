@@ -580,3 +580,66 @@ D2 与 D1 的**唯一**代码差别就是 `smb_Echo()` 前后那两组
 - E2 干净 ⇒ 可直接合入 patch-1。
 - E2 仍吵 ⇒ "Echo 这个动作本身"会干扰（而不是它身上的 setsockopt），
   那就要改成"Echo 期间挂起读线程"或干脆去掉空闲 Echo、只靠链路状态 + 读失败判定断线。
+
+---
+
+# 第三轮实机结果 + 结论
+
+| 构建 | Echo 触发间隔 | Echo 是否设 setsockopt | 结果 |
+|---|---|---|---|
+| `D1-NO-SOCKTMO` | 120s | 否（模式 0，且数据面本来就没超时） | 干净 |
+| `D2-NO-SOCKTMO+ECHOTMO` | 120s | **是**（模式 1） | **概率杂音** |
+| `E4-ECHO-AMPLIFY-2s` | **2s**（×60） | **是**（模式 1） | **杂音"跟之前一样"，没有变多** |
+| `E1-ECHO-NEVER` | 2h（实测不发） | 是（但从未执行） | 干净 |
+| `E2-NO-SOCKTMO+ECHO-POLL-NB` | 120s | **否**（模式 2，`MSG_DONTWAIT` 轮询） | **多次测试干净** |
+
+## 关键推论：不是"每次 Echo 抖一下"
+
+E4 把 Echo 频率放大了 60 倍，杂音**没有变多、也没有变明显**。所以：
+
+> 杂音 ∝ Echo 的次数 —— **不成立**。
+
+把 5 个结果交叉起来看，杂音需要**两个条件同时成立**：
+
+1. `setsockopt(SO_RCVTIMEO / SO_SNDTIMEO)` 真的被执行过；**且**
+2. 一次 Echo 往返真的发生过。
+
+只有 1 没有 2（E1：代码在但从没触发）→ 干净。
+只有 2 没有 1（E2：Echo 照发但不碰 setsockopt）→ 干净。
+两个都有（D2、E4）→ 杂音，而且**跟 Echo 次数无关**。
+
+最自然的解释：**那次 setsockopt 一旦执行，就在 ps2ip 的收包路径上留下了持久影响** ——
+之后 `netconn_recv()` 不再走裸 `WaitSema`，即使把值改回 0 也没完全恢复原状。
+也就是说这是一次性的"污染"，不是每 Echo 一次的抖动，所以放大 Echo 频率不会让它变严重。
+（E4 之所以和 D2 听不出区别，是因为实际测试里 OPL 菜单/载入阶段早就有超过 120s 的空闲，
+D2 在进游戏之前就已经把那次 setsockopt 执行过了。）
+
+**一个零成本的验证办法**：用 D2 那个 ELF，**开机后不做任何停留立刻进游戏播 FMV**。
+若这时的 D2 是干净的、而在 OPL 菜单里停留 3 分钟以上再进游戏就有杂音，
+就说明"一次 setsockopt 就污染整个会话"成立。
+
+## 结论与建议合入 patch-1 的形态
+
+**SMB 套接字上永远不要设 `SO_RCVTIMEO` / `SO_SNDTIMEO`，一次都不行。**
+保活探测需要超时上限时，用 `SMB_FEAT_ECHO_TIMEOUT=2`（`MSG_DONTWAIT` 自己轮询）。
+
+`modules/iopcore/cdvdman/smb_tuning.h` 的默认值已改成第三轮验证过的 E2 配置：
+
+```c
+#define SMB_FEAT_SOCK_TIMEOUT  0   /* 不设 SO_SNDTIMEO / SO_RCVTIMEO */
+#define SMB_FEAT_ECHO_TIMEOUT  2   /* Echo 用 MSG_DONTWAIT 轮询，上限 3s */
+#define SMB_ECHO_TIMEOUT_MS    3000
+#define SMB_ECHO_POLL_MS       20
+```
+
+⇒ 默认值下编译出的 ELF 与用户实测多次无杂音的 **E2 是同一份代码配置**
+（CI 里 E2 的 sed 现在就是空操作）。
+
+## 这样改的取舍
+
+* 数据面回到"收发没有超时兜底"= edf39ddc 之前的老行为（OPL 这么跑了很多年）。
+  代价：理论上存在"服务器收下请求但永远不回"时读线程会一直等。
+* 但这不是失去保护：**控制面（Echo）仍然有 3s 上限**，服务器失联照样能被发现并触发重连；
+  拔网线则由 `pSmapGetLinkStatus()` 链路状态 + 收发报错判定。
+* `TCP_NODELAY` / `SO_KEEPALIVE` / `TCP_KEEPALIVE` 不受影响，三个构建里都一样，
+  而 D1/E1/E2 都干净 ⇒ 它们无责。

@@ -27,13 +27,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  # patch-1 原样的 release 参照（应当有杂音）+ edf39ddc 老基线（应当无杂音）。
+  # 三个零调试 release 参照：
+  #   FIX-RELEASE     = 当前 HEAD（第三轮验证过的 E2 配置 = 建议合入 patch-1 的形态）
+  #   PATCH1-STOCK    = f91c3cf 原样（应当有杂音）
+  #   BASE-RELEASE    = edf39ddc 老基线（应当无杂音）
   build-compare:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { id: CURR-RELEASE, tree: CURR, ref: "", mode: release }
+          - { id: FIX-RELEASE, tree: FIX, ref: "", mode: release }
+          - { id: PATCH1-STOCK, tree: PATCH1, ref: f91c3cf, mode: release }
           - { id: BASE-RELEASE, tree: BASE, ref: edf39ddc5dcb8154dcfd53031fac5dc2667e83fd, mode: release }
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
