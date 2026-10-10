@@ -114,6 +114,9 @@ static void StStartFillStreamBuffer(void)
 
 int sceCdStInit(u32 bufmax, u32 bankmax, void *iop_bufaddr)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_init++;
+#endif
     int OldState;
 
     cdvdman_stat.err = SCECdErNO;
@@ -275,6 +278,9 @@ static int ReadSectors(int maxcount, void *buffer)
 
 int sceCdStStart(u32 lsn, sceCdRMode *mode)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_start++;
+#endif
     int OldState;
 
     DPRINTF("StStart called. lsn: 0x%08lx\n", lsn);
@@ -298,6 +304,9 @@ int sceCdStStart(u32 lsn, sceCdRMode *mode)
 
 int sceCdStStat(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_stat++;
+#endif
     DPRINTF("StStat called: %u\n", cdvdman_stat.StreamingData.StStreamed);
     cdvdman_stat.err = SCECdErNO;
     return cdvdman_stat.StreamingData.StStreamed;
@@ -305,6 +314,9 @@ int sceCdStStat(void)
 
 int sceCdStStop(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_stop++;
+#endif
     int OldState;
 
     DPRINTF("StStop called. Stat: 0x%x\n", cdvdman_stat.StreamingData.StStat);
@@ -332,6 +344,9 @@ int sceCdStStop(void)
 
 int sceCdStPause(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_pause++;
+#endif
     int OldState;
 
     DPRINTF("StPause called. Stat: 0x%x\n", cdvdman_stat.StreamingData.StStat);
@@ -357,6 +372,9 @@ int sceCdStPause(void)
 
 int sceCdStResume(void)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_resume++;
+#endif
     int OldState;
 
     DPRINTF("StResume called. Stat: 0x%x\n", cdvdman_stat.StreamingData.StStat);
@@ -379,6 +397,9 @@ int sceCdStResume(void)
 
 int sceCdStSeek(u32 lsn)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_seek++;
+#endif
     DPRINTF("StSeek: %lu\n", lsn);
 
     cdvdman_stat.err = SCECdErNO;
@@ -392,6 +413,9 @@ int sceCdStSeek(u32 lsn)
 
 int sceCdStRead(u32 sectors, u32 *buffer, u32 mode, u32 *error)
 {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    bdm_cdread_api_diag.st_read++;
+#endif
     int SectorsRead, SectorsToRead, result;
     void *ptr;
 
@@ -411,8 +435,12 @@ int sceCdStRead(u32 sectors, u32 *buffer, u32 mode, u32 *error)
                 SectorsRead = ReadSectors(SectorsToRead, ptr);
             //		DPRINTF(", Read: %u\n", SectorsRead);
 
-            if (SectorsRead == 0)
+            if (SectorsRead == 0) {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+                bdm_cdread_api_diag.st_underrun++;
+#endif
                 DPRINTF("StRead: buffer underrun. %u/%lu read.\n", result, sectors);
+            }
 
             result += SectorsRead;
             // if(mode == STMNBLK) break;

@@ -26,6 +26,9 @@ extern struct irx_export_table _exp_dev9;
 
 // reader function interface, raw reader impementation by default
 int DeviceReadSectorsCached(u32 sector, void *buffer, unsigned int count);
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG) && !defined(USE_BDM_ATA)
+int DeviceIsUSB(void);
+#endif
 int (*DeviceReadSectorsPtr)(u32 sector, void *buffer, unsigned int count) = &DeviceReadSectors;
 
 // internal functions prototypes
@@ -160,6 +163,7 @@ static u32 bdm_cdread_diag_error_sequence;
 static u32 bdm_cdread_diag_error_lba;
 static u32 bdm_cdread_diag_error_sectors;
 static u32 bdm_cdread_diag_signature;
+struct bdm_cdread_api_diag bdm_cdread_api_diag;
 struct bdm_cdread_diag_timing {
     u32 sequence;
     u32 submit;
@@ -295,10 +299,22 @@ int DeviceReadSectorsCached(u32 lsn, void *buffer, unsigned int sectors)
 {
     if (sectors < MAX_SECTOR_CACHE) { // if MAX_SECTOR_CACHE is 0 then it will act as disabled and passthrough
         if (cur_sector == 0xFFFFFFFF || lsn < cur_sector || (lsn - cur_sector) + sectors > MAX_SECTOR_CACHE) {
-            int res = DeviceReadSectors(lsn, sector_cache, MAX_SECTOR_CACHE);
-            if (res != SCECdErNO)
+            int res;
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+            bdm_cdread_api_diag.prefetch_fill++;
+#endif
+            res = DeviceReadSectors(lsn, sector_cache, MAX_SECTOR_CACHE);
+            if (res != SCECdErNO) {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+                bdm_cdread_api_diag.prefetch_fail++;
+#endif
                 return res; // 读失败
+            }
             cur_sector = lsn;
+        } else {
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+            bdm_cdread_api_diag.prefetch_hit++;
+#endif
         }
         int pos = lsn - cur_sector;
         if (pos >= 0) {
@@ -393,6 +409,18 @@ static int ProbeZSO(u8 *buffer)
         // redirect sector reader
         DeviceReadSectorsPtr = &DeviceReadSectorsCompressed;
     }
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG) && !defined(USE_BDM_ATA)
+    else if (DeviceIsUSB()) {
+        /* 实验：把 CRI 的连续 8 扇区请求合并为 64 扇区 USB 传输。 */
+        sector_cache = AllocSysMemory(ALLOC_FIRST, 64 * 2048, NULL);
+        if (sector_cache != NULL) {
+            MAX_SECTOR_CACHE = 64;
+            cur_sector = 0xFFFFFFFF;
+            DeviceReadSectorsPtr = &DeviceReadSectorsCached;
+            printf("BDM_USB_PREFETCH sectors=64\n");
+        }
+    }
+#endif
     return 1;
 }
 
@@ -956,6 +984,12 @@ sceCdCBFunc sceCdCallback(sceCdCBFunc func)
     int oldstate;
     void *old_cb;
 
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+    if (func != NULL)
+        bdm_cdread_api_diag.callback_set++;
+    else
+        bdm_cdread_api_diag.callback_clear++;
+#endif
     DPRINTF("sceCdCallback %p\n", func);
 
     if (sceCdSync(1))
@@ -1403,6 +1437,7 @@ static void cdvdman_diag_watch_Thread(void *args)
 static void bdm_cdread_diag_watch_Thread(void *args)
 {
     u32 last_sequence = 0, reported_sequence = 0, last_timing_report = 0;
+    struct bdm_cdread_api_diag reported_api = {0};
     u8 last_phase = 0, reported_phase = 0, stable_seconds = 0;
 
     (void)args;
@@ -1414,6 +1449,7 @@ static void bdm_cdread_diag_watch_Thread(void *args)
         u32 errors, error_sequence, error_lba, error_sectors;
         struct cdread_diag_sample history[CDREAD_DIAG_HISTORY];
         struct bdm_cdread_diag_timing timing[CDREAD_DIAG_HISTORY];
+        struct bdm_cdread_api_diag api;
         u8 phase, busy, sync, result, last_error, history_head;
         int i;
 
@@ -1438,8 +1474,18 @@ static void bdm_cdread_diag_watch_Thread(void *args)
             history[i] = bdm_cdread_diag_history[i];
             timing[i] = bdm_cdread_diag_timing[i];
         }
+        memcpy(&api, &bdm_cdread_api_diag, sizeof(api));
         phase = busy ? 1 : (sync ? 2 : (sequence != 0 ? 3 : 0));
         CpuResumeIntr(OldState);
+
+        if (memcmp(&api, &reported_api, sizeof(api)) != 0) {
+            printf("BDM_CRI_API sync=%lu sync_busy=%lu geterr=%lu cb_set=%lu cb_clear=%lu rejected=%lu st_init=%lu st_start=%lu st_stat=%lu st_stop=%lu st_pause=%lu st_resume=%lu st_seek=%lu st_read=%lu st_underrun=%lu pf_hit=%lu pf_fill=%lu pf_fail=%lu\n",
+                   api.sync_calls, api.sync_busy, api.geterror_calls, api.callback_set, api.callback_clear,
+                   api.read_rejected, api.st_init, api.st_start, api.st_stat, api.st_stop,
+                   api.st_pause, api.st_resume, api.st_seek, api.st_read, api.st_underrun,
+                   api.prefetch_hit, api.prefetch_fill, api.prefetch_fail);
+            reported_api = api;
+        }
 
         /* 连续读取时每至少 32 笔报告一次最新时序，监视线程最多每秒输出一行。 */
         if (completed >= last_timing_report + 32) {

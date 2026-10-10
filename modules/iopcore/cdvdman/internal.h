@@ -136,6 +136,30 @@ extern int cdvdman_searchfilesema;
 extern cdvdman_status_t cdvdman_stat;
 
 extern unsigned char sync_flag;
+
+#if defined(BDM_DRIVER) && defined(__CDREAD_DIAG)
+struct bdm_cdread_api_diag {
+    volatile u32 sync_calls;
+    volatile u32 sync_busy;
+    volatile u32 geterror_calls;
+    volatile u32 callback_set;
+    volatile u32 callback_clear;
+    volatile u32 read_rejected;
+    volatile u32 st_init;
+    volatile u32 st_start;
+    volatile u32 st_stat;
+    volatile u32 st_stop;
+    volatile u32 st_pause;
+    volatile u32 st_resume;
+    volatile u32 st_seek;
+    volatile u32 st_read;
+    volatile u32 st_underrun;
+    volatile u32 prefetch_hit;
+    volatile u32 prefetch_fill;
+    volatile u32 prefetch_fail;
+};
+extern struct bdm_cdread_api_diag bdm_cdread_api_diag;
+#endif
 extern unsigned char cdvdman_cdinited;
 extern u32 mediaLsnCount;
 
