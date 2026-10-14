@@ -269,7 +269,6 @@ void bdmInit(item_list_t *itemList)
     pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
     pDeviceData->massDeviceIndex = -1;
     pDeviceData->DeviceRemoved = 0;
-    pDeviceData->ListScanPending = 0;
     configGetInt(configGetByType(CONFIG_OPL), "usb_frames_delay", &itemList->delay);
     itemList->enabled = 1;
 }
@@ -391,27 +390,19 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     return result;
 }
 
-static int bdmListScanFailed(bdm_device_data_t *pDeviceData)
+static int bdmProbeISODirectory(const char *path)
 {
-    // 菜单本轮仍可重建旧列表；单独标记未完成，避免旧数量被当成启动就绪。
-    pDeviceData->ListScanPending = 1;
-    pDeviceData->bdmDeviceTick = -1;
-    return pDeviceData->bdmGameCount > 0 ? pDeviceData->bdmGameCount : 0;
-}
+    struct stat st;
+    int dir;
 
-static int bdmRootDeviceState(const bdm_device_data_t *pDeviceData)
-{
-    usbmass_bd_info_t devices[USBMASS_BD_MAX_DEVICES];
-    int deviceCount = fileXioDevctl("mass:", USBMASS_DEVCTL_GET_BD_LIST, NULL, 0, devices, sizeof(devices));
+    // 已确认是目录时省去预检的句柄；其余情况仍用原来的 dopen 返回码判错。
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode))
+        return 0;
 
-    if (deviceCount < 0 || deviceCount > USBMASS_BD_MAX_DEVICES)
-        return -1;
-    for (int i = 0; i < deviceCount; i++) {
-        if (!strcmp(devices[i].name, pDeviceData->bdmDriver) &&
-            devices[i].devNr == (unsigned int)pDeviceData->massDeviceIndex)
-            return 1;
-    }
-    return 0;
+    dir = fileXioDopen(path);
+    if (dir >= 0)
+        fileXioDclose(dir);
+    return dir < 0 ? dir : 0;
 }
 
 static int bdmUpdateGameList(item_list_t *itemList)
@@ -434,14 +425,12 @@ static int bdmUpdateGameList(item_list_t *itemList)
             pDeviceData->ThemesLoaded = 0;
             pDeviceData->LanguagesLoaded = 0;
             pDeviceData->DeviceRemoved = 0;
-            pDeviceData->ListScanPending = 0;
             return 0;
         }
 
         // 已拔出的空页：不扫列表
         if (pDeviceData->bdmPrefix[0] == '\0') {
             pDeviceData->bdmGameCount = 0;
-            pDeviceData->ListScanPending = 0;
             return 0;
         }
 
@@ -460,67 +449,45 @@ static int bdmUpdateGameList(item_list_t *itemList)
         // 已加载的设备，没开就返回0，开了就返回生成列表后的游戏数量（只有USB会走进已加载但没开的这个分支条件）
         if (!bdmDeviceOn) {
             pDeviceData->bdmGameCount = -1;
-            pDeviceData->ListScanPending = 0;
             return 0;
         } else {
-            char prefixPath[sizeof(pDeviceData->bdmPrefix) + 2];
-            size_t length = strlen(pDeviceData->bdmPrefix);
-            iox_stat_t prefixStat;
+            enum { BDMFS_NO_PATH = -5 };
+            char isoPath[256];
+            int rootDir, cdDir, dvdDir;
 
-            // 原始 RPC 不会补 massN: 后的 /；先还原与 newlib 路径相同的配置目录。
-            strcpy(prefixPath, pDeviceData->bdmPrefix);
-            while (length > 0 && prefixPath[length - 1] == '/')
-                prefixPath[--length] = '\0';
-            char *colon = strchr(prefixPath, ':');
-            if (colon != NULL && colon[1] != '/') {
-                memmove(colon + 2, colon + 1, strlen(colon + 1) + 1);
-                colon[1] = '/';
+            // 原有根目录就绪判断对所有 BDM 类型生效；MX4SIO 仍需实际读取一次。
+            rootDir = fileXioDopen(pDeviceData->bdmPrefix);
+            if (rootDir < 0) {
+                pDeviceData->bdmGameCount = -1;
+                return 0;
             }
-            for (char *p = prefixPath; *p != '\0'; p++) {
-                if (*p == '\\')
-                    *p = '/';
-            }
-            if (fileXioGetStat(prefixPath, &prefixStat) < 0 || !FIO_S_ISDIR(prefixStat.mode))
-                return bdmListScanFailed(pDeviceData);
 
-            // MX4SIO needs one real root read to distinguish an empty device
-            // from a drive that has not finished mounting.  Do not probe CD
-            // and DVD with extra dopen/dclose pairs here: sbReadList() performs
-            // the same existence check without those duplicate BDM handles.
             if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                int rootDir = fileXioDopen(pDeviceData->bdmPrefix);
-                if (rootDir < 0)
-                    return bdmListScanFailed(pDeviceData);
-
                 iox_dirent_t dirent;
+
                 // MX4SIO根目录为空时，继续保持未完成状态，等待下一次扫描。
                 if (fileXioDread(rootDir, &dirent) <= 0) {
                     fileXioDclose(rootDir);
-                    return bdmListScanFailed(pDeviceData);
+                    pDeviceData->bdmGameCount = -1;
+                    return 0;
                 }
-                if (fileXioDclose(rootDir) < 0)
-                    return bdmListScanFailed(pDeviceData);
+            }
+            fileXioDclose(rootDir);
+
+            snprintf(isoPath, sizeof(isoPath), "%sCD", pDeviceData->bdmPrefix);
+            cdDir = bdmProbeISODirectory(isoPath);
+            snprintf(isoPath, sizeof(isoPath), "%sDVD", pDeviceData->bdmPrefix);
+            dvdDir = bdmProbeISODirectory(isoPath);
+
+            // 保留原有“非缺失错误则保持 -1”的判定，只减少成功预检的句柄开关。
+            if ((cdDir < 0 && cdDir != BDMFS_NO_PATH) ||
+                (dvdDir < 0 && dvdDir != BDMFS_NO_PATH)) {
+                pDeviceData->bdmGameCount = -1;
+                return 0;
             }
 
-            art_buckets_t buckets;
-            // 分桶在列表初始化时探测；出错时保留旧分桶并等待下次重试。
-            if (sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets) < 0)
-                return bdmListScanFailed(pDeviceData);
-
             int result = sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
-            if (result < 0)
-                return bdmListScanFailed(pDeviceData);
 
-            if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                artBuckets_USB = buckets;
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                artBuckets_ILINK = buckets;
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                artBuckets_SDC = buckets;
-            else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                artBuckets_ATA = buckets;
-
-            pDeviceData->ListScanPending = 0;
             // 游戏列表生成完成后，再标记对应的BDM设备已完成初始化。
             if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                 usbFound = 1;
@@ -1259,14 +1226,8 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
-    if (dir < 0 && discoveryOnly) {
-        // 已识别设备的根目录暂时打不开时，启动阶段也不能误认为它已移除。
-        if (pDeviceData->bdmPrefix[0] != '\0' && bdmRootDeviceState(pDeviceData) != 0) {
-            bdmListScanFailed(pDeviceData);
-            return pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN;
-        }
+    if (dir < 0 && discoveryOnly)
         return 0;
-    }
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0) {
@@ -1300,6 +1261,21 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
             else
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
+
+            // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
+            if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
+                art_buckets_t buckets;
+
+                sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
+                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+                    artBuckets_USB = buckets;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+                    artBuckets_ILINK = buckets;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+                    artBuckets_SDC = buckets;
+                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+                    artBuckets_ATA = buckets;
+            }
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.
             if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
@@ -1343,13 +1319,13 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             if (itemList->owner != NULL) {
                 // 设备初始化后，开关从关闭到开启
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB) {
-                    result = (visible && (pDeviceData->bdmGameCount == -1 || pDeviceData->ListScanPending));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK) {
-                    result = (visible && (pDeviceData->bdmGameCount == -1 || pDeviceData->ListScanPending));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC) {
-                    result = (visible && (pDeviceData->bdmGameCount == -1 || pDeviceData->ListScanPending));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
-                    result = (visible && (pDeviceData->bdmGameCount == -1 || pDeviceData->ListScanPending));
+                    result = (visible && (pDeviceData->bdmGameCount == -1));
                 } else {
                     result = 0;
                 }
@@ -1359,13 +1335,8 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             return result;
         }
     } else if (dir < 0 && (visible == 1 || (bdmKeepPlaceholder && itemList->mode == 0))) {
-        // 目录句柄耗尽或暂时性读错并不等于拔盘；仅在设备列表确认消失后清除旧游戏。
+        // 如果是真实设备被移除，才走移除路径，播放移除音效等
         if (pDeviceData->bdmPrefix[0] != '\0') {
-            if (bdmRootDeviceState(pDeviceData) != 0) {
-                bdmListScanFailed(pDeviceData);
-                return 0;
-            }
-
             LOG("Mass device: %d (%d) disconnected\n", itemList->mode, pDeviceData->massDeviceIndex);
             pDeviceData->DeviceRemoved = 1;
             return -1;

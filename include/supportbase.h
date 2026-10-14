@@ -75,8 +75,7 @@ typedef struct
     unsigned char hasGAMES;
 } art_buckets_t;
 
-/* 返回负值时保留原分桶，调用方可稍后重试。 */
-int sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets);
+void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets);
 void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
                          const art_buckets_t *buckets, const char *folder, int isRelative,
                          const char *value, const char *suffix);

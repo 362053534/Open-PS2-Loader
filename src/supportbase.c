@@ -16,7 +16,6 @@
 #include "pops_legacy_id_map.h"
 
 #include <dirent.h>
-#include <errno.h>
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioMount("iso:", ***), fileXioUmount("iso:")
@@ -43,93 +42,6 @@ struct txt_info
     char preModiTime[6];
     u32 preTxtFileSize;
 };
-
-static void sbFreeGameNodes(struct game_list_t *head)
-{
-    while (head != NULL) {
-        struct game_list_t *next = head->next;
-        free(head);
-        head = next;
-    }
-}
-
-static int sbIsMassPath(const char *path)
-{
-    return strncmp(path, "mass", 4) == 0 &&
-           (path[4] == ':' || (path[4] >= '0' && path[4] <= '9' && path[5] == ':'));
-}
-
-// fileXioGetStat 返回 IOP 原始错误码；仅 mass: 使用 FatFs 的 FR_NO_FILE/FR_NO_PATH。
-static int sbPathState(const char *path, int directory)
-{
-    enum { BDM_FR_NO_FILE = 4, BDM_FR_NO_PATH = 5 };
-    char statPath[256];
-    const char *colon = strchr(path, ':');
-    size_t length = strlen(path);
-    int addSlash = colon != NULL && colon[1] != '/' && colon[1] != '\\';
-    iox_stat_t st;
-    int result;
-
-    // 直接 RPC 不会像 newlib stat 一样补设备名后的 / 或规范化 SMB 的分隔符。
-    if (length + addSlash >= sizeof(statPath))
-        return -ENAMETOOLONG;
-    if (addSlash) {
-        size_t driveLength = colon - path + 1;
-        memcpy(statPath, path, driveLength);
-        statPath[driveLength] = '/';
-        strcpy(statPath + driveLength + 1, colon + 1);
-    } else {
-        strcpy(statPath, path);
-    }
-    for (char *p = statPath; *p != '\0'; p++) {
-        if (*p == '\\')
-            *p = '/';
-    }
-
-    result = fileXioGetStat(statPath, &st);
-    if (result >= 0)
-        return !directory || FIO_S_ISDIR(st.mode);
-
-    if (sbIsMassPath(path)) {
-        if (result == -BDM_FR_NO_FILE || result == -BDM_FR_NO_PATH)
-            return 0;
-    } else if (result == -ENOENT || result == -ENOTDIR) {
-        return 0;
-    }
-
-    return result;
-}
-
-static int sbISODirectoryState(const char *prefix, const char *name, char *path, size_t pathSize)
-{
-    int result;
-
-    snprintf(path, pathSize, "%s%s", prefix, name);
-    result = sbPathState(path, 1);
-    if (result != 0 || sbIsMassPath(prefix))
-        return result;
-
-    // 非 FatFs 后端可能区分大小写；只在确认大写路径缺失时尝试小写目录。
-    snprintf(path, pathSize, "%s%s", prefix, strcmp(name, "CD") == 0 ? "cd" : "dvd");
-    return sbPathState(path, 1);
-}
-
-static int sbMassPrefixReady(const char *prefix)
-{
-    char path[256];
-    size_t length = strlen(prefix);
-    int state;
-
-    if (length >= sizeof(path))
-        return -ENAMETOOLONG;
-    strcpy(path, prefix);
-    while (length > 0 && path[length - 1] == '/')
-        path[--length] = '\0';
-    state = sbPathState(path, 1);
-    if (state == 1)
-        return 1;
-    return state < 0 ? state : -EIO;
-}
 
 int sbIsSameSize(const char *prefix, int prevSize)
 {
@@ -391,9 +303,9 @@ static int queryISOGameListCache(const struct game_cache_list *cache, base_game_
 }
 
 static int _txtFileRebuilded = 0;
-static int scanForISO(const char *path, char type, struct game_list_t **glist, FILE **pFile, const char *txtPath, int txtFileChanged, u32 txtFileSize)
+static int scanForISO(char *path, char type, struct game_list_t **glist, FILE **pFile, const char *txtPath, int txtFileChanged, u32 txtFileSize)
 {
-    int count = 0, result = 0;
+    int count = 0;
     struct game_cache_list cache = {0, NULL};
     base_game_info_t cachedGInfo;
     char fullpath[256];
@@ -416,28 +328,29 @@ static int scanForISO(const char *path, char type, struct game_list_t **glist, F
 
     char fullName[256];
 
-    // 预检通过后若仍无法打开目录，应重试而不是把旧游戏列表替换为空。
     dir = opendir(path);
     if (!dir) {
-        freeISOGameListCache(&cache);
-        return -EIO;
+        size_t pathLen = strlen(path);
+
+        // 部分区分大小写的文件系统使用小写目录名，扫描失败时仅回退到约定的小写形式。
+        if (type == SCECdPS2CD && pathLen >= 2) {
+            path[pathLen - 2] = 'c';
+            path[pathLen - 1] = 'd';
+        } else if (type == SCECdPS2DVD && pathLen >= 3) {
+            path[pathLen - 3] = 'd';
+            path[pathLen - 2] = 'v';
+            path[pathLen - 1] = 'd';
+        }
+        dir = opendir(path);
     }
 
-    {
+    if (dir) {
         size_t base_path_len = strlen(path);
         strncpy(fullpath, path, base_path_len + 1);
         fullpath[base_path_len] = (path[0] == 's' ? '\\' : '/');
 
         char indexNameBuffer[256];
-        for (;;) {
-            // readdir 的 NULL 同时表示结束和失败；每次调用前清掉旧 errno。
-            errno = 0;
-            dirent = readdir(dir);
-            if (dirent == NULL) {
-                if (errno != 0)
-                    result = -EIO;
-                break;
-            }
+        while ((dirent = readdir(dir)) != NULL) {
             FILE *file = pFile ? *pFile : NULL;
             skipTxtScan = 0;   // 默认每次循环都会扫描txt文件
             int NameLen;
@@ -449,10 +362,8 @@ static int scanForISO(const char *path, char type, struct game_list_t **glist, F
             strcpy(fullpath + base_path_len + 1, dirent->d_name);
 
             struct game_list_t *next = malloc(sizeof(struct game_list_t));
-            if (!next) {
-                result = -ENOMEM;
-                break;
-            }
+            if (!next)
+                break; // Out of memory
 
             next->next = *glist;
             *glist = next;
@@ -650,19 +561,7 @@ static int scanForISO(const char *path, char type, struct game_list_t **glist, F
         //fprintf(debugFile, "路径：%s\r\n\r\n", fullpath);
         //fclose(debugFile);
 
-        if (closedir(dir) != 0 && result >= 0)
-            result = -EIO;
-    }
-
-    // BDM/FatFs 的 dread 可能把读取错误当作目录结束；关句柄后再确认设备可访问。
-    if (result >= 0) {
-        int directoryState = sbPathState(path, 1);
-        if (directoryState != 1)
-            result = directoryState < 0 ? directoryState : -EIO;
-    }
-    if (result < 0) {
-        freeISOGameListCache(&cache);
-        return result;
+        closedir(dir);
     }
 
     if (cacheLoaded) {
@@ -675,9 +574,22 @@ static int scanForISO(const char *path, char type, struct game_list_t **glist, F
     return count;
 }
 
-static int sbReadListScan(base_game_info_t **list, const char *prefix, const char *cdPath, const char *dvdPath,
-                          int ulExpected, int *fsize, int *gamecount)
+int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount)
 {
+    free(*list);
+    *list = NULL;
+    *fsize = -1;
+    *gamecount = 0;
+    // 保持原有的双目录缺失时跳过扫描；只用元数据替代预检的目录开关句柄。
+    char isoPath[256];
+    struct stat isoStat;
+    snprintf(isoPath, sizeof(isoPath), "%sCD", prefix);
+    if (stat(isoPath, &isoStat) != 0 || !S_ISDIR(isoStat.st_mode)) {
+        snprintf(isoPath, sizeof(isoPath), "%sDVD", prefix);
+        if (stat(isoPath, &isoStat) != 0 || !S_ISDIR(isoStat.st_mode))
+            return 0;
+    }
+
     if (gTxtRename) {
         // TXT相关变量
         int forceUpdateCache = 0;
@@ -961,38 +873,27 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
         // temporary storage for the game names
         struct game_list_t *dlist_head = NULL;
 
-        count = 0;
-        if (cdPath != NULL) {
-            result = scanForISO(cdPath, SCECdPS2CD, &dlist_head, &file, txtPath, txtFileChanged, curTxtFileSize);
-            if (result < 0)
-                goto txt_scan_error;
-            count += result;
-        }
-        if (dvdPath != NULL) {
-            result = scanForISO(dvdPath, SCECdPS2DVD, &dlist_head, &file, txtPath, txtFileChanged, curTxtFileSize);
-            if (result < 0)
-                goto txt_scan_error;
-            count += result;
+        // count iso games in "cd" directory
+        snprintf(path, sizeof(path), "%sCD", prefix);
+        count = scanForISO(path, SCECdPS2CD, &dlist_head, &file, txtPath, txtFileChanged, curTxtFileSize);
+
+        // count iso games in "dvd" directory
+        snprintf(path, sizeof(path), "%sDVD", prefix);
+        if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, &file, txtPath, txtFileChanged, curTxtFileSize)) >= 0) {
+            count = count < 0 ? result : count + result;
         }
 
         // count and process games in ul.cfg
         snprintf(path, sizeof(path), "%sul.cfg", prefix);
-        fd = ulExpected ? openFile(path, O_RDONLY) : -1;
-        if (ulExpected && fd < 0) {
-            result = -EIO;
-            goto txt_scan_error;
-        }
+        fd = openFile(path, O_RDONLY);
         if (fd >= 0) {
             USBExtreme_game_entry_t GameEntry;
 
+            if (count < 0)
+                count = 0;
             size = getFileSize(fd);
-            if (size < 0 || size % sizeof(GameEntry) != 0) {
-                close(fd);
-                result = -EIO;
-                goto txt_scan_error;
-            }
             *fsize = size;
-            count += size / sizeof(GameEntry);
+            count += size / sizeof(USBExtreme_game_entry_t);
 
             if (count > 0) {
                 if ((*list = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count)) != NULL) {
@@ -1001,13 +902,9 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
                     while (size > 0) {
                         base_game_info_t *g = &(*list)[id++];
 
-                        // 读取中断时不发布已截断的列表。
-                        if (read(fd, &GameEntry, sizeof(GameEntry)) != sizeof(GameEntry)) {
-                            close(fd);
-                            result = -EIO;
-                            goto txt_scan_error;
-                        }
-                        size -= sizeof(GameEntry);
+                        // populate game entry in list even if entry corrupted
+                        read(fd, &GameEntry, sizeof(USBExtreme_game_entry_t));
+                        size -= sizeof(USBExtreme_game_entry_t);
 
                         // to ensure no leaks happen, we copy manually and pad the strings
                         memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
@@ -1025,27 +922,19 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
                         struct dirent *dir;
                         snprintf(path, sizeof(path), "%s", prefix);
                         // 打开当前目录
-                        d = opendir(path);
-                        if (d == NULL) {
-                            close(fd);
-                            result = -EIO;
-                            goto txt_scan_error;
-                        }
-                        // char str1[12];
-                        // strncpy(str1, &dir->d_name[12], 11);
-                        // str1[11] = '\0';
-                        while ((dir = readdir(d)) != NULL) {
-                            if (strncmp(&dir->d_name[12], g->startup, 11) == 0) {
-                                memcpy(g->crc32name, &dir->d_name[3], 8);
-                                g->crc32name[8] = '\0';
-                                break;
+                        if ((d = opendir(path)) != NULL) {
+                            // char str1[12];
+                            // strncpy(str1, &dir->d_name[12], 11);
+                            // str1[11] = '\0';
+                            while ((dir = readdir(d)) != NULL) {
+                                if (strncmp(&dir->d_name[12], g->startup, 11) == 0) {
+                                    memcpy(g->crc32name, &dir->d_name[3], 8);
+                                    g->crc32name[8] = '\0';
+                                    break;
+                                }
                             }
                         }
-                        if (closedir(d) != 0) {
-                            close(fd);
-                            result = -EIO;
-                            goto txt_scan_error;
-                        }
+                        closedir(d); // 关闭目录流
                         // debug crc32name
                         // snprintf(path, 256, "%sul.%s.%s.%s", prefix, g->crc32name, g->startup, "00");
                         // sprintf(g->name, "%s", path);
@@ -1072,11 +961,6 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
             close(fd);
         } else if (count > 0) {
             *list = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count);
-        }
-
-        if (count > 0 && *list == NULL) {
-            result = -ENOMEM;
-            goto txt_scan_error;
         }
 
         if (*list != NULL) {
@@ -1131,14 +1015,6 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
         }
 
         return count;
-
-    txt_scan_error:
-        if (file != NULL)
-            fclose(file);
-        sbFreeGameNodes(dlist_head);
-        free(*list);
-        *list = NULL;
-        return result;
     } else {
         int fd, size, id = 0, result;
         int count;
@@ -1147,38 +1023,27 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
         // temporary storage for the game names
         struct game_list_t *dlist_head = NULL;
 
-        count = 0;
-        if (cdPath != NULL) {
-            result = scanForISO(cdPath, SCECdPS2CD, &dlist_head, NULL, NULL, 0, 1);
-            if (result < 0)
-                goto scan_error;
-            count += result;
-        }
-        if (dvdPath != NULL) {
-            result = scanForISO(dvdPath, SCECdPS2DVD, &dlist_head, NULL, NULL, 0, 1);
-            if (result < 0)
-                goto scan_error;
-            count += result;
+        // count iso games in "cd" directory
+        snprintf(path, sizeof(path), "%sCD", prefix);
+        count = scanForISO(path, SCECdPS2CD, &dlist_head, NULL, NULL, 0, 1);
+
+        // count iso games in "dvd" directory
+        snprintf(path, sizeof(path), "%sDVD", prefix);
+        if ((result = scanForISO(path, SCECdPS2DVD, &dlist_head, NULL, NULL, 0, 1)) >= 0) {
+            count = count < 0 ? result : count + result;
         }
 
         // count and process games in ul.cfg
         snprintf(path, sizeof(path), "%sul.cfg", prefix);
-        fd = ulExpected ? openFile(path, O_RDONLY) : -1;
-        if (ulExpected && fd < 0) {
-            result = -EIO;
-            goto scan_error;
-        }
+        fd = openFile(path, O_RDONLY);
         if (fd >= 0) {
             USBExtreme_game_entry_t GameEntry;
 
+            if (count < 0)
+                count = 0;
             size = getFileSize(fd);
-            if (size < 0 || size % sizeof(GameEntry) != 0) {
-                close(fd);
-                result = -EIO;
-                goto scan_error;
-            }
             *fsize = size;
-            count += size / sizeof(GameEntry);
+            count += size / sizeof(USBExtreme_game_entry_t);
 
             if (count > 0) {
                 if ((*list = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count)) != NULL) {
@@ -1187,13 +1052,9 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
                     while (size > 0) {
                         base_game_info_t *g = &(*list)[id++];
 
-                        // 读取中断时不发布已截断的列表。
-                        if (read(fd, &GameEntry, sizeof(GameEntry)) != sizeof(GameEntry)) {
-                            close(fd);
-                            result = -EIO;
-                            goto scan_error;
-                        }
-                        size -= sizeof(GameEntry);
+                        // populate game entry in list even if entry corrupted
+                        read(fd, &GameEntry, sizeof(USBExtreme_game_entry_t));
+                        size -= sizeof(USBExtreme_game_entry_t);
 
                         // to ensure no leaks happen, we copy manually and pad the strings
                         memcpy(g->name, GameEntry.name, UL_GAME_NAME_MAX);
@@ -1211,27 +1072,19 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
                         struct dirent *dir;
                         snprintf(path, sizeof(path), "%s", prefix);
                         // 打开当前目录
-                        d = opendir(path);
-                        if (d == NULL) {
-                            close(fd);
-                            result = -EIO;
-                            goto scan_error;
-                        }
-                        // char str1[12];
-                        // strncpy(str1, &dir->d_name[12], 11);
-                        // str1[11] = '\0';
-                        while ((dir = readdir(d)) != NULL) {
-                            if (strncmp(&dir->d_name[12], g->startup, 11) == 0) {
-                                memcpy(g->crc32name, &dir->d_name[3], 8);
-                                g->crc32name[8] = '\0';
-                                break;
+                        if ((d = opendir(path)) != NULL) {
+                            // char str1[12];
+                            // strncpy(str1, &dir->d_name[12], 11);
+                            // str1[11] = '\0';
+                            while ((dir = readdir(d)) != NULL) {
+                                if (strncmp(&dir->d_name[12], g->startup, 11) == 0) {
+                                    memcpy(g->crc32name, &dir->d_name[3], 8);
+                                    g->crc32name[8] = '\0';
+                                    break;
+                                }
                             }
                         }
-                        if (closedir(d) != 0) {
-                            close(fd);
-                            result = -EIO;
-                            goto scan_error;
-                        }
+                        closedir(d); // 关闭目录流
                         // debug crc32name
                         // snprintf(path, 256, "%sul.%s.%s.%s", prefix, g->crc32name, g->startup, "00");
                         // sprintf(g->name, "%s", path);
@@ -1260,11 +1113,6 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
             *list = (base_game_info_t *)malloc(sizeof(base_game_info_t) * count);
         }
 
-        if (count > 0 && *list == NULL) {
-            result = -ENOMEM;
-            goto scan_error;
-        }
-
         if (*list != NULL) {
             // copy the dlist into the list
             while ((id < count) && dlist_head) {
@@ -1282,65 +1130,7 @@ static int sbReadListScan(base_game_info_t **list, const char *prefix, const cha
             *gamecount = count;
 
         return count;
-
-    scan_error:
-        sbFreeGameNodes(dlist_head);
-        free(*list);
-        *list = NULL;
-        return result;
     }
-}
-
-int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount)
-{
-    char cdPath[256], dvdPath[256], ulPath[256];
-    base_game_info_t *newList = NULL;
-    int cdState, dvdState, ulState, newSize = -1, newCount = 0, result;
-
-    // 缺失路径不占目录句柄；任何无法识别的设备错误都不能清空旧列表。
-    cdState = sbISODirectoryState(prefix, "CD", cdPath, sizeof(cdPath));
-    if (cdState < 0)
-        return cdState;
-    dvdState = sbISODirectoryState(prefix, "DVD", dvdPath, sizeof(dvdPath));
-    if (dvdState < 0)
-        return dvdState;
-
-    // 保持原有规则：两个 ISO 目录都不存在时跳过扫描；BDM 先排除父目录断开。
-    if (!cdState && !dvdState) {
-        if (sbIsMassPath(prefix) && (result = sbMassPrefixReady(prefix)) < 0)
-            return result;
-        free(*list);
-        *list = NULL;
-        *fsize = -1;
-        *gamecount = 0;
-        return 0;
-    }
-
-    snprintf(ulPath, sizeof(ulPath), "%sul.cfg", prefix);
-    ulState = sbPathState(ulPath, 0);
-    if (ulState < 0)
-        return ulState;
-
-    // 先在临时存储中完成扫描，失败时保留原指针、大小和数量。
-    result = sbReadListScan(&newList, prefix, cdState ? cdPath : NULL, dvdState ? dvdPath : NULL,
-                            ulState, &newSize, &newCount);
-    if (result < 0) {
-        free(newList);
-        return result;
-    }
-    if (sbIsMassPath(prefix)) {
-        int state = sbMassPrefixReady(prefix);
-        if (state < 0) {
-            free(newList);
-            return state;
-        }
-    }
-
-    free(*list);
-    *list = newList;
-    *fsize = newSize;
-    *gamecount = newCount;
-    return result;
 }
 
 extern int probed_fd;
@@ -2383,50 +2173,42 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
         sbCreateFoldersFromList(path, discImgFolders);
 }
 
-int sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)
+static int sbArtDirExists(const char *path)
 {
-    art_buckets_t found = {0};
+    struct stat st;
+
+    // 与原来的 opendir 探测一样，只把真实目录视为 ART2 分桶。
+    return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)
+{
     char path[128];
-    int state;
 
-    if (!buckets || !prefix || !sep)
-        return -EINVAL;
+    if (!buckets)
+        return;
 
-    // 目录元数据不占用 BDM/FatFs 句柄；探测失败不能把旧分桶当作不存在。
+    memset(buckets, 0, sizeof(*buckets));
+    if (!prefix || !sep)
+        return;
+
     snprintf(path, sizeof(path), "%sART2", prefix);
-    state = sbPathState(path, 1);
-    if (state < 0)
-        return state;
-    if (state == 1) {
-        found.useBuckets = 1;
+    if (!sbArtDirExists(path))
+        return;
 
-        snprintf(path, sizeof(path), "%sART2%sPS2", prefix, sep);
-        state = sbPathState(path, 1);
-        if (state < 0)
-            return state;
-        found.hasPS2 = state;
+    buckets->useBuckets = 1;
 
-        snprintf(path, sizeof(path), "%sART2%sPS1", prefix, sep);
-        state = sbPathState(path, 1);
-        if (state < 0)
-            return state;
-        found.hasPS1 = state;
+    snprintf(path, sizeof(path), "%sART2%sPS2", prefix, sep);
+    buckets->hasPS2 = sbArtDirExists(path);
 
-        snprintf(path, sizeof(path), "%sART2%sAPPS", prefix, sep);
-        state = sbPathState(path, 1);
-        if (state < 0)
-            return state;
-        found.hasAPPS = state;
+    snprintf(path, sizeof(path), "%sART2%sPS1", prefix, sep);
+    buckets->hasPS1 = sbArtDirExists(path);
 
-        snprintf(path, sizeof(path), "%sART2%sGAMES", prefix, sep);
-        state = sbPathState(path, 1);
-        if (state < 0)
-            return state;
-        found.hasGAMES = state;
-    }
+    snprintf(path, sizeof(path), "%sART2%sAPPS", prefix, sep);
+    buckets->hasAPPS = sbArtDirExists(path);
 
-    *buckets = found;
-    return 0;
+    snprintf(path, sizeof(path), "%sART2%sGAMES", prefix, sep);
+    buckets->hasGAMES = sbArtDirExists(path);
 }
 
 void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,

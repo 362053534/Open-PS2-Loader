@@ -41,7 +41,6 @@ typedef struct
     unsigned char LanguagesLoaded;
     unsigned char ForceRefresh;
     unsigned char DeviceRemoved;
-    unsigned char ListScanPending; // 列表扫描失败后保留旧数量，启动就绪与后续重试单独判断
 } bdm_device_data_t;
 
 void bdmInit(item_list_t *itemList);
