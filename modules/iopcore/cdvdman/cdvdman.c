@@ -94,6 +94,10 @@ static u32 cdread_pending_lba;
 static u32 cdread_pending_sectors;
 static u16 cdread_pending_size;
 static void *cdread_pending_buf;
+
+/* 读取完成后短暂保持变形金刚的忙状态，让第二条数据流进入同一个
+ * 活动加待处理批次，同时避免使用 32 扇区 ISO 预读。 */
+#define SMB_BATCH_WAIT_US 5000
 #endif
 
 #ifdef __USE_DEV9
@@ -1013,6 +1017,11 @@ static void cdvdman_cdread_Thread(void *args)
 
         do {
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+
+            /* 不进行预读，仅复现旧缓存形成的批次窗口。 */
+            if (cdread_owner == SMB_READ_OWNER_NORMAL && !cdread_pending &&
+                (cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_BATCH_WAIT))
+                DelayThread(SMB_BATCH_WAIT_US);
 
             CpuSuspendIntr(&OldState);
             /* 提升待处理请求前先冻结完成项身份，否则新请求会偷走旧请求的完成通知。 */
