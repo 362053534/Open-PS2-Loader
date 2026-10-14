@@ -1547,7 +1547,9 @@ static void bdmStartupListUpdate(void *data)
         if (discoveredDevice) {
             bdmDevicePresentMask |= 1 << mode;
             menuDeferredUpdate(data);
-            if (support->itemGetPrefix(support)[0] != '\0' && support->itemGetCount(support) >= 0) {
+            // 旧列表仍显示时，也不能把尚待重试的 BDM 扫描当作初始化完成。
+            if (support->itemGetPrefix(support)[0] != '\0' && support->itemGetCount(support) >= 0 &&
+                pDeviceData && !pDeviceData->ListScanPending) {
                 bdmDeviceListReadyMask |= 1 << mode;
                 bdmDiscoveredDeviceReadyMask |= discoveredDevice;
             } else {
