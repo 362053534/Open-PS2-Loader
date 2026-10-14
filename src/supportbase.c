@@ -580,18 +580,15 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
     *list = NULL;
     *fsize = -1;
     *gamecount = 0;
-    // 如果没有DVD和CD文件夹，直接跳过扫描，避免设备"假存在"而引起的卡死
+    // 保持原有的双目录缺失时跳过扫描；只用元数据替代预检的目录开关句柄。
     char isoPath[256];
-    DIR *isoDir;
+    struct stat isoStat;
     snprintf(isoPath, sizeof(isoPath), "%sCD", prefix);
-    if ((isoDir = opendir(isoPath)) == NULL) {
+    if (stat(isoPath, &isoStat) != 0 || !S_ISDIR(isoStat.st_mode)) {
         snprintf(isoPath, sizeof(isoPath), "%sDVD", prefix);
-        if ((isoDir = opendir(isoPath)) == NULL)
+        if (stat(isoPath, &isoStat) != 0 || !S_ISDIR(isoStat.st_mode))
             return 0;
-        else
-            closedir(isoDir);
-    } else
-        closedir(isoDir);
+    }
 
     if (gTxtRename) {
         // TXT相关变量
@@ -2168,13 +2165,10 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
 
 static int sbArtDirExists(const char *path)
 {
-    DIR *dir = opendir(path);
+    struct stat st;
 
-    if (!dir)
-        return 0;
-
-    closedir(dir);
-    return 1;
+    // 与原来的 opendir 探测一样，只把真实目录视为 ART2 分桶。
+    return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)

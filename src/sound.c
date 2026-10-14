@@ -179,9 +179,9 @@ int sfxInit(int bootSnd)
     sfxInitDefaults();
     audioSetVolume();
 
-    // Check default theme is not current theme
+    // 内置主题（默认/ Coverflow）没有主题目录，跳过自定义音效
     int themeID = thmGetGuiValue();
-    if (themeID != 0) {
+    if (themeID >= THM_NUM_BUILTIN) {
         // Get theme path for sfx
         char *thmPath = thmGetFilePath(themeID);
         snprintf(sound_path, sizeof(sound_path), "%ssound", thmPath);
@@ -334,7 +334,7 @@ static int bgmLoad(void)
     memset(vorbisFile, 0, sizeof(OggVorbis_File));
 
     int themeID = thmGetGuiValue();
-    if (themeID != 0) {
+    if (themeID >= THM_NUM_BUILTIN) {
         char *thmPath = thmGetFilePath(themeID);
         snprintf(bgmPath, sizeof(bgmPath), "%ssound/bgm.ogg", thmPath);
     } else

@@ -17,6 +17,10 @@ typedef struct
 
     int UID;
 
+    // 该槽位的 active Coverflow 请求属于哪一代目标；光标变化时递增，
+    // 过期的 active COV 完成后不再发布到 cache/GS。
+    u32 requestGeneration;
+
     int texFound; // 图片解析完毕，防止解析到一半就进行使用，也许会造成死机？
 } cache_entry_t;
 
@@ -58,6 +62,11 @@ image_cache_t *cacheInitCache(int userId, const char *prefix, int isPrefixRelati
 void cacheDestroyCache(image_cache_t *cache);
 
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId);
+
+// Coverflow 专用：不触碰"单封面"全局状态，可在同一帧为多张封面并行取图/排队加载。
+GSTEXTURE *cacheGetTextureQuiet(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId);
+// Coverflow 翻页动画期间：只查询命中缓存或已有请求，不分配新槽位、不创建新加载请求。
+GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId);
 
 extern int ForceRefreshPrevTexCache;
 extern int forceSkipQr;

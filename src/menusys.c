@@ -425,6 +425,11 @@ void refreshMenuPosition(void)
 
 void submenuRebuildCache(submenu_list_t *submenu)
 {
+    // 重建前先取消仍在队列中的 ART，避免 worker 持有即将释放的 list/startup 指针。
+    // 不在此直接改缓存槽 qr；进行中的请求仍靠代际/UID 与 stale 清槽。
+    if (submenu && submenu->item.cache_id)
+        cacheCancelPendingArtRequests();
+
     while (submenu) {
         if (submenu->item.cache_id)
             free(submenu->item.cache_id);
@@ -483,6 +488,7 @@ submenu_list_t *submenuAppendItem(submenu_list_t **submenu, int icon_id, char *t
 
 static void submenuDestroyItem(submenu_list_t *submenu)
 {
+    // 调用方须已 cacheCancelPendingArtRequests（见 submenuDestroy / RemoveItem）。
     free(submenu->item.cache_id);
     free(submenu->item.cache_uid);
 
@@ -493,6 +499,10 @@ void submenuRemoveItem(submenu_list_t **submenu, int id)
 {
     submenu_list_t *cur = *submenu;
     submenu_list_t *prev = NULL;
+
+    // 释放项指针前取消排队中的 ART 请求。
+    if (*submenu)
+        cacheCancelPendingArtRequests();
 
     while (cur) {
         if (cur->item.id == id) {
@@ -518,6 +528,10 @@ void submenuDestroy(submenu_list_t **submenu)
 {
     // destroy sub menu
     submenu_list_t *cur = *submenu;
+
+    // 整表销毁前取消排队 ART，避免 UAF list/value。
+    if (cur)
+        cacheCancelPendingArtRequests();
 
     while (cur) {
         submenu_list_t *td = cur;
@@ -667,6 +681,18 @@ static void menuPrevH()
     }
 }
 
+static int menuIsCoverflow(void)
+{
+    return thmGetCoverflowJumpCount() > 0;
+}
+
+// Coverflow 标题只有一行，不要在每次导航时刷新字体 atlas。
+// fntRefreshCacheIfPending() 只在上一帧结束且缓存耗尽保留余量后执行刷新。
+static void menuRefreshCoverflowFontCache(void)
+{
+    fntRefreshCacheIfPending();
+}
+
 static void menuFirstPage()
 {
     submenu_list_t *cur = selected_item->item->current;
@@ -674,8 +700,10 @@ static void menuFirstPage()
         if (!cur->prev)
             return;
 
-        // 翻页了才刷新，不翻页不刷新
-        if (selected_item->item->pagestart != selected_item->item->submenu)
+        // 列表主题仍保持原有的整页刷新；Coverflow 只在缓存余量不足时刷新。
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
+        else if (selected_item->item->pagestart != selected_item->item->submenu)
             fntRefreshCache(); // 刷新字模缓存
 
         selected_item->item->current = selected_item->item->submenu;
@@ -701,11 +729,15 @@ static void menuLastPage()
         while (--itms && cur->prev) // and move back to have a full page
             cur = cur->prev;
 
-        // 翻页了才刷新，不翻页不刷新
-        if (selected_item->item->pagestart != cur) {
+        // 列表主题仍保持原有的整页刷新；Coverflow 只在缓存余量不足时刷新。
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
+        else if (selected_item->item->pagestart != cur) {
             fntRefreshCache(); // 刷新字模缓存
             selected_item->item->pagestart = cur;
         }
+        if (menuIsCoverflow())
+            selected_item->item->pagestart = cur;
 
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     }
@@ -716,7 +748,11 @@ static void menuNextV()
     submenu_list_t *cur = selected_item->item->current;
 
     if (cur && cur->next) {
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
         selected_item->item->current = cur->next;
+
+        thmTriggerCoverflowAnim(-1); // 滑动 Coverflow 整排（列表主题下为空操作）
 
         // if the current item is beyond the page start, move the page start one page down
         cur = selected_item->item->pagestart;
@@ -729,10 +765,15 @@ static void menuNextV()
             else
                 cur = cur->next;
 
-        fntRefreshCache(); // 刷新字模缓存
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
+        else
+            fntRefreshCache(); // 刷新字模缓存
         selected_item->item->pagestart = selected_item->item->current;
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to start
+        if (cur && (cur->next || cur->prev))
+            thmTriggerCoverflowAnim(-1);
         menuFirstPage();
     }
 }
@@ -742,24 +783,90 @@ static void menuPrevV()
     submenu_list_t *cur = selected_item->item->current;
 
     if (cur && cur->prev) {
+        if (menuIsCoverflow())
+            menuRefreshCoverflowFontCache();
         selected_item->item->current = cur->prev;
+
+        thmTriggerCoverflowAnim(1); // 滑动 Coverflow 整排（列表主题下为空操作）
 
         // if the current item is on the page start, move the page start one page up
         if (selected_item->item->pagestart == cur) {
             int itms = ((items_list_t *)gTheme->itemsList->extended)->displayedItems + 1; // +1 because the selection will move as well
             while (--itms && selected_item->item->pagestart->prev)
                 selected_item->item->pagestart = selected_item->item->pagestart->prev;
-            if (selected_item->item->pagestart != cur)
-                fntRefreshCache(); // 刷新字模缓存
+            if (selected_item->item->pagestart != cur) {
+                if (menuIsCoverflow())
+                    menuRefreshCoverflowFontCache();
+                else
+                    fntRefreshCache(); // 刷新字模缓存
+            }
         }
         sfxPlay(SFX_CURSOR); // 声音放最后播，不容易死机
     } else { // wrap to end
+        if (cur && (cur->next || cur->prev))
+            thmTriggerCoverflowAnim(1);
         menuLastPage();
     }
 }
 
+// ===== Coverflow 翻页滚动（L1/R1）状态 =====
+// 翻页时 current 会一次性指向目标项；这里仅负责在动画结束前屏蔽其它输入，
+// 不再逐格推进列表或串接多段动画。
+static int gCoverflowPageScrollActive = 0;
+
+// 由 menuHandleInputMain / menuHandleInputInfo 每帧在最前面调用：一次性翻页动画
+// 进行中时屏蔽其它输入。动画结束后恢复普通输入处理。
+static int menuTickCoverflowScroll(void)
+{
+    if (!gCoverflowPageScrollActive)
+        return 0;
+    if (thmCoverflowIsAnimating())
+        return 1;
+
+    gCoverflowPageScrollActive = 0;
+    return 0;
+}
+
 static void menuNextPage()
 {
+    int cfJump = thmGetCoverflowJumpCount();
+
+    if (cfJump > 0) { // ===== Coverflow 主题：一次跳 cfJump 个游戏 =====
+        submenu_list_t *cur = selected_item->item->current;
+        if (!cur || !cur->next) { // 已在最后一项：与单步一致环绕到首页
+            gCoverflowPageScrollActive = 0;
+            menuFirstPage();
+            return;
+        }
+
+        menuRefreshCoverflowFontCache();
+
+        // 先沿当前过滤后的 submenu_list_t 链表计算实际目标，边界不足一页时
+        // 只移动到末项，不把不存在的格数算入动画距离。
+        submenu_list_t *target = cur;
+        int steps = 0;
+        while (steps < cfJump && target->next) {
+            target = target->next;
+            steps++;
+        }
+
+        if (thmCoverflowAnimEnabled()) {
+            // 目标项一次性写入 current，动画从保存的 cur 整段移动到 target。
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
+            thmTriggerCoverflowAnimMulti(-1, steps, cur);
+            gCoverflowPageScrollActive = 1;
+            sfxPlay(SFX_CURSOR);
+        } else {
+            // 动画关闭（主题设置滑动时长为 0）：保持硬切到同一个实际目标。
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
+            sfxPlay(SFX_CURSOR);
+        }
+        return;
+    }
+
+    // ===== 列表主题：原有整页逻辑（以页首 pagestart 为基准）=====
     submenu_list_t *cur = selected_item->item->pagestart;
 
     if (cur && cur->next) {
@@ -791,6 +898,41 @@ static void menuNextPage()
 
 static void menuPrevPage()
 {
+    int cfJump = thmGetCoverflowJumpCount();
+
+    if (cfJump > 0) { // ===== Coverflow 主题：一次跳 cfJump 个游戏 =====
+        submenu_list_t *cur = selected_item->item->current;
+        if (!cur || !cur->prev) { // 已在首项：与单步一致环绕到末页
+            gCoverflowPageScrollActive = 0;
+            menuLastPage();
+            return;
+        }
+
+        menuRefreshCoverflowFontCache();
+
+        // 与 R1 对称：到首项的剩余距离不足一页时，只滚到首项。
+        submenu_list_t *target = cur;
+        int steps = 0;
+        while (steps < cfJump && target->prev) {
+            target = target->prev;
+            steps++;
+        }
+
+        if (thmCoverflowAnimEnabled()) {
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
+            thmTriggerCoverflowAnimMulti(1, steps, cur);
+            gCoverflowPageScrollActive = 1;
+            sfxPlay(SFX_CURSOR);
+        } else {
+            selected_item->item->current = target;
+            selected_item->item->pagestart = target;
+            sfxPlay(SFX_CURSOR);
+        }
+        return;
+    }
+
+    // ===== 列表主题：原有整页逻辑 =====
     submenu_list_t *cur = selected_item->item->pagestart;
 
     // 如果处于首页，就把光标先移动到顶部
@@ -1019,12 +1161,23 @@ static void menuRenderElements(theme_element_t *elem)
 
     WaitSema(menuSemaId);
 
+    // Only Coverflow needs the extra visible-display clipping: its animated outer
+    // covers can intentionally move outside the theme panel. Keep the legacy path
+    // untouched for list themes, including their overscan/background behavior.
+    int coverflowScissor = (gTheme && gTheme->coverflow != NULL);
+    if (coverflowScissor)
+        rmSetScissorDisplay();
+
     while (elem) {
         if (elem->drawElem)
             elem->drawElem(selected_item, selected_item->item->current, itemConfig, elem);
 
         elem = elem->next;
     }
+
+    // Do not leak the Coverflow scissor into other GUI drawing paths.
+    if (coverflowScissor)
+        rmResetScissor();
     SignalSema(menuSemaId);
 }
 
@@ -1042,6 +1195,8 @@ static void menuCheckArtCursorChanged(void)
     }
 
     if (lastArtMenu != currentMenu || lastArtCurrent != current) {
+        // 无论是单步移动还是 L1/R1 翻页，都遵循原有规则取消旧的加载请求；
+        // 翻页只通过增加缓存槽位来保住已经完成加载的封面，不能牺牲请求取消机制。
         cacheCancelPendingArtRequests();
         lastArtMenu = currentMenu;
         lastArtCurrent = current;
@@ -1065,14 +1220,33 @@ void menuRenderMain(void)
 
 void menuHandleInputMain()
 {
+    // Coverflow 翻页滚动进行中：逐格推进滚动，期间屏蔽其它输入避免冲突。
+    if (menuTickCoverflowScroll())
+        return;
+
+    // Coverflow 主题：对调【上下】与【左右】——左右切换封面(游戏)、上下切换分类页签(设备)。
+    // 非 coverflow 主题保持默认映射。切回非 coverflow 主题时 gTheme->coverflow 变为 NULL，
+    // 会自动恢复默认操作，无需任何持久化状态。
     if (getKey(KEY_LEFT)) {
-        menuPrevH();
+        if (gTheme->coverflow)
+            menuPrevV(); // 左 = 上一张封面
+        else
+            menuPrevH();
     } else if (getKey(KEY_RIGHT)) {
-        menuNextH();
+        if (gTheme->coverflow)
+            menuNextV(); // 右 = 下一张封面
+        else
+            menuNextH();
     } else if (getKey(KEY_UP)) {
-        menuPrevV();
+        if (gTheme->coverflow)
+            menuPrevH(); // 上 = 上一个分类页签
+        else
+            menuPrevV();
     } else if (getKey(KEY_DOWN)) {
-        menuNextV();
+        if (gTheme->coverflow)
+            menuNextH(); // 下 = 下一个分类页签
+        else
+            menuNextV();
     } else if (getKeyOn(KEY_CROSS)) {
         selected_item->item->execCross(selected_item->item);
     } else if (getKeyOn(KEY_TRIANGLE)) {
@@ -1126,20 +1300,36 @@ void menuRenderInfo(void)
 
 void menuHandleInputInfo()
 {
+    // Coverflow 翻页滚动进行中：逐格推进滚动，期间屏蔽其它输入避免冲突。
+    if (menuTickCoverflowScroll())
+        return;
+
     if (getKeyOn(KEY_CROSS)) {
         if (gSelectButton == KEY_CIRCLE)
             guiSwitchScreen(GUI_SCREEN_MAIN);
         else
             selected_item->item->execCross(selected_item->item);
     } else if (getKey(KEY_UP)) {
-        menuPrevV();
+        // Coverflow 主题：详情页也对调方向——上/下不做任何事（由左/右切换游戏）。
+        if (!gTheme->coverflow)
+            menuPrevV();
     } else if (getKey(KEY_DOWN)) {
-        menuNextV();
+        if (!gTheme->coverflow)
+            menuNextV();
+    } else if (getKey(KEY_LEFT)) {
+        if (gTheme->coverflow)
+            menuPrevV(); // 左 = 上一款游戏
+    } else if (getKey(KEY_RIGHT)) {
+        if (gTheme->coverflow)
+            menuNextV(); // 右 = 下一款游戏
     } else if (getKeyOn(KEY_CIRCLE)) {
         if (gSelectButton == KEY_CROSS)
             guiSwitchScreen(GUI_SCREEN_MAIN);
         else
             selected_item->item->execCircle(selected_item->item);
+    } else if (gTheme->coverflow) {
+        // Coverflow 主题：详情页不画 Coverflow，翻页动画标志无法结束会锁死全部输入，
+        // 因此详情页禁用 L1/R1 翻页和 L2/R2 跳首/末项；非 Coverflow 主题保持原有操作。
     } else if (getKey(KEY_L1)) {
         menuPrevPage();
     } else if (getKey(KEY_R1)) {

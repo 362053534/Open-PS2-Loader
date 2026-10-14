@@ -28,6 +28,11 @@ extern void *Index_1_png;
 extern void *Index_2_png;
 extern void *Index_3_png;
 extern void *Index_4_png;
+extern void *cf_index_0_png;
+extern void *cf_index_1_png;
+extern void *cf_index_2_png;
+extern void *cf_index_3_png;
+extern void *cf_index_4_png;
 
 extern void *left_png;
 extern void *right_png;
@@ -47,7 +52,7 @@ extern void *R1_png;
 extern void *R2_png;
 extern void *R3_png; */
 
-extern void *background_png;
+extern void *settings_bg_png;
 extern void *alphamask_png;
 extern void *info_png;
 extern void *cover_png;
@@ -102,6 +107,20 @@ extern void *logo_png;
 extern void *case_png;
 extern void *apps_case_png;
 
+// Coverflow(内置主题)专用内置贴图, 对齐 wOPL 的 CF 主题资源
+extern void *plank_png;
+extern void *cf_case_png;
+extern void *cf_apps_case_png;
+// wOPL 风格设备图标(仅 Coverflow 内置主题使用)
+extern void *cf_usb_png;
+extern void *cf_usb_bd_png;
+extern void *cf_ilk_bd_png;
+extern void *cf_m4s_bd_png;
+extern void *cf_hdd_bd_png;
+extern void *cf_hdd_png;
+extern void *cf_eth_png;
+extern void *cf_app_png;
+
 // Not related to screen size, just to limit at some point
 static int maxSize = 720 * 512 * 4;
 
@@ -134,6 +153,12 @@ typedef struct
     int numTrans;
     png_bytep trans;
 } png_texture_t;
+
+typedef struct
+{
+    u8 *data;
+    size_t remaining;
+} tex_read_buffer_t;
 
 //static png_texture_t pngTexture;
 
@@ -172,6 +197,11 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {INDEX_2, "Index_2", &Index_2_png},
     {INDEX_3, "Index_3", &Index_3_png},
     {INDEX_4, "Index_4", &Index_4_png},
+    {CF_INDEX_0, "cf_index_0", &cf_index_0_png},
+    {CF_INDEX_1, "cf_index_1", &cf_index_1_png},
+    {CF_INDEX_2, "cf_index_2", &cf_index_2_png},
+    {CF_INDEX_3, "cf_index_3", &cf_index_3_png},
+    {CF_INDEX_4, "cf_index_4", &cf_index_4_png},
     {LEFT_ICON, "left", &left_png},
     {RIGHT_ICON, "right", &right_png},
     {CROSS_ICON, "cross", &cross_png},
@@ -189,7 +219,7 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {R1_ICON, "R1", &R1_png},
     {R2_ICON, "R2", &R2_png},
     {R3_ICON, "R3", &R3_png}, */
-    {MAIN_BG, "background", &background_png},
+    {SETTINGS_BG, "settings_bg", &settings_bg_png},
     {MAIN_BG_MASK, "alphamask", &alphamask_png},
     {INFO_BG, "info", &info_png},
     {COVER_DEFAULT, "cover", &cover_png},
@@ -241,6 +271,19 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     {LOGO_PICTURE, "logo", &logo_png},
     {CASE_OVERLAY, "case", &case_png},
     {APPS_CASE_OVERLAY, "apps_case", &apps_case_png},
+    // Coverflow(内置主题)专用资源, 对齐 wOPL 的 CF 主题
+    {PLANK_PICTURE, "plank", &plank_png},
+    {CF_CASE_OVERLAY, "cf_case", &cf_case_png},
+    {CF_APPS_CASE_OVERLAY, "cf_apps_case", &cf_apps_case_png},
+    // wOPL 风格设备图标(384x256, 带 BDM/SMB/APA/APPS 标签), 仅 Coverflow 主题
+    {CF_DEV_BDM, "cf_usb", &cf_usb_png},
+    {CF_DEV_USB, "cf_usb_bd", &cf_usb_bd_png},
+    {CF_DEV_ILK, "cf_ilk_bd", &cf_ilk_bd_png},
+    {CF_DEV_M4S, "cf_m4s_bd", &cf_m4s_bd_png},
+    {CF_DEV_HDD_BD, "cf_hdd_bd", &cf_hdd_bd_png},
+    {CF_DEV_HDD, "cf_hdd", &cf_hdd_png},
+    {CF_DEV_ETH, "cf_eth", &cf_eth_png},
+    {CF_DEV_APP, "cf_app", &cf_app_png},
 };
 
 int texLookupInternalTexId(const char *name)
@@ -286,13 +329,76 @@ static void texPrepare(GSTEXTURE *texture)
     texture->Delayed = 1;
 }
 
+// 大型真彩背景在 CT24/CT32 下会独占纹理池的大部分空间。保留原格式
+// 会让 gsKit 在背景、plank、case 和 Coverflow 封面之间反复驱逐/重新上传。
+// CT24 与带 alpha 的 CT32 背景都压缩；CT32 的 alpha 被忽略，全部写成不透明
+// （原来半透明/透明处透出的只是帧清屏黑色）。失败时不破坏原始纹理，调用方仍可按原路径绘制。
+#define TEX_BACKGROUND_COMPACT_THRESHOLD (512 * 1024)
+void texCompactBackground(GSTEXTURE *texture)
+{
+    static const s8 ditherMatrix[16] = {-4, 2, -3, 3, 0, -2, 1, -1,
+                                        -3, 3, -4, 2, 1, -1, 0, -2};
+    u16 *pixels16;
+    u8 *pixels24;
+    size_t pixelCount;
+    size_t size;
+    int bytesPerPixel;
+    int x, y;
+
+    if (!texture || !texture->Mem || (texture->PSM != GS_PSM_CT24 && texture->PSM != GS_PSM_CT32))
+        return;
+    if (gsKit_texture_size(texture->Width, texture->Height, texture->PSM) <= TEX_BACKGROUND_COMPACT_THRESHOLD)
+        return;
+
+    pixelCount = (size_t)texture->Width * texture->Height;
+    size = pixelCount * sizeof(u16);
+    pixels16 = memalign(128, size);
+    if (!pixels16)
+        return;
+
+    // CT24 为 R,G,B；CT32 为 R,G,B,A（A 不读取）。
+    bytesPerPixel = (texture->PSM == GS_PSM_CT32) ? 4 : 3;
+    pixels24 = (u8 *)texture->Mem;
+    for (y = 0; y < texture->Height; y++) {
+        for (x = 0; x < texture->Width; x++) {
+            int index = y * texture->Width + x;
+            int dither = ditherMatrix[(y & 3) * 4 + (x & 3)];
+            int red = pixels24[index * bytesPerPixel + 0] + dither;
+            int green = pixels24[index * bytesPerPixel + 1] + dither;
+            int blue = pixels24[index * bytesPerPixel + 2] + dither;
+
+            if (red < 0) red = 0;
+            if (red > 255) red = 255;
+            if (green < 0) green = 0;
+            if (green > 255) green = 255;
+            if (blue < 0) blue = 0;
+            if (blue > 255) blue = 255;
+
+            // CT16S: opaque A1 B5 G5 R5. A=1 is exact for CT24; for CT32 the
+            // source alpha is dropped on purpose so the whole image stays visible.
+            pixels16[index] = 0x8000 | ((blue >> 3) << 10) |
+                              ((green >> 3) << 5) | (red >> 3);
+        }
+    }
+
+    free(texture->Mem);
+    // GSTEXTURE stores Mem as a u32 pointer even for 16-bit GS formats.
+    texture->Mem = (u32 *)pixels16;
+    texture->PSM = GS_PSM_CT16S;
+}
+
 /// JPG SUPPORT ///////////////////////////////////////////////////////////////////////////////////////
 static int texJpgLoad(GSTEXTURE *texture, const char *filePath)
 {
     texPrepare(texture);
     int result = ERR_BAD_FILE;
 
+    // PNG loads already serialize their device access with fileLockId.  Keep
+    // JPG discovery under the same lock so theme construction on the main
+    // thread cannot race an active BDM/SMB art read in the IO worker.
+    WaitSema(fileLockId);
     jpgData *jpg = jpgFromFilename(filePath, JPG_NORMAL);
+    SignalSema(fileLockId);
     if (jpg) {
         texture->Width = jpg->width;
         texture->Height = jpg->height;
@@ -322,8 +428,15 @@ void texFree(GSTEXTURE *texture)
     }
 }
 
-static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int status, png_texture_t *pngTexture)
+
+static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int status, png_texture_t *pngTexture, GSTEXTURE *texture)
 {
+    // All failure paths must release buffers allocated after texPrepare().
+    // Successful loads pass NULL here because the cache takes ownership of
+    // texture->Mem/Clut after this function returns.
+    if (texture)
+        texFree(texture);
+
     if (pFileBuffer)
         free(pFileBuffer);
 
@@ -338,10 +451,19 @@ static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int 
 
 static void texReadMemFunction(png_structp pngPtr, png_bytep data, png_size_t length)
 {
-    void **PngBufferPtr = png_get_io_ptr(pngPtr);
+    tex_read_buffer_t *readBuffer = (tex_read_buffer_t *)png_get_io_ptr(pngPtr);
 
-    memcpy(data, *PngBufferPtr, length);
-    *PngBufferPtr = (u8 *)(*PngBufferPtr) + length;
+    if (!readBuffer || length > readBuffer->remaining) {
+        // Do not let malformed/truncated files make libpng read past the
+        // compressed file buffer. png_error() transfers control to the
+        // setjmp cleanup path in texLoadAll()/texReadData().
+        png_error(pngPtr, "PNG input buffer exhausted");
+        return;
+    }
+
+    memcpy(data, readBuffer->data, length);
+    readBuffer->data += length;
+    readBuffer->remaining -= length;
 }
 
 static void texReadPixels4(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture)
@@ -434,46 +556,75 @@ static void texReadPixels32(GSTEXTURE *texture, png_bytep *rowPointers, size_t s
     //SignalSema(fileLockId);
 }
 
-static void texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
-                        void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture)
-{
-    int rowBytes = png_get_rowbytes(pngPtr, infoPtr);
-    size_t size = gsKit_texture_size_ee(texture->Width, texture->Height, texture->PSM);
-    texture->Mem = memalign(128, size);
 
-    // failed allocation
-    if (!texture->Mem) {
-        LOG("TEXTURES PngReadData: Failed to allocate %d bytes\n", size);
-        return;
+static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
+                       void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture)
+{
+    png_size_t rowBytes = png_get_rowbytes(pngPtr, infoPtr);
+    size_t size = gsKit_texture_size_ee(texture->Width, texture->Height, texture->PSM);
+    size_t rowsSize;
+    png_bytep *rowPointers;
+    png_bytep allRows;
+
+    if (rowBytes == 0 || texture->Height == 0 || !texPngReadPixels) {
+        LOG("TEXTURES PngReadData: Invalid PNG row data\n");
+        return -1;
     }
 
-    png_bytep *rowPointers = calloc(texture->Height, sizeof(png_bytep));
+    texture->Mem = memalign(128, size);
 
-    png_bytep allRows = malloc(rowBytes * texture->Height);
+    if (!texture->Mem) {
+        LOG("TEXTURES PngReadData: Failed to allocate %u bytes\n", (unsigned int)size);
+        return -1;
+    }
+
+    rowPointers = calloc((size_t)texture->Height, sizeof(*rowPointers));
+    if (!rowPointers) {
+        LOG("TEXTURES PngReadData: Failed to allocate PNG row pointers\n");
+        return -1;
+    }
+
+    rowsSize = (size_t)rowBytes * (size_t)texture->Height;
+    if (rowsSize / (size_t)texture->Height != (size_t)rowBytes) {
+        free(rowPointers);
+        LOG("TEXTURES PngReadData: PNG row buffer size overflow\n");
+        return -1;
+    }
+
+    allRows = malloc(rowsSize);
     if (!allRows) {
         free(rowPointers);
-        LOG("TEXTURES PngReadData: Failed to allocate memory for PNG rows\n");
-        return;
+        LOG("TEXTURES PngReadData: Failed to allocate %u bytes for PNG rows\n", (unsigned int)rowsSize);
+        return -1;
     }
 
     for (int row = 0; row < texture->Height; row++)
-        rowPointers[row] = &allRows[row * rowBytes];
+        rowPointers[row] = &allRows[(size_t)row * rowBytes];
+
+    // libpng reports malformed/truncated data through longjmp. Catch it here
+    // so the temporary row buffers are released before returning to texLoadAll.
+    if (setjmp(png_jmpbuf(pngPtr))) {
+        free(allRows);
+        free(rowPointers);
+        LOG("TEXTURES PngReadData: PNG decode failed\n");
+        return -1;
+    }
 
     png_read_image(pngPtr, rowPointers);
-
     texPngReadPixels(texture, rowPointers, size, pngTexture);
+    png_read_end(pngPtr, NULL);
 
     free(allRows);
     free(rowPointers);
-
-    png_read_end(pngPtr, NULL);
+    return 0;
 }
 
 static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
 {
     texPrepare(texture);
-    void *PngFileBufferPtr = NULL;
+    tex_read_buffer_t readBuffer;
     void *pFileBuffer = NULL;
+    size_t fileBufferSize = 0;
     if (filePath) {
         WaitSema(fileLockId);
         int fd = open(filePath, O_RDONLY);
@@ -483,44 +634,56 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         }
 
         int fileSize = lseek(fd, 0, SEEK_END);
+        if (fileSize <= 0) {
+            close(fd);
+            SignalSema(fileLockId);
+            return ERR_BAD_FILE;
+        }
         lseek(fd, 0, SEEK_SET);
+        fileBufferSize = (size_t)fileSize;
 
-        pFileBuffer = malloc(fileSize);
+        pFileBuffer = malloc(fileBufferSize);
         if (pFileBuffer == NULL) {
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE; // There's no out of memory error...
         }
 
-        if (read(fd, pFileBuffer, fileSize) != fileSize) {
+        ssize_t bytesRead = read(fd, pFileBuffer, fileBufferSize);
+        if (bytesRead != (ssize_t)fileBufferSize) {
             LOG("texLoadAll: failed to read file %s\n", filePath);
             free(pFileBuffer);
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
-        PngFileBufferPtr = pFileBuffer;
+        readBuffer.data = (u8 *)pFileBuffer;
+        readBuffer.remaining = fileBufferSize;
         close(fd);
         SignalSema(fileLockId);
     } else {
         if (texId == -1 || !internalDefault[texId].texture)
             return ERR_BAD_FILE;
 
-        PngFileBufferPtr = internalDefault[texId].texture;
+        // Built-in bin2c assets are trusted and do not expose their size in
+        // this table; external files use the bounded path above.
+        readBuffer.data = (u8 *)internalDefault[texId].texture;
+        readBuffer.remaining = (size_t)-1;
     }
 
     png_structp pngPtr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
     if (!pngPtr)
-        return texEnd(pngPtr, NULL, pFileBuffer, ERR_READ_STRUCT, NULL);
+        return texEnd(pngPtr, NULL, pFileBuffer, ERR_READ_STRUCT, NULL, texture);
 
     png_infop infoPtr = png_create_info_struct(pngPtr);
     if (!infoPtr)
-        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_INFO_STRUCT, NULL);
+        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_INFO_STRUCT, NULL, texture);
 
-    if (setjmp(png_jmpbuf(pngPtr)))
-        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_SET_JMP, NULL);
+    if (setjmp(png_jmpbuf(pngPtr))) {
+        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_SET_JMP, NULL, texture);
+    }
 
-    png_voidp readData = &PngFileBufferPtr;
+    png_voidp readData = &readBuffer;
     png_rw_ptr readFunction = &texReadMemFunction;
     png_set_read_fn(pngPtr, readData, readFunction);
 
@@ -548,6 +711,9 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
 
     png_texture_t *pngTexture = calloc(1, sizeof(png_texture_t));
     void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture);
+    if (!pngTexture)
+        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, NULL, texture);
+
     switch (png_get_color_type(pngPtr, infoPtr)) {
         case PNG_COLOR_TYPE_RGB_ALPHA:
             texture->PSM = GS_PSM_CT32;
@@ -563,38 +729,48 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
             pngTexture->trans = NULL;
             pngTexture->numTrans = 0;
 
-            png_get_PLTE(pngPtr, infoPtr, &pngTexture->palette, &pngTexture->numPalette);
+            if (!png_get_PLTE(pngPtr, infoPtr, &pngTexture->palette, &pngTexture->numPalette))
+                return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
             png_get_tRNS(pngPtr, infoPtr, &pngTexture->trans, &pngTexture->numTrans, NULL);
             texture->ClutPSM = GS_PSM_CT32;
 
             if (bitDepth == 4) {
+                if (pngTexture->numPalette < 1 || pngTexture->numPalette > 16)
+                    return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture, texture);
+
                 texture->PSM = GS_PSM_T4;
                 texture->Clut = memalign(128, gsKit_texture_size_ee(8, 2, GS_PSM_CT32));
+                if (!texture->Clut)
+                    return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
                 memset(texture->Clut, 0, gsKit_texture_size_ee(8, 2, GS_PSM_CT32));
 
                 texPngReadPixels = &texReadPixels4;
             } else if (bitDepth == 8) {
+                if (pngTexture->numPalette < 1 || pngTexture->numPalette > 256)
+                    return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture, texture);
+
                 texture->PSM = GS_PSM_T8;
                 texture->Clut = memalign(128, gsKit_texture_size_ee(16, 16, GS_PSM_CT32));
+                if (!texture->Clut)
+                    return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
                 memset(texture->Clut, 0, gsKit_texture_size_ee(16, 16, GS_PSM_CT32));
 
                 texPngReadPixels = &texReadPixels8;
             } else
-                return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture);
+                return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture, texture);
             break;
         default:
-            return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture);
+            return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DEPTH, pngTexture, texture);
     }
 
-    if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0) {
-        texFree(texture);
+    if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0)
+        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DIMENSION, pngTexture, texture);
 
-        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DIMENSION, pngTexture);
-    }
+    if (texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture) < 0)
+        return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
 
-    texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture);
-
-    return texEnd(pngPtr, infoPtr, pFileBuffer, 0, pngTexture);
+    // Successful loads transfer ownership of texture->Mem/Clut to the caller.
+    return texEnd(pngPtr, infoPtr, pFileBuffer, 0, pngTexture, NULL);
 }
 
 static int texLoad(GSTEXTURE *texture, const char *filePath)

@@ -154,6 +154,17 @@ void guiInit(void)
     gBackgroundTex.Width = PLASMA_W;
     gBackgroundTex.Height = PLASMA_H;
     gBackgroundTex.Mem = memalign(128, PLASMA_W * PLASMA_H * 4);
+    if (gBackgroundTex.Mem) {
+        u32 *pixels = (u32 *)gBackgroundTex.Mem;
+        u32 initialColor = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
+        int pixelCount = PLASMA_W * PLASMA_H;
+        int i;
+
+        // Plasma is generated incrementally (only a few rows per frame). Fill the
+        // untouched rows with deterministic opaque black instead of allocator data.
+        for (i = 0; i < pixelCount; i++)
+            pixels[i] = initialColor;
+    }
     gBackgroundTex.PSM = GS_PSM_CT32;
     gBackgroundTex.Filter = GS_FILTER_LINEAR;
     gBackgroundTex.Vram = 0;
@@ -248,7 +259,8 @@ void guiCheckNotifications(int checkTheme, int checkLang)
 {
     if (gEnableNotifications) {
         if (checkTheme) {
-            if (thmGetGuiValue() != 0)
+            // 仅用户主题才有文件路径可提示；内置主题（默认/ Coverflow）跳过弹窗。
+            if (thmGetGuiValue() >= THM_NUM_BUILTIN)
                 showThmPopup = 1;
         }
 
@@ -671,13 +683,16 @@ static int guiUIUpdater(int modified)
                 diaSetItemType(diaUIConfig, UICFG_SELCOL, UI_SPACER);
             }
 
-            // The user cannot adjust the current theme's colours.
-            temp = !temp;
-            diaSetEnabled(diaUIConfig, UICFG_BGCOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_UICOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_TXTCOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_SELCOL, temp);
-            diaSetEnabled(diaUIConfig, UICFG_RESETCOL, temp);
+            // Both built-in themes use the global colour settings. The Coverflow
+            // theme is index 0, while the built-in list theme is index 1; using
+            // `!temp` here accidentally disabled all colour controls for the
+            // second built-in theme.
+            int colorsEditable = (temp < THM_NUM_BUILTIN);
+            diaSetEnabled(diaUIConfig, UICFG_BGCOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_UICOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_TXTCOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_SELCOL, colorsEditable);
+            diaSetEnabled(diaUIConfig, UICFG_RESETCOL, colorsEditable);
         }
 
         diaGetInt(diaUIConfig, UICFG_XOFF, &x);
@@ -769,7 +784,7 @@ reselect_video_mode:
     if (ret) {
         diaGetInt(diaUIConfig, UICFG_LANG, &langID);
         diaGetInt(diaUIConfig, UICFG_THEME, &themeID);
-        if (themeID == 0) {
+        if (themeID < THM_NUM_BUILTIN) {
             diaGetColor(diaUIConfig, UICFG_BGCOL, gDefaultBgColor);
             diaGetColor(diaUIConfig, UICFG_UICOL, gDefaultUITextColor);
             diaGetColor(diaUIConfig, UICFG_TXTCOL, gDefaultTextColor);
@@ -1888,8 +1903,9 @@ void guiMainLoop(void)
         guiShow();
         flushBatchRequests(); // 推送ART图到ioPutQuest
 
-        if (greetingAlpha > 0x00)
+        if (greetingAlpha > 0x00) {
             guiRenderGreeting(greetingAlpha);
+        }
 
         // Render overlaying gui thingies :)
         guiDrawOverlays();
@@ -1932,17 +1948,24 @@ void guiMainLoop(void)
         // done here so we can use renderman if needed
         // 须等ART预载结束且欢迎页淡出完毕再处理输入：
         // init()里为检测START曾readPads，若当时按住方向键，在未再读键时handleInput会让getKeyOn每帧恒为真，造成欢迎结束后集中爆发
-        if (!screenHandlerTarget && screenHandler && mainScreenInitDone && artLoadDelayTime <= 0 && greetingAlpha <= 0)
+        if (!screenHandlerTarget && screenHandler && mainScreenInitDone && artLoadDelayTime <= 0 && greetingAlpha <= 0) {
             screenHandler->handleInput();
+        }
 
-        if (gFrameHook)
+        if (gFrameHook) {
             gFrameHook();
+        }
     }
 }
 
 void guiSetFrameHook(gui_callback_t cback)
 {
     gFrameHook = cback;
+}
+
+int guiGetScreen(void)
+{
+    return (int)(screenHandler - screenHandlers);
 }
 
 void guiSwitchScreen(int target)

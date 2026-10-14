@@ -390,6 +390,21 @@ static int bdmNeedsUpdate(item_list_t *itemList)
     return result;
 }
 
+static int bdmProbeISODirectory(const char *path)
+{
+    struct stat st;
+    int dir;
+
+    // 已确认是目录时省去预检的句柄；其余情况仍用原来的 dopen 返回码判错。
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode))
+        return 0;
+
+    dir = fileXioDopen(path);
+    if (dir >= 0)
+        fileXioDclose(dir);
+    return dir < 0 ? dir : 0;
+}
+
 static int bdmUpdateGameList(item_list_t *itemList)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
@@ -440,6 +455,7 @@ static int bdmUpdateGameList(item_list_t *itemList)
             char isoPath[256];
             int rootDir, cdDir, dvdDir;
 
+            // 原有根目录就绪判断对所有 BDM 类型生效；MX4SIO 仍需实际读取一次。
             rootDir = fileXioDopen(pDeviceData->bdmPrefix);
             if (rootDir < 0) {
                 pDeviceData->bdmGameCount = -1;
@@ -459,16 +475,11 @@ static int bdmUpdateGameList(item_list_t *itemList)
             fileXioDclose(rootDir);
 
             snprintf(isoPath, sizeof(isoPath), "%sCD", pDeviceData->bdmPrefix);
-            cdDir = fileXioDopen(isoPath);
-            if (cdDir >= 0)
-                fileXioDclose(cdDir);
-
+            cdDir = bdmProbeISODirectory(isoPath);
             snprintf(isoPath, sizeof(isoPath), "%sDVD", pDeviceData->bdmPrefix);
-            dvdDir = fileXioDopen(isoPath);
-            if (dvdDir >= 0)
-                fileXioDclose(dvdDir);
+            dvdDir = bdmProbeISODirectory(isoPath);
 
-            // bdmfs_fatfs会将FatFs的FRESULT取负后原样返回。
+            // 保留原有“非缺失错误则保持 -1”的判定，只减少成功预检的句柄开关。
             if ((cdDir < 0 && cdDir != BDMFS_NO_PATH) ||
                 (dvdDir < 0 && dvdDir != BDMFS_NO_PATH)) {
                 pDeviceData->bdmGameCount = -1;
@@ -1184,10 +1195,11 @@ void bdmResolveLBA_UDMA(bdm_device_data_t *pDeviceData)
     // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
     int gDmaMode = -1; // 获取配置失败时，不重设传输模式
     configGetInt(configGetByType(CONFIG_GAME), CONFIG_ITEM_DMA, &gDmaMode);
-    if (gDmaMode >= 3 && gDmaMode <= 10)
+    if (gDmaMode >= 3 && gDmaMode <= 10) {
         hddSetTransferMode(0x40, gDmaMode - 3);
-    else if(gDmaMode >= 0 && gDmaMode <= 2)
+    } else if (gDmaMode >= 0 && gDmaMode <= 2) {
         hddSetTransferMode(0x20, gDmaMode);
+    }
 
     //// debug
     // char debugFileDir[64];

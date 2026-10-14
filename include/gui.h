@@ -70,6 +70,8 @@ extern int txtFileRebuilded;
 
 void guiSwitchScreen(int target);
 void guiSwitchScreenFadeIn(int target, int _transIndex);
+/** 当前活动画面（GUI_SCREEN_*）；过渡尚未切屏时仍返回旧画面。 */
+int guiGetScreen(void);
 
 void guiReloadScreenExtents();
 

@@ -10,12 +10,28 @@
 #include "include/pad.h"
 #include "include/sound.h"
 
+#include <time.h>
+
 #define MENU_POS_V     50
 #define HINT_HEIGHT    32
 #define DECORATOR_SIZE 20
+// 外部 Coverflow 缺少 MenuIcon/BdmIndex 时使用的内置 Coverflow 模块尺寸；
+// 不使用第三方 cfg 对这两个模块填写的 width/height，避免回退美术被拉伸。
+#define COVERFLOW_FALLBACK_MENUICON_WIDTH 180
+#define COVERFLOW_FALLBACK_MENUICON_HEIGHT 120
+#define COVERFLOW_FALLBACK_BDM_INDEX_WIDTH 24
+#define COVERFLOW_FALLBACK_BDM_INDEX_HEIGHT 24
 
 extern const char conf_theme_OPL_cfg;
 extern u16 size_conf_theme_OPL_cfg;
+// 内置 Coverflow 主题模板（由 misc/conf_theme_coverflow.cfg 经 bin2c 嵌入）
+extern const char conf_theme_coverflow_cfg;
+extern u16 size_conf_theme_coverflow_cfg;
+
+// thmLoad(NULL) 时选择加载哪一套内置主题：
+//   0 = 内置 Coverflow 主题（默认）；1 = 强化原生列表主题。
+// 由 thmSetGuiValue()/thmReinit() 在调用 thmLoad(NULL) 前设置。
+static int builtinThemeID = 0;
 
 static int screenWidth;
 static int screenHeight;
@@ -27,6 +43,20 @@ static const char **guiThemesNames = NULL;
 
 // Global data
 theme_t *gTheme;
+
+// Coverflow 主界面：BG 入队延后到 drawCoverFlow 预取 COV 之后（仅改顺序）。
+// 详情页等没有 Coverflow 元素的画面仍在背景绘制时立即入队，行为与改前一致。
+static image_cache_t *deferredCoverflowBgCache = NULL;
+static item_list_t *deferredCoverflowBgList = NULL;
+static u64 deferredCoverflowBgFrame = 0;
+
+typedef struct retired_theme {
+    theme_t *theme;
+    struct retired_theme *next;
+} retired_theme_t;
+
+static retired_theme_t *retiredThemes = NULL;
+static void thmCollectRetiredThemes(void);
 
 enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_ATTRIBUTE_TEXT = 0,
@@ -46,6 +76,7 @@ enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_LOADING_ICON,
     ELEM_TYPE_BDM_INDEX,
     ELEM_TYPE_GAME_COUNT_TEXT,
+    ELEM_TYPE_COVERFLOW,
     ELEM_TYPE_COUNT
 };
 
@@ -74,7 +105,8 @@ static const char *elementsType[ELEM_TYPE_COUNT] = {
     "InfoHintText",
     "LoadingIcon",
     "BdmIndex",
-    "GameCountText"};
+    "GameCountText",
+    "Coverflow"};
 
 // Common functions for Text ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -444,6 +476,9 @@ static void endMutableImage(struct theme_element *elem)
         if (mutableImage->overlayTexture && !mutableImage->overlayTextureLinked)
             freeImageTexture(mutableImage->overlayTexture);
 
+        if (mutableImage->maskTexture && !mutableImage->maskTextureLinked)
+            freeImageTexture(mutableImage->maskTexture);
+
         free(mutableImage);
     }
 
@@ -462,6 +497,8 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
     mutableImage->defaultTextureLinked = 0;
     mutableImage->overlayTexture = NULL;
     mutableImage->overlayTextureLinked = 0;
+    mutableImage->maskTexture = NULL;
+    mutableImage->maskTextureLinked = 0;
 
     char elemProp[64];
 
@@ -474,6 +511,11 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         configGetStr(themeConfig, elemProp, &cachePattern);
         snprintf(elemProp, sizeof(elemProp), "%s_count", name);
         configGetInt(themeConfig, elemProp, &cacheCount);
+        if (type == ELEM_TYPE_BACKGROUND) {
+            // 所有主题、所有分辨率统一保留两个背景槽，保持上一张 BG fallback。
+            // 背景 cache 不再按 Coverflow 或 GS 原生高度区分槽位数。
+            cacheCount = 2;
+        }
         LOG("THEMES MutableImage %s: type: %s using cache pattern: %s count: %d\n", name, elementsType[type], cachePattern, cacheCount);
     }
 
@@ -483,6 +525,13 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
     if (type != ELEM_TYPE_BACKGROUND) {
         snprintf(elemProp, sizeof(elemProp), "%s_overlay", name);
         configGetStr(themeConfig, elemProp, &overlayTexture);
+    }
+
+    // 背景元素可选的 <元素>_mask：仅当真正画出当前游戏背景图时才叠加的 alpha 遮罩。
+    const char *maskTexture = NULL;
+    if (type == ELEM_TYPE_BACKGROUND) {
+        snprintf(elemProp, sizeof(elemProp), "%s_mask", name);
+        configGetStr(themeConfig, elemProp, &maskTexture);
     }
 
     findDuplicate(theme->mainElems.first, cachePattern, defaultTexture, overlayTexture, mutableImage);
@@ -506,6 +555,13 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
 
     if (overlayTexture && !mutableImage->overlayTexture)
         mutableImage->overlayTexture = initImageTexture(themePath, themeConfig, name, overlayTexture, 1);
+
+    if (!themePath)
+        if (maskTexture && !mutableImage->maskTexture)
+            mutableImage->maskTexture = initImageInternalTexture(themeConfig, maskTexture);
+
+    if (maskTexture && !mutableImage->maskTexture)
+        mutableImage->maskTexture = initImageTexture(themePath, themeConfig, name, maskTexture, 0);
 
     return mutableImage;
 }
@@ -573,12 +629,90 @@ static GSTEXTURE *getGameImageTexture(image_cache_t *cache, void *support, struc
     return NULL;
 }
 
+// 与 getGameImageTexture() 相同，但走 Coverflow 专用的 quiet 缓存路径，
+// 后者不依赖"每帧只取一张封面"的全局状态，因此 Coverflow 每帧取多张封面时封面
+// 才能正常加载（否则会一直被单封面防抖逻辑挡掉、只显示占位图）。
+// allowRequest=0 时只查缓存和已有请求，不新增加载请求；Coverflow 当前始终允许动画期间入队。
+static GSTEXTURE *getCoverflowTexture(image_cache_t *cache, void *support, struct submenu_item *item, int allowRequest)
+{
+    if (artEnabledForCache(cache)) {
+        item_list_t *list = (item_list_t *)support;
+        char *startup = list->itemGetStartup(list, item->id);
+        if (allowRequest)
+            return cacheGetTextureQuiet(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
+        return cacheGetTextureQuietNoRequest(cache, list, &item->cache_id[cache->userId], &item->cache_uid[cache->userId], startup, item->id);
+    }
+
+    return NULL;
+}
+
+// Coverflow 停止后才请求当前游戏的 ICO；光标变化时调用方会重置专用槽位，
+// 因此这里不会把上一款游戏的光碟图带到新游戏上。
+static void armDeferredCoverflowBackground(image_cache_t *cache, item_list_t *list)
+{
+    deferredCoverflowBgCache = cache;
+    deferredCoverflowBgList = list;
+    deferredCoverflowBgFrame = guiFrameId;
+}
+
+static void flushDeferredCoverflowBackground(submenu_list_t *item)
+{
+    if (deferredCoverflowBgFrame != guiFrameId) {
+        deferredCoverflowBgCache = NULL;
+        deferredCoverflowBgList = NULL;
+        deferredCoverflowBgFrame = 0;
+        return;
+    }
+    if (!deferredCoverflowBgCache || !deferredCoverflowBgList || !item) {
+        deferredCoverflowBgCache = NULL;
+        deferredCoverflowBgList = NULL;
+        deferredCoverflowBgFrame = 0;
+        return;
+    }
+
+    // 仅入队；显示与回退已在背景元素绘制阶段完成。
+    getCoverflowTexture(deferredCoverflowBgCache, deferredCoverflowBgList, &item->item, 1);
+
+    deferredCoverflowBgCache = NULL;
+    deferredCoverflowBgList = NULL;
+    deferredCoverflowBgFrame = 0;
+}
+
+static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item, int allowRequest)
+{
+    if (!gTheme || !gTheme->coverflowIcoCache || !list || !item || !gEnableArtICO)
+        return NULL;
+
+    char *startup = list->itemGetStartup(list, item->item.id);
+    if (allowRequest)
+        return cacheGetTextureQuiet(gTheme->coverflowIcoCache, list,
+                                    &gTheme->coverflowIcoCacheId, &gTheme->coverflowIcoCacheUID,
+                                    startup, item->item.id);
+    return cacheGetTextureQuietNoRequest(gTheme->coverflowIcoCache, list,
+                                          &gTheme->coverflowIcoCacheId, &gTheme->coverflowIcoCacheUID,
+                                          startup, item->item.id);
+}
+
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
     if (item) {
-        GSTEXTURE *texture = getGameImageTexture(gameImage->cache, menu->item->userdata, &item->item);
-        if (!texture || !texture->Mem) {
+        item_list_t *support = menu->item->userdata;
+        GSTEXTURE *texture;
+
+        if (elem->type == ELEM_TYPE_BACKGROUND && gTheme && gTheme->coverflow && gameImage->cache) {
+            // 主界面：只取图/PrevCacheID 保持（allowRequest=0），入队延后到预取 COV 之后；
+            // 详情等无 Coverflow 的画面仍立即入队。quiet BG 路径自带列表式 PrevCacheID_BG。
+            int deferBg = (guiGetScreen() == GUI_SCREEN_MAIN);
+            texture = getCoverflowTexture(gameImage->cache, support, &item->item, deferBg ? 0 : 1);
+            if (deferBg)
+                armDeferredCoverflowBackground(gameImage->cache, support);
+        } else {
+            texture = getGameImageTexture(gameImage->cache, support, &item->item);
+        }
+        // 是否真正取到游戏外部背景/封面贴图，区别于默认/plasma。
+        int drewGameArt = (texture && texture->Mem);
+        if (!drewGameArt) {
             // 封面/光碟关掉时，连默认模板和卡带框都不画
             if (artHideDefaultTemplate(gameImage->cache))
                 return;
@@ -597,6 +731,11 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
                                 gameImage->overlayTexture->lowerLeft_x, gameImage->overlayTexture->lowerLeft_y, gameImage->overlayTexture->lowerRight_x, gameImage->overlayTexture->lowerRight_y);
         } else
             rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+
+        // 仅当真正画出游戏外部背景图时，才在其上叠加 alpha 遮罩压暗背景；
+        // 回退到兜底默认背景时不叠加，避免遮罩影响兜底背景图。
+        if (drewGameArt && gameImage->maskTexture)
+            rmDrawPixmap(&gameImage->maskTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
     } else if (elem->type == ELEM_TYPE_BACKGROUND) {
         if (gameImage->defaultTexture)
@@ -632,7 +771,8 @@ static void drawAttributeImage(struct menu_list *menu, struct submenu_list *item
             configGetStr(config, attributeImage->cache->suffix, (const char **)&attributeImage->currentValue);
         }
         if (attributeImage->currentValue) {
-            if (thmGetGuiValue() == 0) {
+            // 内置主题（默认/ Coverflow）没有外部路径，属性图使用内置贴图查找。
+            if (thmGetGuiValue() < THM_NUM_BUILTIN) {
                 int texId;
                 char *seppos = strchr(attributeImage->currentValue, '/');
                 if (!seppos)
@@ -716,6 +856,19 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
     else
         elem->posX = x;
 
+    // wOPL 兼容：Coverflow 的 BdmIndex 可用独立的宽屏 x 位置。
+    // 未配置时沿用普通 posX，因此不会改变现有主题的 4:3 行为。
+    elem->wsX = elem->posX;
+    snprintf(elemProp, sizeof(elemProp), "%s_wsX", name);
+    if (configGetStr(themeConfig, elemProp, &temp)) {
+        if (!strncmp(temp, "POS_MID", 7))
+            elem->wsX = screenWidth >> 1;
+        else {
+            int wsX = atoi(temp);
+            elem->wsX = (wsX < 0) ? (screenWidth + wsX) : wsX;
+        }
+    }
+
     snprintf(elemProp, sizeof(elemProp), "%s_y", name);
     if (configGetStr(themeConfig, elemProp, &temp)) {
         if (!strncmp(temp, "POS_MID", 7))
@@ -747,9 +900,19 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
         elem->height = h;
 
     snprintf(elemProp, sizeof(elemProp), "%s_aligned", name);
-    if (configGetInt(themeConfig, elemProp, &intValue))
-        elem->aligned = (intValue == 0) ? ALIGN_NONE : ALIGN_CENTER;
-    else
+    if (configGetInt(themeConfig, elemProp, &intValue)) {
+        // 兼容 wOPL/RiptOPL 主题的对齐取值：0=左上(NONE)、1=居中(CENTER)、2=右对齐+垂直居中。
+        // 旧代码只区分 0 与非 0（非 0 一律当居中），导致第三方主题写的 aligned=2（本意右对齐）
+        // 被误当成居中；配合 x=-8（负值换算成 posX=屏宽-8=右缘附近）会把元素推出屏幕右侧
+        // （menuicon / BdmIndex 超屏、与其它元素重叠）。这里补上右对齐分支，取值与 RiptOPL
+        // 一致（aligned=2 → ALIGN_VCENTER | ALIGN_RIGHT）。
+        if (intValue == 0)
+            elem->aligned = ALIGN_NONE;
+        else if (intValue == 2)
+            elem->aligned = (ALIGN_VCENTER | ALIGN_RIGHT); // 与 RiptOPL 一致：右对齐 + 垂直居中
+        else
+            elem->aligned = ALIGN_CENTER;
+    } else
         elem->aligned = aligned;
 
     snprintf(elemProp, sizeof(elemProp), "%s_scaled", name);
@@ -770,6 +933,11 @@ static theme_element_t *initBasic(const char *themePath, config_set_t *themeConf
         if (intValue > 0 && intValue < THM_MAX_FONTS)
             elem->font = theme->fonts[intValue];
     }
+
+    elem->reflection = 0;
+    snprintf(elemProp, sizeof(elemProp), "%s_reflection", name);
+    if (configGetInt(themeConfig, elemProp, &intValue))
+        elem->reflection = intValue;
 
     return elem;
 }
@@ -797,8 +965,17 @@ static void initBackground(const char *themePath, config_set_t *themeConfig, the
 static void drawMenuIcon(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     GSTEXTURE *menuIconTex = thmGetTexture(menu->item->icon_id);
-    if (menuIconTex && menuIconTex->Mem)
-        rmDrawPixmap(menuIconTex, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+    if (menuIconTex && menuIconTex->Mem) {
+        int width = elem->width;
+        int height = elem->height;
+        int iconId = menu->item->icon_id;
+        if (gTheme && gTheme->coverflow && iconId >= BDM_ICON && iconId <= APP_ICON &&
+            gTheme->coverflowTextureFallback[iconId]) {
+            width = COVERFLOW_FALLBACK_MENUICON_WIDTH;
+            height = COVERFLOW_FALLBACK_MENUICON_HEIGHT;
+        }
+        rmDrawPixmap(menuIconTex, elem->posX, elem->posY, elem->aligned, width, height, elem->scaled, gDefaultCol);
+    }
 }
 
 static int findMenuNext(struct menu_list *menu)
@@ -853,12 +1030,20 @@ static void drawBDMIndex(struct menu_list *menu, struct submenu_list *item, conf
     if (itemList->mode == 0 && menu->next->item->visible == 0)
         return;
 
-    char imgName[32];
-    snprintf(imgName, sizeof(imgName), "Index_%d", itemList->mode);
-
-    GSTEXTURE *indexTex = thmGetTexture(texLookupInternalTexId(&imgName[0]));
-    if (indexTex && indexTex->Mem)
-        rmDrawPixmap(indexTex, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+    // textures[INDEX_*] 已在主题加载阶段按“第三方 CF 缺图→内置 CF 资源”完成回退；
+    // 普通主题则仍然是原来的 Index_* 资源。
+    int indexTexId = INDEX_0 + itemList->mode;
+    GSTEXTURE *indexTex = thmGetTexture(indexTexId);
+    if (indexTex && indexTex->Mem) {
+        int width = elem->width;
+        int height = elem->height;
+        if (gTheme && gTheme->coverflow && gTheme->coverflowTextureFallback[indexTexId]) {
+            width = COVERFLOW_FALLBACK_BDM_INDEX_WIDTH;
+            height = COVERFLOW_FALLBACK_BDM_INDEX_HEIGHT;
+        }
+        int x = gWideScreen ? elem->wsX : elem->posX;
+        rmDrawPixmap(indexTex, x, elem->posY, elem->aligned, width, height, elem->scaled, gDefaultCol);
+    }
 }
 
 static void drawItemsList(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
@@ -872,7 +1057,9 @@ static void drawItemsList(struct menu_list *menu, struct submenu_list *item, con
             posY -= elem->height >> 1;
         }
 
-        submenu_list_t *ps = menu->item->pagestart;
+        // Coverflow 模式下让列表从选中项开始，这样那一行可见文字
+        // 就充当中心封面的标题，而不是一整页滚动列表。
+        submenu_list_t *ps = (gTheme->coverflow != NULL) ? item : menu->item->pagestart;
         int others = 0;
         u64 color;
         while (ps && (others++ < itemsList->displayedItems)) {
@@ -967,6 +1154,812 @@ static void drawInfoHintText(struct menu_list *menu, struct submenu_list *item, 
     x = guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? infoIcons[0] : infoIcons[1], infoHints[0], elem->font, x, elem->posY, elem->color);
     x += elem->width;
     x = guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? infoIcons[1] : infoIcons[0], infoHints[1], elem->font, x, elem->posY, elem->color);
+}
+
+// Coverflow ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 从 wOPL 移植的游戏列表滚动封面轮播。以当前选中项为中心渲染 N 张封面（默认 3 张），
+// 放大中间那张，并在导航时用三次缓出（cubic ease-out）平移整排。
+// 倒影通过专用的 rmDraw*Reflect() 辅助函数绘制，从而保持共用的 rmDrawPixmap() 路径原样不动。
+
+static int isAnimating = 0;        // 动画进行中标志
+static int animationDirection = 0; // -1 = 下一个（向左滚动），1 = 上一个（向右滚动）
+static int animationSteps = 1;     // 本次动画跨过的实际格数（单步为 1）
+static submenu_list_t *animationStartItem = NULL; // 多格动画的起点，current 已提前指向目标项
+static clock_t animationStartTime = 0;
+
+// Coverflow 可调参数。
+// 显示数量、压暗和预取允许由主题 cfg 覆盖；封面尺寸/间距/缩放等其它核心参数使用这里的内部基线。
+// 这些默认值与当前内置观感对齐（count=5、scale=内部基线、anim=200ms、dim=0）。
+// 默认值定义为宏，供主题解析处“先复位默认、再按主题覆盖”使用。
+#define COVERFLOW_MAX 9             // 同屏封面数的硬上限（只允许 1/3/5/7/9）
+#define COVERFLOW_RENDER_MAX (COVERFLOW_MAX * 2) // 多格翻页时：可见窗口 + 最长翻页距离
+#define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值（也是尺寸/间距基线）
+// 封面主图基准尺寸：普通分辨率沿用现有的 480 逻辑坐标高度；448i/p、512i/p
+// 使用单独的低分辨率高度宏。宽度保持 140，其他布局计算仍使用选出的高度。
+#define COVERFLOW_COVER_W 140
+#define COVERFLOW_COVER_H 214
+#define COVERFLOW_COVER_H_LOWRES 200
+#define COVERFLOW_ICO_W 128
+#define COVERFLOW_ICO_H 138
+#define COVERFLOW_ICO_H_LOWRES 128
+#define COVERFLOW_ICO_POPUP_GAP 13
+#define COVERFLOW_APPS_COVER_W 140
+#define COVERFLOW_APPS_COVER_H 150
+#define COVERFLOW_APPS_COVER_H_LOWRES 140
+#define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
+// 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
+// 7/9张仍以该间距为基准反推较小的非中心封面，3张则保持5张大小并反算更大的间距。
+// 语义同下面的间距%：间隙 = 5张基线非中心封面基准宽 × 此值/100。
+// 当前 34；4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
+#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 34
+// 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
+//   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
+// 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
+// 当前 0（不额外增加相邻封面之间的间隙）。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 0
+// 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
+// 正值下移、负值上移。当前 165 = 在原 161 的基础上整体下移 4，游戏和 APPS 共用。
+#define COVERFLOW_BASELINE_YOFFSET 165
+// APPS 页签【专用】附加垂直偏移（叠加在 BASELINE 之上，仅作用于 APPS 封面模块，不影响 PS2/游戏）。
+// 正值下移、负值上移。当前 -60（在原 -50 基础上上移 10）；整体基准下移由 COVERFLOW_BASELINE_YOFFSET 统一负责。
+#define COVERFLOW_APPS_YOFFSET -60
+// APPS 中心封面专用的垂直微调，作为中心封面底边锚点的一部分。
+#define COVERFLOW_APPS_CENTER_YOFFSET 1
+// 高度不再按当前视频模式动态补偿：统一使用上面的 448 基线逻辑尺寸，
+// 让 448/480/512 下封面在整个屏幕中的宽度、高度占比和底部相对位置保持一致。
+#define COVERFLOW_DEFAULT_ANIM 200       // 普通单步滑动时长（毫秒，<=0 关闭动画）
+#define COVERFLOW_DEFAULT_DIM 0     // 非中心封面是否变暗默认值
+#define COVERFLOW_DIM_RGB 0x66      // 非中心封面亮度为原亮度的80%（0x80=100%）
+#define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
+static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（规范化到 1/3/5/7/9）
+static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（内部基线）
+static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（448 基线逻辑值214）
+static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图基准宽（内部基线）
+static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（448 基线逻辑值150）
+static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
+static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 5张基线非中心封面相对基准的等比增减【像素】
+static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT; // 宽屏 5 张基线间距%（7/9 张据此缩放封面）
+static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
+static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
+static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
+static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
+// 本次滑动实际使用的时长（毫秒）。普通单步使用 gCoverflowAnimSpeed，
+// L1/R1 翻页使用 gCoverflowAnimSpeed * 2.0。
+static int gCoverflowActiveAnimSpeed = COVERFLOW_DEFAULT_ANIM;
+
+void thmTriggerCoverflowAnim(int direction)
+{
+    // 仅当启用了 Coverflow 主题时才生效，因此不影响列表主题下的导航。
+    if (!gTheme || gTheme->coverflow == NULL)
+        return;
+
+    isAnimating = 1;
+    animationDirection = direction;
+    animationSteps = 1;
+    animationStartItem = NULL; // 单步导航从目标项的相邻项开始
+    animationStartTime = clock();
+    gCoverflowActiveAnimSpeed = gCoverflowAnimSpeed;
+}
+
+// L1/R1 翻页动画：调用方已把 current 一次性写成目标项；
+// drawCoverFlow 通过 startItem 和 steps 把整段 Coverflow 从起点移动到目标项。
+void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *startItem)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return;
+
+    if (steps < 1)
+        steps = 1;
+
+    isAnimating = 1;
+    animationDirection = direction;
+    animationSteps = steps;
+    animationStartItem = startItem;
+    animationStartTime = clock();
+    gCoverflowActiveAnimSpeed = (int)(gCoverflowAnimSpeed * 2.0f);
+}
+
+// 当前是否正处于 Coverflow 滑动动画中（供 menusys 判断“上一步走完没有”）。
+int thmCoverflowIsAnimating(void)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+    return isAnimating;
+}
+
+// Coverflow 动画是否启用（主题配置时长 >0）。关闭时翻页应直接硬跳，尊重用户设置。
+int thmCoverflowAnimEnabled(void)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+    return gCoverflowAnimSpeed > 0;
+}
+
+// 将主题设置的 Coverflow 数量规范化为 1/3/5/7/9：<=1 取 1，>9 取 9，
+// 中间的偶数向上取最近的奇数。绘制、翻页跳转和缓存槽位都以该值为准。
+static int normalizeCoverflowCount(int count)
+{
+    if (count <= 1)
+        return 1;
+    if (count > COVERFLOW_MAX)
+        count = COVERFLOW_MAX;
+    if ((count & 1) == 0)
+        count++;
+    if (count > COVERFLOW_MAX)
+        count = COVERFLOW_MAX;
+    return count;
+}
+
+// 当前实际同屏显示的封面数：= coverflow_count 规范化后的 1/3/5/7/9。
+static int getCoverflowDisplayCount(void)
+{
+    return normalizeCoverflowCount(gCoverflowCount);
+}
+
+// 返回 Coverflow 主题下 L1/R1 整页跳转应一次跨过的游戏数量。
+// 该值 = 当前同屏显示的封面数（getCoverflowDisplayCount 规范化为 1/3/5/7/9，
+// 与 drawCoverFlow 实际显示的封面数保持一致）。未启用 Coverflow 主题时返回 0，调用方据此
+// 回退到列表主题的原有整页步长（displayedItems）。
+int thmGetCoverflowJumpCount(void)
+{
+    if (!gTheme || gTheme->coverflow == NULL)
+        return 0;
+
+    return getCoverflowDisplayCount();
+}
+
+// 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
+// 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
+static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float x, float y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
+{
+    if (img->overlayTexture) {
+        image_texture_t *ov = img->overlayTexture;
+
+        // NULL 保护：rmDrawOverlayPixmap*Frac 会直接解引用 inlay 指针（无 NULL 检查）。
+        // 若既没有封面、也没有占位图（第三方主题未提供 cover.png 且内置 COVER_DEFAULT
+        // 也不可用），则不能带 inlay 调用，否则会崩溃。此时【仍然单独把 case 外壳画出来】，
+        // 避免整块 case 模块直接消失（修复"缺图时整个 case 都不显示"的问题）。
+        if (!texture || !texture->Mem) {
+            // 无 Frac 版：把浮点 x/y 四舍五入到整数（此分支只在缺图兜底画外壳时走）。
+            if (reflection)
+                rmDrawPixmapReflect(&ov->source, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+            else
+                rmDrawPixmap(&ov->source, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+            return;
+        }
+
+        // overlay_* 顶点遵循 wOPL/RiptOPL 约定：相对【元素配置尺寸 width/height】(=baseW/baseH)
+        // 给出（例如第三方主题 width=150/height=212 时，overlay_lry=212 落在 0..212 内）。
+        // 这里原样把顶点 + baseW/baseH 传给 rmDrawOverlayPixmap*Frac，由它以 case quad 的
+        // 【实际绘制尺寸】按浮点比例定位 inlay——inlay 与 case 内框完全锁定、同步缩放，
+        // 中心封面放大/滑动收尾时二者【不相对蠕动】。宽屏也自动一致（caseW 已含横向压缩），
+        // 故不再需要手动 sx/sy 及宽屏预缩放。
+        if (reflection)
+            rmDrawOverlayPixmapReflectFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
+                                           baseW, baseH,
+                                           ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
+                                           ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
+        else
+            rmDrawOverlayPixmapFrac(&ov->source, x, y, aligned, w, h, SCALING_NONE, color, texture,
+                                    baseW, baseH,
+                                    ov->upperLeft_x, ov->upperLeft_y, ov->upperRight_x, ov->upperRight_y,
+                                    ov->lowerLeft_x, ov->lowerLeft_y, ov->lowerRight_x, ov->lowerRight_y);
+    } else {
+        // 无外壳（纯封面）主题：没有可用贴图就直接跳过。这里没有 Frac 版，x/y 四舍五入到整数。
+        if (!texture || !texture->Mem)
+            return;
+        if (reflection)
+            rmDrawPixmapReflect(texture, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+        else
+            rmDrawPixmap(texture, (int)(x + 0.5f), (int)(y + 0.5f), aligned, (int)(w + 0.5f), (int)(h + 0.5f), SCALING_NONE, color);
+    }
+}
+
+static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
+{
+    if (item == NULL) {
+        flushDeferredCoverflowBackground(NULL);
+        return;
+    }
+
+    // 关闭封面图时仍保留 Coverflow 的布局计算和 ICO 绘制；只跳过封面/case 的实际提交。
+    // 由于此时没有可见封面动画，ICO 只随当前 item 的变化切换，不等待 Coverflow 动画。
+    if (!gEnableArtCOV) {
+        isAnimating = 0;
+        animationStartTime = 0;
+        animationStartItem = NULL;
+        animationSteps = 1;
+    }
+
+    mutable_image_t *img = (mutable_image_t *)elem->extended;
+    item_list_t *sourceList = menu->item->userdata;
+
+    // 448i/p、512i/p、224p、256p 使用低分辨率专用高度；Auto 也只会落到
+    // PAL/NTSC 的 512/448 模式，因此归入此分支。其它分辨率继续使用现有宏高度。
+    int isLowRes = (gVMode >= 0 && gVMode <= 4) || (gVMode >= 12 && gVMode <= 13);
+    int baseCoverW = gCoverflowCoverW;
+    int baseCoverH = isLowRes ? COVERFLOW_COVER_H_LOWRES : gCoverflowCoverH;
+    int isApps = (sourceList && sourceList->mode == APP_MODE);
+    if (isApps) {
+        baseCoverW = gCoverflowAppsCoverW;
+        baseCoverH = isLowRes ? COVERFLOW_APPS_COVER_H_LOWRES : gCoverflowAppsCoverH;
+    }
+
+    // 同屏封面数：已规范化到 1/3/5/7/9；翻页动画需要的临时槽位另用
+    // COVERFLOW_RENDER_MAX，避免多格移动时数组越界。
+    int coverCount = getCoverflowDisplayCount();
+    int centerIndex = coverCount / 2;
+
+    // ——封面主图为主、case 外壳逆向适配——
+    // 封面主图基准尺寸 = 上面的 448 基线逻辑尺寸（游戏 140×214、APPS 140×150）。中心/
+    // 非中心封面各自 = 基准 ± 各自 scale（等比，以横向宽度为基准）；中心 scale=0 时，
+    // 448 模式下分别对应 140×200 和 140×140 的基准观感。
+    // case 外壳不再是主导尺寸，而是按 overlay 顶点给出的【内框占比】反推，使其内框正好
+    // 套住原生封面（case 被拉伸的轻微失真无所谓）。fracW/fracH = 内框在元素坐标系里的占比。
+    float fracW = 1.0f, fracH = 1.0f;
+    if (img->overlayTexture && elem->width > 0 && elem->height > 0) {
+        image_texture_t *ov = img->overlayTexture;
+        int iw = ov->upperRight_x - ov->upperLeft_x; // 内框宽（元素坐标）
+        int ih = ov->lowerLeft_y - ov->upperLeft_y;  // 内框高（元素坐标）
+        if (iw > 0)
+            fracW = (float)iw / (float)elem->width;
+        if (ih > 0)
+            fracH = (float)ih / (float)elem->height;
+    }
+
+    // 5 封面布局是现有的大小/间距基线。先从该基线得到非中心封面大小和真实可见间隙，
+    // 再根据主题选择的 1/3/5/7/9 个槽位决定尺寸或间距，保持整排的观感。
+    // 中心封面仍使用 gCoverflowCenterScale，并参与最终的整排宽度计算。
+    int effNonCenterScale = gCoverflowNonCenterScale;
+    float referenceNonInlayW = (float)baseCoverW + (float)effNonCenterScale;
+    if (referenceNonInlayW < 1.0f)
+        referenceNonInlayW = 1.0f;
+    int referenceCoverWidthBase = (int)(referenceNonInlayW / fracW + 0.5f);
+
+    // 间隙只取当前 5 封面基线的设置；非中心封面因数量变化而调整大小时，间隙保持不变。
+    int spacingPct = gWideScreen ? gCoverflowWideSpacingPercent : gCoverflowSpacingPercent;
+    if (spacingPct < 0)
+        spacingPct = 0;
+    int gap = (referenceCoverWidthBase * spacingPct) / 100;
+    if (gWideScreen)
+        gap = rmWideScale(gap);
+    int referenceCoverWidth = referenceCoverWidthBase;
+    if (gWideScreen)
+        referenceCoverWidth = rmWideScale(referenceCoverWidth);
+
+    // 中心封面的 case 宽（用于间距补偿）：中心封面比非中心封面宽时，
+    // 下面的布局会把中心封面两侧多出的半宽均匀摊开，保证可见间隙一致。
+    float centerInlayWF = (float)baseCoverW + (float)gCoverflowCenterScale;
+    if (centerInlayWF < 1.0f)
+        centerInlayWF = 1.0f;
+    int centerCoverWidth = (int)(centerInlayWF / fracW + 0.5f);
+    if (gWideScreen)
+        centerCoverWidth = rmWideScale(centerCoverWidth);
+
+    // 3 张比 5 张少：保留 5 张的非中心封面大小，反过来计算 3 张专用间距，
+    // 再从每个间距扣除 60 像素，为两侧留下约 60 像素安全距离。
+    // 7/9 张比 5 张多：保留 5 张的间距，再反推较小的非中心封面大小来铺满整排。
+    if (coverCount == 3) {
+        int gapWidth = screenWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
+        if (gapWidth < 0)
+            gapWidth = 0;
+        gap = (gapWidth + ((coverCount - 1) >> 1)) / (coverCount - 1);
+        // 满屏计算得到的是零边距间距；3 张时每侧需留约 60 像素，直接从每个间距扣除 60。
+        gap -= 60;
+        if (gap < 0)
+            gap = 0;
+    } else if (coverCount >= 7) {
+        float targetCoverWidth = ((float)screenWidth - (float)centerCoverWidth -
+                                  (float)(coverCount - 1) * (float)gap) /
+                                 (float)(coverCount - 1);
+        if (targetCoverWidth < 1.0f)
+            targetCoverWidth = 1.0f;
+        float wideFactor = gWideScreen ? rmWideScaleF(1.0f) : 1.0f;
+        if (wideFactor < 0.0001f)
+            wideFactor = 1.0f;
+        float targetUnscaledCaseWidth = targetCoverWidth / wideFactor;
+        float targetInlayW = targetUnscaledCaseWidth * fracW;
+        float targetScale = targetInlayW - (float)baseCoverW;
+        int initialScale = (int)(targetScale + (targetScale >= 0.0f ? 0.5f : -0.5f));
+        int bestScale = initialScale;
+        int bestDifference = screenWidth;
+        int candidateScale;
+        for (candidateScale = initialScale - 3; candidateScale <= initialScale + 3; candidateScale++) {
+            if (baseCoverW + candidateScale < 1)
+                continue;
+            float candidateInlayW = (float)baseCoverW + (float)candidateScale;
+            int candidateWidthBase = (int)(candidateInlayW / fracW + 0.5f);
+            int candidateWidth = gWideScreen ? rmWideScale(candidateWidthBase) : candidateWidthBase;
+            int candidateTotal = (coverCount - 1) * (candidateWidth + gap) + centerCoverWidth;
+            int difference = candidateTotal - screenWidth;
+            if (difference < 0)
+                difference = -difference;
+            if (difference < bestDifference) {
+                bestDifference = difference;
+                bestScale = candidateScale;
+            }
+        }
+        effNonCenterScale = bestScale;
+    }
+
+    float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
+    if (nonInlayW < 1.0f)
+        nonInlayW = 1.0f;
+    int coverWidthBase = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽）
+
+    // 非中心 case 绘制宽：3 张保持 5 张基线尺寸，7/9 张使用反推后的尺寸。
+    int coverWidth = coverWidthBase;                      // 供布局/中心距/居中
+    int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
+    if (isApps)
+        coverYOffset += COVERFLOW_APPS_YOFFSET;           // APPS 页签叠加专用偏移（当前 -60，较原位置上移 10）
+
+    // 宽屏(16:9)：封面宽和间距沿用原有横向压缩，使电视横向拉伸后比例正确。
+    if (gWideScreen)
+        coverWidth = rmWideScale(coverWidth);
+
+    // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量。
+    float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
+
+    // 垂直方向以中心封面的底边作为整个模块的定位锚点；非中心封面不再有独立的 Y 偏移。
+    // 先按中心封面的目标尺寸确定唯一的水平中心线，再让每个动画阶段的封面围绕这条
+    // 中心线绘制。这样中心封面与非中心封面始终中心对齐，不需要反推缩放锚点。
+    float centerYOffset = isApps ? (float)COVERFLOW_APPS_CENTER_YOFFSET : 0.0f;
+    float centerBottomY = (float)elem->posY + (float)coverYOffset + centerYOffset;
+    float centerInlayH = (float)baseCoverH * centerInlayWF / (float)baseCoverW;
+    float centerCaseHeight = centerInlayH / fracH;
+    float coverCenterY = centerBottomY - centerCaseHeight * 0.5f;
+
+    // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
+    //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
+    //   调间距%  → gap 增大/减小，封面大小不变。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
+    int coverDistance = coverWidth + gap;
+    if (coverDistance < 1)
+        coverDistance = 1;
+    int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
+    int basePosX = (screenWidth - totalGroupWidth) / 2 + (coverWidth >> 1) + (coverWidth * gTheme->coverflowCoverOffset / 256);
+
+    // 先计算动画进度，再决定本帧需要的临时槽位数量。多格翻页以目标项为最终中心，
+    // 并在目标项的反方向额外保留 animationSteps 个槽位，从而把起点和终点之间的
+    // 整段 Coverflow 一次性画出来；动画结束后恢复原来的 coverCount 个槽位。
+    int animationActive = 0;
+    float eased = 1.0f;
+    float animOffset = 0.0f;
+    int renderCount = coverCount;
+    int renderCenterIndex = centerIndex;
+    if (isAnimating) {
+        if (gCoverflowActiveAnimSpeed <= 0) {
+            isAnimating = 0;
+            animationStartItem = NULL;
+            animationSteps = 1;
+        } else {
+            clock_t elapsed = clock() - animationStartTime;
+            float t = (float)elapsed / ((float)gCoverflowActiveAnimSpeed * CLOCKS_PER_SEC / 1000);
+            if (t >= 1.0f) {
+                // 到达目标后立即使用目标窗口；可见封面加载和预取在动画期间也持续进行。
+                isAnimating = 0;
+                animationStartTime = 0;
+                animationStartItem = NULL;
+                animationSteps = 1;
+            } else {
+                animationActive = 1;
+                // 单步和多格翻页统一使用纯三次缓出。
+                float inv = 1.0f - t;
+                eased = 1.0f - inv * inv * inv;
+            }
+        }
+    }
+
+    if (animationActive) {
+        int steps = animationSteps;
+        if (steps < 1)
+            steps = 1;
+        if (steps > COVERFLOW_MAX)
+            steps = COVERFLOW_MAX;
+
+        // next(-1)：起点在目标左侧，因此额外槽位放在左侧；
+        // prev(+1)：起点在目标右侧，因此额外槽位放在右侧。
+        if (animationStartItem && steps > 1) {
+            renderCount = coverCount + steps;
+            if (renderCount > COVERFLOW_RENDER_MAX)
+                renderCount = COVERFLOW_RENDER_MAX;
+            if (animationDirection < 0)
+                renderCenterIndex = centerIndex + steps;
+        }
+
+        animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
+    }
+
+    struct
+    {
+        submenu_list_t *game;
+        GSTEXTURE *texture;
+        float renderPosX; // 预计算好的横向绘制坐标（浮点：滑动动画不做整数量化，运动更顺滑）
+    } covers[COVERFLOW_RENDER_MAX];
+
+    int ci;
+    for (ci = 0; ci < renderCount; ci++) {
+        covers[ci].game = NULL;
+        covers[ci].texture = NULL;
+        covers[ci].renderPosX = 0.0f;
+    }
+    covers[renderCenterIndex].game = item;
+
+    // 填充左侧：从目标中心向前回溯。左边缘不做环绕
+    //（本分支的 menu_item_t 没有 "last" 指针），所以第一项左侧的槽位保持为空。
+    // 动画期间绘制窗口会额外包含过渡槽位；预取和 active 请求代际只允许
+    // 目标项的新可见窗口，因此单独记录不含过渡槽位的目标窗口两端。
+    submenu_list_t *leftmostTarget = item;
+    submenu_list_t *rightmostTarget = item;
+    submenu_list_t *cur = item;
+    for (ci = renderCenterIndex - 1; ci >= 0; ci--) {
+        submenu_list_t *prev = cur->prev;
+        if (prev == NULL || prev == item)
+            break;
+        covers[ci].game = prev;
+        cur = prev;
+    }
+
+    // 填充右侧：向后遍历。右边缘同样【不做环绕】，到列表末尾即停止，让最后一项右侧
+    //（centerIndex 之后）的槽位保持为空 —— 与首项左侧留空的规则保持一致，避免末项
+    // 右侧又把开头的游戏绕回来显示、造成首/末表现不统一。
+    cur = item;
+    for (ci = renderCenterIndex + 1; ci < renderCount; ci++) {
+        submenu_list_t *next = cur->next;
+        if (next == NULL || next == item)
+            break;
+        covers[ci].game = next;
+        cur = next;
+    }
+
+    // Resolve the target window independently from the animation-expanded
+    // drawing window.  Requests for the visual transition path are deliberately
+    // not kept alive across a page change; only this window and the prefetch
+    // range below can refresh an active request's generation.
+    cur = item;
+    for (ci = 0; ci < centerIndex; ci++) {
+        submenu_list_t *prev = cur->prev;
+        if (prev == NULL || prev == item)
+            break;
+        cur = prev;
+    }
+    leftmostTarget = cur;
+
+    cur = item;
+    for (ci = 0; ci < centerIndex; ci++) {
+        submenu_list_t *next = cur->next;
+        if (next == NULL || next == item)
+            break;
+        cur = next;
+    }
+    rightmostTarget = cur;
+
+    // targetCenterX 保持原有静止布局：目标项在原来的中心位置，临时槽位只向
+    // 起点所在方向扩展。animOffset 按实际 steps 一次性移动整段 Coverflow。
+    float targetCenterX = (float)basePosX + (float)centerIndex * (float)coverDistance;
+    float posX = targetCenterX + animOffset - (float)renderCenterIndex * (float)coverDistance;
+
+    // 每个封面的"居中程度"cf 根据它在动画中的连续位置计算：中心落在两个槽位
+    // 之间时，两个相邻封面分别按距离插值。这样多格翻页时中间封面经过中心也会
+    // 正常放大/缩小，不会保持非中心尺寸穿过中心后再在末尾突变。
+    int i;
+    float cf[COVERFLOW_RENDER_MAX];
+    float totalCf = 0.0f;
+    float visualCenterIndex = (float)renderCenterIndex;
+    if (animationActive)
+        visualCenterIndex -= animOffset / (float)coverDistance;
+    for (i = 0; i < renderCount; i++) {
+        float slotDistance = (float)i - visualCenterIndex;
+        if (slotDistance < 0.0f)
+            slotDistance = -slotDistance;
+        float f = 1.0f - slotDistance;
+        if (f < 0.0f)
+            f = 0.0f;
+        else if (f > 1.0f)
+            f = 1.0f;
+        cf[i] = f;
+        totalCf += f;
+    }
+
+    // 第一遍：预计算每个封面的横向绘制坐标（顺序无关，供下面按层级绘制取用）。
+    // 基础位置按均匀中心距 coverDistance 排布，再叠加【间距补偿】：把每张封面多出的宽度
+    // (2×centerExtraHalf×cf) 对称摊到两侧——某封面右侧的所有封面右移其半宽、左侧的所有封面左移其半宽。
+    // 于是任意相邻封面之间的可见间隙都恰好=gap（含中心封面两侧），中心封面本身位置不变；
+    // 补偿量由连续的 cf 驱动，滑动动画中平滑变化、收尾无跳变。
+    float cumLeft = 0.0f; // Σ 当前封面【左侧】所有封面的 cf
+    for (i = 0; i < renderCount; i++) {
+        float cumRight = totalCf - cumLeft - cf[i]; // Σ 右侧所有封面的 cf
+        covers[i].renderPosX = posX + centerExtraHalf * (cumLeft - cumRight);
+        posX += (float)coverDistance;
+        cumLeft += cf[i];
+    }
+
+    // 纹理【加载/请求顺序】：从中心向两侧扩散，中心封面最先入加载队列。
+    // io worker 单线程按 FIFO 处理请求，先请求的先加载，所以这样能让居中封面
+    // 最先加载、最先显示，再依次向外侧铺开——与下面的【绘制层级】完全解耦：
+    // 绘制仍按画家算法（外侧先画、中心最后画=置顶），保证中心封面始终在最上层。
+    // 顺序示例（renderCenterIndex=3）：3, 2,4, 1,5, 0,6。
+    int loadOrder[COVERFLOW_RENDER_MAX];
+    int loadCount = 0;
+    loadOrder[loadCount++] = renderCenterIndex;
+    int d;
+    for (d = 1; d <= renderCenterIndex || renderCenterIndex + d < renderCount; d++) {
+        if (renderCenterIndex - d >= 0)
+            loadOrder[loadCount++] = renderCenterIndex - d;
+        if (renderCenterIndex + d < renderCount)
+            loadOrder[loadCount++] = renderCenterIndex + d;
+    }
+
+    int li;
+    for (li = 0; li < loadCount; li++) {
+        int idx = loadOrder[li];
+        int requestTargetWindow = 1;
+
+        if (covers[idx].game == NULL || !gEnableArtCOV)
+            continue;
+
+        // During a page animation the extra slots are only visual transition
+        // content.  Query them without admitting a new request or refreshing an
+        // active request's generation; the target window remains fully active.
+        if (animationActive &&
+            (idx < renderCenterIndex - centerIndex ||
+             idx > renderCenterIndex + centerIndex))
+            requestTargetWindow = 0;
+
+        covers[idx].texture = getCoverflowTexture(img->cache, sourceList,
+                                                   &covers[idx].game->item,
+                                                   requestTargetWindow);
+        if (!covers[idx].texture || !covers[idx].texture->Mem)
+            covers[idx].texture = img->defaultTexture ? &img->defaultTexture->source : thmGetTexture(COVER_DEFAULT);
+    }
+
+    // 生成绘制顺序，实现画家算法的正确层级：
+    //   先画左侧（i 从 0 递增到 renderCenterIndex-1，越靠近中心越后画，压在外侧之上），
+    //   再画右侧（i 从 renderCount-1 递减到 renderCenterIndex+1，同样越靠近中心越后画），
+    //   最后画中心封面 —— 保证放大后的中心封面永远在最上层，不被两侧邻居遮挡。
+    int drawOrder[COVERFLOW_RENDER_MAX];
+    int drawCount = 0;
+    for (i = 0; i < renderCenterIndex; i++)
+        drawOrder[drawCount++] = i;
+    for (i = renderCount - 1; i > renderCenterIndex; i--)
+        drawOrder[drawCount++] = i;
+    drawOrder[drawCount++] = renderCenterIndex;
+
+    // 整个主题元素列表已经在 menuRenderElements() 中设置了可见显示区域的 scissor；
+    // Coverflow、case、封面和倒影因此与木板等普通主题素材共用同一裁切范围。
+
+    // 高度只在上面按 448i/p、512i/p 选择低分辨率宏；其它布局计算和渲染器
+    // 的缩放行为保持不变。
+
+    GSTEXTURE *icoTexture = NULL;
+    if (gTheme->coverflowIcoItem != item) {
+        gTheme->coverflowIcoItem = item;
+        gTheme->coverflowIcoCacheId = -1;
+        gTheme->coverflowIcoCacheUID = -1;
+        gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
+    }
+
+    // 只有 Coverflow 移动动画或当前中心条目变化，才让旧 ICO 立即失效。
+    // 其它 ART（包括背景图）加载期间不改变 ICO 的显示和弹出动画状态。
+    if (isAnimating || !gEnableArtICO) {
+        gTheme->coverflowIcoLoaded = 0;
+        gTheme->coverflowIcoPopupActive = 0;
+    } else {
+        // 这里只查询已加载完成的 ICO，不在封面绘制前新增请求；真正的新请求仍放到
+        // 本帧所有 Coverflow 预取完成之后，避免 ICO 与封面争抢当前帧的加载队列。
+        // 即使 texLoading > 0，也必须查询并继续使用已经加载好的当前 ICO。
+        icoTexture = getCoverflowIcoTexture(sourceList, item, 0);
+        if (icoTexture && icoTexture->Mem) {
+            if (!gTheme->coverflowIcoLoaded) {
+                gTheme->coverflowIcoLoaded = 1;
+                gTheme->coverflowIcoPopupActive = 1;
+                gTheme->coverflowIcoPopupStartTime = (u64)clock();
+            }
+        } else {
+            gTheme->coverflowIcoLoaded = 0;
+            gTheme->coverflowIcoPopupActive = 0;
+        }
+    }
+
+    float icoPopupEased = 1.0f;
+    if (gTheme->coverflowIcoPopupActive) {
+        if (gCoverflowAnimSpeed <= 0) {
+            gTheme->coverflowIcoPopupActive = 0;
+        } else {
+            u64 elapsed = (u64)clock() - gTheme->coverflowIcoPopupStartTime;
+            float t = (float)elapsed / ((float)gCoverflowAnimSpeed * CLOCKS_PER_SEC / 1000);
+            if (t >= 1.0f) {
+                gTheme->coverflowIcoPopupActive = 0;
+            } else {
+                // 与单次 Coverflow 移动完全相同的纯三次缓出。
+                float inv = 1.0f - t;
+                icoPopupEased = 1.0f - inv * inv * inv;
+            }
+        }
+    }
+
+    float centerIcoLeft = 0.0f;
+    float centerIcoBottom = 0.0f;
+    int centerIcoGeometryValid = 0;
+    int oi;
+    for (oi = 0; oi < drawCount; oi++) {
+        i = drawOrder[oi];
+
+        if (covers[i].game == NULL)
+            continue;
+
+        float renderPosX = covers[i].renderPosX;
+
+        // 统一的"居中程度"因子：与横向连续位置使用同一份 cf，确保缩放、明暗和
+        // 垂直偏移在多格翻页时同步经过每个中间封面，不在动画末尾再次吸附。
+        float centerFactor = cf[i];
+
+        // 本封面的等比 scale：非中心 ↔ 中心 随 centerFactor 插值（浮点连续，供动画平滑过渡）。
+        //   centerFactor=1 → 中心 scale(gCoverflowCenterScale)；=0 → 非中心 scale(effNonCenterScale=
+        //   noncenter_scale)；动画中间平滑取值。非中心大小只由 noncenter_scale 这一个旋钮决定。
+        float coverScale = (float)effNonCenterScale +
+                           (float)(gCoverflowCenterScale - effNonCenterScale) * centerFactor;
+        // 封面主图目标尺寸 = 基准 + coverScale（等比，【以横向宽度为基准】：scale 加到宽度、
+        // 高度按基准比例跟随），中心 scale=0 时即原生基准尺寸、点对点无失真。
+        float inlayW = (float)baseCoverW + coverScale;
+        if (inlayW < 1.0f)
+            inlayW = 1.0f;
+        float inlayH = (float)baseCoverH * inlayW / (float)baseCoverW;
+        // 反推 case 尺寸：内框占比 fracW/fracH → case = inlay ÷ 占比，使内框正好套住封面。
+        // 浮点旁路：宽/高全程 float 连续（交给 coverflowDrawTexture→rmSetupQuadF），放大动画
+        // 无整数截断蠕动。宽屏只对 case 宽做浮点横向压缩（高度不压，比例正确）。
+        float currentCoverHeight = inlayH / fracH;
+        float currentCoverWidth = inlayW / fracW;
+        if (gWideScreen)
+            currentCoverWidth = rmWideScaleF(currentCoverWidth);
+
+        // 所有封面都以中心封面的目标缩放作为垂直定位基准：保持中心线一致，
+        // 当前封面只根据自身高度计算底边，不再使用独立的 Y 偏移或反推缩放锚点。
+        float drawBottomY = coverCenterY + currentCoverHeight * 0.5f;
+
+        if (i == renderCenterIndex && !animationActive) {
+            // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
+            centerIcoLeft = renderPosX - (currentCoverWidth * fracW * 0.5f);
+            centerIcoBottom = drawBottomY;
+            centerIcoGeometryValid = 1;
+        }
+
+        // 纹理已在上面的【中心向外扩散】加载遍里请求并填好 covers[i].texture，
+        // 这里直接取用，不再重复请求（避免打乱加载优先级）。
+
+        // 不再因缺图而 continue：即使没有封面也没有占位图，coverflowDrawTexture 会在
+        // 主题带 overlay(case) 时至少画出空的 case 外壳，避免整块 case 模块消失。
+
+        // 明暗随过渡动画渐变（用同一 centerFactor，不再按槽位硬切）：
+        //   中心封面动画中由暗→亮、定格全亮；离开中心的由亮→暗；其余非中心恒压暗。
+        // 关闭 coverflow_dim_covers 时恒为全亮(gDefaultCol)。压暗对【封面主图+case 外壳】
+        // 一并生效（依赖 rmDrawOverlayPixmap 内嵌图改用传入 color）。
+        u64 coverColor = gDefaultCol;
+        if (gCoverflowDimCovers) {
+            // 亮度=1 → 原亮度(0x80)；亮度=0 → 压暗到 COVERFLOW_DIM_RGB。
+            // alpha 固定 0x80 保持不透明（只压暗、不发虚透背景）。
+            int rgb = (int)(0x80 * centerFactor + COVERFLOW_DIM_RGB * (1.0f - centerFactor) + 0.5f);
+            coverColor = GS_SETREG_RGBA(rgb, rgb, rgb, 0x80);
+        }
+
+        // 封面与 case 始终使用线性过滤，不再根据分辨率、封面尺寸或是否缩小来切换
+        // LINEAR/NEAREST。这样 448 基线以外的分辨率虽然不是点对点，但采样方式保持稳定，
+        // 也避免自动过滤判断在边界尺寸附近来回切换。
+        short coverFilter = GS_FILTER_LINEAR;
+        if (covers[i].texture)
+            covers[i].texture->Filter = coverFilter;         // 封面主图
+        if (img->overlayTexture)
+            img->overlayTexture->source.Filter = coverFilter; // case 外壳跟随封面
+
+        // ICO 位于所有非中心封面之后、中心封面之前：中心封面随后提交，
+        // 会把 ICO 的起始部分遮住，形成“从中心封面背后向左弹出”的层级关系。
+        if (i == renderCenterIndex && !isAnimating && centerIcoGeometryValid && icoTexture &&
+            icoTexture->Mem && gTheme->coverflowIcoLoaded) {
+            // Coverflow 的横向坐标在宽屏下已经按 4:3 逻辑坐标压缩；ICO 也必须
+            // 只压缩横向宽度、右边缘和弹出间距；宽度保持 COVERFLOW_ICO_W，
+            // 高度使用当前分辨率对应的宏值（448i/p、512i/p 为 LOWRES 值）。
+            float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_W);
+            float icoPopupGap = rmWideScaleF((float)COVERFLOW_ICO_POPUP_GAP);
+            float popupStartRight = centerIcoLeft + icoWidth;
+            float popupTargetRight = centerIcoLeft - icoPopupGap;
+            float popupRight = popupStartRight + (popupTargetRight - popupStartRight) * icoPopupEased;
+            int icoDrawWidth = (int)(icoWidth + 0.5f);
+            icoTexture->Filter = GS_FILTER_LINEAR;
+            rmDrawPixmapReflect(icoTexture, (int)(popupRight + 0.5f),
+                                (int)(centerIcoBottom + 0.5f),
+                                ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth,
+                                isLowRes ? COVERFLOW_ICO_H_LOWRES : COVERFLOW_ICO_H,
+                                SCALING_NONE, gDefaultCol);
+        }
+
+        // 传入元素配置尺寸 elem->width/height 作为顶点基准坐标系（wOPL 约定）。
+        // drawBottomY 来自固定缩放中心，而不是独立的垂直移动曲线；Case、封面和倒影
+        // 因而由同一个缩放变换自然展开。尺寸、物理像素模式和 448/480/512 的比例规则不变。
+        if (gEnableArtCOV)
+            coverflowDrawTexture(covers[i].texture, img, renderPosX, drawBottomY,
+                                 (ALIGN_BOTTOM | ALIGN_HCENTER), currentCoverWidth, currentCoverHeight,
+                                 coverColor, elem->reflection, elem->width, elem->height);
+    }
+
+    // 预取（prefetch）：为可见窗口【两侧当前看不见】的若干封面提前排队加载，动画期间也不暂停。
+    // 这样左右滚动时这些封面已在缓存里，能直接命中、减少滑动时才临时加载、露出占位图的情况。只【请求】、不绘制。
+    //
+    // 每侧预取张数 = gCoverflowPreload（优先取自主题 cfg 的 coverflow_preload 键，缺省 1）。
+    // 例如填 3 就是左右屏幕外各预读 3 张、共 6 张。此值【不设上限】：主题包填过大会因缓存/内存
+    // 过大而出问题，属用户行为，不额外处理。封面缓存槽位数在 initCoverflow 处按
+    // (翻页过渡窗口 2*同屏数 + 2*预取数 + 1) 分配，确保翻页期间旧/新窗口和预取封面都放得下。
+    //
+    // 注意：预取【允许环绕】——虽然显示层到列表头/尾就留空（不环绕），但导航是会环绕的
+    //（menuNextV 到尾部会跳回首项、menuPrevV 到首部会跳到末项），所以预取要把“另一头”的
+    // 封面也提前加载好，环绕跳转时才不会露出占位图。
+    if (img->cache && gCoverflowPreload > 0) {
+        int preloadPerSide = gCoverflowPreload;
+
+        submenu_list_t *head = menu->item->submenu;
+
+        // 左侧预取：到列表头(prev==NULL)时环绕到列表尾继续。
+        // It is intentionally based on the target window, not the extra
+        // animation slots, so a page jump cannot keep old transition art alive.
+        submenu_list_t *pcur = leftmostTarget;
+        int p;
+        for (p = 0; p < preloadPerSide && pcur; p++) {
+            submenu_list_t *prev = pcur->prev;
+            if (prev == NULL && head) {
+                // 环绕到列表尾（本分支无 last 指针，从表头走到末尾；只会在首次触边时走一次）。
+                prev = head;
+                while (prev->next)
+                    prev = prev->next;
+            }
+            if (prev == NULL || prev == item)
+                break; // 空列表，或列表太短已绕回中心项，停止
+            getCoverflowTexture(img->cache, sourceList, &prev->item, 1);
+            pcur = prev;
+        }
+
+        // 右侧预取：到列表尾(next==NULL)时环绕到列表头继续。
+        pcur = rightmostTarget;
+        for (p = 0; p < preloadPerSide && pcur; p++) {
+            submenu_list_t *next = pcur->next;
+            if (next == NULL)
+                next = head; // 环绕到列表头
+            if (next == NULL || next == item)
+                break;
+            getCoverflowTexture(img->cache, sourceList, &next->item, 1);
+            pcur = next;
+        }
+    }
+
+    // 预取 COV 入队之后立刻入队当前项 BG（仅调整相对 COV 的顺序；ICO 仍在其后）。
+    flushDeferredCoverflowBackground(item);
+
+    // 所有 Coverflow 预取与 BG 请求入队后，再为当前停留项创建 ICO 请求。
+    if (!isAnimating && gEnableArtICO && (!icoTexture || !icoTexture->Mem)) {
+        GSTEXTURE *requestedIco = getCoverflowIcoTexture(sourceList, item, 1);
+        if (requestedIco && requestedIco->Mem && !gTheme->coverflowIcoLoaded) {
+            gTheme->coverflowIcoLoaded = 1;
+            gTheme->coverflowIcoPopupActive = 1;
+            gTheme->coverflowIcoPopupStartTime = (u64)clock();
+        }
+    }
+}
+
+static void initCoverflow(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name, int count, const char *texture, const char *overlay)
+{
+    mutable_image_t *mutableImage = initMutableImage(themePath, themeConfig, theme, name, ELEM_TYPE_GAME_IMAGE, "COV", count, texture, overlay);
+    elem->extended = mutableImage;
+    elem->endElem = &endMutableImage;
+
+    if (mutableImage->cache) {
+        // ICO 单独使用一个一槽缓存，避免为了显示左侧光碟图而挤占 Coverflow 封面缓存。
+        if (!theme->coverflowIcoCache) {
+            theme->coverflowIcoCache = cacheInitCache(theme->gameCacheCount++, "ART", 1, "ICO", 1);
+            theme->coverflowIcoCacheId = -1;
+            theme->coverflowIcoCacheUID = -1;
+        }
+        elem->drawElem = &drawCoverFlow;
+    } else
+        LOG("THEMES Coverflow %s: NO pattern, elem disabled !!\n", name);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1068,7 +2061,10 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
             } else if (!strcmp(elementsType[ELEM_TYPE_BACKGROUND], type)) {
                 if (!elems->first) { // Background elem can only be the first one
                     elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_BACKGROUND, 0, 0, ALIGN_NONE, screenWidth, screenHeight, SCALING_NONE, gDefaultCol, theme->fonts[0]);
-                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 3, NULL);
+                    // Full-screen RGB backgrounds are large CT24 textures. Keep only
+                    // the current BG in the cache so old games do not retain competing
+                    // VRAM blocks while Coverflow loads the next page of covers.
+                    initBackground(themePath, themeConfig, theme, elem, name, NULL, 1, NULL);
                 }
             } else if (!strcmp(elementsType[ELEM_TYPE_MENU_ICON], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_MENU_ICON, screenWidth >> 1, 400, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
@@ -1107,6 +2103,16 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
             } else if (!strcmp(elementsType[ELEM_TYPE_BDM_INDEX], type)) {
                 elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_BDM_INDEX, screenWidth >> 1, 355, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, gDefaultCol, theme->fonts[0]);
                 elem->drawElem = &drawBDMIndex;
+            } else if (!strcmp(elementsType[ELEM_TYPE_COVERFLOW], type)) {
+                elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_COVERFLOW, 0, 0, ALIGN_NONE, DIM_UNDEF, DIM_UNDEF, SCALING_NONE, gDefaultCol, theme->fonts[0]);
+                // 封面缓存槽位数按“翻页动画过渡窗口 + 两侧预取 + 1 余量”分配。
+                // L1/R1 最多一次跨过 gCoverflowCount 格，过渡帧同时保留旧窗口和新窗口，
+                // 因此至少需要 2 * gCoverflowCount 个封面槽；否则新页入缓存时会淘汰旧页
+                // 右侧已经加载好的封面，导致动画刚开始就闪回占位图并重新排队加载。
+                // 预取数不设上限，主题填过大导致内存不足属用户行为，不额外处理。
+                int coverflowCacheSlots = 2 * gCoverflowCount + 2 * gCoverflowPreload + 1;
+                initCoverflow(themePath, themeConfig, theme, elem, name, coverflowCacheSlots, NULL, NULL);
+                theme->coverflow = elem;
             }
 
             if (elem) {
@@ -1142,6 +2148,8 @@ static void freeGUIElems(theme_elems_t *elems)
 
 GSTEXTURE *thmGetTexture(unsigned int id)
 {
+    thmCollectRetiredThemes();
+
     if (id >= TEXTURES_COUNT)
         return NULL;
     else {
@@ -1164,6 +2172,9 @@ static void thmFree(theme_t *theme)
         freeGUIElems(&theme->appsMainElems);
         freeGUIElems(&theme->appsInfoElems);
 
+        if (theme->coverflowIcoCache)
+            cacheDestroyCache(theme->coverflowIcoCache);
+
         // free textures
         GSTEXTURE *texture;
         int id = 0;
@@ -1180,6 +2191,22 @@ static void thmFree(theme_t *theme)
             fntRelease(theme->fonts[id]);
 
         free(theme);
+    }
+}
+
+static void thmCollectRetiredThemes(void)
+{
+    retired_theme_t **link;
+
+    if (!retiredThemes || ioHasPendingRequests())
+        return;
+
+    link = &retiredThemes;
+    while (*link) {
+        retired_theme_t *retired = *link;
+        *link = retired->next;
+        thmFree(retired->theme);
+        free(retired);
     }
 }
 
@@ -1205,17 +2232,40 @@ static int thmReadEntry(int index, const char *path, const char *separator, cons
 }
 
 /* themePath must contains the leading separator (as it is dependent of the device, we can't know here) */
-static int thmLoadResource(GSTEXTURE *texture, int texId, const char *themePath, short psm, int useDefault)
+static int thmLoadResourceWithFallback(GSTEXTURE *texture, int texId, const char *themePath, short psm,
+                                        int useDefault, int fallbackTexId, int *usedFallback)
 {
     int success = -1;
+
+    if (usedFallback)
+        *usedFallback = 0;
 
     if (themePath != NULL)
         success = texDiscoverLoad(texture, themePath, texId); // only set success here
 
-    if ((success < 0) && useDefault)
-        texLoadInternal(texture, texId); // we don't mind the result of "default"
+    if ((success < 0) && useDefault) {
+        int fallbackResult = texLoadInternal(texture, fallbackTexId >= 0 ? fallbackTexId : texId);
+        if (usedFallback && fallbackTexId >= 0 && fallbackResult >= 0)
+            *usedFallback = 1;
+    }
 
     return success;
+}
+
+static int thmLoadResource(GSTEXTURE *texture, int texId, const char *themePath, short psm, int useDefault)
+{
+    return thmLoadResourceWithFallback(texture, texId, themePath, psm, useDefault, -1, NULL);
+}
+
+// 外部 Coverflow 主题缺少这些资源时，回退到内置 Coverflow 的美术，而不是
+// 回退到普通列表主题的 usb/Index_* 资源。
+static int thmGetCoverflowFallbackTexture(int texId)
+{
+    if (texId >= BDM_ICON && texId <= APP_ICON)
+        return CF_DEV_BDM + (texId - BDM_ICON);
+    if (texId >= INDEX_0 && texId <= INDEX_4)
+        return CF_INDEX_0 + (texId - INDEX_0);
+    return -1;
 }
 
 static void thmApplyTextColor(theme_element_t *elem, u64 color)
@@ -1297,6 +2347,12 @@ static void thmLoad(const char *themePath)
     LOG("THEMES Load theme path=%s\n", themePath);
     char path[256];
     theme_t *curT = gTheme;
+
+    // A previous theme may have become reclaimable since the last frame.  Do
+    // this opportunistically, never by blocking the UI on a potentially slow
+    // BDM read.
+    thmCollectRetiredThemes();
+
     theme_t *newT = (theme_t *)malloc(sizeof(theme_t));
     memset(newT, 0, sizeof(theme_t));
 
@@ -1320,9 +2376,13 @@ static void thmLoad(const char *themePath)
 
     config_set_t *themeConfig = NULL;
     if (!themePath) {
-        // No theme specified. Prepare and load the default theme.
+        // 未指定主题路径：加载内置主题模板。根据 builtinThemeID 选择
+        // 内置 Coverflow 主题(默认)还是强化原生列表主题（两者都不依赖外部图片资源）。
         themeConfig = configAlloc(0, NULL, NULL);
-        configReadBuffer(themeConfig, &conf_theme_OPL_cfg, size_conf_theme_OPL_cfg);
+        if (builtinThemeID == 1)
+            configReadBuffer(themeConfig, &conf_theme_OPL_cfg, size_conf_theme_OPL_cfg);
+        else
+            configReadBuffer(themeConfig, &conf_theme_coverflow_cfg, size_conf_theme_coverflow_cfg);
     } else {
         snprintf(path, sizeof(path), "%sconf_theme.cfg", themePath);
         themeConfig = configAlloc(0, NULL, path);
@@ -1349,6 +2409,55 @@ static void thmLoad(const char *themePath)
 
     if (configGetColor(themeConfig, "sel_text_color", color))
         newT->selTextColor = GS_SETREG_RGBA(color[0], color[1], color[2], 0x80);
+
+    // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。
+    configGetInt(themeConfig, "coverflow_cover_offset", &newT->coverflowCoverOffset);
+
+    // Coverflow 参数先复位到内部基线；第三方主题只覆盖这里明确开放的 count/dim/preload。
+    // 每次加载主题都先复位，避免切换到未定义这些键的主题时残留上一个主题的设置。本函数
+    // 在元素定义解析（initCoverflow）之前运行，因此读到的 count/preload 在分配缓存时即可用。
+    //   coverflow_count            —— 同屏封面数（规范化为 1/3/5/7/9；偶数向上取奇数）
+    //   coverflow_cover_width       —— 游戏封面主图基准宽（内部固定为448基线逻辑值140）
+    //   coverflow_cover_height      —— 游戏封面主图基准高（内部固定为448基线逻辑值214）
+    //   coverflow_apps_cover_width  —— APPS 封面主图基准宽（内部固定为448基线逻辑值140）
+    //   coverflow_apps_cover_height —— APPS 封面主图基准高（内部固定为448基线逻辑值150）
+    //   coverflow_center_scale     —— 中心封面相对基准的等比增减像素（0=原生点对点、无失真）
+    //   coverflow_noncenter_scale  —— 非中心封面相对基准的等比增减像素（负值=缩小）
+    //   coverflow_animation_speed  —— 内部默认动画时长（不从主题覆盖）
+    //   coverflow_dim_covers       —— 非中心封面是否变暗（0/1，可由主题覆盖）
+    //   coverflow_preload          —— 每侧屏幕外预取封面数（如填 3 = 左右各 3、共 6；无上限）
+    gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
+    gCoverflowCoverW = COVERFLOW_COVER_W;
+    gCoverflowCoverH = COVERFLOW_COVER_H;
+    gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;
+    gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
+    gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
+    gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
+    gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT;
+    gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT;
+    gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
+    gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
+    gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
+    // 显示数量重新开放给第三方主题；读取后在下面统一规范化为 1/3/5/7/9。
+    configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
+    // 其余可配置项继续按各自兼容规则读取。封面位置/坐标系与外壳美术（overlay 顶点等）
+    // 由主题引擎按元素通用解析。
+    configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
+    configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
+    // count 规范化到 1/3/5/7/9，防止 covers[]/drawOrder[] 越界；preload 只挡负值、不设上限
+    //（主题填过大导致内存/崩溃属用户行为，不额外处理）。
+    gCoverflowCount = normalizeCoverflowCount(gCoverflowCount);
+    if (gCoverflowPreload < 0)
+        gCoverflowPreload = 0;
+    // 封面基准尺寸挡非法值（drawCoverFlow 会用 CoverH 作除数、用 CoverW/H 算比例）。
+    if (gCoverflowAppsCoverW < 1)
+        gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;
+    if (gCoverflowAppsCoverH < 1)
+        gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
+    if (gCoverflowCoverW < 1)
+        gCoverflowCoverW = COVERFLOW_COVER_W;
+    if (gCoverflowCoverH < 1)
+        gCoverflowCoverH = COVERFLOW_COVER_H;
 
     // before loading the element definitions, we have to have the fonts prepared
     // for that, we load the fonts and a translation table
@@ -1419,9 +2528,71 @@ static void thmLoad(const char *themePath)
     }
     newT->loadingIconCount = i;
 
-    // Customizable icons
-    for (i = BDM_ICON; i <= START_ICON; i++)
-        thmLoadResource(&newT->textures[i], i, themePath, GS_PSM_CT32, newT->useDefault);
+    // Customizable icons. 外部 Coverflow 主题缺少 MenuIcon/BdmIndex 资源时，
+    // fallbackId 改用内置 Coverflow 美术；其它主题仍回退到原来的内部资源。
+    for (i = BDM_ICON; i <= START_ICON; i++) {
+        int fallbackId = -1;
+        if (themePath && newT->coverflow)
+            fallbackId = thmGetCoverflowFallbackTexture(i);
+
+        int usedFallback = 0;
+        thmLoadResourceWithFallback(&newT->textures[i], i, themePath, GS_PSM_CT32,
+                                    newT->useDefault, fallbackId, &usedFallback);
+        if (usedFallback)
+            newT->coverflowTextureFallback[i] = 1;
+    }
+
+    // BdmIndex 使用同一套“自定义优先、第三方 CF 缺失时回退 cf_index_*”规则。
+    // 这些资源单独加载，避免覆盖普通主题原有的 Index_* 内置资源槽位。
+    for (i = INDEX_0; i <= INDEX_4; i++) {
+        int fallbackId = -1;
+        if (themePath && newT->coverflow)
+            fallbackId = thmGetCoverflowFallbackTexture(i);
+
+        int usedFallback = 0;
+        thmLoadResourceWithFallback(&newT->textures[i], i, themePath, GS_PSM_CT32,
+                                    newT->useDefault, fallbackId, &usedFallback);
+        if (usedFallback)
+            newT->coverflowTextureFallback[i] = 1;
+    }
+
+    // 内置 Coverflow 主题(builtinThemeID==0, 无外部主题路径)的设备图标改用 wOPL 风格的
+    // 单设备大图(带 BDM/SMB/APA/APPS 标签), 而不是原列表主题那套四合一标签条。
+    // 仅覆盖内置 Coverflow 这一套的 textures[] 槽位, 列表主题与外部主题都不受影响。
+    // 上面的循环已把默认图标载入这些槽, 这里先 texFree 再载入 cf_ 版本以避免内存泄漏。
+    if (!themePath && builtinThemeID == 0) {
+        static const struct
+        {
+            int slot;
+            int cfTex;
+        } cfDevIcons[] = {
+            {BDM_ICON, CF_DEV_BDM},
+            {USB_ICON, CF_DEV_USB},
+            {ILINK_ICON, CF_DEV_ILK},
+            {MX4SIO_ICON, CF_DEV_M4S},
+            {HDD_BD_ICON, CF_DEV_HDD_BD},
+            {HDD_ICON, CF_DEV_HDD},
+            {ETH_ICON, CF_DEV_ETH},
+            {APP_ICON, CF_DEV_APP}};
+        int k;
+        for (k = 0; k < (int)(sizeof(cfDevIcons) / sizeof(cfDevIcons[0])); k++) {
+            texFree(&newT->textures[cfDevIcons[k].slot]);
+            texLoadInternal(&newT->textures[cfDevIcons[k].slot], cfDevIcons[k].cfTex);
+        }
+        for (k = 0; k < 5; k++) {
+            texFree(&newT->textures[INDEX_0 + k]);
+            texLoadInternal(&newT->textures[INDEX_0 + k], CF_INDEX_0 + k);
+        }
+    }
+
+    // 缺图占位纹理 COVER_DEFAULT：Coverflow / GameImage 等元素在未显式配置 default= 时，
+    // 会退回 thmGetTexture(COVER_DEFAULT) 作为缺图占位。但上面的常规加载区间并不覆盖
+    // COVER_DEFAULT（它落在 SETTINGS_BG..VMODE_PAL 之间，而该段仅在内置主题、且从 ELF_FORMAT
+    // 起才加载），导致这张占位纹理对任何主题都从未被加载、恒为 NULL。于是没有在 coverflow
+    // 段写 default=cover 的第三方主题，缺图时既无 img->defaultTexture 也无 COVER_DEFAULT，
+    // 占位图完全不显示。这里从主题目录加载 cover.png（缺失时回退内置 cover_png，useDefault
+    // 恒为 1 以保证始终有占位），使第三方主题即便省略 default= 也能显示缺图占位（wOPL 行为）。
+    thmLoadResource(&newT->textures[COVER_DEFAULT], COVER_DEFAULT, themePath, GS_PSM_CT32, 1);
 
     /* Not customizable icons - currently unused.
     for (i = L1_ICON; i <= R3_ICON; i++)
@@ -1432,7 +2603,29 @@ static void thmLoad(const char *themePath)
             thmLoadResource(&newT->textures[i], i, NULL, GS_PSM_CT32, 1);
 
     gTheme = newT;
-    thmFree(curT);
+
+    // A worker may still own a cache in the previous theme.  Retire that
+    // object instead of waiting for it: a BDM driver that is slow or stuck must
+    // not turn a theme switch into another permanent UI lock.  The retired
+    // theme is reclaimed once ioHasPendingRequests() is false.
+    if (curT) {
+        if (!ioHasPendingRequests())
+            thmFree(curT);
+        else {
+            retired_theme_t *retired = malloc(sizeof(*retired));
+            if (retired) {
+                retired->theme = curT;
+                retired->next = retiredThemes;
+                retiredThemes = retired;
+            } else {
+                // Safety beats reclamation here: keep the old theme alive if
+                // the retirement node cannot be allocated.
+                LOG("THEMES: unable to defer old theme reclamation\n");
+            }
+        }
+    }
+
+    thmCollectRetiredThemes();
 }
 
 static void thmRebuildGuiNames(void)
@@ -1441,17 +2634,20 @@ static void thmRebuildGuiNames(void)
         free(guiThemesNames);
 
     // build the themes name list
-    guiThemesNames = (const char **)malloc((nThemes + 2) * sizeof(char **));
+    // 列表结构：THM_NUM_BUILTIN 套内置主题 + nThemes 套用户主题 + 1 个 NULL 结束标记
+    guiThemesNames = (const char **)malloc((nThemes + THM_NUM_BUILTIN + 1) * sizeof(char **));
 
-    // add default internal
-    guiThemesNames[0] = "强化原生主题-支持背景图";
+    // 两套内置主题固定排在最前：Coverflow 现为默认(索引 0)，原列表主题顺移到其后(索引 1)
+    guiThemesNames[0] = THM_COVERFLOW_NAME;
+    guiThemesNames[1] = THM_LIST_NAME;
 
+    // 用户主题接在内置主题之后
     int i = 0;
     for (; i < nThemes; i++) {
-        guiThemesNames[i + 1] = themes[i].name;
+        guiThemesNames[i + THM_NUM_BUILTIN] = themes[i].name;
     }
 
-    guiThemesNames[nThemes + 1] = NULL;
+    guiThemesNames[nThemes + THM_NUM_BUILTIN] = NULL;
 }
 
 int thmAddElements(char *path, const char *separator, int forceRefresh)
@@ -1489,6 +2685,7 @@ void thmInit(void)
 
 void thmReinit(const char *path)
 {
+    builtinThemeID = 0;
     thmLoad(NULL);
     guiThemeID = 0;
 
@@ -1524,13 +2721,20 @@ int thmSetGuiValue(int themeID, int reload)
 {
     if (themeID != -1) {
         if (guiThemeID != themeID || reload) {
-            thmLoad(themeID != 0 ? themes[themeID - 1].filePath : NULL);
+            if (themeID < THM_NUM_BUILTIN) {
+                // 内置主题（0=默认，1=Coverflow）：无外部路径，走内置模板
+                builtinThemeID = themeID;
+                thmLoad(NULL);
+            } else {
+                // 用户主题：GUI 索引需减去内置主题数量才是 themes[] 下标
+                thmLoad(themes[themeID - THM_NUM_BUILTIN].filePath);
+            }
 
             guiThemeID = themeID;
 
             //ForceRefreshPrevTexCache = 1; // 刷新ART缓存，防止死机
             return 1;
-        } else if (guiThemeID == 0)
+        } else if (guiThemeID < THM_NUM_BUILTIN)
             thmSetColors(gTheme);
     }
     return 0;
@@ -1544,12 +2748,20 @@ int thmGetGuiValue(void)
 int thmFindGuiID(const char *theme)
 {
     if (theme) {
+        // 内置 Coverflow 主题现为默认（GUI 索引 0）
+        if (strcasecmp(theme, THM_COVERFLOW_NAME) == 0)
+            return 0;
+        // 原列表主题顺移到 Coverflow 之后（GUI 索引 1）
+        if (strcasecmp(theme, THM_LIST_NAME) == 0)
+            return 1;
+        // 再匹配用户主题（GUI 索引需加上内置主题数量偏移）
         int i = 0;
         for (; i < nThemes; i++) {
             if (strcasecmp(themes[i].name, theme) == 0)
-                return i + 1;
+                return i + THM_NUM_BUILTIN;
         }
     }
+    // 未匹配到则回退默认主题（现在是 Coverflow, GUI 索引 0）
     return 0;
 }
 
@@ -1560,7 +2772,8 @@ const char **thmGetGuiList(void)
 
 char *thmGetFilePath(int themeID)
 {
-    theme_file_t *currTheme = &themes[themeID - 1];
+    // 仅用户主题拥有文件路径；GUI 索引需减去内置主题数量才是 themes[] 下标。
+    theme_file_t *currTheme = &themes[themeID - THM_NUM_BUILTIN];
     char *path = currTheme->filePath;
 
     return path;
@@ -1568,6 +2781,7 @@ char *thmGetFilePath(int themeID)
 
 void thmEnd(void)
 {
+    thmCollectRetiredThemes();
     thmFree(gTheme);
 
     int i = 0;
