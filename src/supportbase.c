@@ -1851,6 +1851,25 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
 
 static const struct cdvdman_settings_common cdvdman_settings_common_sample = CDVDMAN_SETTINGS_DEFAULT_COMMON;
 
+static int sbUseSmbBatchWait(const char *startup)
+{
+    static const char *const games[] = {
+        "SLUS_206.68", /* 变形金刚（美国版） */
+        "SLES_523.88", /* 变形金刚（欧洲版） */
+        "SLPM_654.07"  /* 变形金刚（日本版） */
+    };
+    unsigned int i;
+
+    if (startup != NULL) {
+        for (i = 0; i < sizeof(games) / sizeof(games[0]); i++) {
+            if (!strcmp(startup, games[i]))
+                return 1;
+        }
+    }
+
+    return 0;
+}
+
 int sbGetCompatMask(config_set_t *configSet, int defaultMode1)
 {
     int compatmask = 0;
@@ -1909,6 +1928,9 @@ int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman,
     if (compatmask & COMPAT_MODE_6) {
         settings->flags |= IOPCORE_ENABLE_POFF;
     }
+
+    if (game != NULL && sbUseSmbBatchWait(game->startup))
+        settings->flags |= IOPCORE_COMPAT_SMB_BATCH_WAIT;
 
     settings->fakemodule_flags = 0;
     settings->fakemodule_flags |= FAKE_MODULE_FLAG_CDVDFSV;
