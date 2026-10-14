@@ -428,32 +428,6 @@ void texFree(GSTEXTURE *texture)
     }
 }
 
-#ifdef __DEBUG
-static const char *diagTexturePath;
-// 最近一次阶段名（指向字符串常量）及调用线程；看门狗无锁读取，
-// 用来判断 worker 停在 texEnd 的哪一步。
-static const char *volatile diagLastStage = "-";
-static volatile int diagLastStageThread = -1;
-
-static void texDiagStage(const char *stage, const char *path)
-{
-    diagLastStage = stage;
-    diagLastStageThread = GetThreadId();
-    LOG("[ART_LOAD] stage=%s path=%s\n", stage, path ? path : "-");
-}
-
-const char *texGetDiagLastStage(int *threadId)
-{
-    if (threadId)
-        *threadId = diagLastStageThread;
-    return diagLastStage;
-}
-
-int texGetFileLockSemaId(void)
-{
-    return fileLockId;
-}
-#endif
 
 static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int status, png_texture_t *pngTexture, GSTEXTURE *texture)
 {
@@ -463,25 +437,15 @@ static int texEnd(png_structp pngPtr, png_infop infoPtr, void *pFileBuffer, int 
     if (texture)
         texFree(texture);
 
-#ifdef __DEBUG
-    // 这三步都会进入 newlib malloc 锁；用于确认 worker 是否卡在 success 之后的释放阶段。
-    texDiagStage("texend_free_file", diagTexturePath);
-#endif
     if (pFileBuffer)
         free(pFileBuffer);
 
-#ifdef __DEBUG
-    texDiagStage("texend_png_destroy", diagTexturePath);
-#endif
     if (infoPtr || pngPtr)
         png_destroy_read_struct(&pngPtr, &infoPtr, (png_infopp)NULL);
 
     if (pngTexture)
         free(pngTexture);
 
-#ifdef __DEBUG
-    texDiagStage("texend_done", diagTexturePath);
-#endif
     return status;
 }
 
@@ -607,9 +571,6 @@ static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr
         return -1;
     }
 
-#ifdef __DEBUG
-    texDiagStage("png_alloc_pixels", diagTexturePath);
-#endif
     texture->Mem = memalign(128, size);
 
     if (!texture->Mem) {
@@ -640,17 +601,11 @@ static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr
     for (int row = 0; row < texture->Height; row++)
         rowPointers[row] = &allRows[(size_t)row * rowBytes];
 
-#ifdef __DEBUG
-    texDiagStage("png_decode", diagTexturePath);
-#endif
     // libpng reports malformed/truncated data through longjmp. Catch it here
     // so the temporary row buffers are released before returning to texLoadAll.
     if (setjmp(png_jmpbuf(pngPtr))) {
         free(allRows);
         free(rowPointers);
-#ifdef __DEBUG
-        texDiagStage("png_decode_error", diagTexturePath);
-#endif
         LOG("TEXTURES PngReadData: PNG decode failed\n");
         return -1;
     }
@@ -659,9 +614,6 @@ static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr
     texPngReadPixels(texture, rowPointers, size, pngTexture);
     png_read_end(pngPtr, NULL);
 
-#ifdef __DEBUG
-    texDiagStage("png_done", diagTexturePath);
-#endif
     free(allRows);
     free(rowPointers);
     return 0;
@@ -674,68 +626,31 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
     void *pFileBuffer = NULL;
     size_t fileBufferSize = 0;
     if (filePath) {
-#ifdef __DEBUG
-        diagTexturePath = filePath;
-        texDiagStage("file_lock_wait", filePath);
-#endif
         WaitSema(fileLockId);
-#ifdef __DEBUG
-        texDiagStage("open", filePath);
-#endif
         int fd = open(filePath, O_RDONLY);
         if (fd < 0) {
-#ifdef __DEBUG
-            texDiagStage("open_failed", filePath);
-            if (errno == EMFILE || errno == ENFILE || errno == EIO)
-                LOG("[ART_IO] open_failed errno=%d path=%s\n", errno, filePath);
-#endif
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
 
-#ifdef __DEBUG
-        texDiagStage("seek_end", filePath);
-#endif
         int fileSize = lseek(fd, 0, SEEK_END);
         if (fileSize <= 0) {
-#ifdef __DEBUG
-            texDiagStage("seek_end_failed", filePath);
-#endif
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE;
         }
-#ifdef __DEBUG
-        texDiagStage("seek_start", filePath);
-#endif
         lseek(fd, 0, SEEK_SET);
         fileBufferSize = (size_t)fileSize;
 
-#ifdef __DEBUG
-        texDiagStage("alloc_file", filePath);
-#endif
         pFileBuffer = malloc(fileBufferSize);
         if (pFileBuffer == NULL) {
-#ifdef __DEBUG
-            texDiagStage("alloc_file_failed", filePath);
-#endif
             close(fd);
             SignalSema(fileLockId);
             return ERR_BAD_FILE; // There's no out of memory error...
         }
 
-#ifdef __DEBUG
-        texDiagStage("read_begin", filePath);
-#endif
         ssize_t bytesRead = read(fd, pFileBuffer, fileBufferSize);
-#ifdef __DEBUG
-        LOG("[ART_LOAD] stage=read_end bytes=%d expected=%d path=%s\n",
-            (int)bytesRead, (int)fileBufferSize, filePath);
-#endif
         if (bytesRead != (ssize_t)fileBufferSize) {
-#ifdef __DEBUG
-            LOG("[ART_IO] read_failed errno=%d path=%s\n", errno, filePath);
-#endif
             LOG("texLoadAll: failed to read file %s\n", filePath);
             free(pFileBuffer);
             close(fd);
@@ -744,15 +659,9 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         }
         readBuffer.data = (u8 *)pFileBuffer;
         readBuffer.remaining = fileBufferSize;
-#ifdef __DEBUG
-        texDiagStage("close", filePath);
-#endif
         close(fd);
         SignalSema(fileLockId);
     } else {
-#ifdef __DEBUG
-        diagTexturePath = NULL;
-#endif
         if (texId == -1 || !internalDefault[texId].texture)
             return ERR_BAD_FILE;
 
@@ -762,9 +671,6 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         readBuffer.remaining = (size_t)-1;
     }
 
-#ifdef __DEBUG
-    texDiagStage("png_create", filePath);
-#endif
     png_structp pngPtr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
     if (!pngPtr)
         return texEnd(pngPtr, NULL, pFileBuffer, ERR_READ_STRUCT, NULL, texture);
@@ -774,9 +680,6 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_INFO_STRUCT, NULL, texture);
 
     if (setjmp(png_jmpbuf(pngPtr))) {
-#ifdef __DEBUG
-        texDiagStage("png_error", filePath);
-#endif
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_SET_JMP, NULL, texture);
     }
 
@@ -786,9 +689,6 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
 
     unsigned int sigRead = 0;
     png_set_sig_bytes(pngPtr, sigRead);
-#ifdef __DEBUG
-    texDiagStage("png_read_info", filePath);
-#endif
     png_read_info(pngPtr, infoPtr);
 
     png_uint_32 pngWidth, pngHeight;
@@ -807,9 +707,6 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
     }
 
     png_set_filler(pngPtr, 0xff, PNG_FILLER_AFTER);
-#ifdef __DEBUG
-    texDiagStage("png_update_info", filePath);
-#endif
     png_read_update_info(pngPtr, infoPtr);
 
     png_texture_t *pngTexture = calloc(1, sizeof(png_texture_t));
@@ -873,9 +770,6 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
 
     // Successful loads transfer ownership of texture->Mem/Clut to the caller.
-#ifdef __DEBUG
-    texDiagStage("success", filePath);
-#endif
     return texEnd(pngPtr, infoPtr, pFileBuffer, 0, pngTexture, NULL);
 }
 

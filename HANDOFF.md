@@ -9,11 +9,11 @@
 - 固定工作分支：`arena/01a0ba0f-open-ps2-loader`
 - 不要切换、创建或推送其它分支。
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
-- 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`
-- 当前诊断基线提交：`91ccccf5a041eddc1c1e4e81595f0ca4deeff661`；本次在该基线上增加 Coverflow 随机死机的 debug-only 看门狗与阶段快照。
-- 当前任务：定位 Coverflow 随机完全死机的最后执行阶段，不改变 Coverflow 功能、渲染后端、纹理缓存行为或正常构建路径。
-- 当前工作区：本次源码改动与本文同步提交；未修改图片、CFG、`temp/` 用户资产或 `AGENTS.md`。
-- 验证状态：已完成静态 diff 检查。外部 `make iopcore_debug --trace` 已进入源码编译，但首轮在 `src/menusys.c` 发现 `theme_element_t` 没有 `name` 字段；已改为记录 `coverflow`/`theme_element` 分类标签，等待重新跑完整 debug 构建和实机验证。
+- 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`。
+- 本轮清理起点：`68f28e5c4ae662f668bb4874ad31852261b922a1`；保留边界：`088d68e85077d443121ad69dba7eebdeab3fd35c`。仅清理边界之后增加的诊断代码，不回退正常功能和安全修复。
+- 当前任务：移除 GUI/Coverflow、ART/IO、图片加载、HIRES 与 ATA 的临时诊断及其专用接口；保留边界时已有的旧注释调试草稿、`OSDHistory.c` 空打印宏、FPS 显示和通用 debug 日志机制。
+- 当前工作区范围：本轮仅修改上述源码、诊断头文件和本文；图片、CFG、`temp/` 用户资产及 `AGENTS.md` 不动。
+- 验证限制：当前环境缺少 PS2SDK/GSKIT 交叉工具链与实机；静态核查和构建检查结果见最新变更记录。
 
 ## 2. 当前任务重点
 
@@ -170,13 +170,12 @@ temp = !temp
 - `include/renderman.h`：渲染器接口。
 - `src/texcache.c`：ART 异步 cache 和请求队列；ICO 继续复用这里的机制。
 - `misc/conf_theme_coverflow.cfg`：内置 Coverflow 主题 CFG，由 Makefile 的 `bin2c` 规则嵌入。
-- `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑；debug 构建记录 GUI 帧心跳、输入/菜单/绘制边界。
-- `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测；debug 构建快照 `menuSemaId`、光标和当前游戏。
-- `src/textures.c`、`include/textures.h`：大型背景（CT24 与带 alpha 的 CT32）的 CT16S 压缩，降低纹理池争用；已有 ART 解码阶段供看门狗读取。
-- `include/debugdiag.h`：仅 `__DEBUG` 生效的阶段、Coverflow 上下文和跨模块诊断接口。
-- `src/ioman.c`：debug 构建独立 kernel 看门狗线程；停顿后通过独立静态缓冲区直写诊断快照。
-- `src/renderman.c`：debug 构建记录 hires sync/flip、普通 queue/finish、TexManager bind/nextFrame 边界。
-- `src/texcache.c`：debug 构建提供 texture loading、活动 ART、pthread 创建状态和 `texLoadingMutex` 无锁快照。
+- `src/gui.c`：UI 颜色配置对话框及内置主题颜色可编辑逻辑；原有 debug FPS 统计保留。
+- `src/menusys.c`：Coverflow 导航、单步移动、L1/R1 翻页动画和当前 item 变化检测。
+- `src/textures.c`、`include/textures.h`：大型背景（CT24 与带 alpha 的 CT32）的 CT16S 压缩，降低纹理池争用。
+- `src/ioman.c`：IO worker、请求队列和原有 `ioPrintf`/EESIO 路径；新增的独立看门狗与无锁快照接口已清理。
+- `src/renderman.c`：hires 与普通模式的绘制路径；诊断包装已清理，纹理绑定直接调用 `gsKit_TexManager_bind`。
+- `src/texcache.c`：ART 异步缓存、请求取消与原有 `pthread_mutex_lock/unlock` 锁路径；临时 ART/IO 探针已清理。
 
 ### 低分辨率大背景卡顿的根因与处理
 
@@ -252,6 +251,15 @@ git log -1 --oneline
 7. 推送到 `origin/arena/01a0ba0f-open-ps2-loader`。
 
 ## 10. 变更记录
+
+以下旧记录仅说明当时的排查经过；其中提到的诊断接口、开关及“下一步”不代表当前源码仍可使用。
+
+### 2026-10-14 — 清理保留边界之后加入的临时诊断
+
+- 以 `68f28e5c4ae662f668bb4874ad31852261b922a1` 为起点，只移除 `088d68e85077d443121ad69dba7eebdeab3fd35c` 之后新增的 GUI/Coverflow 看门狗与快照、ART/IO 看门狗与高频计数、ART 图片读取分阶段日志、`HIRES_PASS_DIAG` 洋红分界线/显存别名实验及 `[ATA_CFG]` 专项日志。
+- 删除不再被引用的 `include/debugdiag.h` 和诊断专用声明。GUI 保留既有 FPS 统计与 `guiFrameId` 递增时机；IO worker、队列、ART 缓存/取消和错误处理逻辑不变；`texLoadingMutex` 恢复直接调用 `pthread_mutex_lock/unlock`；渲染器恢复直接调用 `gsKit_TexManager_bind`；ATA DMA/LBA48 查询与设置逻辑不变。
+- 旧 `debugFileDir` 注释、`texLoadingTimeOut` 超时草稿、`src/OSDHistory.c` 的空 `DEBUG_PRINTF`、通用 `LOG` 与 `__EESIO_DEBUG` 均在保留边界时已存在，依要求不清理；`src/OSDHistory.c` 未修改。未改图片、CFG、`temp/` 用户资产或其它 HIRES 修复。
+- 验证：`git diff --check` 通过；静态确认源码无上述诊断标识或悬空引用，原有 3 处 GUI FPS 条件编译块与历史旧代码仍在。当前环境缺少 PS2SDK/GSKIT 交叉工具链和 PS2 实机，未执行交叉编译或实机测试。
 
 ### 2026-10-07 · 增加 Coverflow 随机死机的 debug-only 定位看门狗
 
