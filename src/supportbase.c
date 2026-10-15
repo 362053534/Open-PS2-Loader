@@ -149,9 +149,9 @@ static int loadISOGameListCache(const char *path, struct game_cache_list *cache,
     freeISOGameListCache(cache);
 
     if (type == SCECdPS2CD)
-        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_CD_v2.bin" : "%sCACHE/Cache_CD_v2.bin", path);
+        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_CD.bin" : "%sCACHE/Cache_CD.bin", path);
     else if (type == SCECdPS2DVD)
-        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_DVD_v2.bin" : "%sCACHE/Cache_DVD_v2.bin", path);
+        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_DVD.bin" : "%sCACHE/Cache_DVD.bin", path);
 
     file = fopen(filename, "rb");
     if (file != NULL) {
@@ -247,9 +247,9 @@ static int updateISOGameList(const char *path, const struct game_cache_list *cac
 
     result = 0;
     if (type == SCECdPS2CD)
-        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_CD_v2.bin" : "%sCACHE/Cache_CD_v2.bin", path);
+        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_CD.bin" : "%sCACHE/Cache_CD.bin", path);
     else if (type == SCECdPS2DVD)
-        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_DVD_v2.bin" : "%sCACHE/Cache_DVD_v2.bin", path);
+        sprintf(filename, gTxtRename ? "%sCACHE/txtCache_DVD.bin" : "%sCACHE/Cache_DVD.bin", path);
 
     if ((head != NULL) && (count > 0)) {
         list = (base_game_info_t *)memalign(64, sizeof(base_game_info_t) * count);
@@ -789,9 +789,9 @@ int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gam
         // fclose(debugFile);
 
         if (prefix[0] == 's')
-            sprintf(binPath, "%sCACHE\\txtInfo_v2.bin", prefix);
+            sprintf(binPath, "%sCACHE\\txtInfo.bin", prefix);
         else
-            sprintf(binPath, "%sCACHE/txtInfo_v2.bin", prefix);
+            sprintf(binPath, "%sCACHE/txtInfo.bin", prefix);
 
         binFile = fopen(binPath, "rb");
         file = fopen(txtPath, "ab+, ccs=UTF-8");
