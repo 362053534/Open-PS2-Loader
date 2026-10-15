@@ -41,11 +41,13 @@ typedef struct
 } apa_subs;
 
 #include "include/mcemu.h"
+#define PFS_VMC_MAX_PARTS 65 /* APA主分区加最多64个子分区；须与mcemu.h保持一致。 */
+#define PFS_VMC_MAX_BLOCKS 64 /* 合并相邻块后VMC最多保存的块数；须与mcemu.h保持一致。 */
 typedef struct
 {
-    int active;                 /* Activation flag */
-    apa_subs parts[5];          /* Vmc file Apa partitions */
-    pfs_blockinfo_t blocks[10]; /* Vmc file Pfs inode */
+    int active;                              /* Activation flag */
+    apa_subs parts[PFS_VMC_MAX_PARTS];       /* Vmc file Apa partitions */
+    pfs_blockinfo_t blocks[PFS_VMC_MAX_BLOCKS]; /* Vmc file Pfs inode */
     int flags;                  /* Card flag */
     vmc_spec_t specs;           /* Card specifications */
 } hdd_vmc_infos_t;

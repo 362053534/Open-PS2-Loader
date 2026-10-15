@@ -622,8 +622,10 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
     for (vmc_id = 0; vmc_id < 2; vmc_id++) {
         char vmc_path[256];
         int blockCount = 0;
+        int mergedCount = 0;
+        u32 sectorsPerZone = 0;
+        pfs_blockinfo_t *blockList = NULL;
         int have_error = 0;
-        pfs_blockinfo_t blocks[11];
         vmc_superblock_t vmc_superblock;
 
         // 每个插槽都使用全新的映射，避免继承另一个插槽的残留块。
@@ -633,7 +635,7 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
         if (vmc_name[0]) {
             have_error = 1;
 
-            if (partitionCount > 0 && partitionCount <= 5 && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
+            if (partitionCount > 0 && partitionCount <= PFS_VMC_MAX_PARTS && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
                 for (i = 0; i < partitionCount; i++) {
                     vmcInfos[vmc_id].parts[i].start = parts[i].start;
                     vmcInfos[vmc_id].parts[i].length = parts[i].length;
@@ -645,26 +647,58 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
                 vmcInfos[vmc_id].specs.block_size = vmc_superblock.pages_per_block;
                 vmcInfos[vmc_id].specs.card_size = vmc_superblock.pages_per_cluster * vmc_superblock.clusters_per_card;
 
-                // 写入 VMC 前必须取得完整的 PFS 块链，防止写错物理扇区。
+                // 先让PFS把刚创建的VMC元数据写回磁盘，再直接读inode，避免读到过时的块链。
+                fileXioSync(gHDDPrefix, 0);
+
+                // 写入 VMC 前必须取得完整的 PFS 块链（含后续段），防止写错物理扇区。
                 snprintf(vmc_path, sizeof(vmc_path), "%sVMC/%s.bin", gHDDPrefix, vmc_name);
-                blockCount = hddGetFileBlockInfo(vmc_path, parts, blocks, 11);
-                if (blockCount > 1) {
+                blockCount = hddGetFileBlockList(vmc_path, parts, partitionCount, &blockList, &sectorsPerZone);
+                if (blockCount > 0 && sectorsPerZone == 16) {
+                    u64 totalSectors = 0;
+
                     have_error = 0;
-                    for (i = 0; i < blockCount - 1; i++) {
-                        if (blocks[i + 1].subpart >= partitionCount) {
+                    for (i = 0; i < blockCount; i++) {
+                        // mcemu按每块16个扇区、32位LBA寻址：块必须落在子分区内且不超过32位，否则可能写错扇区。
+                        u64 offset = (u64)blockList[i].number << 4;
+                        u64 length = (u64)blockList[i].count << 4;
+
+                        if (blockList[i].subpart >= partitionCount || length == 0 ||
+                            offset + length > parts[blockList[i].subpart].length ||
+                            (u64)parts[blockList[i].subpart].start + offset + length > 0x100000000ULL) {
                             have_error = 2;
                             break;
                         }
+                        totalSectors += length;
 
-                        vmcInfos[vmc_id].blocks[i].number = blocks[i + 1].number;
-                        vmcInfos[vmc_id].blocks[i].subpart = blocks[i + 1].subpart;
-                        vmcInfos[vmc_id].blocks[i].count = blocks[i + 1].count;
+                        // 相邻且连续的块合并，减少mcemu需要保存的块数。
+                        if (mergedCount > 0) {
+                            pfs_blockinfo_t *last = &vmcInfos[vmc_id].blocks[mergedCount - 1];
+
+                            if (last->subpart == blockList[i].subpart && last->number + last->count == blockList[i].number &&
+                                (u32)last->count + blockList[i].count <= 0xFFFF) {
+                                last->count += blockList[i].count;
+                                continue;
+                            }
+                        }
+                        if (mergedCount >= PFS_VMC_MAX_BLOCKS) {
+                            have_error = 2;
+                            break;
+                        }
+                        vmcInfos[vmc_id].blocks[mergedCount++] = blockList[i];
                     }
+
+                    // 块链覆盖的扇区数必须不小于存储卡页数，否则mcemu会把未覆盖的页映射到扇区0。
+                    if (!have_error && totalSectors < vmcInfos[vmc_id].specs.card_size)
+                        have_error = 2;
 
                     if (!have_error)
                         vmcInfos[vmc_id].active = 1;
                 } else {
                     have_error = 2;
+                }
+                if (blockList != NULL) {
+                    free(blockList);
+                    blockList = NULL;
                 }
             }
 

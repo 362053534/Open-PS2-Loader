@@ -48,7 +48,6 @@ IMPORT_BIN2C(hdd_hdpro_cdvdman_irx);
 
 IMPORT_BIN2C(lwnbdsvr_irx);
 
-IMPORT_BIN2C(hdd_mcemu_irx);
 
 IMPORT_BIN2C(hdpro_atad_irx);
 

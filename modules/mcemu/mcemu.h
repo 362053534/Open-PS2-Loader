@@ -109,8 +109,10 @@ typedef struct _McImageSpec
 #endif
 
 #if defined(HDD_DRIVER) || defined(PFS_BDM_DRIVER)
-    apa_parts parts[5];    /* Vmc file Apa partitions */
-    pfs_blocks blocks[10]; /* Vmc file Pfs inode blocks */
+#define PFS_VMC_MAX_PARTS 65 /* APA主分区加最多64个子分区；须与hddsupport.h保持一致。 */
+#define PFS_VMC_MAX_BLOCKS 64 /* 合并相邻块后VMC最多保存的块数；须与hddsupport.h保持一致。 */
+    apa_parts parts[PFS_VMC_MAX_PARTS]; /* Vmc file Apa partitions */
+    pfs_blocks blocks[PFS_VMC_MAX_BLOCKS]; /* Vmc file Pfs inode blocks */
 #endif
 
 #ifdef SMB_DRIVER

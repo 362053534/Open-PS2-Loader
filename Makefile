@@ -81,7 +81,7 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		ps2dev9.o smsutils.o ps2ip.o smap.o isofs.o nbns-iop.o \
 		sio2man.o padman.o mcman.o mcserv.o \
 		httpclient-iop.o netman.o ps2ips.o \
-		bdm_mcemu.o hdd_mcemu.o pfs_bdm_mcemu.o smb_mcemu.o \
+		bdm_mcemu.o pfs_bdm_mcemu.o smb_mcemu.o \
 		iremsndpatch.o apemodpatch.o f2techioppatch.o rcuyapatch.o cleareffects.o resetspu.o \
 		libsd.o audsrv.o
 
@@ -523,12 +523,6 @@ modules/mcemu/bdm_mcemu.irx: modules/mcemu
 	$(MAKE) $(MCEMU_DEBUG_FLAGS) $(PADEMU_FLAGS) USE_BDM=1 -C $< all
 
 $(EE_ASM_DIR)bdm_mcemu.c: modules/mcemu/bdm_mcemu.irx
-	$(BIN2C) $< $@ $(*F)_irx
-
-modules/mcemu/hdd_mcemu.irx: modules/mcemu
-	$(MAKE) $(MCEMU_DEBUG_FLAGS) $(PADEMU_FLAGS) USE_HDD=1 -C $< all
-
-$(EE_ASM_DIR)hdd_mcemu.c: modules/mcemu/hdd_mcemu.irx
 	$(BIN2C) $< $@ $(*F)_irx
 
 modules/mcemu/pfs_bdm_mcemu.irx: modules/mcemu
