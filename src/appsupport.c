@@ -1297,9 +1297,9 @@ static int appPOPSCacheBuildFilename(char *filename, const char *prefix)
 
     length = strlen(prefix);
     if (length > 0 && (prefix[length - 1] == '/' || prefix[length - 1] == ':'))
-        return snprintf(filename, POPS_CACHE_PATH_MAX, "%sCACHE/Cache_POPS.bin", prefix) >= POPS_CACHE_PATH_MAX ? -1 : 0;
+        return snprintf(filename, POPS_CACHE_PATH_MAX, "%sCACHE/Cache_POPS_v2.bin", prefix) >= POPS_CACHE_PATH_MAX ? -1 : 0;
 
-    return snprintf(filename, POPS_CACHE_PATH_MAX, "%s/CACHE/Cache_POPS.bin", prefix) >= POPS_CACHE_PATH_MAX ? -1 : 0;
+    return snprintf(filename, POPS_CACHE_PATH_MAX, "%s/CACHE/Cache_POPS_v2.bin", prefix) >= POPS_CACHE_PATH_MAX ? -1 : 0;
 }
 
 static void appPOPSCacheLoad(void)
