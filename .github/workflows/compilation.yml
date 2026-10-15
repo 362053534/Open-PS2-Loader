@@ -20,7 +20,16 @@ jobs:
         git fetch --prune --unshallow
 
     - name: Compile -> make clean release
-      run: make --trace clean release
+      run: |
+        set +e
+        make --trace clean release 2>&1 | tee /tmp/opl-build.log
+        result=${PIPESTATUS[0]}
+        if [ "$result" -ne 0 ]; then
+          tail -n 25 /tmp/opl-build.log | while IFS= read -r line; do
+            printf '::error::%s\n' "$line"
+          done
+          exit "$result"
+        fi
 
     - name: Create detailed changelog
       run: sh ./make_changelog.sh

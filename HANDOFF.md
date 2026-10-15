@@ -12,8 +12,8 @@
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`。
 - 历史诊断清理起点：`68f28e5c4ae662f668bb4874ad31852261b922a1`；保留边界：`088d68e85077d443121ad69dba7eebdeab3fd35c`。边界前的旧注释调试草稿、`OSDHistory.c` 空打印宏、FPS 显示和通用 debug 日志机制仍保留。
 - 当前任务：为用户实机核对 BDM 的 CD/DVD 目录 `stat()` 行为，增加仅手动触发的诊断弹窗；保留 `088d68e` 前的扫描、就绪和拔出逻辑，保持上一轮减少目录句柄开关的改动，不增加自动重试。
-- 本次变更范围：`src/bdmsupport.c`、`src/opl.c`、`src/gui.c`、`include/bdmsupport.h`、`include/gui.h` 及本文；不改正常扫描中的 `src/supportbase.c`、图片、CFG、`temp/` 用户资产、`AGENTS.md` 或此前 ATA/HIRES 修复。
-- 验证状态：本地缺少 PS2SDK/GSKIT 交叉工具链和实机；诊断分类的主机侧模拟与 `git diff --check` 已通过，目标平台编译待本次推送的 `CI-compile` 验证；**实机结果未知**。此前收敛版 `c031417` 的 CI 成功不等于本次诊断版已编译。
+- 诊断代码变更范围：`src/bdmsupport.c`、`src/opl.c`、`src/gui.c`、`include/bdmsupport.h`、`include/gui.h`；本次编译定位临时改 `.github/workflows/compilation.yml`，修复后须撤回；每次提交同步更新本文。不改正常扫描中的 `src/supportbase.c`、图片、CFG、`temp/` 用户资产、`AGENTS.md` 或此前 ATA/HIRES 修复。
+- 验证状态：本地缺少 PS2SDK/GSKIT 交叉工具链和实机；诊断分类的主机侧模拟与 `git diff --check` 已通过。诊断版 `a8defe2` 的 CI run `38683948374` 编译失败，**目前没有可用的实机测试 ELF**；此轮临时增强 CI 错误注解以定位原因，后续必须恢复 workflow。实机结果未知；此前收敛版 `c031417` 的 CI 成功不等于本次诊断版已编译。
 
 ## 2. 当前任务重点
 
@@ -253,6 +253,11 @@ git log -1 --oneline
 ## 10. 变更记录
 
 以下旧记录仅说明当时的排查经过；其中提到的诊断接口、开关及“下一步”不代表当前源码仍可使用。
+
+### 2026-10-15 — 临时显示 CI 编译失败位置
+
+- 首版手动诊断提交 `a8defe2` 的 `CI-compile` run `38683948374` 中 release、变体和 debug 编译均失败，语言包任务成功；本环境无法从 Actions 日志存储域下载 job 原始日志，不能在此时认定编译错误原因。
+- 仅临时调整 `.github/workflows/compilation.yml` 的 release 编译步骤：失败时把日志末尾 25 行输出为 Actions 错误注解，以便从 GitHub API 查到具体失败位置；编译命令本身不变。查明并修正后必须撤销此临时 workflow 改动，并在最终 CI 成功前不提供实机 ELF。
 
 ### 2026-10-15 — BDM CD/DVD 的一次性手动目录诊断
 
