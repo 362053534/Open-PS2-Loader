@@ -211,7 +211,7 @@ static void fntUpdateRefreshPending(font_t *font)
     int usedAtlases;
     int emptyAtlases;
 
-    if (!font || !font->isValid || !(gVMode == 10 || gVMode == 11))
+    if (!font || !font->isValid)
         return;
 
     usedAtlases = fntCountAtlases(font);
@@ -222,7 +222,7 @@ static void fntUpdateRefreshPending(font_t *font)
 
 static int fntIsRefreshPending(font_t *font)
 {
-    return font && font->isValid && (gVMode == 10 || gVMode == 11) && font->refreshPending;
+    return font && font->isValid && font->refreshPending;
 }
 
 static int fntPrepareGlyphCachePage(font_t *font, int pageid)
@@ -612,8 +612,6 @@ void fntRefreshCache()
 {
     font_t *font;
 
-    if (!(gVMode == 10 || gVMode == 11))
-        return;
     font = fntGuiPrimaryFont();
     if (!font)
         return;
@@ -628,8 +626,6 @@ void fntRefreshCacheIfPending()
 {
     font_t *font;
 
-    if (!(gVMode == 10 || gVMode == 11))
-        return;
     font = fntGuiPrimaryFont();
     if (!font || !fntIsRefreshPending(font))
         return;

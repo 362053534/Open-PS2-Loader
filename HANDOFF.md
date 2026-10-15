@@ -11,9 +11,9 @@
 - 当前远程：`origin/arena/01a0ba0f-open-ps2-loader`
 - 本文创建时最新提交：`791c279 fix: enable colors for built-in list theme`。
 - 历史诊断清理起点：`68f28e5c4ae662f668bb4874ad31852261b922a1`；保留边界：`088d68e85077d443121ad69dba7eebdeab3fd35c`。边界前的旧注释调试草稿、`OSDHistory.c` 空打印宏、FPS 显示和通用 debug 日志机制仍保留。
-- 当前任务：为用户实机核对 BDM 的 CD/DVD 目录 `stat()` 行为，增加仅手动触发的诊断弹窗；保留 `088d68e` 前的扫描、就绪和拔出逻辑，保持上一轮减少目录句柄开关的改动，不增加自动重试。
-- 诊断代码变更范围：`src/bdmsupport.c`、`src/opl.c`、`src/gui.c`、`include/bdmsupport.h`、`include/gui.h`；临时 CI 注解 workflow 已恢复原样。每次提交同步更新本文；不改正常扫描中的 `src/supportbase.c`、图片、CFG、`temp/` 用户资产、`AGENTS.md` 或此前 ATA/HIRES 修复。
-- 验证状态：本地缺少 PS2SDK/GSKIT 交叉工具链和实机；诊断分类的主机侧模拟与 `git diff --check` 已通过。初版 `a8defe2`、临时注解版 `24c2115` 因新增的 SDK 头文件包含顺序错误导致 CI 失败；修正后的 `ef60514` 对应 `CI-compile` run `38684388723` 整体成功，包含 release/debug/变体构建；可在该 run 下载 `OPNPS2LD` artifact（本环境受出站限制不能直接下载文件）。**实机目录状态与弹窗交互仍未验证。**
+- 当前任务：移除字体缓存刷新的分辨率限制；列表主题、Coverflow、GUI 过渡及金手指界面均按原有调用时机刷新，不保留 720p/1080i 门槛。atlas 容量、阈值和其它逻辑不变。
+- 本次代码范围：仅 `src/fntsys.c` 移除四处分辨率判断及本文；`src/gui.c` 保持原有三个刷新调用点不变，`src/menusys.c` 未改。BDM 扫描/诊断、图片、CFG、`temp/` 用户资产、`AGENTS.md` 和其它 HIRES 行为均未改。
+- 验证状态：相同源码在合并前的 `CI-compile` run `38698318694` 已成功；本地静态核对及 `git diff --check` 通过，合并后由 CI 再次编译。本地没有 PS2SDK/GSKIT 交叉工具链或实机，实际显示未验证。
 
 ## 2. 当前任务重点
 
@@ -253,6 +253,12 @@ git log -1 --oneline
 ## 10. 变更记录
 
 以下旧记录仅说明当时的排查经过；其中提到的诊断接口、开关及“下一步”不代表当前源码仍可使用。
+
+### 2026-10-15 — 移除字体缓存刷新的分辨率限制
+
+- `src/fntsys.c`：删除 `fntRefreshCache()`、`fntRefreshCacheIfPending()` 及 Coverflow pending 标记/判断中的四处 `gVMode == 10 || gVMode == 11` 限制。列表主题仍在原有翻页/切设备等调用点整批刷新；Coverflow 仍按已有 atlas 保留余量或放置失败标志在导航时条件刷新。
+- `src/gui.c` 原有 GUI 过渡和金手指界面的三个刷新调用点保持不变；共享刷新函数放开后，这些调用点也不再受分辨率限制。`src/menusys.c` 未改；不新增刷新点，也不改变 atlas 容量、阈值、字体绘制、动画或刷新时机。
+- 验证：静态核对及 `git diff --check` 通过；相同源码合并前的 CI 编译 run `38698318694` 成功，合并后的提交由 CI 再次检查。本地缺少交叉工具链和 PS2 实机，低分辨率显示、性能及缺字情况尚未实测。
 
 ### 2026-10-15 — 修正诊断代码的交叉编译头文件顺序
 
