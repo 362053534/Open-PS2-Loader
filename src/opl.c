@@ -348,6 +348,54 @@ static void retryBDMErrors(void)
     reFindBDM();
 }
 
+static char bdmDiagnosticPrefix[40];
+static char bdmDiagnosticCD[128];
+static char bdmDiagnosticDVD[128];
+static volatile int bdmDiagnosticPending;
+
+static void bdmDirectoryDiagnosticWorker(void)
+{
+    bdmDiagnoseISODirectories(bdmDiagnosticPrefix, bdmDiagnosticCD, sizeof(bdmDiagnosticCD),
+                              bdmDiagnosticDVD, sizeof(bdmDiagnosticDVD));
+    bdmDiagnosticPending = 0;
+}
+
+static void bdmShowDirectoryDiagnostic(item_list_t *support)
+{
+    const bdm_device_data_t *device = support->priv;
+    char title[64];
+    clock_t started;
+
+    if (bdmDiagnosticPending) {
+        guiMsgBox("上次目录诊断仍在后台执行", 0, NULL);
+        return;
+    }
+    if (!device || !device->bdmPrefix[0] || bdmManualTrigger) {
+        guiMsgBox("当前BDM设备尚未就绪，无法诊断CD/DVD", 0, NULL);
+        return;
+    }
+
+    // 手动触发时冻结设备路径，避免后台扫描与弹窗互相等待。
+    snprintf(bdmDiagnosticPrefix, sizeof(bdmDiagnosticPrefix), "%s", device->bdmPrefix);
+    bdmDiagnosticPending = 1;
+    if (ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bdmDirectoryDiagnosticWorker) != IO_OK) {
+        bdmDiagnosticPending = 0;
+        guiMsgBox("IO队列繁忙，未执行目录诊断", 0, NULL);
+        return;
+    }
+
+    started = clock();
+    while (bdmDiagnosticPending && (clock() - started) / CLOCKS_PER_SEC < 15)
+        guiRenderTextScreen("正在诊断BDM的CD/DVD目录...");
+    if (bdmDiagnosticPending) {
+        guiMsgBox("目录诊断等待超时，后台探测可能仍在执行", 0, NULL);
+        return;
+    }
+
+    snprintf(title, sizeof(title), "BDM%d %s", support->mode - BDM_MODE, bdmDiagnosticPrefix);
+    guiShowBDMDirectoryDiagnostic(title, bdmDiagnosticCD, bdmDiagnosticDVD);
+}
+
 static void itemExecRefresh(struct menu_item *curMenu)
 {
     item_list_t *support;
@@ -371,6 +419,11 @@ static void itemExecRefresh(struct menu_item *curMenu)
     }
 
     isBDMMode = support->mode >= BDM_MODE && support->mode <= BDM_MODE4;
+    // 临时诊断入口：R3 不占用现有的翻页键，能诊断当前 BDM 设备而不跳到首页。
+    if (isBDMMode && getKeyPressed(KEY_R3)) {
+        bdmShowDirectoryDiagnostic(support);
+        return;
+    }
     if (isBDMMode) {
         bdm_device_data_t *pDeviceData = support->priv;
         unsigned int retryTypes = menuGetBDMStartupUnavailableTypes();

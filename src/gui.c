@@ -2059,6 +2059,37 @@ int guiMsgBox(const char *text, int addAccept, struct UIItem *ui)
     return terminate - 1;
 }
 
+void guiShowBDMDirectoryDiagnostic(const char *device, const char *cdLine, const char *dvdLine)
+{
+    int terminate = 0;
+    int centerY;
+
+    sfxPlay(SFX_MESSAGE);
+    while (!terminate) {
+        guiStartFrame();
+        readPads();
+        terminate = getKeyOn(KEY_CIRCLE) || getKeyOn(KEY_CROSS);
+
+        guiShow();
+        rmDrawRect(0, 0, screenWidth, screenHeight, gColDarker);
+        rmDrawLine(50, 75, screenWidth - 50, 75, gColWhite);
+        rmDrawLine(50, 410, screenWidth - 50, 410, gColWhite);
+
+        centerY = gTheme->usedHeight >> 1;
+        fntRenderString(gTheme->fonts[0], screenWidth >> 1, centerY - 80, ALIGN_CENTER, 0, 0, device, gTheme->textColor);
+        fntRenderString(gTheme->fonts[0], screenWidth >> 1, centerY - 32, ALIGN_CENTER, 0, 0, cdLine, gTheme->textColor);
+        fntRenderString(gTheme->fonts[0], screenWidth >> 1, centerY + 16, ALIGN_CENTER, 0, 0, dvdLine, gTheme->textColor);
+        fntRenderString(gTheme->fonts[0], screenWidth >> 1, centerY + 69, ALIGN_CENTER, 0, 0,
+                        "暂时无法访问表示无法确认，并非已证明会恢复", gTheme->textColor);
+        fntRenderString(gTheme->fonts[0], screenWidth >> 1, centerY + 102, ALIGN_CENTER, 0, 0,
+                        "s=stat e=errno r=raw d=dopen", gTheme->textColor);
+        guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? CROSS_ICON : CIRCLE_ICON, _STR_BACK,
+                           gTheme->fonts[0], 500, 417, gTheme->selTextColor);
+        guiEndFrame();
+    }
+    sfxPlay(SFX_CANCEL);
+}
+
 int guiMsgBoxCustom(const char *text, const char *acceptText, const char *cancelText, struct UIItem *ui)
 {
     int terminate = 0;

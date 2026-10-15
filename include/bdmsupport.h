@@ -2,6 +2,7 @@
 #define __BDM_SUPPORT_H
 
 #include "include/iosupport.h"
+#include <stddef.h>
 
 #define BDM_MODE_UPDATE_DELAY MENU_UPD_DELAY_GENREFRESH
 
@@ -60,6 +61,8 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly);
 int bdmHasDeviceEvent(item_list_t *itemList);
 void bdmRequestDeviceCheck(item_list_t *itemList);
 int bdmGetDeviceType(int mode);
+/* 仅供手动实机诊断；不参与启动扫描或修改游戏列表。 */
+void bdmDiagnoseISODirectories(const char *prefix, char *cdLine, size_t cdSize, char *dvdLine, size_t dvdSize);
 extern int bdmDefaultNeedsCorrection;
 // 自动模式启动探测结束且无设备时，激活BDM0保底空页
 void bdmTryActivateStartupPlaceholder(void);

@@ -16,6 +16,7 @@
 #include "modules/iopcore/common/cdvd_config.h"
 
 #include <usbhdfsd-common.h>
+#include <io_common.h>
 
 #include <ps2sdkapi.h>
 #define NEWLIB_PORT_AWARE
@@ -403,6 +404,71 @@ static int bdmProbeISODirectory(const char *path)
     if (dir >= 0)
         fileXioDclose(dir);
     return dir < 0 ? dir : 0;
+}
+
+static void bdmDiagnoseISODirectory(const char *prefix, const char *folder, int rootReady, char *line, size_t lineSize)
+{
+    char path[256];
+    struct stat posixStat;
+    iox_stat_t rawStat;
+    const char *status;
+    int statResult, statError, rawResult, dir, dirResult, closeResult = 0;
+    int statIsDir, rawIsDir;
+
+    snprintf(path, sizeof(path), "%s%s", prefix, folder);
+    errno = 0;
+    statResult = stat(path, &posixStat);
+    statError = statResult < 0 ? errno : 0;
+    rawResult = fileXioGetStat(path, &rawStat);
+    dir = fileXioDopen(path);
+    dirResult = dir < 0 ? dir : 0;
+    if (dir >= 0)
+        closeResult = fileXioDclose(dir);
+
+    statIsDir = statResult == 0 && S_ISDIR(posixStat.st_mode);
+    rawIsDir = rawResult >= 0 && (rawStat.mode & FIO_S_IFDIR) != 0;
+
+    // 单次失败无法证明是暂时故障；只有后端的缺失码与 dopen 同时吻合时才报告缺失。
+    if (dirResult == 0) {
+        if (closeResult < 0)
+            status = "目录存在(dclose失败)";
+        else if (!statIsDir)
+            status = "目录存在(stat异常)";
+        else if (!rawIsDir)
+            status = "目录存在(raw异常)";
+        else
+            status = "目录存在";
+    } else if (statResult == 0 && !statIsDir && rawResult >= 0 && !rawIsDir) {
+        status = "目录不存在(同名非目录)";
+    } else if (rootReady && statResult < 0 &&
+               (rawResult == -4 || rawResult == -5 || rawResult == -ENOENT) &&
+               (dirResult == -4 || dirResult == -5 || dirResult == -ENOENT)) {
+        status = "目录不存在";
+    } else {
+        status = "目录暂时无法访问";
+    }
+
+    snprintf(line, lineSize, "%s: %s s%d/e%d r%d d%d", folder, status,
+             statResult, statError, rawResult, dirResult);
+    if (dir >= 0 && closeResult < 0) {
+        size_t used = strlen(line);
+        if (used < lineSize)
+            snprintf(line + used, lineSize - used, " c%d", closeResult);
+    }
+}
+
+void bdmDiagnoseISODirectories(const char *prefix, char *cdLine, size_t cdSize, char *dvdLine, size_t dvdSize)
+{
+    int rootDir = fileXioDopen(prefix);
+    int rootReady = rootDir >= 0;
+
+    // 根目录不可达时，子目录的负返回码不能直接判为缺失。
+    if (rootReady)
+        fileXioDclose(rootDir);
+
+    // 只在用户主动请求时对快照路径做对照探测，不改变启动扫描中的任何判定。
+    bdmDiagnoseISODirectory(prefix, "CD", rootReady, cdLine, cdSize);
+    bdmDiagnoseISODirectory(prefix, "DVD", rootReady, dvdLine, dvdSize);
 }
 
 static int bdmUpdateGameList(item_list_t *itemList)
