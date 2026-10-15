@@ -16,7 +16,6 @@
 #include "modules/iopcore/common/cdvd_config.h"
 
 #include <usbhdfsd-common.h>
-#include <io_common.h>
 
 #include <ps2sdkapi.h>
 #define NEWLIB_PORT_AWARE
