@@ -1844,6 +1844,8 @@ void setErrorMessage(int strId)
 
 static int lscstatus = CONFIG_ALL;
 static int lscret = 0;
+// 未找到conf_fgopl.cfg但发现官方conf_opl.cfg时，只记录其所在路径（不读取），保存时写到这里。
+static char officialCfgPath[64] = "";
 
 static int checkLoadConfigBDM(int types)
 {
@@ -1851,7 +1853,7 @@ static int checkLoadConfigBDM(int types)
     int value;
 
     // check USB
-    if (bdmFindPartition(path, "conf_opl.cfg", 0)) {
+    if (bdmFindPartition(path, "conf_fgopl.cfg", 0)) {
         configEnd();
         configInit(path);
         value = configReadMulti(types);
@@ -1860,6 +1862,9 @@ static int checkLoadConfigBDM(int types)
         //configSetInt(configOPL, CONFIG_OPL_BDM_MODE, START_MODE_AUTO);
         return value;
     }
+
+    if (officialCfgPath[0] == '\0' && bdmFindPartition(path, "conf_opl.cfg", 0))
+        snprintf(officialCfgPath, sizeof(officialCfgPath), "%s", path);
 
     return 0;
 }
@@ -1882,7 +1887,7 @@ static int checkLoadConfigHDD(int types)
         usleep(100000);
     }
 
-    snprintf(path, sizeof(path), "%sconf_opl.cfg", gHDDPrefix);
+    snprintf(path, sizeof(path), "%sconf_fgopl.cfg", gHDDPrefix);
     value = open(path, O_RDONLY);
     if (value >= 0) {
         close(value);
@@ -1894,6 +1899,15 @@ static int checkLoadConfigHDD(int types)
         //config_set_t *configOPL = configGetByType(CONFIG_OPL);
         //configSetInt(configOPL, CONFIG_OPL_HDD_MODE, START_MODE_AUTO);
         return value;
+    }
+
+    if (officialCfgPath[0] == '\0') {
+        snprintf(path, sizeof(path), "%sconf_opl.cfg", gHDDPrefix);
+        value = open(path, O_RDONLY);
+        if (value >= 0) {
+            close(value);
+            snprintf(officialCfgPath, sizeof(officialCfgPath), "%s", gHDDPrefix);
+        }
     }
 
     return 0;
@@ -1924,6 +1938,14 @@ static int tryAlternateDevice(int types)
     // Check HDD
     if ((value = checkLoadConfigHDD(types)) != 0)
         return value;
+
+    // 发现过官方配置文件的位置：不读取，但之后保存时写到该位置。
+    if (officialCfgPath[0] != '\0') {
+        configEnd();
+        configInit(officialCfgPath);
+        showCfgPopup = 0;
+        return 0;
+    }
 
     // At this point, the user has no loadable config files on any supported device, so try to find a device to save on.
     // We don't want to get users into alternate mode for their very first launch of OPL (i.e no config file at all, but still want to save on MC)
@@ -1961,6 +1983,16 @@ static void _loadConfig(void)
 
     if (lscstatus & CONFIG_OPL) {
         if (!(result & CONFIG_OPL)) {
+            // 记忆卡上没有conf_fgopl.cfg但有官方conf_opl.cfg：只记录路径，不读取。
+            if (officialCfgPath[0] == '\0') {
+                char mcPath[64];
+                snprintf(mcPath, sizeof(mcPath), "%s/conf_opl.cfg", gBaseMCDir);
+                value = open(mcPath, O_RDONLY);
+                if (value >= 0) {
+                    close(value);
+                    snprintf(officialCfgPath, sizeof(officialCfgPath), "%s", gBaseMCDir);
+                }
+            }
             result = tryAlternateDevice(lscstatus);
         }
 
@@ -2093,7 +2125,7 @@ static int trySaveConfigBDM(int types)
     char path[64];
 
     // check USB
-    if (bdmFindPartition(path, "conf_opl.cfg", 1)) {
+    if (bdmFindPartition(path, "conf_fgopl.cfg", 1)) {
         configSetMove(path);
         return configWriteMulti(types);
     }
