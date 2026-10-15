@@ -633,7 +633,7 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
         if (vmc_name[0]) {
             have_error = 1;
 
-            if (partitionCount > 0 && partitionCount <= 5 && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
+            if (partitionCount > 0 && partitionCount <= PFS_VMC_MAX_PARTS && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
                 for (i = 0; i < partitionCount; i++) {
                     vmcInfos[vmc_id].parts[i].start = parts[i].start;
                     vmcInfos[vmc_id].parts[i].length = parts[i].length;
