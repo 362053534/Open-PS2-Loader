@@ -13,7 +13,7 @@
 - 历史诊断清理起点：`68f28e5c4ae662f668bb4874ad31852261b922a1`；保留边界：`088d68e85077d443121ad69dba7eebdeab3fd35c`。边界前的旧注释调试草稿、`OSDHistory.c` 空打印宏、FPS 显示和通用 debug 日志机制仍保留。
 - 当前任务：为用户实机核对 BDM 的 CD/DVD 目录 `stat()` 行为，增加仅手动触发的诊断弹窗；保留 `088d68e` 前的扫描、就绪和拔出逻辑，保持上一轮减少目录句柄开关的改动，不增加自动重试。
 - 诊断代码变更范围：`src/bdmsupport.c`、`src/opl.c`、`src/gui.c`、`include/bdmsupport.h`、`include/gui.h`；临时 CI 注解 workflow 已恢复原样。每次提交同步更新本文；不改正常扫描中的 `src/supportbase.c`、图片、CFG、`temp/` 用户资产、`AGENTS.md` 或此前 ATA/HIRES 修复。
-- 验证状态：本地缺少 PS2SDK/GSKIT 交叉工具链和实机；诊断分类的主机侧模拟与 `git diff --check` 已通过。初版 `a8defe2` 与临时注解版 `24c2115` 的 CI 编译失败；静态核查发现诊断代码将受保护的 PS2SDK `io_common.h` 放在 `NEWLIB_PORT_AWARE` 宏之前，本次已去掉多余的提前包含，**目标平台编译和实机结果待新 CI 验证**。
+- 验证状态：本地缺少 PS2SDK/GSKIT 交叉工具链和实机；诊断分类的主机侧模拟与 `git diff --check` 已通过。初版 `a8defe2`、临时注解版 `24c2115` 因新增的 SDK 头文件包含顺序错误导致 CI 失败；修正后的 `ef60514` 对应 `CI-compile` run `38684388723` 整体成功，包含 release/debug/变体构建；可在该 run 下载 `OPNPS2LD` artifact（本环境受出站限制不能直接下载文件）。**实机目录状态与弹窗交互仍未验证。**
 
 ## 2. 当前任务重点
 
@@ -257,7 +257,7 @@ git log -1 --oneline
 ### 2026-10-15 — 修正诊断代码的交叉编译头文件顺序
 
 - 在 SDK 源码中确认 `common/include/io_common.h` 于 EE 构建且未定义 `NEWLIB_PORT_AWARE` 时直接触发 `#error`；诊断代码意外提前包含了这个头文件。删除新增的提前 `#include <io_common.h>`，原有宏之后的 `<fileXio_rpc.h>` 已通过 `<fileXio.h>` / `<iox_stat.h>` 提供 `FIO_S_IFDIR`，不需要额外包含。
-- 将 `.github/workflows/compilation.yml` 还原成修改前内容；仅测试函数的头文件包含顺序变化，不改正常扫描或用户资源。`CI-compile` 新一轮结果待核查，修复不能在实机完成前宣称成功。
+- 将 `.github/workflows/compilation.yml` 还原成修改前内容；仅测试函数的头文件包含顺序变化，不改正常扫描或用户资源。修正提交 `ef60514` 的 `CI-compile` run `38684388723` 已整体成功（release/debug/变体编译通过），产出 `OPNPS2LD` artifact；本环境无法连接 Actions 文件存储域下载 ELF，可在 GitHub run 页手动下载。尚未在 PS2 实机验证目录状态、弹窗或故障码解释。
 
 ### 2026-10-15 — 临时显示 CI 编译失败位置
 
