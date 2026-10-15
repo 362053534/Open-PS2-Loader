@@ -623,8 +623,7 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
         char vmc_path[256];
         int blockCount = 0;
         int have_error = 0;
-        pfs_blockinfo_t *blocks = NULL;
-        u32 zoneSectors = 0;
+        pfs_blockinfo_t blocks[11];
         vmc_superblock_t vmc_superblock;
 
         // 每个插槽都使用全新的映射，避免继承另一个插槽的残留块。
@@ -634,7 +633,12 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
         if (vmc_name[0]) {
             have_error = 1;
 
-            if (partitionCount > 0 && partitionCount <= APA_MAXSUB + 1 && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
+            if (partitionCount > 0 && partitionCount <= 5 && sysCheckVMC(gHDDPrefix, "/", vmc_name, 0, &vmc_superblock) > 0) {
+                for (i = 0; i < partitionCount; i++) {
+                    vmcInfos[vmc_id].parts[i].start = parts[i].start;
+                    vmcInfos[vmc_id].parts[i].length = parts[i].length;
+                }
+
                 vmcInfos[vmc_id].flags = vmc_superblock.mc_flag & 0xFF;
                 vmcInfos[vmc_id].flags |= 0x100;
                 vmcInfos[vmc_id].specs.page_size = vmc_superblock.page_size;
@@ -643,63 +647,18 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
 
                 // 写入 VMC 前必须取得完整的 PFS 块链，防止写错物理扇区。
                 snprintf(vmc_path, sizeof(vmc_path), "%sVMC/%s.bin", gHDDPrefix, vmc_name);
-                blockCount = hddGetFileBlockList(vmc_path, parts, partitionCount, &blocks, &zoneSectors);
-                if (blockCount > 0 && (zoneSectors & 15) == 0) {
-                    // mcemu只能携带少量APA子分区，因此只保留VMC块链实际用到的分区，
-                    // 并把块的subpart重新编号为mcemu内部的紧凑索引。
-                    // 块的number/count统一换算为16扇区单位，使mcemu不依赖PFS zone大小。
-                    const int maxParts = (int)(sizeof(vmcInfos[vmc_id].parts) / sizeof(vmcInfos[vmc_id].parts[0]));
-                    const int maxBlocks = (int)(sizeof(vmcInfos[vmc_id].blocks) / sizeof(vmcInfos[vmc_id].blocks[0]));
-                    u32 unitsPerZone = zoneSectors >> 4;
-                    int usedParts = 0;
-                    int usedBlocks = 0;
-                    int remap[APA_MAXSUB + 1];
-
-                    for (i = 0; i < APA_MAXSUB + 1; i++)
-                        remap[i] = -1;
-
+                blockCount = hddGetFileBlockInfo(vmc_path, parts, blocks, 11);
+                if (blockCount > 1) {
                     have_error = 0;
-                    for (i = 0; i < blockCount; i++) {
-                        u16 sub = blocks[i].subpart;
-                        u64 number = (u64)blocks[i].number * unitsPerZone;
-                        u64 count = (u64)blocks[i].count * unitsPerZone;
-
-                        if (sub >= partitionCount || number > 0xFFFFFFFFULL || count == 0 || count > 0xFFFFULL) {
+                    for (i = 0; i < blockCount - 1; i++) {
+                        if (blocks[i + 1].subpart >= partitionCount) {
                             have_error = 2;
                             break;
                         }
 
-                        if (remap[sub] < 0) {
-                            if (usedParts >= maxParts) {
-                                have_error = 2;
-                                break;
-                            }
-                            vmcInfos[vmc_id].parts[usedParts].start = parts[sub].start;
-                            vmcInfos[vmc_id].parts[usedParts].length = parts[sub].length;
-                            remap[sub] = usedParts++;
-                        }
-
-                        // 物理上连续的相邻块合并，减少占用的块槽。
-                        if (usedBlocks > 0) {
-                            pfs_blockinfo_t *prev = &vmcInfos[vmc_id].blocks[usedBlocks - 1];
-
-                            if (prev->subpart == remap[sub] &&
-                                (u64)prev->number + prev->count == number &&
-                                (u32)prev->count + (u32)count <= 0xFFFF) {
-                                prev->count += (u16)count;
-                                continue;
-                            }
-                        }
-
-                        if (usedBlocks >= maxBlocks) {
-                            have_error = 2;
-                            break;
-                        }
-
-                        vmcInfos[vmc_id].blocks[usedBlocks].number = (u32)number;
-                        vmcInfos[vmc_id].blocks[usedBlocks].subpart = remap[sub];
-                        vmcInfos[vmc_id].blocks[usedBlocks].count = (u16)count;
-                        usedBlocks++;
+                        vmcInfos[vmc_id].blocks[i].number = blocks[i + 1].number;
+                        vmcInfos[vmc_id].blocks[i].subpart = blocks[i + 1].subpart;
+                        vmcInfos[vmc_id].blocks[i].count = blocks[i + 1].count;
                     }
 
                     if (!have_error)
@@ -707,9 +666,6 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
                 } else {
                     have_error = 2;
                 }
-
-                free(blocks);
-                blocks = NULL;
             }
 
             if (have_error) {
