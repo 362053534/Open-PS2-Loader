@@ -649,6 +649,8 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
                 snprintf(vmc_path, sizeof(vmc_path), "%sVMC/%s.bin", gHDDPrefix, vmc_name);
                 blockCount = hddGetFileBlockInfo(vmc_path, parts, blocks, 11);
                 if (blockCount > 1) {
+                    u64 totalSectors = 0;
+
                     have_error = 0;
                     for (i = 0; i < blockCount - 1; i++) {
                         if (blocks[i + 1].subpart >= partitionCount) {
@@ -656,10 +658,27 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
                             break;
                         }
 
+                        // mcemu按每块16个扇区、32位LBA寻址：块必须落在子分区内且不超过32位，否则可能写错扇区。
+                        {
+                            u64 offset = (u64)blocks[i + 1].number << 4;
+                            u64 length = (u64)blocks[i + 1].count << 4;
+
+                            if (length == 0 || offset + length > parts[blocks[i + 1].subpart].length ||
+                                (u64)parts[blocks[i + 1].subpart].start + offset + length > 0x100000000ULL) {
+                                have_error = 2;
+                                break;
+                            }
+                            totalSectors += length;
+                        }
+
                         vmcInfos[vmc_id].blocks[i].number = blocks[i + 1].number;
                         vmcInfos[vmc_id].blocks[i].subpart = blocks[i + 1].subpart;
                         vmcInfos[vmc_id].blocks[i].count = blocks[i + 1].count;
                     }
+
+                    // 块链覆盖的扇区数必须不小于存储卡页数，否则mcemu会把未覆盖的页映射到扇区0。
+                    if (!have_error && totalSectors < vmcInfos[vmc_id].specs.card_size)
+                        have_error = 2;
 
                     if (!have_error)
                         vmcInfos[vmc_id].active = 1;
