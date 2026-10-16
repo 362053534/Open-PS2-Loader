@@ -923,6 +923,8 @@ struct UIItem diaAboutChinese[] = {
     {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"贴吧地址：tieba.baidu.com/p/9606048316", -1}}},
     {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"QQ群：81534571 (暗号：OPL)", -1}}},
+    {UI_BREAK},
 
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
     {UI_SPACER},
