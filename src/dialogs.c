@@ -882,15 +882,46 @@ struct UIItem diaPadMacroConfig[] = {
     {UI_TERMINATOR}};
 #endif
 
-// About: Chinese contributors (names to be added after confirmation).
+// About: Chinese contributors. Keep the original " - " name separators and line spacing.
 struct UIItem diaAboutChinese[] = {
     {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_CHINESE_CONTRIBUTORS}}},
     {UI_BREAK},
+
+    // Coders
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_DEVS}}},
+    {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_CONTRIBUTORS_PENDING}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"峰哥", -1}}},
+    {UI_BREAK},
+
+    {UI_BREAK},
+
+    // Quality Assurance
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_QANDA}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无线路由器 - 关山 - 换换爱 - 哭脸 - ps玩家", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"诺斯菲- - 筱海- - 张楠 - 蕾姆 - 云 - 猴子", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"后来提及 - 水跃鱼 - 岁月如飞刀 - 铁拳钢达姆", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"真田幸村 - 四月的谎言 - 开心の清爽 - 耿关赫", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无敌破坏王 - rm-rf/*(已黒化) - playstation荣", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"威宁四少 - 沧海一栗 - 真心 - /ka花样年华", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"1101 - “PS2OPL研究中心”的小伙伴", -1}}},
     {UI_BREAK},
 
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
