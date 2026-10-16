@@ -904,21 +904,18 @@ struct UIItem diaAboutChinese[] = {
     // Quality Assurance
     {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_QANDA}}},
     {UI_BREAK},
-    // 中点两侧各留一个空格，保留姓名缩进并均衡分行，避免越过右侧安全边界。
+    // 中点两侧各留一个空格，保留姓名缩进并按简中字形宽度排为四行。
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无线路由器 · 关山 · 换换爱 · 哭脸anyi · ps玩家 · 诺斯菲-", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无线路由器 · 关山 · 换换爱 · anyi · ps玩家 · 诺斯菲- · 筱海- · 张楠 · 蕾姆 · 云", -1}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"筱海- · 张楠 · 蕾姆 · 云 · 猴子 · 后来提及 · 水跃鱼 · 岁月如飞刀", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"猴子 · 后来提及 · 水跃鱼 · 岁月如飞刀 · 铁拳钢达姆 · 真田幸村 · 四月的谎言", -1}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"铁拳钢达姆 · 真田幸村 · 四月的谎言 · 开心の清爽 · 耿关赫", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"开心の清爽 · 耿关赫 · 无敌破坏王 · rm-rf/*(已黑化) · playstation荣", -1}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无敌破坏王 · rm-rf/*(已黑化) · playstation荣 · 威宁四少", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"沧海一栗 · 真心 · /ka花样年华 · 1101 · \"PS2OPL研究中心\"群友们", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"威宁四少 · 沧海一栗 · 真心 · /ka花样年华 · 1101 · \"PS2OPL研究中心\"群友们", -1}}},
     {UI_BREAK},
 
     {UI_BREAK},
