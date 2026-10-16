@@ -884,9 +884,11 @@ struct UIItem diaPadMacroConfig[] = {
 
 // 对话框不自动换行，测试名单按简中字形宽度预先分组，避免过早换行或溢出。
 struct UIItem diaAboutChinese[] = {
+    {UI_SPACER, ABOUT_TITLE_SPACER, 1, 1, -1, 0, 0},
     {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_SPLITTER},
 
+    {UI_SPACER, ABOUT_PAGE_HEADING_SPACER, 1, 1, -1, 0, 0},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_CHINESE_CONTRIBUTORS}}},
     {UI_BREAK},
 
@@ -902,21 +904,18 @@ struct UIItem diaAboutChinese[] = {
     // Quality Assurance
     {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_QANDA}}},
     {UI_BREAK},
-    // 保留原缩进，超出右边界的姓名顺次放到下一行。
+    // 去掉间隔点前的冗余空格，保留姓名缩进并给四行名单留足宽度。
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无线路由器 · 关山 · 换换爱 · 哭脸anyi · ps玩家 · 诺斯菲- · 筱海- · 张楠 · 蕾姆", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"无线路由器· 关山· 换换爱· 哭脸anyi· ps玩家· 诺斯菲-· 筱海-· 张楠· 蕾姆· 云", -1}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"云 · 猴子 · 后来提及 · 水跃鱼 · 岁月如飞刀 · 铁拳钢达姆", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"猴子· 后来提及· 水跃鱼· 岁月如飞刀· 铁拳钢达姆· 真田幸村· 四月的谎言", -1}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"真田幸村 · 四月的谎言 · 开心の清爽 · 耿关赫 · 无敌破坏王", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"开心の清爽· 耿关赫· 无敌破坏王· rm-rf/*(已黑化)· playstation荣", -1}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"rm-rf/*(已黑化) · playstation荣 · 威宁四少 · 沧海一栗", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"真心 · /ka花样年华 · 1101 · \"PS2OPL研究中心\"群友们", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"威宁四少· 沧海一栗· 真心· /ka花样年华· 1101· \"PS2OPL研究中心\"群友们", -1}}},
     {UI_BREAK},
 
     {UI_BREAK},
@@ -935,8 +934,10 @@ struct UIItem diaAboutChinese[] = {
 
 // About: original contributors, with all existing credits and build details.
 struct UIItem diaAbout[] = {
+    {UI_SPACER, ABOUT_TITLE_SPACER, 1, 1, -1, 0, 0},
     {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_SPLITTER},
+    {UI_SPACER, ABOUT_PAGE_HEADING_SPACER, 1, 1, -1, 0, 0},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_ORIGINAL_CONTRIBUTORS}}},
     {UI_BREAK},
 

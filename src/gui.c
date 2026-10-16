@@ -223,6 +223,22 @@ void guiEndFrame(void)
     guiUnlock();
 }
 
+static void guiCenterAboutText(struct UIItem *dialog, int spacerId, const char *text)
+{
+    // 对话框以 640 像素宽排版，从 x=20 开始，项间还有 2 像素间隔。
+    int textWidth = rmUnScaleX(fntCalcDimensions(gTheme->fonts[0], text));
+    int paddingWidth = (640 - textWidth) / 2 - 22;
+    struct UIItem *item = dialog;
+
+    while (item->type != UI_TERMINATOR) {
+        if (item->id == spacerId) {
+            item->fixedWidth = paddingWidth > 0 ? paddingWidth : 0;
+            return;
+        }
+        item++;
+    }
+}
+
 void guiShowAbout()
 {
     char OPLVersion[sizeof("FG Open PS2 Loader ") + sizeof(OPL_VERSION)];
@@ -237,6 +253,10 @@ void guiShowAbout()
         snprintf(OPLVersion, sizeof(OPLVersion), "FG Open PS2 Loader %s", OPL_VERSION);
     diaSetLabel(diaAboutChinese, ABOUT_TITLE, OPLVersion);
     diaSetLabel(diaAbout, ABOUT_TITLE, OPLVersion);
+    guiCenterAboutText(diaAboutChinese, ABOUT_TITLE_SPACER, OPLVersion);
+    guiCenterAboutText(diaAbout, ABOUT_TITLE_SPACER, OPLVersion);
+    guiCenterAboutText(diaAboutChinese, ABOUT_PAGE_HEADING_SPACER, _l(_STR_ABOUT_CHINESE_CONTRIBUTORS));
+    guiCenterAboutText(diaAbout, ABOUT_PAGE_HEADING_SPACER, _l(_STR_ABOUT_ORIGINAL_CONTRIBUTORS));
 
     snprintf(OPLBuildDetails, sizeof(OPLBuildDetails), "GSM %s"
                                                        " - UDMA+"
