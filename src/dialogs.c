@@ -882,10 +882,29 @@ struct UIItem diaPadMacroConfig[] = {
     {UI_TERMINATOR}};
 #endif
 
-// About Menu
+// About: Chinese contributors (names to be added after confirmation).
+struct UIItem diaAboutChinese[] = {
+    {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
+    {UI_SPLITTER},
+
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_CHINESE_CONTRIBUTORS}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_CONTRIBUTORS_PENDING}}},
+    {UI_BREAK},
+
+    {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
+    {UI_SPACER},
+    {UI_BUTTON, ABOUT_SWITCH_PAGE, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_NEXT_PAGE}}},
+    {UI_BREAK},
+    {UI_TERMINATOR}};
+
+// About: original contributors, with all existing credits and build details.
 struct UIItem diaAbout[] = {
     {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_SPLITTER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_ORIGINAL_CONTRIBUTORS}}},
+    {UI_BREAK},
 
     // Coders
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_DEVS}}},
@@ -932,21 +951,21 @@ struct UIItem diaAbout[] = {
     {UI_BREAK},
 
     // Build Options
-    {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_BUILD_DETAILS}}},
     {UI_SPACER},
     {UI_LABEL, ABOUT_BUILD_DETAILS, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_BREAK},
 
     // Support details
-    {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_FORUM_DETAILS}}},
     {UI_SPACER},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {"psx-place.com", -1}}},
     {UI_BREAK},
 
-    // buttons
+    // Same row as OK, so page switching does not push the full credits off-screen.
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
+    {UI_SPACER},
+    {UI_BUTTON, ABOUT_SWITCH_PAGE, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_PREVIOUS_PAGE}}},
     {UI_BREAK},
 
     // end of dialog

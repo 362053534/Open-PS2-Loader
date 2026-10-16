@@ -229,6 +229,7 @@ void guiShowAbout()
     char OPLBuildDetails[40];
 
     snprintf(OPLVersion, sizeof(OPLVersion), "Open PS2 Loader %s", OPL_VERSION);
+    diaSetLabel(diaAboutChinese, ABOUT_TITLE, OPLVersion);
     diaSetLabel(diaAbout, ABOUT_TITLE, OPLVersion);
 
     snprintf(OPLBuildDetails, sizeof(OPLBuildDetails), "GSM %s"
@@ -252,7 +253,10 @@ void guiShowAbout()
     );
     diaSetLabel(diaAbout, ABOUT_BUILD_DETAILS, OPLBuildDetails);
 
-    diaExecuteDialog(diaAbout, -1, 1, NULL);
+    // The dialog returns the page-button ID; OK and Back both leave About.
+    int page = 0;
+    while (diaExecuteDialog(page ? diaAbout : diaAboutChinese, ABOUT_SWITCH_PAGE, 1, NULL) == ABOUT_SWITCH_PAGE)
+        page = !page;
 }
 
 void guiCheckNotifications(int checkTheme, int checkLang)

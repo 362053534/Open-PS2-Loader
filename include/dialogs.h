@@ -201,6 +201,9 @@ enum UI_ITEMS {
 #else
     COMPAT_MODE_BASE = 200,
 #endif
+
+    // About page switch; keep older UI item IDs unchanged.
+    ABOUT_SWITCH_PAGE = 500,
 };
 
 #define COMPAT_NOEXIT       0x70000000
@@ -227,6 +230,7 @@ extern struct UIItem diaGSConfig[];
 extern struct UIItem diaCheatConfig[];
 
 extern struct UIItem diaConfig[];
+extern struct UIItem diaAboutChinese[];
 extern struct UIItem diaAbout[];
 extern struct UIItem diaVMC[];
 extern struct UIItem diaNetCompatUpdate[];
