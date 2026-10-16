@@ -225,12 +225,18 @@ void guiEndFrame(void)
 
 void guiShowAbout()
 {
-    // 仅“关于”页使用 FG 版本文案，实际构建版本仍由 OPL_VERSION 提供。
-    static const char aboutTitle[] = "FG Open PS2 Loader v1.2.9";
+    char OPLVersion[sizeof("FG Open PS2 Loader ") + sizeof(OPL_VERSION)];
     char OPLBuildDetails[40];
+    const size_t baseVersionLength = sizeof("v1.2.0") - 1;
 
-    diaSetLabel(diaAboutChinese, ABOUT_TITLE, aboutTitle);
-    diaSetLabel(diaAbout, ABOUT_TITLE, aboutTitle);
+    // 只替换标题中的基础版本，保留 OPL_VERSION 拼接的构建后缀。
+    if (strncmp(OPL_VERSION, "v1.2.0", baseVersionLength) == 0 &&
+        (OPL_VERSION[baseVersionLength] == '\0' || OPL_VERSION[baseVersionLength] == '-'))
+        snprintf(OPLVersion, sizeof(OPLVersion), "FG Open PS2 Loader v1.2.9%s", OPL_VERSION + baseVersionLength);
+    else
+        snprintf(OPLVersion, sizeof(OPLVersion), "FG Open PS2 Loader %s", OPL_VERSION);
+    diaSetLabel(diaAboutChinese, ABOUT_TITLE, OPLVersion);
+    diaSetLabel(diaAbout, ABOUT_TITLE, OPLVersion);
 
     snprintf(OPLBuildDetails, sizeof(OPLBuildDetails), "GSM %s"
                                                        " - UDMA+"
