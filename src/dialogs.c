@@ -882,10 +882,66 @@ struct UIItem diaPadMacroConfig[] = {
     {UI_TERMINATOR}};
 #endif
 
-// About Menu
-struct UIItem diaAbout[] = {
+// 对话框不自动换行，测试名单按简中字形宽度预先分组，避免过早换行或溢出。
+struct UIItem diaAboutChinese[] = {
+    {UI_SPACER, ABOUT_TITLE_SPACER, 1, 1, -1, 0, 0},
     {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_SPLITTER},
+
+    {UI_SPACER, ABOUT_PAGE_HEADING_SPACER, 1, 1, -1, 0, 0},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_CHINESE_CONTRIBUTORS}}},
+    {UI_BREAK},
+
+    // Coders
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_DEVS}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"峰哥GAMES", -1}}},
+    {UI_BREAK},
+
+    {UI_BREAK},
+
+    // Quality Assurance
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_QANDA}}},
+    {UI_BREAK},
+    // 中点两侧各留一个空格，保留姓名缩进并按简中字形宽度排为四行。
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"穆特 · 关山 · 换换爱 · anyi · ps玩家 · 诺斯菲- · 筱海- · 张楠 · 蕾姆 · 云", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"猴子 · 后来提及 · 水跃鱼 · 岁月如飞刀 · 铁拳钢达姆 · 真田幸村 · 四月的谎言", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"开心の清爽 · 耿关赫 · 无敌破坏王 · rm-rf/*(已黑化) · playstation荣", -1}}},
+    {UI_BREAK},
+    {UI_SPACER},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"威宁四少 · 沧海一栗 · 真心 · /ka花样年华 · 1101 · 自由自在", -1}}},
+    {UI_BREAK},
+
+    {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"B站地址：space.bilibili.com/76478300", -1}}},
+    {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"论坛地址：bbs.a9vg.com/thread-9027434-1-1.html", -1}}},
+    {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"贴吧地址：tieba.baidu.com/p/9606048316", -1}}},
+    {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"QQ群：81534571 (暗号OPL)", -1}}},
+    {UI_BREAK},
+
+    {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
+    {UI_SPACER},
+    {UI_BUTTON, ABOUT_SWITCH_PAGE, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_NEXT_PAGE}}},
+    {UI_BREAK},
+    {UI_TERMINATOR}};
+
+// About: original contributors, with all existing credits and build details.
+struct UIItem diaAbout[] = {
+    {UI_SPACER, ABOUT_TITLE_SPACER, 1, 1, -1, 0, 0},
+    {UI_LABEL, ABOUT_TITLE, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
+    {UI_SPLITTER},
+    {UI_SPACER, ABOUT_PAGE_HEADING_SPACER, 1, 1, -1, 0, 0},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_ORIGINAL_CONTRIBUTORS}}},
+    {UI_BREAK},
 
     // Coders
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_DEVS}}},
@@ -932,21 +988,21 @@ struct UIItem diaAbout[] = {
     {UI_BREAK},
 
     // Build Options
-    {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_BUILD_DETAILS}}},
     {UI_SPACER},
     {UI_LABEL, ABOUT_BUILD_DETAILS, 1, 1, -1, 0, 0, {.label = {NULL, -1}}},
     {UI_BREAK},
 
     // Support details
-    {UI_BREAK},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_FORUM_DETAILS}}},
     {UI_SPACER},
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {"psx-place.com", -1}}},
     {UI_BREAK},
 
-    // buttons
+    // Same row as OK, so page switching does not push the full credits off-screen.
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
+    {UI_SPACER},
+    {UI_BUTTON, ABOUT_SWITCH_PAGE, 1, 1, -1, 0, 0, {.label = {NULL, _STR_ABOUT_PREVIOUS_PAGE}}},
     {UI_BREAK},
 
     // end of dialog

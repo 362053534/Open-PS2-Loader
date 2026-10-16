@@ -201,6 +201,11 @@ enum UI_ITEMS {
 #else
     COMPAT_MODE_BASE = 200,
 #endif
+
+    // 关于页专用布局项使用新增 ID，不改变旧控件 ID。
+    ABOUT_SWITCH_PAGE = 500,
+    ABOUT_TITLE_SPACER,
+    ABOUT_PAGE_HEADING_SPACER,
 };
 
 #define COMPAT_NOEXIT       0x70000000
@@ -227,6 +232,7 @@ extern struct UIItem diaGSConfig[];
 extern struct UIItem diaCheatConfig[];
 
 extern struct UIItem diaConfig[];
+extern struct UIItem diaAboutChinese[];
 extern struct UIItem diaAbout[];
 extern struct UIItem diaVMC[];
 extern struct UIItem diaNetCompatUpdate[];
