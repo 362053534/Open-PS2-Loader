@@ -601,6 +601,33 @@ static void hddRenameGame(item_list_t *itemList, int id, char *newName)
     }
 }
 
+// 诊断：把VMC块链信息写入mass0:/vmc_diag.txt，失败时静默跳过。
+static void hddVMCDiagLog(int slot, const char *name, int partitionCount, int cardPages, int blockCount, const pfs_blockinfo_t *blocks, const apa_sub_t *parts, int haveError)
+{
+    char line[160];
+    int i, len, fd;
+
+    fd = open("mass0:/vmc_diag.txt", O_WRONLY | O_CREAT | (slot == 0 ? O_TRUNC : 0));
+    if (fd < 0)
+        return;
+    lseek(fd, 0, SEEK_END);
+
+    len = snprintf(line, sizeof(line), "slot=%d name=%s partitions=%d card_pages=%d blockCount=%d error=%d\n", slot, name, partitionCount, cardPages, blockCount, haveError);
+    write(fd, line, len);
+    for (i = 0; i < blockCount && i < 11; i++) {
+        u32 sp = blocks[i].subpart;
+        u32 pstart = 0, plen = 0;
+
+        if ((int)sp < partitionCount) {
+            pstart = parts[sp].start;
+            plen = parts[sp].length;
+        }
+        len = snprintf(line, sizeof(line), "  blk[%d] subpart=%u number=%u count=%u part_start=%u part_len=%u\n", i, sp, (u32)blocks[i].number, (u32)blocks[i].count, pstart, plen);
+        write(fd, line, len);
+    }
+    close(fd);
+}
+
 int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
 {
     apa_sub_t parts[APA_MAXSUB + 1];
@@ -686,6 +713,8 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
                     have_error = 2;
                 }
             }
+
+            hddVMCDiagLog(vmc_id, vmc_name, partitionCount, vmcInfos[vmc_id].specs.card_size, blockCount, blocks, parts, have_error);
 
             if (have_error) {
                 if (showErrorDialogs) {
