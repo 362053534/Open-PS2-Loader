@@ -643,6 +643,14 @@ int MceEraseBlock(MemoryCard *mcd, int page)
 
     DPRINTF("erasing at 0x%X\n", page);
 
+#ifdef PFS_BDM_DRIVER
+    /* 先检查整个块的页范围与映射，任一页非法则不写任何页。 */
+    if (!DeviceCheckPages(mcd->mcnum, page, mcd->cspec.BlockSize)) {
+        DPRINTF("erase range invalid, refused\n");
+        return 0;
+    }
+#endif
+
     /* creating clear buffer */
     r = (mcd->flags & 0x10) ? 0x0 : 0xFF;
     mips_memset(mcd->dbufp, r, mcd->cspec.PageSize);
