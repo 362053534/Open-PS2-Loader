@@ -73,7 +73,7 @@ int hddLoadSupportModules(void);
 void hddReportSupportError(void);
 void hddSetConfigSource(void);
 int hddIsConfigSource(void);
-int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs, const char *launchMode);
+int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs);
 void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet);
 
 extern int hddLoadModulesSuccess;

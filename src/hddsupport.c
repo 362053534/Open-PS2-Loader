@@ -601,38 +601,7 @@ static void hddRenameGame(item_list_t *itemList, int id, char *newName)
     }
 }
 
-// 诊断：把VMC块链信息写入mass0:/vmc_diag.txt，失败时静默跳过。
-static void hddVMCDiagLog(const char *mode, int slot, const char *name, int partitionCount, int cardPages, int blockCount, int mergedCount, u32 sectorsPerZone, const pfs_blockinfo_t *blocks, const apa_sub_t *parts, int haveError)
-{
-    char line[224];
-    int i, len, fd;
-
-    fd = open("mass0:/vmc_diag.txt", O_WRONLY | O_CREAT);
-    if (fd < 0)
-        return;
-    lseek(fd, 0, SEEK_END);
-
-    if (slot == 0) {
-        len = snprintf(line, sizeof(line), "==== launch mode=%s ====\n", mode);
-        write(fd, line, len);
-    }
-    len = snprintf(line, sizeof(line), "slot=%d name=%s partitions=%d card_pages=%d blockCount=%d merged=%d zone_sectors=%u lba48=%d error=%d\n", slot, name, partitionCount, cardPages, blockCount, mergedCount, sectorsPerZone, hddIs48bit(), haveError);
-    write(fd, line, len);
-    for (i = 0; i < mergedCount && i < PFS_VMC_MAX_BLOCKS; i++) {
-        u32 sp = blocks[i].subpart;
-        u32 pstart = 0, plen = 0;
-
-        if ((int)sp < partitionCount) {
-            pstart = parts[sp].start;
-            plen = parts[sp].length;
-        }
-        len = snprintf(line, sizeof(line), "  blk[%d] subpart=%u number=%u count=%u part_start=%u part_len=%u\n", i, sp, (u32)blocks[i].number, (u32)blocks[i].count, pstart, plen);
-        write(fd, line, len);
-    }
-    close(fd);
-}
-
-int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs, const char *launchMode)
+int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs)
 {
     apa_sub_t parts[APA_MAXSUB + 1];
     hdd_vmc_infos_t vmcInfos[2];
@@ -732,8 +701,6 @@ int hddPreparePfsVMC(config_set_t *configSet, int showErrorDialogs, const char *
                     blockList = NULL;
                 }
             }
-
-            hddVMCDiagLog(launchMode, vmc_id, vmc_name, partitionCount, vmcInfos[vmc_id].specs.card_size, blockCount, mergedCount, sectorsPerZone, vmcInfos[vmc_id].blocks, parts, have_error);
 
             if (have_error) {
                 if (showErrorDialogs) {
@@ -992,7 +959,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     else
         game = gAutoLaunchGame;
 
-    int size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchGame == NULL, "HDL");
+    int size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchGame == NULL);
     if (size_mcemu_irx < 0)
         return;
 
