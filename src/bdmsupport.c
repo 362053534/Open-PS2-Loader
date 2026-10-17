@@ -615,7 +615,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // APA ISO 的游戏读取走 BDM ATA，但 VMC 文件仍位于 PFS，需使用专用映射。
     if (!strncmp(pDeviceData->bdmPrefix, "pfs", 3) && !strcmp(pDeviceData->bdmDriver, "ata")) {
-        size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchBDMGame == NULL);
+        size_mcemu_irx = hddPreparePfsVMC(configSet, gAutoLaunchBDMGame == NULL, "ISO");
         if (size_mcemu_irx < 0)
             return;
         usePfsVMC = 1;

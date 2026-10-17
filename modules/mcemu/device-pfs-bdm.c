@@ -16,7 +16,7 @@ static u32 Mcpage_to_Apasector(int mc_num, u32 mc_page)
     ubound = 0;
     sector_to_read = 0;
 
-    for (i = 0; i < 10; i++) {
+    for (i = 0; i < PFS_VMC_MAX_BLOCKS; i++) {
         lbound = ubound;
         ubound += vmcSpec[mc_num].blocks[i].count;
 
