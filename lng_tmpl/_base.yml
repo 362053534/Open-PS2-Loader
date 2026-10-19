@@ -42,7 +42,7 @@ string_array_specifiers: ''
 gui_strings:
 - comment: Localized language name
   label: LOCALE
-  string: 内置完整简中
+  string: 内置-完整简中
 - label: SAVE_CHANGES
   string: 保存设置
 - label: BACK
@@ -251,7 +251,7 @@ gui_strings:
 - label: HINT_GUEST
   string: GUEST验证留空
 - label: HINT_MODE1
-  string: 限速模式，模拟DVD光驱速度，可修复异常卡顿和死机问题
+  string: 精准读取，修复大量兼容性问题，建议打开
 - label: HINT_MODE2
   string: 同步模式，可解决某些游戏异常卡顿的问题
 - label: HINT_MODE3
