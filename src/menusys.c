@@ -19,9 +19,6 @@
 #include "include/sound.h"
 #include "include/texcache.h"
 #include <assert.h>
-/* COVER_Y_DEBUG begin */
-#include <time.h>
-/* COVER_Y_DEBUG end */
 
 //#define NEWLIB_PORT_AWARE
 //#include <fileXio_rpc.h> // fileXioDopen
@@ -1206,39 +1203,6 @@ static void menuCheckArtCursorChanged(void)
     }
 }
 
-/* COVER_Y_DEBUG begin */
-static char coverYDebugText[96];
-static clock_t coverYDebugTimer = 0;
-
-static void coverYDebugAdjust(int delta)
-{
-    item_list_t *list = selected_item->item->userdata;
-    int isApps = (list && list->mode == APP_MODE);
-    int index;
-    int y = thmDebugAdjustCoverY(isApps, delta, &index);
-
-    if (index < 0)
-        snprintf(coverYDebugText, sizeof(coverYDebugText), "COVER_Y_DEBUG %s: no Coverflow element", isApps ? "APPS" : "GAMES");
-    else
-        snprintf(coverYDebugText, sizeof(coverYDebugText), "COVER_Y_DEBUG %s: %s%d_y=%d", isApps ? "APPS" : "GAMES", isApps ? "appsMain" : "main", index, y);
-    coverYDebugTimer = clock() + 2000 * (CLOCKS_PER_SEC / 1000);
-}
-
-static void coverYDebugDraw(void)
-{
-    if (!coverYDebugTimer)
-        return;
-    if (clock() >= coverYDebugTimer) {
-        coverYDebugTimer = 0;
-        return;
-    }
-
-    int w = rmUnScaleX(fntCalcDimensions(gTheme->fonts[0], coverYDebugText));
-    rmDrawRect(10, 10, w + 20, MENU_ITEM_HEIGHT + 10, gColDarker);
-    fntRenderString(gTheme->fonts[0], 20, 15, ALIGN_NONE, 0, 0, coverYDebugText, gTheme->textColor);
-}
-/* COVER_Y_DEBUG end */
-
 void menuRenderMain(void)
 {
     menuCheckArtCursorChanged();
@@ -1252,9 +1216,6 @@ void menuRenderMain(void)
         menuRenderElements(gTheme->mainElems.first);
         gTheme->itemsList = gTheme->gamesItemsList;
     }
-    /* COVER_Y_DEBUG begin */
-    coverYDebugDraw();
-    /* COVER_Y_DEBUG end */
 }
 
 void menuHandleInputMain()
@@ -1309,13 +1270,6 @@ void menuHandleInputMain()
     } else if (getKeyOn(KEY_R2)) { // end
         menuLastPage();
     }
-    /* COVER_Y_DEBUG begin */
-    else if (getKeyOn(KEY_L3)) {
-        coverYDebugAdjust(-1); // L3 = 上移 1
-    } else if (getKeyOn(KEY_R3)) {
-        coverYDebugAdjust(1); // R3 = 下移 1
-    }
-    /* COVER_Y_DEBUG end */
 
     // Last Played Auto Start
     if (RemainSecs < 0) {

@@ -1309,31 +1309,6 @@ int thmGetCoverflowJumpCount(void)
     return getCoverflowDisplayCount();
 }
 
-/* COVER_Y_DEBUG begin */
-int thmDebugAdjustCoverY(int isApps, int delta, int *outIndex)
-{
-    theme_element_t *elem;
-    int index = 0;
-
-    if (outIndex)
-        *outIndex = -1;
-    if (!gTheme)
-        return 0;
-
-    elem = isApps ? gTheme->appsMainElems.first : gTheme->mainElems.first;
-    for (; elem; elem = elem->next, index++) {
-        if (elem->type == ELEM_TYPE_COVERFLOW) {
-            elem->posY += delta;
-            if (outIndex)
-                *outIndex = index;
-            return elem->posY;
-        }
-    }
-
-    return 0;
-}
-/* COVER_Y_DEBUG end */
-
 // 绘制一张封面（可选带 case 外壳和/或倒影）。仿照 wOPL 的 thmDrawTexture，但通过
 // 选择 reflect / 非 reflect 的 renderman 入口来实现，而不是修改共用函数的签名。
 static void coverflowDrawTexture(GSTEXTURE *texture, mutable_image_t *img, float x, float y, short aligned, float w, float h, u64 color, int reflection, int baseW, int baseH)
