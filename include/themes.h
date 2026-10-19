@@ -185,6 +185,12 @@ int thmCoverflowAnimEnabled(void);
 // 未启用 Coverflow 主题时返回 0，调用方回退到列表主题的 displayedItems 步长。
 int thmGetCoverflowJumpCount(void);
 
+/* COVER_Y_DEBUG begin */
+// 临时调试：把当前列表（isApps=0 游戏 mainN / 1 APPS appsMainN）的 Coverflow 元素 y 加 delta，
+// 下一帧生效。返回新 y（与 cfg 的 _y 同单位）；找不到元素时返回 0 且 *outIndex=-1。
+int thmDebugAdjustCoverY(int isApps, int delta, int *outIndex);
+/* COVER_Y_DEBUG end */
+
 void thmInit(void);
 void thmReinit(const char *path);
 void thmReloadScreenExtents(void);
