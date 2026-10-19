@@ -694,3 +694,15 @@ gui_strings:
   string: Cheat Selection
 - label: HDD_HINT
   string: Only one HDD allowed, enabling locks APA or GPT.
+- label: TXTRENAME
+  string: TXT Mapping List
+- label: ABOUT_CHINESE_CONTRIBUTORS
+  string: FGOPL Contributors (Page 1/2)
+- label: ABOUT_CONTRIBUTORS_PENDING
+  string: Names pending confirmation
+- label: ABOUT_ORIGINAL_CONTRIBUTORS
+  string: Official OPL Contributors (Page 2/2)
+- label: ABOUT_NEXT_PAGE
+  string: Next page
+- label: ABOUT_PREVIOUS_PAGE
+  string: Previous page
