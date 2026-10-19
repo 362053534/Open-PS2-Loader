@@ -13,6 +13,7 @@
 #include "include/cheatman.h"
 #include "include/ps2cnf.h"
 #include "include/gui.h"
+#include "include/cheatconfig.h"
 #include "pops_legacy_id_map.h"
 
 #include <dirent.h>
@@ -2252,7 +2253,7 @@ void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const cha
         snprintf(path, pathSize, "%s%s%s%s_%s", prefix, artFolder, sep, value, suffix);
 }
 
-int sbLoadCheats(const char *path, const char *file)
+int sbLoadCheats(const char *path, const char *file, config_set_t *configSet)
 {
     char cheatfile[64];
     int cheatMode = 0;
@@ -2265,8 +2266,11 @@ int sbLoadCheats(const char *path, const char *file)
             LOG("Error: failed to load cheats\n");
         else {
             LOG("Cheats found\n");
-            if ((gAutoLaunchGame == NULL) && (gAutoLaunchBDMGame == NULL) && (cheatMode == 1))
-                guiManageCheats();
+            if (cheatMode == 1) {
+                cheatConfigLoadSelections(configSet);
+                if ((gAutoLaunchGame == NULL) && (gAutoLaunchBDMGame == NULL))
+                    guiManageCheats(configSet);
+            }
         }
     }
     return cheatMode;

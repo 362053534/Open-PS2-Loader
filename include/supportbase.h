@@ -86,6 +86,6 @@ int sbIsValidStartupExecName(const char *startup);
 int sbGetPOPSStartupExecName(const char *path, char *filename, int maxlength);
 void sbGetStartupExecNameForLaunch(const char *path, const char *startup, char *filename, int maxlength);
 
-int sbLoadCheats(const char *path, const char *file);
+int sbLoadCheats(const char *path, const char *file, config_set_t *configSet);
 
 #endif

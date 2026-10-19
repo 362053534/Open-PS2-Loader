@@ -1,3 +1,4 @@
+#include "include/cheatconfig.h"
 /*
  Copyright 2010, Volca
  Licenced under Academic Free License version 3.0
@@ -2311,7 +2312,7 @@ int guiGameShowRemoveSettings(config_set_t *configSet, config_set_t *configGame)
     return 1;
 }
 
-void guiManageCheats(void)
+void guiManageCheats(config_set_t *configSet)
 {
     int offset = 0;
     int terminate = 0;
@@ -2341,7 +2342,7 @@ void guiManageCheats(void)
         }
 
         if (getKeyOn(gSelectButton)) {
-            if (!(strncasecmp(gCheats[selectedCheat].name, "mastercode", 10) == 0 || strncasecmp(gCheats[selectedCheat].name, "master code", 11) == 0))
+            if (!cheatConfigIsMasterCode(gCheats[selectedCheat].name))
                 gCheats[selectedCheat].enabled = !gCheats[selectedCheat].enabled;
         }
 
@@ -2385,5 +2386,7 @@ void guiManageCheats(void)
         guiEndFrame();
     }
     fntRefreshCache(); // 刷新字模缓存
+    cheatConfigSaveSelections(configSet);
+    configWrite(configSet);
     sfxPlay(SFX_CONFIRM);
 }

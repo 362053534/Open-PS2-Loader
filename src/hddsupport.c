@@ -1018,7 +1018,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     sbPrepare(NULL, configSet, size_irx, irx, &settings_index, gAutoMode1);
 
-    if ((result = sbLoadCheats(gHDDPrefix, game->startup)) < 0) {
+    if ((result = sbLoadCheats(gHDDPrefix, game->startup, configSet)) < 0) {
         if (gAutoLaunchGame == NULL) {
             switch (result) {
                 case -ENOENT:
