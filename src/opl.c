@@ -1944,7 +1944,7 @@ static int tryAlternateDevice(int types)
         configEnd();
         configInit(officialCfgPath);
         showCfgPopup = 0;
-        return 0;
+        return configReadMulti(types & ~CONFIG_OPL);
     }
 
     // At this point, the user has no loadable config files on any supported device, so try to find a device to save on.
