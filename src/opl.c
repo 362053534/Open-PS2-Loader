@@ -630,8 +630,9 @@ void initSupport(item_list_t *itemList, int mode, int force_reinit)
 static void initAllSupport(int force_reinit)
 {
     bdmEnumerateDevices();
-    initSupport(ethGetObject(0), ETH_MODE, force_reinit || (gNetworkStartup >= ERROR_ETH_SMB_CONN));
+    // HDD 模块栈须先于网络模块加载，否则 SMB 自动启动时从 APA 启动 APPS 的 ELF 会黑屏
     initSupport(hddGetObject(0), HDD_MODE, force_reinit);
+    initSupport(ethGetObject(0), ETH_MODE, force_reinit || (gNetworkStartup >= ERROR_ETH_SMB_CONN));
     initSupport(appGetObject(0), APP_MODE, force_reinit);
 }
 
