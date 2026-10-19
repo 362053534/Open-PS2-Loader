@@ -258,11 +258,12 @@ static int parse_buf(const char *buf)
     }
     while (*buf) {
         /* Scanner */
-        int len = chr_idx(buf, LF);
-        if (len < 0)
-            len = strlen(buf);
-        else if (len > CHEAT_LINE_MAX)
-            len = CHEAT_LINE_MAX;
+        int line_len = chr_idx(buf, LF);
+        int len;
+        if (line_len < 0)
+            line_len = strlen(buf);
+        /* 超长行只解析前 CHEAT_LINE_MAX 字节，但跳过整行，避免从行中间继续解析。 */
+        len = (line_len > CHEAT_LINE_MAX) ? CHEAT_LINE_MAX : line_len;
 
         if (!is_empty_substr(buf, len)) {
             strncpy(line, buf, len);
@@ -284,7 +285,7 @@ static int parse_buf(const char *buf)
                 code = parse_line(line, linenumber);
                 if (!(code.addr == 0 && code.val == 0)) {
                     // Only add the cheat entry if we have a valid cheat name in temp_name
-                    if (cheat_index < MAX_CODES && temp_name[0] != NUL) {
+                    if (cheat_index + 1 < MAX_CODES && temp_name[0] != NUL) {
                         cheat_index++; // Move to the next cheat entry
                         strncpy(gCheats[cheat_index].name, temp_name, CHEAT_NAME_MAX);
                         gCheats[cheat_index].name[CHEAT_NAME_MAX] = NUL;
@@ -298,7 +299,10 @@ static int parse_buf(const char *buf)
             }
         }
         linenumber++;
-        buf += len + 1;
+        /* 最后一行没有换行时 buf[line_len] 就是结尾 NUL，不能再越过它。 */
+        if (buf[line_len] == NUL)
+            break;
+        buf += line_len + 1;
     }
 
     return 0;
