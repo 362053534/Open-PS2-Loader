@@ -109,6 +109,10 @@ static void appFreeLegacyConfig(void);
 #define POPS_EE_HDD_PFS_FORMAT_OFFSET     0x08C0
 #define POPS_EE_HDD_PFS_FORMAT_CAPACITY   0x0040
 #define POPS_EE_HDD_VMC_PATH_HELPER_OFFSET 0x0900
+#define POPS_EE_HDD_VCD_CORE_HELPER_OFFSET 0x0980
+#define POPS_EE_HDD_VCD_DIR_OFFSET        0x0A40
+#define POPS_EE_HDD_VCD_DIR_CAPACITY      0x0040
+#define POPS_CORE_VCD_PATH_LIMIT          80
 #define POPS_EE_COPY_TABLE_OFFSET         ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET
 #define POPS_EE_USBD_ADDRESS              0x00140000
 #define POPS_EE_DRIVER_ADDRESS            0x00180000
@@ -228,6 +232,15 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
     0x3C090C02, // lui t1,0x0C02
     0x352951A0, // ori t1,t1,0x51A0，jal 0x00094680
     0xAD0944B0, // sw t1,0x44B0(t0)
+    /* 内核VCD路径改由常驻函数补入目录，仅在原指令为strlen调用时修补。 */
+    0x3C0A0C24, // lui t2,0x0C24
+    0x354A6382, // ori t2,t2,0x6382，jal 0x00918E08
+    0x8D0B5A38, // lw t3,0x5A38(t0)
+    0x156A0004, // bne t3,t2,版本不匹配时跳过
+    0x00000000,
+    0x3C090C02, // lui t1,0x0C02
+    0x35295260, // ori t1,t1,0x5260，jal 0x00094980
+    0xAD095A38, // sw t1,0x5A38(t0)，修补0x00875A38
     0x0000000F, // sync
     0x03E00008, // jr ra
     0x00000000,
@@ -368,6 +381,46 @@ static const u32 appPOPSHDDOPLPFSMountHelper[] = {
     0x00000000,
 };
 
+/* 内核VCD路径0x004F8000原为"%s/<名称>"，在POPStarter校验长度前插入目录，免去分区根目录链接。 */
+static const u32 appPOPSHDDOPLVCDCoreHelper[] = {
+    0x3C08004F, // lui t0,0x004F
+    0x35088003, // ori t0,t0,0x8003，原名称起点0x004F8003
+    0x25090000, // addiu t1,t0,0
+    0x912A0000, // lbu t2,0(t1)
+    0x1540FFFE, // bnez t2,扫描原名称结尾
+    0x25290001, // addiu t1,t1,1，t1指向NUL之后
+    0x3C0B0009, // lui t3,0x0009
+    0x256B4A40, // addiu t3,t3,0x4A40，目录前缀串
+    0x256C0000, // addiu t4,t3,0
+    0x918A0000, // lbu t2,0(t4)
+    0x11400003, // beqz t2,前缀长度已得
+    0x00000000,
+    0x1000FFFC, // b 继续扫描前缀
+    0x258C0001, // addiu t4,t4,1
+    0x018B6823, // subu t5,t4,t3，前缀长度
+    0x11A00011, // beqz t5,无前缀直接返回
+    0x012D7021, // addu t6,t1,t5，插入后结尾
+    0x3C0F0050, // lui t7,0x0050
+    0x25EF8080, // addiu t7,t7,-0x7F80，0x004F8080缓冲区上限
+    0x01EE782B, // sltu t7,t7,t6
+    0x15E0000C, // bnez t7,超出0x80时保持原样，由POPStarter报错
+    0x00000000,
+    0x2529FFFF, // addiu t1,t1,-1
+    0x912A0000, // lbu t2,0(t1)
+    0x012D7021, // addu t6,t1,t5
+    0x1528FFFC, // bne t1,t0,从尾部后移名称
+    0xA1CA0000, // sb t2,0(t6)
+    0x916A0000, // lbu t2,0(t3)
+    0x11400004, // beqz t2,前缀复制完成
+    0x256B0001, // addiu t3,t3,1
+    0xA10A0000, // sb t2,0(t0)
+    0x1000FFFB, // b 继续复制前缀
+    0x25080001, // addiu t0,t0,1
+    0x3C04004F, // lui a0,0x004F
+    0x08246382, // j 0x00918E08，继续原strlen
+    0x34848000, // ori a0,a0,0x8000
+};
+
 typedef struct
 {
     u32 magic;
@@ -409,7 +462,9 @@ typedef char pops_ee_hdd_partition_must_fit[(POPS_EE_HDD_PARTITION_OFFSET + POPS
 typedef char pops_ee_hdd_resource_format_must_fit[(POPS_EE_HDD_RESOURCE_FORMAT_OFFSET + POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY <= POPS_EE_HDD_VCD_PREFIX_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_vcd_prefix_must_fit[(POPS_EE_HDD_VCD_PREFIX_OFFSET + POPS_EE_HDD_VCD_PREFIX_CAPACITY <= POPS_EE_HDD_PFS_FORMAT_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_pfs_format_must_fit[(POPS_EE_HDD_PFS_FORMAT_OFFSET + POPS_EE_HDD_PFS_FORMAT_CAPACITY <= POPS_EE_HDD_VMC_PATH_HELPER_OFFSET) ? 1 : -1];
-typedef char pops_ee_hdd_vmc_path_helper_must_fit[(POPS_EE_HDD_VMC_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLVMCPathHelper) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
+typedef char pops_ee_hdd_vmc_path_helper_must_fit[(POPS_EE_HDD_VMC_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLVMCPathHelper) <= POPS_EE_HDD_VCD_CORE_HELPER_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_vcd_core_helper_must_fit[(POPS_EE_HDD_VCD_CORE_HELPER_OFFSET + sizeof(appPOPSHDDOPLVCDCoreHelper) <= POPS_EE_HDD_VCD_DIR_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_vcd_dir_must_fit[(POPS_EE_HDD_VCD_DIR_OFFSET + POPS_EE_HDD_VCD_DIR_CAPACITY <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
 static int appIsPOPSLauncher(const app_info_t *app)
@@ -762,6 +817,7 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
     char resourceFormat[POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY];
     char vcdPrefix[POPS_EE_HDD_VCD_PREFIX_CAPACITY];
     char pfsFormat[POPS_EE_HDD_PFS_FORMAT_CAPACITY];
+    char vcdDirectory[POPS_EE_HDD_VCD_DIR_CAPACITY];
     const char *relativePath;
     u8 *patchedELF;
 
@@ -777,7 +833,8 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
         relativePath++;
     if (*relativePath == '\0' ||
         snprintf(vcdPrefix, sizeof(vcdPrefix), "pfs1:/%s/", relativePath) >= (int)sizeof(vcdPrefix) ||
-        snprintf(pfsFormat, sizeof(pfsFormat), "pfs1:/%s/%%s\n", relativePath) >= 0x2C)
+        snprintf(pfsFormat, sizeof(pfsFormat), "pfs1:/%s/%%s\n", relativePath) >= 0x2C ||
+        snprintf(vcdDirectory, sizeof(vcdDirectory), "%s/", relativePath) >= (int)sizeof(vcdDirectory))
         return NULL;
 
     patchedELF = malloc(size_popstarter_elf);
@@ -802,10 +859,13 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
            appPOPSHDDOPLPFSMountHelper, sizeof(appPOPSHDDOPLPFSMountHelper));
     memcpy(appPOPSEEResident + POPS_EE_HDD_VMC_PATH_HELPER_OFFSET,
            appPOPSHDDOPLVMCPathHelper, sizeof(appPOPSHDDOPLVMCPathHelper));
+    memcpy(appPOPSEEResident + POPS_EE_HDD_VCD_CORE_HELPER_OFFSET,
+           appPOPSHDDOPLVCDCoreHelper, sizeof(appPOPSHDDOPLVCDCoreHelper));
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_PARTITION_OFFSET), partition);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_RESOURCE_FORMAT_OFFSET), resourceFormat);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_VCD_PREFIX_OFFSET), vcdPrefix);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_PFS_FORMAT_OFFSET), pfsFormat);
+    strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_VCD_DIR_OFFSET), vcdDirectory);
 
     return patchedELF;
 }
@@ -842,89 +902,6 @@ static int appBuildPOPSBootMailbox(const app_info_t *app, pops_boot_mailbox_t *m
     mailbox->version = POPS_BOOT_MAILBOX_VERSION;
     mailbox->deviceType = deviceType;
     mailbox->checksum = appPOPSBootMailboxChecksum(mailbox);
-    return 0;
-}
-
-static int appGetPOPSDirectoryEntryMode(const char *directory, const char *name, unsigned int *mode)
-{
-    iox_dirent_t dirent;
-    int fd, result;
-
-    fd = fileXioDopen(directory);
-    if (fd < 0)
-        return -1;
-
-    while ((result = fileXioDread(fd, &dirent)) > 0) {
-        if (strcmp(dirent.name, name) == 0) {
-            *mode = dirent.stat.mode;
-            fileXioDclose(fd);
-            return 1;
-        }
-    }
-
-    fileXioDclose(fd);
-    return result < 0 ? -1 : 0;
-}
-
-static int appPreparePOPSHDDOPLVCDLink(const app_info_t *app)
-{
-    static const char linkDirectory[] = "pfs0:/";
-    char sourcePath[APP_PATH_MAX + APP_BOOT_MAX + 2];
-    char linkPath[APP_BOOT_MAX + sizeof("pfs0:/")];
-    char temporaryLinkPath[APP_BOOT_MAX + sizeof("pfs0:/.new")];
-    char temporaryLinkName[APP_BOOT_MAX + sizeof(".new")];
-    const char *relativePath;
-    unsigned int mode;
-    int fd, result;
-
-    if (strncmp(app->path, "pfs0:", 5) != 0)
-        return -1;
-    relativePath = app->path + 5;
-    while (*relativePath == '/')
-        relativePath++;
-    if (*relativePath == '\0' ||
-        snprintf(sourcePath, sizeof(sourcePath), "pfs0:/%s/%s", relativePath, app->vcdName) >= (int)sizeof(sourcePath) ||
-        snprintf(linkPath, sizeof(linkPath), "pfs0:/%s", app->vcdName) >= (int)sizeof(linkPath) ||
-        snprintf(temporaryLinkPath, sizeof(temporaryLinkPath), "pfs0:/%s.new", app->vcdName) >= (int)sizeof(temporaryLinkPath) ||
-        snprintf(temporaryLinkName, sizeof(temporaryLinkName), "%s.new", app->vcdName) >= (int)sizeof(temporaryLinkName))
-        return -1;
-
-    /* 先确认目标可读，避免把有效映射替换成指向不存在文件的链接。 */
-    fd = openFile(sourcePath, O_RDONLY);
-    if (fd < 0)
-        return -1;
-    close(fd);
-
-    result = appGetPOPSDirectoryEntryMode(linkDirectory, app->vcdName, &mode);
-    if (result < 0 || (result > 0 && !FIO_S_ISLNK(mode))) {
-        /* 目录项模式不会跟随链接，可避免覆盖分区根目录中已有的普通文件。 */
-        return -1;
-    }
-
-    result = appGetPOPSDirectoryEntryMode(linkDirectory, temporaryLinkName, &mode);
-    if (result < 0 || (result > 0 && !FIO_S_ISLNK(mode)))
-        return -1;
-    if (result > 0) {
-        if (fileXioRemove(temporaryLinkPath) < 0)
-            return -1;
-    }
-
-    /* 先落盘临时链接，再由PFS原子替换正式入口，避免留下空窗。 */
-    /* PFS收到的链接内容会去掉设备前缀，因此这里必须保留根目录斜杠。 */
-    if (fileXioSymlink(sourcePath, temporaryLinkPath) < 0 ||
-        fileXioRename(temporaryLinkPath, linkPath) < 0 ||
-        appGetPOPSDirectoryEntryMode(linkDirectory, app->vcdName, &mode) != 1 ||
-        !FIO_S_ISLNK(mode)) {
-        fileXioRemove(temporaryLinkPath);
-        return -1;
-    }
-
-    /* 普通打开会由PFS解析链接，能同时验证链接内容及目标VCD。 */
-    fd = openFile(linkPath, O_RDONLY);
-    if (fd < 0)
-        return -1;
-    close(fd);
-
     return 0;
 }
 
@@ -2173,8 +2150,10 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
                     return;
                 }
 
-                if (requiresHDDOPLInjection && appPreparePOPSHDDOPLVCDLink(&appsList[id]) < 0) {
-                    guiMsgBox("无法为目录式APA分区准备原生VCD入口，请检查POPS文件和分区根目录", 0, NULL);
+                /* 内核按"%s/<目录>/<名称>"打开VCD，POPStarter只接受80字节以内的路径。 */
+                if (requiresHDDOPLInjection &&
+                    snprintf(NULL, 0, "%%s/%s/%s", resourceRelativePath, appsList[id].vcdName) >= POPS_CORE_VCD_PATH_LIMIT) {
+                    guiMsgBox("目录式APA的VCD路径过长，请缩短目录或文件名", 0, NULL);
                     if (restoreHDDPOPSPartition)
                         oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
                     return;
