@@ -109,6 +109,12 @@ static void appFreeLegacyConfig(void);
 #define POPS_EE_HDD_PFS_FORMAT_OFFSET     0x08C0
 #define POPS_EE_HDD_PFS_FORMAT_CAPACITY   0x0040
 #define POPS_EE_HDD_VMC_PATH_HELPER_OFFSET 0x0900
+#define POPS_EE_HDD_PATCH_TABLE_HELPER_OFFSET 0x0980
+#define POPS_EE_HDD_PATCH_TABLE_OFFSET    0x0A00
+#define POPS_EE_HDD_PATCH_TABLE_ENTRIES   8
+/* POPStarter内层"hdd0:__common"字符串及其可用空间（下一字符串位于0x009B1FD8）。 */
+#define POPS_INNER_COMMON_STRING_ADDRESS  0x009B1FC8
+#define POPS_INNER_COMMON_STRING_CAPACITY 16
 #define POPS_EE_COPY_TABLE_OFFSET         ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET
 #define POPS_EE_USBD_ADDRESS              0x00140000
 #define POPS_EE_DRIVER_ADDRESS            0x00180000
@@ -229,7 +235,7 @@ static const u32 appPOPSHDDOPLPatchHelper[] = {
     0x352951A0, // ori t1,t1,0x51A0，jal 0x00094680
     0xAD0944B0, // sw t1,0x44B0(t0)
     0x0000000F, // sync
-    0x03E00008, // jr ra
+    0x08025260, // j 0x00094980，尾调用数据表修补，由其jr ra返回跳板
     0x00000000,
 };
 
@@ -354,6 +360,34 @@ static const u32 appPOPSHDDOPLVMCPathHelper[] = {
     0x00000000,
 };
 
+/* 固定于0x980：按(地址,期望值,新值)表逐字比对后写入，地址为0时结束。 */
+static const u32 appPOPSHDDOPLPatchTableHelper[] = {
+    0x3C080009, // lui t0,0x0009
+    0x25084A00, // addiu t0,t0,0x4A00，修补表0x00094A00
+    0x8D090000, // lw t1,0(t0)
+    0x1120000A, // beqz t1,结束
+    0x00000000,
+    0x8D0A0004, // lw t2,4(t0)
+    0x8D2B0000, // lw t3,0(t1)
+    0x156A0003, // bne t3,t2,下一项，原值不符则不写
+    0x00000000,
+    0x8D0C0008, // lw t4,8(t0)
+    0xAD2C0000, // sw t4,0(t1)
+    0x2508000C, // addiu t0,t0,12
+    0x1000FFF5, // b 读取下一项
+    0x00000000,
+    0x0000000F, // sync
+    0x03E00008, // jr ra，返回主跳板
+    0x00000000,
+};
+
+typedef struct
+{
+    u32 address;
+    u32 expected;
+    u32 replacement;
+} pops_ee_word_patch_t;
+
 /* POPStarter挂载pfs1时直接使用EE常驻区中的完整APA设备名。 */
 static const u32 appPOPSHDDOPLPFSMountHelper[] = {
     0x27BDFFF0, // addiu sp,sp,-16
@@ -410,6 +444,9 @@ typedef char pops_ee_hdd_resource_format_must_fit[(POPS_EE_HDD_RESOURCE_FORMAT_O
 typedef char pops_ee_hdd_vcd_prefix_must_fit[(POPS_EE_HDD_VCD_PREFIX_OFFSET + POPS_EE_HDD_VCD_PREFIX_CAPACITY <= POPS_EE_HDD_PFS_FORMAT_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_pfs_format_must_fit[(POPS_EE_HDD_PFS_FORMAT_OFFSET + POPS_EE_HDD_PFS_FORMAT_CAPACITY <= POPS_EE_HDD_VMC_PATH_HELPER_OFFSET) ? 1 : -1];
 typedef char pops_ee_hdd_vmc_path_helper_must_fit[(POPS_EE_HDD_VMC_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLVMCPathHelper) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
+typedef char pops_ee_hdd_vmc_helper_before_table_helper[(POPS_EE_HDD_VMC_PATH_HELPER_OFFSET + sizeof(appPOPSHDDOPLVMCPathHelper) <= POPS_EE_HDD_PATCH_TABLE_HELPER_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_table_helper_must_fit[(POPS_EE_HDD_PATCH_TABLE_HELPER_OFFSET + sizeof(appPOPSHDDOPLPatchTableHelper) <= POPS_EE_HDD_PATCH_TABLE_OFFSET) ? 1 : -1];
+typedef char pops_ee_hdd_patch_table_must_fit[(POPS_EE_HDD_PATCH_TABLE_OFFSET + (POPS_EE_HDD_PATCH_TABLE_ENTRIES + 1) * sizeof(pops_ee_word_patch_t) <= POPS_EE_RESIDENT_SIZE) ? 1 : -1];
 typedef char pops_smb_vfs_header_must_fit[(sizeof(pops_smb_vfs_header_t) <= POPS_EE_SMB_CODE_OFFSET) ? 1 : -1];
 
 static int appIsPOPSLauncher(const app_info_t *app)
@@ -757,12 +794,36 @@ static void *appPreparePOPSSMBEEInjection(const pops_boot_mailbox_t *mailbox)
     return patchedELF;
 }
 
+/* 把内层"hdd0:__common\0\0\0"(16字节)按字替换为完整设备名，逐字校验原内容。 */
+static int appPOPSBuildCommonStringPatch(pops_ee_word_patch_t *table, const char *partition)
+{
+    static const u32 expected[4] = {0x30646468, 0x635F5F3A, 0x6F6D6D6F, 0x0000006E};
+    u8 buffer[POPS_INNER_COMMON_STRING_CAPACITY];
+    size_t length = strlen(partition);
+    int i;
+
+    if (length >= sizeof(buffer))
+        return -1;
+    memset(buffer, 0, sizeof(buffer));
+    memcpy(buffer, partition, length);
+    for (i = 0; i < 4; i++) {
+        table[i].address = POPS_INNER_COMMON_STRING_ADDRESS + i * 4;
+        table[i].expected = expected[i];
+        table[i].replacement = (u32)buffer[i * 4] | ((u32)buffer[i * 4 + 1] << 8) |
+                               ((u32)buffer[i * 4 + 2] << 16) | ((u32)buffer[i * 4 + 3] << 24);
+    }
+    /* 显式写入结束项，不依赖常驻区预先清零。 */
+    table[4].address = 0;
+    return 4;
+}
+
 static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *pfsPath)
 {
     char resourceFormat[POPS_EE_HDD_RESOURCE_FORMAT_CAPACITY];
     char vcdPrefix[POPS_EE_HDD_VCD_PREFIX_CAPACITY];
     char pfsFormat[POPS_EE_HDD_PFS_FORMAT_CAPACITY];
     const char *relativePath;
+    pops_ee_word_patch_t *patchTable;
     u8 *patchedELF;
 
     if (partition == NULL || strncmp(partition, "hdd0:", 5) != 0 || partition[5] == '\0' ||
@@ -802,6 +863,14 @@ static void *appPreparePOPSHDDOPLEEInjection(const char *partition, const char *
            appPOPSHDDOPLPFSMountHelper, sizeof(appPOPSHDDOPLPFSMountHelper));
     memcpy(appPOPSEEResident + POPS_EE_HDD_VMC_PATH_HELPER_OFFSET,
            appPOPSHDDOPLVMCPathHelper, sizeof(appPOPSHDDOPLVMCPathHelper));
+    memcpy(appPOPSEEResident + POPS_EE_HDD_PATCH_TABLE_HELPER_OFFSET,
+           appPOPSHDDOPLPatchTableHelper, sizeof(appPOPSHDDOPLPatchTableHelper));
+    /* 把POPStarter自身挂载pfs1用的__common设备名改为实际APA分区。 */
+    patchTable = (pops_ee_word_patch_t *)(appPOPSEEResident + POPS_EE_HDD_PATCH_TABLE_OFFSET);
+    if (appPOPSBuildCommonStringPatch(patchTable, partition) < 0) {
+        free(patchedELF);
+        return NULL;
+    }
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_PARTITION_OFFSET), partition);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_RESOURCE_FORMAT_OFFSET), resourceFormat);
     strcpy((char *)(appPOPSEEResident + POPS_EE_HDD_VCD_PREFIX_OFFSET), vcdPrefix);
