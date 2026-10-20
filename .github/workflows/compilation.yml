@@ -33,6 +33,31 @@ jobs:
         path: |
           OPNPS2LD-*.ELF
 
+    - name: Build ISO
+      env:
+        PS2_SYSAREA_B64: ${{ secrets.PS2_SYSAREA_B64 }}
+      run: |
+        (apk add --no-cache xorriso || (apt-get update && apt-get install -y xorriso))
+        mkdir -p iso_root
+        cp OPNPS2LD-*.ELF iso_root/FENG_001.29
+        printf 'BOOT2 = cdrom0:\\FENG_001.29;1\r\nVER = 1.00\r\n' > iso_root/SYSTEM.CNF
+        SYSAREA_OPT=""
+        if [ -n "$PS2_SYSAREA_B64" ]; then
+          printf '%s' "$PS2_SYSAREA_B64" | base64 -d > sysarea.bin
+          SYSAREA_OPT="-G sysarea.bin"
+        else
+          echo "::warning::PS2_SYSAREA_B64 secret not set, ISO built without logo"
+        fi
+        xorriso -as mkisofs -o FGOPL-1.2.9.iso -V FGOPL-1.2.9 -sysid PLAYSTATION $SYSAREA_OPT -iso-level 1 iso_root
+
+    - name: Upload release artifact ISO
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: FGOPL-ISO
+        path: FGOPL-1.2.9.iso
+        archive: false
+
     - name: Upload release artifact info
       if: ${{ success() }}
       uses: actions/upload-artifact@v7
