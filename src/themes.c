@@ -1510,6 +1510,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float centerCaseHeight = centerInlayH / fracH;
     float coverCenterY = centerBottomY - centerCaseHeight * 0.5f;
 
+    // 7/9 张时非中心封面缩小，为使其底边与 5 张基线时的非中心封面底边对齐，
+    // 计算底边补偿量 = (5 张基线非中心 case 高 - 当前非中心 case 高) / 2。1/3/5 张时为 0。
+    float refNonCaseH = ((float)baseCoverH * referenceNonInlayW / (float)baseCoverW) / fracH;
+    float curNonCaseH = ((float)baseCoverH * nonInlayW / (float)baseCoverW) / fracH;
+    float nonCenterBottomFix = (refNonCaseH - curNonCaseH) * 0.5f;
+
     // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
     //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
     //   调间距%  → gap 增大/减小，封面大小不变。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
@@ -1816,7 +1822,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         // 所有封面都以中心封面的目标缩放作为垂直定位基准：保持中心线一致，
         // 当前封面只根据自身高度计算底边，不再使用独立的 Y 偏移或反推缩放锚点。
-        float drawBottomY = coverCenterY + currentCoverHeight * 0.5f;
+        // 非中心封面叠加底边补偿（随 centerFactor 渐变，中心封面不受影响，动画连续）。
+        float drawBottomY = coverCenterY + currentCoverHeight * 0.5f + nonCenterBottomFix * (1.0f - centerFactor);
 
         if (i == renderCenterIndex && !animationActive) {
             // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
