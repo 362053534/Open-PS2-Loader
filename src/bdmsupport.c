@@ -231,6 +231,17 @@ void bdmLoadModules(void)
     }
 }
 
+// IOP重置后所有IOP模块都会被清掉，须清零已加载标志，否则bdmLoadModules()会跳过加载，
+// 导致usbd缺失、ds34usb/ds34bt加载失败，ds34*_init()绑定RPC时无限等待（NBD卸载卡死）。
+void bdmResetModuleFlags(void)
+{
+    bdmModLoaded = 0;
+    usbModLoaded = 0;
+    iLinkModLoaded = 0;
+    mx4sioModLoaded = 0;
+    hddModLoaded = 0;
+}
+
 void bdmLoadDeviceModules(void)
 {
     // 加载可选块设备驱动

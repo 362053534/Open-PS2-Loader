@@ -40,7 +40,6 @@
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // iox_stat_t
 #include <io_common.h>   // FIO_MT_RDWR
-#include <hdd-ioctl.h>   // HDIOC_IDLEIMM, DDIOC_OFF
 int configGetStat(config_set_t *configSet, iox_stat_t *stat);
 
 #include <unistd.h>
@@ -106,7 +105,6 @@ static void clearMenuGameList(opl_io_module_t *mdl);
 static void supportCleanup(item_list_t *support, int exception, int modeSelected);
 static void moduleCleanup(opl_io_module_t *mod, int exception, int modeSelected);
 static void reset(void);
-extern int gNbdResetDebug; // 临时调试，定义在system.c
 static void deferredAudioInit(void);
 static void deferredInit(void);
 
@@ -2720,24 +2718,15 @@ static int loadLwnbdSvr(void)
 
 static void unloadLwnbdSvr(void)
 {
-    // 临时调试：定位卸载卡在哪一步，确认后删除
-    guiRenderTextScreen("NBD卸载 1/6 ethDeinitModules");
     ethDeinitModules();
     unloadPads();
 
-    guiRenderTextScreen("NBD卸载 2/6 reset");
-    // 重置IOP前先让硬盘待机并关闭DEV9，避免lwnbdsvr/ps2atad仍在工作导致IOP重置卡死（只发一次，不循环等待）
-    fileXioDevctl("hdd0:", HDIOC_IDLEIMM, NULL, 0, NULL, 0);
-    fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0);
-    gNbdResetDebug = 1;
     reset();
-    gNbdResetDebug = 0;
 
     LOG_INIT();
     LOG_ENABLE();
 
     // reinit the input pads
-    guiRenderTextScreen("NBD卸载 3/6 startPads");
     padInit(0);
 
     int ret = 0;
@@ -2745,14 +2734,11 @@ static void unloadLwnbdSvr(void)
         ret = startPads();
 
     // now start io again
-    guiRenderTextScreen("NBD卸载 4/6 ioBlockOps");
     ioBlockOps(0);
 
     // init all supports again
-    guiRenderTextScreen("NBD卸载 5/6 initAllSupport");
     initAllSupport(1);
 
-    guiRenderTextScreen("NBD卸载 6/6 audio");
     audioInit();
     sfxInit(0);
     if (gEnableBGM)
@@ -2788,8 +2774,6 @@ static void reset(void)
 {
     sysReset(SYS_LOAD_MC_MODULES | SYS_LOAD_USB_MODULES | SYS_LOAD_ISOFS_MODULE);
 
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2f mcInit");
     mcInit(MC_TYPE_XMC);
 }
 

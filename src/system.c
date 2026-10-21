@@ -180,13 +180,8 @@ void sysShutdownDev9(void)
     }
 }
 
-// 临时调试：NBD卸载时置1，在sysReset内显示进度标记（开机时GUI未就绪，不能显示），确认后删除
-int gNbdResetDebug = 0;
-
 void sysReset(int modload_mask)
 {
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2a fileXioExit/SifExitRpc");
 #ifdef PADEMU
     ds34usb_reset();
     ds34bt_reset();
@@ -198,8 +193,6 @@ void sysReset(int modload_mask)
 
     SifInitRpc(0);
 
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2b SifIopReset");
 #ifdef _DTL_T10000
     while (!SifIopReset("rom0:UDNL", 0))
         ;
@@ -213,8 +206,6 @@ void sysReset(int modload_mask)
 #endif
 #endif
 
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2c SifIopSync");
     dev9Initialized = 0;
     while (!SifIopSync())
         ;
@@ -235,71 +226,48 @@ void sysReset(int modload_mask)
         sysLoadModuleLock = sbCreateSemaphore();
     }
 
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d 加载IOP模块");
+    // IOP已重置，清零BDM模块已加载标志，确保后续重新加载
+    bdmResetModuleFlags();
+
     // clears modules list
     memset((void *)&g_sysLoadedModBuffer[0], 0, MAX_MODULES * 4);
 
     // load modules
     LOG("[IOMANX]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d IOMANX");
     sysLoadModuleBuffer(&iomanx_irx, size_iomanx_irx, 0, NULL);
     LOG("[FILEXIO]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d FILEXIO");
     sysLoadModuleBuffer(&filexio_irx, size_filexio_irx, 0, NULL);
 
     LOG("[SIO2MAN]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d SIO2MAN");
     sysLoadModuleBuffer(&sio2man_irx, size_sio2man_irx, 0, NULL);
 
     if (modload_mask & SYS_LOAD_MC_MODULES) {
         LOG("[MCMAN]:\n");
-        if (gNbdResetDebug)
-            guiRenderTextScreen("NBD卸载 2d MCMAN");
         sysLoadModuleBuffer(&mcman_irx, size_mcman_irx, 0, NULL);
         LOG("[MCSERV]:\n");
-        if (gNbdResetDebug)
-            guiRenderTextScreen("NBD卸载 2d MCSERV");
         sysLoadModuleBuffer(&mcserv_irx, size_mcserv_irx, 0, NULL);
     }
 
     LOG("[PADMAN]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d PADMAN");
     sysLoadModuleBuffer(&padman_irx, size_padman_irx, 0, NULL);
 
     LOG("[POWEROFF]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d POWEROFF");
     sysLoadModuleBuffer(&poweroff_irx, size_poweroff_irx, 0, NULL);
 
     if (modload_mask & SYS_LOAD_USB_MODULES) {
-        if (gNbdResetDebug)
-            guiRenderTextScreen("NBD卸载 2d bdmLoadModules");
         bdmLoadModules();
     }
     if (modload_mask & SYS_LOAD_ISOFS_MODULE) {
         LOG("[ISOFS]:\n");
-        if (gNbdResetDebug)
-            guiRenderTextScreen("NBD卸载 2d ISOFS");
         sysLoadModuleBuffer(&isofs_irx, size_isofs_irx, 0, NULL);
     }
 
     LOG("[GENVMC]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d GENVMC");
     sysLoadModuleBuffer(&genvmc_irx, size_genvmc_irx, 0, NULL);
 
     LOG("[LIBSD]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d LIBSD");
     sysLoadModuleBuffer(&libsd_irx, size_libsd_irx, 0, NULL);
     LOG("[AUDSRV]:\n");
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2d AUDSRV");
     sysLoadModuleBuffer(&audsrv_irx, size_audsrv_irx, 0, NULL);
 
 #ifdef PADEMU
@@ -310,12 +278,8 @@ void sysReset(int modload_mask)
 
     if (modload_mask & SYS_LOAD_USB_MODULES) {
         LOG("[DS34_USB]:\n");
-        if (gNbdResetDebug)
-            guiRenderTextScreen("NBD卸载 2d DS34_USB");
         sysLoadModuleBuffer(&ds34usb_irx, size_ds34usb_irx, 4, (char *)&ds3pads);
         LOG("[DS34_BT]:\n");
-        if (gNbdResetDebug)
-            guiRenderTextScreen("NBD卸载 2d DS34_BT");
         sysLoadModuleBuffer(&ds34bt_irx, size_ds34bt_irx, 4, (char *)&ds3pads);
 
         ds34usb_init();
@@ -323,8 +287,6 @@ void sysReset(int modload_mask)
     }
 #endif
 
-    if (gNbdResetDebug)
-        guiRenderTextScreen("NBD卸载 2e fileXioInit/poweroffInit");
     fileXioInit();
     poweroffInit();
     poweroffSetCallback(&poweroffHandler, NULL);
