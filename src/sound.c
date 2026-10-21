@@ -348,6 +348,9 @@ static int bgmLoad(void)
 
     if (ov_open_callbacks(bgmFile, vorbisFile, NULL, 0, OV_CALLBACKS_DEFAULT) < 0) {
         LOG("BGM: Input does not appear to be an Ogg bitstream.\n");
+        // 解码初始化失败时vorbisfile不会接管文件，ov_clear也不会关闭它，必须手动关闭，
+        // 否则每次重载主题都会泄露一个文件句柄，累积后封面等图片全部无法读取
+        fclose(bgmFile);
         return -ENOENT;
     }
 
