@@ -70,7 +70,7 @@ gui_strings:
 - label: NET_GAMES
   string: ETH Games
 - label: APPS
-  string: Apps
+  string: APPS & PS1
 - label: THEME
   string: Theme
 - label: LANGUAGE
