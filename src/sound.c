@@ -11,6 +11,8 @@
 #include "include/opl.h"
 #include "include/ioman.h"
 #include "include/themes.h"
+#include "include/gui.h" // 临时调试：guiMsgBox
+#include <errno.h>       // 临时调试：errno
 
 // Silence unused variable warnings from vorbisfile.h
 static ov_callbacks OV_CALLBACKS_NOCLOSE __attribute__((unused));
@@ -343,11 +345,23 @@ static int bgmLoad(void)
     bgmFile = fopen(bgmPath, "rb");
     if (bgmFile == NULL) {
         LOG("BGM: Failed to open Ogg file %s\n", bgmPath);
+        // 临时调试：显示实际打开的路径和错误码，确认后删除
+        {
+            char dbgMsg[320];
+            snprintf(dbgMsg, sizeof(dbgMsg), "BGM调试：打开失败\n路径: [%s]\nerrno: %d", bgmPath, errno);
+            guiMsgBox(dbgMsg, 0, NULL);
+        }
         return -ENOENT;
     }
 
     if (ov_open_callbacks(bgmFile, vorbisFile, NULL, 0, OV_CALLBACKS_DEFAULT) < 0) {
         LOG("BGM: Input does not appear to be an Ogg bitstream.\n");
+        // 临时调试：文件能打开但Ogg解码初始化失败，确认后删除
+        {
+            char dbgMsg[320];
+            snprintf(dbgMsg, sizeof(dbgMsg), "BGM调试：Ogg解码失败\n路径: [%s]", bgmPath);
+            guiMsgBox(dbgMsg, 0, NULL);
+        }
         return -ENOENT;
     }
 
