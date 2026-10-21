@@ -375,14 +375,50 @@ static int bgmLoad(void)
         // 弹窗不支持换行，拆成多个短弹窗依次显示
         {
             char dbgMsg[128];
-            snprintf(dbgMsg, sizeof(dbgMsg), "1/3 ov错误码:%d 路径:%s", dbgOvRet, bgmPath);
+            snprintf(dbgMsg, sizeof(dbgMsg), "1/4 ov错误码:%d 路径:%s", dbgOvRet, bgmPath);
             guiMsgBox(dbgMsg, 0, NULL);
-            snprintf(dbgMsg, sizeof(dbgMsg), "2/3 大小:%ld 读取:%d 读后位置:%ld 头:%02X %02X %02X %02X",
+            snprintf(dbgMsg, sizeof(dbgMsg), "2/4 大小:%ld 读取:%d 读后位置:%ld 头:%02X %02X %02X %02X",
                      dbgSize, dbgRead, dbgPos, dbgHead[0], dbgHead[1], dbgHead[2], dbgHead[3]);
             guiMsgBox(dbgMsg, 0, NULL);
-            snprintf(dbgMsg, sizeof(dbgMsg), "3/3 包头[28-35]:%02X %02X %02X %02X %02X %02X %02X %02X",
+            snprintf(dbgMsg, sizeof(dbgMsg), "3/4 包头[28-35]:%02X %02X %02X %02X %02X %02X %02X %02X",
                      dbgHead[28], dbgHead[29], dbgHead[30], dbgHead[31], dbgHead[32], dbgHead[33], dbgHead[34], dbgHead[35]);
             guiMsgBox(dbgMsg, 0, NULL);
+
+            // 临时调试：同一段前64KB，一次大块读取 vs 每次2KB小块读取，对比内容找出第一个不一致的偏移
+            {
+                int dbgLen = 65536;
+                unsigned char *bufBig = malloc(dbgLen);
+                unsigned char *bufSmall = malloc(dbgLen);
+                int gotBig = -1, gotSmall = 0, diffAt = -1, i;
+
+                if (bufBig != NULL && bufSmall != NULL) {
+                    fseek(bgmFile, 0, SEEK_SET);
+                    gotBig = fread(bufBig, 1, dbgLen, bgmFile);
+                    fseek(bgmFile, 0, SEEK_SET);
+                    while (gotSmall < dbgLen) {
+                        int r = fread(bufSmall + gotSmall, 1, 2048, bgmFile);
+                        if (r <= 0)
+                            break;
+                        gotSmall += r;
+                    }
+                    for (i = 0; i < gotBig && i < gotSmall; i++) {
+                        if (bufBig[i] != bufSmall[i]) {
+                            diffAt = i;
+                            break;
+                        }
+                    }
+                    snprintf(dbgMsg, sizeof(dbgMsg), "4/4 大块读:%d 小块读:%d 首个差异偏移:%d", gotBig, gotSmall, diffAt);
+                    if (diffAt >= 0) {
+                        char tail[48];
+                        snprintf(tail, sizeof(tail), " 大:%02X 小:%02X", bufBig[diffAt], bufSmall[diffAt]);
+                        strncat(dbgMsg, tail, sizeof(dbgMsg) - strlen(dbgMsg) - 1);
+                    }
+                } else
+                    snprintf(dbgMsg, sizeof(dbgMsg), "4/4 调试内存申请失败");
+                guiMsgBox(dbgMsg, 0, NULL);
+                free(bufBig);
+                free(bufSmall);
+            }
         }
         // 解码失败时必须手动关闭文件，否则每次重载主题都会泄露一个句柄
         fclose(bgmFile);
