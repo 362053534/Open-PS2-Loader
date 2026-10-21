@@ -712,3 +712,9 @@ gui_strings:
   string: 全局生效，或只对当前游戏生效
 - label: HINT_CF_COUNT
   string: 同屏封面太多，可能会导致死机，建议保持默认值5
+- label: BGM_SEARCH
+  string: 搜索ogg文件
+- label: HINT_BGM_SEARCH
+  string: 搜索已启动设备根目录中的ogg文件，并填入上方路径
+- label: BGM_NOT_FOUND
+  string: 未找到ogg文件

@@ -712,3 +712,9 @@ gui_strings:
   string: Apply globally, or only to the current game
 - label: HINT_CF_COUNT
   string: Too many covers on screen may cause freezes, keeping the default 5 is recommended
+- label: BGM_SEARCH
+  string: Search ogg file
+- label: HINT_BGM_SEARCH
+  string: Search the root of started devices for an ogg file and fill in the path above
+- label: BGM_NOT_FOUND
+  string: No ogg file found

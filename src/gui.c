@@ -1061,7 +1061,27 @@ void guiShowAudioConfig(void)
     diaSetInt(diaAudioConfig, CFG_BGM_VOLUME, gBGMVolume);
     diaSetString(diaAudioConfig, CFG_DEFAULT_BGM_PATH, gDefaultBGMPath);
 
-    diaExecuteDialog(diaAudioConfig, -1, 1, guiAudioUpdater);
+    int ret;
+    do {
+        ret = diaExecuteDialog(diaAudioConfig, -1, 1, guiAudioUpdater);
+        // 点击“搜索ogg文件”：把找到的第一个ogg路径填入输入框并同步到gDefaultBGMPath，然后重新打开对话框
+        if (ret == CFG_BGM_SEARCH) {
+            char bgmPath[sizeof(gDefaultBGMPath)];
+
+            if (bgmSearchFile(bgmPath, sizeof(bgmPath)) == 0) {
+                diaSetString(diaAudioConfig, CFG_DEFAULT_BGM_PATH, bgmPath);
+                strcpy(gDefaultBGMPath, bgmPath);
+                // 只改输入框不会触发updater，需在此手动重启背景音乐，让新路径立即生效。
+                // 内置主题或没有自带bgm.ogg的第三方主题才使用该路径；第三方主题自带bgm时无需重启
+                if (gEnableBGM && bgmUsesDefaultPath()) {
+                    if (isBgmPlaying())
+                        bgmStop();
+                    bgmStart();
+                }
+            } else
+                guiMsgBox(_l(_STR_BGM_NOT_FOUND), 0, diaAudioConfig);
+        }
+    } while (ret == CFG_BGM_SEARCH);
 }
 
 void guiShowControllerConfig(void)

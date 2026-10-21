@@ -11,6 +11,8 @@
 #include "include/opl.h"
 #include "include/ioman.h"
 #include "include/themes.h"
+#include "include/ethsupport.h"
+#include <sys/stat.h>
 
 // Silence unused variable warnings from vorbisfile.h
 static ov_callbacks OV_CALLBACKS_NOCLOSE __attribute__((unused));
@@ -325,6 +327,21 @@ static void bgmIoThread(void *arg)
     WakeupThread(bgmThreadID);
 }
 
+// 判断当前主题是否会使用设置里的背景音乐路径：内置主题总是使用；
+// 第三方主题自带sound/bgm.ogg时用自带的，没有时回退到设置里的路径。用stat判断，不开句柄
+int bgmUsesDefaultPath(void)
+{
+    char thmBgm[256];
+    struct stat st;
+    int themeID = thmGetGuiValue();
+
+    if (themeID < THM_NUM_BUILTIN)
+        return 1;
+
+    snprintf(thmBgm, sizeof(thmBgm), "%ssound/bgm.ogg", thmGetFilePath(themeID));
+    return stat(thmBgm, &st) != 0;
+}
+
 static int bgmLoad(void)
 {
     FILE *bgmFile;
@@ -341,6 +358,11 @@ static int bgmLoad(void)
         snprintf(bgmPath, sizeof(bgmPath), gDefaultBGMPath);
 
     bgmFile = fopen(bgmPath, "rb");
+    // 第三方主题没有自带bgm.ogg时，回退到设置里的背景音乐路径
+    if (bgmFile == NULL && themeID >= THM_NUM_BUILTIN && gDefaultBGMPath[0] != '\0') {
+        snprintf(bgmPath, sizeof(bgmPath), "%s", gDefaultBGMPath);
+        bgmFile = fopen(bgmPath, "rb");
+    }
     if (bgmFile == NULL) {
         LOG("BGM: Failed to open Ogg file %s\n", bgmPath);
         return -ENOENT;
@@ -355,6 +377,66 @@ static int bgmLoad(void)
     }
 
     return 0;
+}
+
+// 在指定根目录中查找第一个后缀为.ogg的文件(不区分大小写)，找到返回0
+// 只有一个出口，无论是否找到都会先closedir，避免目录句柄泄露
+static int bgmSearchDir(const char *root, char *path, int size)
+{
+    struct dirent *pdirent;
+    DIR *pdir;
+    int found = -1;
+
+    pdir = opendir(root);
+    if (pdir == NULL)
+        return -1;
+
+    while ((pdirent = readdir(pdir)) != NULL) {
+        int len = strlen(pdirent->d_name);
+
+        if (pdirent->d_type == DT_DIR || len < 5)
+            continue;
+        if (strcasecmp(&pdirent->d_name[len - 4], ".ogg") != 0)
+            continue;
+        // 路径超过缓冲区长度时跳过，避免截断后无法打开
+        if (strlen(root) + len >= (size_t)size)
+            continue;
+
+        snprintf(path, size, "%s%s", root, pdirent->d_name);
+        found = 0;
+        break;
+    }
+
+    closedir(pdir);
+    return found;
+}
+
+// 自动搜索背景音乐：按 APA → BDM → SMB → 记忆卡 的顺序，
+// 搜索各设备根目录(SMB需共享已打开)，找到第一个ogg文件即返回0
+int bgmSearchFile(char *path, int size)
+{
+    char root[16];
+    const char *smbRoot;
+    int i;
+
+    // APA/BDM未挂载时opendir会直接失败返回，不会分配句柄，无需事先判断状态
+    if (bgmSearchDir("pfs0:/", path, size) == 0)
+        return 0;
+
+    for (i = 0; i < MAX_BDM_DEVICES; i++) {
+        snprintf(root, sizeof(root), "mass%d:/", i);
+        if (bgmSearchDir(root, path, size) == 0)
+            return 0;
+    }
+
+    smbRoot = ethGetShareRoot();
+    if (smbRoot != NULL && bgmSearchDir(smbRoot, path, size) == 0)
+        return 0;
+
+    if (bgmSearchDir("mc0:/", path, size) == 0 || bgmSearchDir("mc1:/", path, size) == 0)
+        return 0;
+
+    return -1;
 }
 
 static int bgmInit(void)
@@ -454,6 +536,10 @@ void bgmStart(void)
         LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
         return;
     }
+
+    // 需要使用设置里的路径但路径为空时直接返回，不创建线程、不尝试打开文件
+    if (gDefaultBGMPath[0] == '\0' && bgmUsesDefaultPath())
+        return;
 
     int ret = bgmInit();
     if (ret >= 0) {

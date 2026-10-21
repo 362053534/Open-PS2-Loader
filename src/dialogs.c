@@ -1098,6 +1098,10 @@ struct UIItem diaAudioConfig[] = {
     {UI_STRING, CFG_DEFAULT_BGM_PATH, 1, 1, _STR_DEF_BGM_PATH_HINT, 0, 0, {.stringvalue = {"", "", NULL}}},
     {UI_BREAK},
 
+    // 搜索ogg文件：搜索各设备根目录的ogg文件，并填入默认主题音乐路径
+    {UI_BUTTON, CFG_BGM_SEARCH, 1, 1, _STR_HINT_BGM_SEARCH, 0, 0, {.label = {NULL, _STR_BGM_SEARCH}}},
+    {UI_BREAK},
+
     // buttons
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
     {UI_BREAK},
