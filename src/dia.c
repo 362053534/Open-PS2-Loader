@@ -671,21 +671,23 @@ static int diaHandleInput(struct UIItem *item, int *modified)
         // to be sure
         setButtonDelay(KEY_UP, DIA_INT_SET_SPEED);
         setButtonDelay(KEY_DOWN, DIA_INT_SET_SPEED);
+        setButtonDelay(KEY_LEFT, DIA_INT_SET_SPEED);
+        setButtonDelay(KEY_RIGHT, DIA_INT_SET_SPEED);
 
-        // up and down
-        if (getKey(KEY_UP)) {
-            sfxPlay(SFX_CURSOR);
-            if (item->intvalue.current < item->intvalue.max) {
-                item->intvalue.current++;
-            } else {
-                item->intvalue.current = item->intvalue.min; // was "= 0;"
-            }
-        } else if (getKey(KEY_DOWN)) {
+        // 上/左减，下/右加，到头循环
+        if (getKey(KEY_UP) || getKey(KEY_LEFT)) {
             sfxPlay(SFX_CURSOR);
             if (item->intvalue.current > item->intvalue.min) {
                 item->intvalue.current--;
             } else {
                 item->intvalue.current = item->intvalue.max;
+            }
+        } else if (getKey(KEY_DOWN) || getKey(KEY_RIGHT)) {
+            sfxPlay(SFX_CURSOR);
+            if (item->intvalue.current < item->intvalue.max) {
+                item->intvalue.current++;
+            } else {
+                item->intvalue.current = item->intvalue.min; // was "= 0;"
             }
         } else
             *modified = 0;
@@ -712,10 +714,11 @@ static int diaHandleInput(struct UIItem *item, int *modified)
                 return 0;
         }
 
-        if (getKey(KEY_UP) && (item->intvalue.current > 0)) {
+        // 上/左切到上一个值，下/右切到下一个值，到头不循环
+        if ((getKey(KEY_UP) || getKey(KEY_LEFT)) && (item->intvalue.current > 0)) {
             item->intvalue.current--;
             sfxPlay(SFX_CURSOR);
-        } else if (getKey(KEY_DOWN) && (item->intvalue.enumvalues[item->intvalue.current + 1] != NULL)) {
+        } else if ((getKey(KEY_DOWN) || getKey(KEY_RIGHT)) && (item->intvalue.enumvalues[item->intvalue.current + 1] != NULL)) {
             item->intvalue.current++;
             sfxPlay(SFX_CURSOR);
         }
