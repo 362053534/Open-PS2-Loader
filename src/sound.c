@@ -14,6 +14,7 @@
 #include "include/gui.h" // 临时调试：guiMsgBox
 #include <errno.h>       // 临时调试：errno
 #include "include/ethsupport.h"
+#include <sys/stat.h>
 
 // Silence unused variable warnings from vorbisfile.h
 static ov_callbacks OV_CALLBACKS_NOCLOSE __attribute__((unused));
@@ -328,6 +329,21 @@ static void bgmIoThread(void *arg)
     WakeupThread(bgmThreadID);
 }
 
+// 判断当前主题是否会使用设置里的背景音乐路径：内置主题总是使用；
+// 第三方主题自带sound/bgm.ogg时用自带的，没有时回退到设置里的路径。用stat判断，不开句柄
+int bgmUsesDefaultPath(void)
+{
+    char thmBgm[256];
+    struct stat st;
+    int themeID = thmGetGuiValue();
+
+    if (themeID < THM_NUM_BUILTIN)
+        return 1;
+
+    snprintf(thmBgm, sizeof(thmBgm), "%ssound/bgm.ogg", thmGetFilePath(themeID));
+    return stat(thmBgm, &st) != 0;
+}
+
 static int bgmLoad(void)
 {
     FILE *bgmFile;
@@ -344,6 +360,11 @@ static int bgmLoad(void)
         snprintf(bgmPath, sizeof(bgmPath), gDefaultBGMPath);
 
     bgmFile = fopen(bgmPath, "rb");
+    // 第三方主题没有自带bgm.ogg时，回退到设置里的背景音乐路径
+    if (bgmFile == NULL && themeID >= THM_NUM_BUILTIN && gDefaultBGMPath[0] != '\0') {
+        snprintf(bgmPath, sizeof(bgmPath), "%s", gDefaultBGMPath);
+        bgmFile = fopen(bgmPath, "rb");
+    }
     if (bgmFile == NULL) {
         LOG("BGM: Failed to open Ogg file %s\n", bgmPath);
         // 临时调试：显示实际打开的路径和错误码，确认后删除
@@ -585,6 +606,10 @@ void bgmStart(void)
         LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
         return;
     }
+
+    // 需要使用设置里的路径但路径为空时直接返回，不创建线程、不尝试打开文件
+    if (gDefaultBGMPath[0] == '\0' && bgmUsesDefaultPath())
+        return;
 
     int ret = bgmInit();
     if (ret >= 0) {
