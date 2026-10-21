@@ -354,12 +354,25 @@ static int bgmLoad(void)
         return -ENOENT;
     }
 
-    if (ov_open_callbacks(bgmFile, vorbisFile, NULL, 0, OV_CALLBACKS_DEFAULT) < 0) {
+    // 临时调试：先探测文件大小和头4字节，确认后删除
+    long dbgSize = -1, dbgPos = -1;
+    unsigned char dbgHead[4] = {0, 0, 0, 0};
+    int dbgRead = -1;
+    if (fseek(bgmFile, 0, SEEK_END) == 0)
+        dbgSize = ftell(bgmFile);
+    fseek(bgmFile, 0, SEEK_SET);
+    dbgRead = fread(dbgHead, 1, 4, bgmFile);
+    dbgPos = ftell(bgmFile);
+    fseek(bgmFile, 0, SEEK_SET);
+
+    int dbgOvRet = ov_open_callbacks(bgmFile, vorbisFile, NULL, 0, OV_CALLBACKS_DEFAULT);
+    if (dbgOvRet < 0) {
         LOG("BGM: Input does not appear to be an Ogg bitstream.\n");
         // 临时调试：文件能打开但Ogg解码初始化失败，确认后删除
         {
             char dbgMsg[320];
-            snprintf(dbgMsg, sizeof(dbgMsg), "BGM调试：Ogg解码失败\n路径: [%s]", bgmPath);
+            snprintf(dbgMsg, sizeof(dbgMsg), "BGM调试：Ogg解码失败\n路径: [%s]\nov错误码: %d\n大小: %ld 读4字节: %d 读后位置: %ld\n头: %02X %02X %02X %02X",
+                     bgmPath, dbgOvRet, dbgSize, dbgRead, dbgPos, dbgHead[0], dbgHead[1], dbgHead[2], dbgHead[3]);
             guiMsgBox(dbgMsg, 0, NULL);
         }
         return -ENOENT;
