@@ -2718,15 +2718,19 @@ static int loadLwnbdSvr(void)
 
 static void unloadLwnbdSvr(void)
 {
+    // 临时调试：定位卸载卡在哪一步，确认后删除
+    guiRenderTextScreen("NBD卸载 1/6 ethDeinitModules");
     ethDeinitModules();
     unloadPads();
 
+    guiRenderTextScreen("NBD卸载 2/6 reset");
     reset();
 
     LOG_INIT();
     LOG_ENABLE();
 
     // reinit the input pads
+    guiRenderTextScreen("NBD卸载 3/6 startPads");
     padInit(0);
 
     int ret = 0;
@@ -2734,11 +2738,14 @@ static void unloadLwnbdSvr(void)
         ret = startPads();
 
     // now start io again
+    guiRenderTextScreen("NBD卸载 4/6 ioBlockOps");
     ioBlockOps(0);
 
     // init all supports again
+    guiRenderTextScreen("NBD卸载 5/6 initAllSupport");
     initAllSupport(1);
 
+    guiRenderTextScreen("NBD卸载 6/6 audio");
     audioInit();
     sfxInit(0);
     if (gEnableBGM)
