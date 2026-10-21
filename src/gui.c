@@ -1650,6 +1650,17 @@ static void guiDrawOverlays()
     // BLURT output
     // if (gEnableDebug)
     //     fntRenderString(gTheme->fonts[0], 0, screenHeight - 24, ALIGN_NONE, 0, 0, blurttext, GS_SETREG_RGBA(255, 255, 0, 128));
+
+    // 【调试】主题来回切换后图片无法读取：显示图片缓存相关状态，定位后删除
+    {
+        char dbgText[128];
+        int prevCov, prevIco, prevBg, prev, cdFrames;
+        cacheDebugGetState(&prevCov, &prevIco, &prevBg, &prev, &cdFrames);
+        snprintf(dbgText, sizeof(dbgText), "L:%d IO:%d R:%d C:%d CD:%d P:%d/%d/%d/%d T:%d",
+                 texLoading, ioHasPendingRequests(), thmDebugRetiredCount(), gTheme->gameCacheCount,
+                 cdFrames, prevCov, prevIco, prevBg, prev, thmGetGuiValue());
+        fntRenderString(gTheme->fonts[0], 10, 10, ALIGN_NONE, 0, 0, dbgText, GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80));
+    }
 }
 
 static void guiReadPads()

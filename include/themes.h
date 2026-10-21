@@ -187,6 +187,8 @@ int thmGetCoverflowJumpCount(void);
 
 void thmInit(void);
 void thmReinit(const char *path);
+// 【调试】待回收的旧主题数量
+int thmDebugRetiredCount(void);
 void thmReloadScreenExtents(void);
 int thmAddElements(char *path, const char *separator, int forceRefresh);
 const char *thmGetValue(void);
