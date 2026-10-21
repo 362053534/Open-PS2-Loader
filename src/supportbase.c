@@ -1880,12 +1880,72 @@ int sbGetCompatMask(config_set_t *configSet, int defaultMode1)
     return compatmask;
 }
 
+/* 兼容模式白名单：指定游戏启动时自动追加的模式，只对本次启动生效，不写入配置。
+   在sbPrepare()中追加，IOP侧（如模式6的IOPCORE_ENABLE_POFF）和EE侧（各链路传入返回值）同时生效。 */
+static const struct
+{
+    const char *startup;
+    int compat;
+} sbAutoCompatList[] = {
+    {"SLPM_664.19", COMPAT_MODE_3 | COMPAT_MODE_6}, // 北欧女神2 (日版)
+    {"SCPS_150.10", COMPAT_MODE_6}, // GT赛车概念版2001东京 (日版)
+    {"SCPS_550.05", COMPAT_MODE_6}, // GT赛车概念版2001东京 (日版)
+    {"SCPS_192.08", COMPAT_MODE_6}, // GT赛车概念版2001东京 (日版 the Best)
+    {"SCPS_559.02", COMPAT_MODE_6}, // GT赛车概念版2002东京-日内瓦 (日版)
+    {"SCPS_559.03", COMPAT_MODE_6}, // GT赛车概念版2002东京-日内瓦 (日版)
+    {"SCES_508.58", COMPAT_MODE_6}, // GT赛车概念版2002东京-日内瓦 (欧版)
+    {"SCPS_560.05", COMPAT_MODE_6}, // GT赛车概念版2002东京-首尔 (韩版)
+    {"SCKA_200.29", COMPAT_MODE_6}, // GT赛车概念版2002东京-首尔 (韩版 BigHit)
+    {"SCUS_972.19", COMPAT_MODE_6}, // GT赛车概念版 日产350Z版 (美版)
+    {"SCPS_150.55", COMPAT_MODE_6}, // GT赛车4序章 (日版)
+    {"SCPS_193.04", COMPAT_MODE_6}, // GT赛车4序章 (日版 the Best)
+    {"PBPX_955.23", COMPAT_MODE_6}, // GT赛车4序章 (日版 主机同捆)
+    {"SCAJ_200.66", COMPAT_MODE_6}, // GT赛车4序章 (亚洲版)
+    {"PBPX_955.24", COMPAT_MODE_6}, // GT赛车4序章 (亚洲版 主机同捆)
+    {"SCKA_200.22", COMPAT_MODE_6}, // GT赛车4序章 (韩版)
+    {"SCES_524.38", COMPAT_MODE_6}, // GT赛车4序章 (欧版)
+    {"SCPS_170.01", COMPAT_MODE_6}, // GT赛车4 (日版)
+    {"SCAJ_300.06", COMPAT_MODE_6}, // GT赛车4 (日版)
+    {"SCPS_192.52", COMPAT_MODE_6}, // GT赛车4 (日版 the Best)
+    {"PBPX_956.01", COMPAT_MODE_6}, // GT赛车4 (日版 主机同捆)
+    {"SCAJ_300.07", COMPAT_MODE_6}, // GT赛车4 (亚洲版)
+    {"SCAJ_300.08", COMPAT_MODE_6}, // GT赛车4 (亚洲版 the Best)
+    {"SCUS_973.28", COMPAT_MODE_6}, // GT赛车4 (美版)
+    {"SCUS_975.63", COMPAT_MODE_6}, // GT赛车4 (美版)
+    {"SCUS_906.82", COMPAT_MODE_6}, // GT赛车4 (美版)
+    {"SCKA_300.01", COMPAT_MODE_6}, // GT赛车4 (韩版)
+    {"SCKA_300.04", COMPAT_MODE_6}, // GT赛车4 (韩版 BigHit)
+    {"SCES_517.19", COMPAT_MODE_6}, // GT赛车4 (欧版)
+    {"SCUS_975.02", COMPAT_MODE_6}, // 摩托浪漫旅 (美版)
+    {"SCES_533.72", COMPAT_MODE_6}, // 摩托浪漫旅 (欧版)
+    {"SCAJ_201.70", COMPAT_MODE_6}, // 摩托浪漫旅 (亚洲版)
+    {"SCPS_151.05", COMPAT_MODE_6}, // 摩托浪漫旅 (日版)
+    {"SCPS_193.24", COMPAT_MODE_6}, // 摩托浪漫旅 (日版 the Best)
+};
+
+static int sbGetAutoCompatMask(config_set_t *configSet)
+{
+    char startup[32];
+    unsigned int i;
+
+    if (!configGetStrCopy(configSet, CONFIG_ITEM_STARTUP, startup, sizeof(startup)))
+        return 0;
+
+    for (i = 0; i < sizeof(sbAutoCompatList) / sizeof(sbAutoCompatList[0]); i++) {
+        if (!strcmp(startup, sbAutoCompatList[i].startup))
+            return sbAutoCompatList[i].compat;
+    }
+    return 0;
+}
+
 int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex, int defaultMode1)
 {
     int i;
     struct cdvdman_settings_common *settings;
 
     int compatmask = sbGetCompatMask(configSet, defaultMode1);
+
+    compatmask |= sbGetAutoCompatMask(configSet);
 
     char gameid[5];
     configGetDiscIDBinary(configSet, gameid);

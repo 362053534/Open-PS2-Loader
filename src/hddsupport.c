@@ -973,8 +973,8 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // 默认为UDMA 4，与官方一致
     int dmaType = 0x40, dmaMode = 7;
-    /* 总开关统一决定所有链路是否自动启用模式1。 */
-    int compatMode = sbGetCompatMask(configSet, gAutoMode1);
+    /* 兼容模式统一取自sbPrepare()的返回值，与BDM/SMB链路保持一致（含按游戏自动追加的模式）。 */
+    int compatMode;
     configGetInt(configSet, CONFIG_ITEM_DMASOURCE, &gDmaSource);
     if (gDmaSource == 0)
         configGetInt(configGetByType(CONFIG_GAME), CONFIG_ITEM_DMA, &dmaMode);
@@ -1016,7 +1016,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     size_irx = size_bdm_ata_cdvdman_irx;
     irx = &bdm_ata_cdvdman_irx;
 
-    sbPrepare(NULL, configSet, size_irx, irx, &settings_index, gAutoMode1);
+    compatMode = sbPrepare(NULL, configSet, size_irx, irx, &settings_index, gAutoMode1);
+    if (compatMode < 0) /* 出错时兜底为配置中的模式，等同于原先的计算方式。 */
+        compatMode = sbGetCompatMask(configSet, gAutoMode1);
 
     if ((result = sbLoadCheats(gHDDPrefix, game->startup, configSet)) < 0) {
         if (gAutoLaunchGame == NULL) {
