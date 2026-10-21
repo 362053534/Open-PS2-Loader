@@ -2911,7 +2911,7 @@ static void setDefaults(void)
     gPCUserName[0] = '\0';
     gPCPassword[0] = '\0';
     gNetworkStartup = ERROR_ETH_NOT_STARTED;
-    gHDDSpindown = 20;
+    gHDDSpindown = 0; // 默认不待机
     gScrollSpeed = 1;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
@@ -2937,10 +2937,10 @@ static void setDefaults(void)
     gWideScreen = 0;
     gEnableSFX = 1;
     gEnableBootSND = 0;
-    gEnableBGM = 0;
+    gEnableBGM = 1; // 默认开启背景音乐
     gSFXVolume = 80;
     gBootSndVolume = 80;
-    gBGMVolume = 70;
+    gBGMVolume = 80;
     gDefaultBGMPath[0] = '\0';
     gXSensitivity = 1;
     gYSensitivity = 1;
