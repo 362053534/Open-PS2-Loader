@@ -28,6 +28,7 @@ enum UI_ITEMS {
     UICFG_YOFF,
     UICFG_OVERSCAN,
     UICFG_NOTIFICATIONS,
+    UICFG_CF_COUNT, // 内置封面流主题的同屏封面数
 
     CFG_DEBUG,
     CFG_PS2LOGO,

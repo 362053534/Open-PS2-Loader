@@ -710,3 +710,5 @@ gui_strings:
   string: HDD transfer mode, higher is faster (requires Mode 1 off)
 - label: HINT_DMA_SOURCE
   string: Apply globally, or only to the current game
+- label: HINT_CF_COUNT
+  string: Too many covers on screen may cause freezes, keeping the default 5 is recommended

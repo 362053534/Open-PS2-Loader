@@ -710,3 +710,5 @@ gui_strings:
   string: 硬盘传输模式，数值越高读取越快 (需关闭模式1才起效)
 - label: HINT_DMA_SOURCE
   string: 全局生效，或只对当前游戏生效
+- label: HINT_CF_COUNT
+  string: 同屏封面太多，可能会导致死机，建议保持默认值5

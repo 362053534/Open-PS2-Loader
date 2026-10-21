@@ -173,6 +173,7 @@ extern int gEnableNotifications;
 extern int gEnableArtBG;
 extern int gEnableArtCOV;
 extern int gEnableArtICO;
+extern int gCfCoverCount;
 extern int gEnableJpg;
 extern int gWideScreen;
 extern int gVMode; // 0 - Auto, 1 - PAL, 2 - NTSC

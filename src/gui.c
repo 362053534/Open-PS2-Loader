@@ -724,6 +724,9 @@ static int guiUIUpdater(int modified)
             diaSetEnabled(diaUIConfig, UICFG_TXTCOL, colorsEditable);
             diaSetEnabled(diaUIConfig, UICFG_SELCOL, colorsEditable);
             diaSetEnabled(diaUIConfig, UICFG_RESETCOL, colorsEditable);
+
+            // 同屏封面数只对内置封面流主题(索引0)生效，其它主题隐藏
+            diaSetVisible(diaUIConfig, UICFG_CF_COUNT, temp == 0);
         }
 
         diaGetInt(diaUIConfig, UICFG_XOFF, &x);
@@ -782,12 +785,18 @@ void guiShowUIConfig(void)
     const char *coverArtCOV[] = {"封面关", "封面开", NULL};
     const char *coverArtICO[] = {"光碟关", "光碟开", NULL};
     const char *coverArtMode[] = {"性能模式(仅支持PNG)", "兼容模式(JPG & PNG)", NULL};
+    // 下标0~4 对应同屏封面数 1/3/5/7/9
+    const char *cfCoverCount[] = {"同屏封面数1", "同屏封面数3", "同屏封面数5", "同屏封面数7", "同屏封面数9", NULL};
+    int previousCfCoverCount;
 
 reselect_video_mode:
     previousVMode = gVMode;
     previousTheme = thmGetGuiValue();
     previousTxtRename = gTxtRename;
+    previousCfCoverCount = gCfCoverCount;
     diaSetEnum(diaUIConfig, UICFG_THEME, (const char **)thmGetGuiList());
+    diaSetEnum(diaUIConfig, UICFG_CF_COUNT, cfCoverCount);
+    diaSetInt(diaUIConfig, UICFG_CF_COUNT, (gCfCoverCount - 1) / 2);
     diaSetEnum(diaUIConfig, UICFG_LANG, (const char **)lngGetGuiList());
     diaSetEnum(diaUIConfig, UICFG_VMODE, vmodeNames);
     diaSetInt(diaUIConfig, UICFG_THEME, thmGetGuiValue());
@@ -833,6 +842,9 @@ reselect_video_mode:
         diaGetInt(diaUIConfig, UICFG_COVERART_COV, &gEnableArtCOV);
         diaGetInt(diaUIConfig, UICFG_COVERART_ICO, &gEnableArtICO);
         diaGetInt(diaUIConfig, UICFG_COVERARTMODE, &gEnableJpg);
+        int cfCountIndex = 2;
+        diaGetInt(diaUIConfig, UICFG_CF_COUNT, &cfCountIndex);
+        gCfCoverCount = cfCountIndex * 2 + 1;
         diaGetInt(diaUIConfig, UICFG_WIDESCREEN, &gWideScreen);
         diaGetInt(diaUIConfig, UICFG_VMODE, &gVMode);
         diaGetInt(diaUIConfig, UICFG_XOFF, &gXOff);
@@ -846,6 +858,10 @@ reselect_video_mode:
             bgmStop();
 
         applyConfig(themeID, langID, 1);
+
+        // 主题未变但同屏封面数改了：强制重载内置封面流主题，让封面数和缓存槽位按新值重建
+        if (previousTheme == themeID && themeID == 0 && previousCfCoverCount != gCfCoverCount)
+            thmSetGuiValue(themeID, 1);
 
         // 解决按确定键无音效问题，同时修复换主题后音效没更新的问题
         if (previousTheme != themeID)

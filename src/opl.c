@@ -160,6 +160,7 @@ int gEnableNotifications;
 int gEnableArtBG;
 int gEnableArtCOV;
 int gEnableArtICO;
+int gCfCoverCount; // 内置封面流主题的同屏封面数，覆盖主题CFG中的coverflow_count
 int gEnableJpg;
 int gWideScreen;
 int gVMode; // 0 - Auto, 1 - PAL, 2 - NTSC
@@ -2009,6 +2010,11 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, &gEnableArtBG);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, &gEnableArtCOV);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, &gEnableArtICO);
+            // 缺少该键或数值非法(非1/3/5/7/9)时，一律按默认值5处理
+            gCfCoverCount = 5;
+            configGetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, &gCfCoverCount);
+            if (gCfCoverCount != 1 && gCfCoverCount != 3 && gCfCoverCount != 5 && gCfCoverCount != 7 && gCfCoverCount != 9)
+                gCfCoverCount = 5;
             configGetInt(configOPL, CONFIG_OPL_ENABLE_JPG, &gEnableJpg);
             configGetInt(configOPL, CONFIG_OPL_WIDESCREEN, &gWideScreen);
 
@@ -2204,6 +2210,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, gEnableArtBG);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, gEnableArtCOV);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, gEnableArtICO);
+        configSetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, gCfCoverCount);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_JPG, gEnableJpg);
         configSetInt(configOPL, CONFIG_OPL_WIDESCREEN, gWideScreen);
         configSetInt(configOPL, CONFIG_OPL_VMODE, gVMode);
@@ -2925,6 +2932,7 @@ static void setDefaults(void)
     gEnableArtBG = 1;
     gEnableArtCOV = 1;
     gEnableArtICO = 1;
+    gCfCoverCount = 5;
     gEnableJpg = 1;
     gWideScreen = 0;
     gEnableSFX = 1;

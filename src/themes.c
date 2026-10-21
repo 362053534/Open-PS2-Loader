@@ -2440,6 +2440,9 @@ static void thmLoad(const char *themePath)
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
     // 显示数量重新开放给第三方主题；读取后在下面统一规范化为 1/3/5/7/9。
     configGetInt(themeConfig, "coverflow_count", &gCoverflowCount);
+    // 内置封面流主题：同屏封面数由图像设置决定，覆盖CFG中的coverflow_count；第三方主题不受影响
+    if (!themePath && builtinThemeID == 0)
+        gCoverflowCount = gCfCoverCount;
     // 其余可配置项继续按各自兼容规则读取。封面位置/坐标系与外壳美术（overlay 顶点等）
     // 由主题引擎按元素通用解析。
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);

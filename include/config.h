@@ -83,6 +83,7 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_ENABLE_ART_COV       "enable_art_cov"
 #define CONFIG_OPL_ENABLE_ART_ICO       "enable_art_ico"
 #define CONFIG_OPL_ENABLE_JPG           "enable_jpg"
+#define CONFIG_OPL_CF_COVER_COUNT       "cf_cover_count" // 内置封面流主题的同屏封面数(1/3/5/7/9)
 #define CONFIG_OPL_WIDESCREEN           "wide_screen"
 #define CONFIG_OPL_VMODE                "vmode"
 #define CONFIG_OPL_XOFF                 "xoff"
