@@ -357,12 +357,14 @@ static int bgmLoad(void)
 
     // 临时调试：先探测文件大小和头4字节，确认后删除
     long dbgSize = -1, dbgPos = -1;
-    unsigned char dbgHead[4] = {0, 0, 0, 0};
+    unsigned char dbgHead[64];
     int dbgRead = -1;
+    memset(dbgHead, 0, sizeof(dbgHead));
     if (fseek(bgmFile, 0, SEEK_END) == 0)
         dbgSize = ftell(bgmFile);
     fseek(bgmFile, 0, SEEK_SET);
-    dbgRead = fread(dbgHead, 1, 4, bgmFile);
+    // 临时调试：读首页64字节，第28字节起是首个数据包(Vorbis为01 76 6F 72 62 69 73，Opus为4F 70 75 73 48 65 61 64)
+    dbgRead = fread(dbgHead, 1, sizeof(dbgHead), bgmFile);
     dbgPos = ftell(bgmFile);
     fseek(bgmFile, 0, SEEK_SET);
 
@@ -370,12 +372,20 @@ static int bgmLoad(void)
     if (dbgOvRet < 0) {
         LOG("BGM: Input does not appear to be an Ogg bitstream.\n");
         // 临时调试：文件能打开但Ogg解码初始化失败，确认后删除
+        // 弹窗不支持换行，拆成多个短弹窗依次显示
         {
-            char dbgMsg[320];
-            snprintf(dbgMsg, sizeof(dbgMsg), "BGM调试：Ogg解码失败\n路径: [%s]\nov错误码: %d\n大小: %ld 读4字节: %d 读后位置: %ld\n头: %02X %02X %02X %02X",
-                     bgmPath, dbgOvRet, dbgSize, dbgRead, dbgPos, dbgHead[0], dbgHead[1], dbgHead[2], dbgHead[3]);
+            char dbgMsg[128];
+            snprintf(dbgMsg, sizeof(dbgMsg), "1/3 ov错误码:%d 路径:%s", dbgOvRet, bgmPath);
+            guiMsgBox(dbgMsg, 0, NULL);
+            snprintf(dbgMsg, sizeof(dbgMsg), "2/3 大小:%ld 读取:%d 读后位置:%ld 头:%02X %02X %02X %02X",
+                     dbgSize, dbgRead, dbgPos, dbgHead[0], dbgHead[1], dbgHead[2], dbgHead[3]);
+            guiMsgBox(dbgMsg, 0, NULL);
+            snprintf(dbgMsg, sizeof(dbgMsg), "3/3 包头[28-35]:%02X %02X %02X %02X %02X %02X %02X %02X",
+                     dbgHead[28], dbgHead[29], dbgHead[30], dbgHead[31], dbgHead[32], dbgHead[33], dbgHead[34], dbgHead[35]);
             guiMsgBox(dbgMsg, 0, NULL);
         }
+        // 解码失败时必须手动关闭文件，否则每次重载主题都会泄露一个句柄
+        fclose(bgmFile);
         return -ENOENT;
     }
 
