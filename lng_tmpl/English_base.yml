@@ -706,3 +706,7 @@ gui_strings:
   string: Next page
 - label: ABOUT_PREVIOUS_PAGE
   string: Previous page
+- label: HINT_DMA_MODE
+  string: HDD transfer mode, higher is faster (requires Mode 1 off)
+- label: HINT_DMA_SOURCE
+  string: Apply globally, or only to the current game

@@ -706,3 +706,7 @@ gui_strings:
   string: 下一页
 - label: ABOUT_PREVIOUS_PAGE
   string: 上一页
+- label: HINT_DMA_MODE
+  string: 硬盘传输模式，数值越高读取越快 (需关闭模式1才起效)
+- label: HINT_DMA_SOURCE
+  string: 全局生效，或只对当前游戏生效
