@@ -249,6 +249,16 @@ static int hddCreateOPLPartition(const char *name)
 }
 
 int hddLoadModulesSuccess = 0;
+
+// IOP重置后ATAD/XHDD/HDD/PFS模块都已被清掉，须清零加载计数和标志，
+// 否则hddLoadModulesInternal()会跳过加载，回到菜单后报401检测不到硬盘。
+void hddResetModuleFlags(void)
+{
+    hddModulesLoadCount = 0;
+    hddModulesLoading = 0;
+    hddLoadModulesSuccess = 0;
+    hddSupportModulesLoaded = 0;
+}
 static void hddLoadModulesInternal(int bdmAsync)
 {
     static char bdmAtadArg[] = "-bdm_async";

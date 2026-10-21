@@ -66,6 +66,7 @@ int hddDeleteHDLGame(hdl_game_info_t *ginfo);
 void hddInit(item_list_t *itemList);
 item_list_t *hddGetObject(int initOnly);
 void hddLoadModules(void);
+void hddResetModuleFlags(void);
 void hddLoadModulesBDM(void);
 void hddReleaseModulesBDM(void);
 int hddDetectNonSonyFileSystem(void);
