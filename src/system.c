@@ -180,8 +180,13 @@ void sysShutdownDev9(void)
     }
 }
 
+// 临时调试：NBD卸载时置1，在sysReset内显示进度标记（开机时GUI未就绪，不能显示），确认后删除
+int gNbdResetDebug = 0;
+
 void sysReset(int modload_mask)
 {
+    if (gNbdResetDebug)
+        guiRenderTextScreen("NBD卸载 2a fileXioExit/SifExitRpc");
 #ifdef PADEMU
     ds34usb_reset();
     ds34bt_reset();
@@ -193,6 +198,8 @@ void sysReset(int modload_mask)
 
     SifInitRpc(0);
 
+    if (gNbdResetDebug)
+        guiRenderTextScreen("NBD卸载 2b SifIopReset");
 #ifdef _DTL_T10000
     while (!SifIopReset("rom0:UDNL", 0))
         ;
@@ -206,6 +213,8 @@ void sysReset(int modload_mask)
 #endif
 #endif
 
+    if (gNbdResetDebug)
+        guiRenderTextScreen("NBD卸载 2c SifIopSync");
     dev9Initialized = 0;
     while (!SifIopSync())
         ;
@@ -226,6 +235,8 @@ void sysReset(int modload_mask)
         sysLoadModuleLock = sbCreateSemaphore();
     }
 
+    if (gNbdResetDebug)
+        guiRenderTextScreen("NBD卸载 2d 加载IOP模块");
     // clears modules list
     memset((void *)&g_sysLoadedModBuffer[0], 0, MAX_MODULES * 4);
 
@@ -284,6 +295,8 @@ void sysReset(int modload_mask)
     }
 #endif
 
+    if (gNbdResetDebug)
+        guiRenderTextScreen("NBD卸载 2e fileXioInit/poweroffInit");
     fileXioInit();
     poweroffInit();
     poweroffSetCallback(&poweroffHandler, NULL);
