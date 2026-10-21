@@ -1067,19 +1067,23 @@ void guiShowAudioConfig(void)
         // 点击“搜索ogg文件”：把找到的第一个ogg路径填入输入框并同步到gDefaultBGMPath，然后重新打开对话框
         if (ret == CFG_BGM_SEARCH) {
             char bgmPath[sizeof(gDefaultBGMPath)];
+            int found, wasPlaying = isBgmPlaying();
 
-            if (bgmSearchFile(bgmPath, sizeof(bgmPath)) == 0) {
+            // 搜索前先停掉背景音乐，释放其占用的文件句柄，避免pfs打开数用满导致opendir失败
+            if (wasPlaying)
+                bgmStop();
+
+            found = (bgmSearchFile(bgmPath, sizeof(bgmPath)) == 0);
+            if (found) {
                 diaSetString(diaAudioConfig, CFG_DEFAULT_BGM_PATH, bgmPath);
                 strcpy(gDefaultBGMPath, bgmPath);
-                // 只改输入框不会触发updater，需在此手动重启背景音乐，让新路径立即生效。
-                // 内置主题或没有自带bgm.ogg的第三方主题才使用该路径；第三方主题自带bgm时无需重启
-                if (gEnableBGM && bgmUsesDefaultPath()) {
-                    if (isBgmPlaying())
-                        bgmStop();
-                    bgmStart();
-                }
             } else
                 guiMsgBox(_l(_STR_BGM_NOT_FOUND), 0, diaAudioConfig);
+
+            // 只改输入框不会触发updater，需在此手动重启背景音乐：
+            // 搜索前在播放的恢复播放；找到新路径且当前主题使用该路径(内置主题或没有自带bgm.ogg的第三方主题)时立即播放
+            if (wasPlaying || (found && gEnableBGM && bgmUsesDefaultPath()))
+                bgmStart();
         }
     } while (ret == CFG_BGM_SEARCH);
 }
