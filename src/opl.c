@@ -2809,6 +2809,10 @@ void deinit(int exception, int modeSelected)
     ioBlockOps(1);
     guiExecDeferredOps();
 
+    // 背景音乐线程可能仍在读取存储设备上的ogg，须在卸载设备前先停止，否则关机/启动游戏时会卡死
+    if (isBgmPlaying())
+        bgmStop();
+
 #ifdef PADEMU
     ds34usb_reset();
     ds34bt_reset();
