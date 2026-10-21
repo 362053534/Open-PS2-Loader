@@ -924,13 +924,13 @@ struct UIItem diaAboutChinese[] = {
     {UI_BREAK},
 
     {UI_BREAK},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"B站地址：space.bilibili.com/76478300", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"B站：space.bilibili.com/76478300", -1}}},
     {UI_BREAK},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"论坛地址：bbs.a9vg.com/thread-9027434-1-1.html", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"论坛：bbs.a9vg.com/thread-9027434-1-1.html", -1}}},
     {UI_BREAK},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"贴吧地址：tieba.baidu.com/p/9606048316", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"贴吧：tieba.baidu.com/p/9606048316", -1}}},
     {UI_BREAK},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"QQ群：81534571 (暗号OPL)", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"Q群：81534571 (暗号OPL)", -1}}},
     {UI_BREAK},
 
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
