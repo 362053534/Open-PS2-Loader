@@ -247,9 +247,9 @@ void sfxPlay(int id)
 /*--    Theme Background Music    -------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------------------*/
 
-#define BGM_RING_BUFFER_COUNT 16
+#define BGM_RING_BUFFER_COUNT 64 // 原为16(约0.37秒)，加大到约1.5秒，避免浏览封面时缓冲耗尽
 #define BGM_RING_BUFFER_SIZE  4096
-#define BGM_THREAD_BASE_PRIO  0x40
+#define BGM_THREAD_BASE_PRIO  0x1D // 原为0x40，提高到主线程(31)和图片IO线程(32)之上，避免解码被抢占导致卡顿
 #define BGM_THREAD_STACK_SIZE 0x1000
 
 extern void *_gp;
