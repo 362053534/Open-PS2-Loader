@@ -13,6 +13,7 @@
 #include "include/themes.h"
 #include "include/gui.h" // 临时调试：guiMsgBox
 #include <errno.h>       // 临时调试：errno
+#include "include/ethsupport.h"
 
 // Silence unused variable warnings from vorbisfile.h
 static ov_callbacks OV_CALLBACKS_NOCLOSE __attribute__((unused));
@@ -379,6 +380,66 @@ static int bgmLoad(void)
     }
 
     return 0;
+}
+
+// 在指定根目录中查找第一个后缀为.ogg的文件(不区分大小写)，找到返回0
+// 只有一个出口，无论是否找到都会先closedir，避免目录句柄泄露
+static int bgmSearchDir(const char *root, char *path, int size)
+{
+    struct dirent *pdirent;
+    DIR *pdir;
+    int found = -1;
+
+    pdir = opendir(root);
+    if (pdir == NULL)
+        return -1;
+
+    while ((pdirent = readdir(pdir)) != NULL) {
+        int len = strlen(pdirent->d_name);
+
+        if (pdirent->d_type == DT_DIR || len < 5)
+            continue;
+        if (strcasecmp(&pdirent->d_name[len - 4], ".ogg") != 0)
+            continue;
+        // 路径超过缓冲区长度时跳过，避免截断后无法打开
+        if (strlen(root) + len >= (size_t)size)
+            continue;
+
+        snprintf(path, size, "%s%s", root, pdirent->d_name);
+        found = 0;
+        break;
+    }
+
+    closedir(pdir);
+    return found;
+}
+
+// 自动搜索背景音乐：按 APA → BDM → SMB → 记忆卡 的顺序，
+// 搜索各设备根目录(SMB需共享已打开)，找到第一个ogg文件即返回0
+int bgmSearchFile(char *path, int size)
+{
+    char root[16];
+    const char *smbRoot;
+    int i;
+
+    // APA/BDM未挂载时opendir会直接失败返回，不会分配句柄，无需事先判断状态
+    if (bgmSearchDir("pfs0:/", path, size) == 0)
+        return 0;
+
+    for (i = 0; i < MAX_BDM_DEVICES; i++) {
+        snprintf(root, sizeof(root), "mass%d:/", i);
+        if (bgmSearchDir(root, path, size) == 0)
+            return 0;
+    }
+
+    smbRoot = ethGetShareRoot();
+    if (smbRoot != NULL && bgmSearchDir(smbRoot, path, size) == 0)
+        return 0;
+
+    if (bgmSearchDir("mc0:/", path, size) == 0 || bgmSearchDir("mc1:/", path, size) == 0)
+        return 0;
+
+    return -1;
 }
 
 static int bgmInit(void)

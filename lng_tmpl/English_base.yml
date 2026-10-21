@@ -706,3 +706,9 @@ gui_strings:
   string: Next page
 - label: ABOUT_PREVIOUS_PAGE
   string: Previous page
+- label: BGM_SEARCH
+  string: Search ogg file
+- label: HINT_BGM_SEARCH
+  string: Search the root of started devices for an ogg file and fill in the path above
+- label: BGM_NOT_FOUND
+  string: No ogg file found

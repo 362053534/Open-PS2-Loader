@@ -176,6 +176,16 @@ static void ethSMBConnect(void)
         memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
 }
 
+// 背景音乐搜索用：SMB共享已成功打开时返回共享根目录，否则返回NULL
+// 共享未打开时访问smb:目录可能永久等待，所以必须先判断连接状态
+const char *ethGetShareRoot(void)
+{
+    if (gNetworkStartup != 0 || ethBase == NULL)
+        return NULL;
+
+    return ethBase;
+}
+
 static int ethSMBDisconnect(void)
 {
     int ret;

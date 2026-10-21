@@ -706,3 +706,9 @@ gui_strings:
   string: 下一页
 - label: ABOUT_PREVIOUS_PAGE
   string: 上一页
+- label: BGM_SEARCH
+  string: 搜索ogg文件
+- label: HINT_BGM_SEARCH
+  string: 搜索已启动设备根目录中的ogg文件，并填入上方路径
+- label: BGM_NOT_FOUND
+  string: 未找到ogg文件
