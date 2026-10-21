@@ -225,6 +225,12 @@ void sysReset(int modload_mask)
         sysLoadModuleLock = sbCreateSemaphore();
     }
 
+    // IOP已重置，清零DEV9/BDM/HDD模块已加载标志，确保后续重新加载
+    dev9Loaded = 0;
+    dev9InitCount = 0;
+    bdmResetModuleFlags();
+    hddResetModuleFlags();
+
     // clears modules list
     memset((void *)&g_sysLoadedModBuffer[0], 0, MAX_MODULES * 4);
 
