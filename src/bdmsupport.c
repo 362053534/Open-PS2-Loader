@@ -1287,11 +1287,11 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
                 art_buckets_t buckets;
 
-                // 根目录有 art.zip 时进入图包模式（以 itemList->mode 区分设备），图包模式下不再需要 ART2 分桶探测
-                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix))
-                    memset(&buckets, 0, sizeof(buckets));
-                else
+                // ART2 中有图包时进入图包模式（以 itemList->mode 区分设备）；图包模式或没有 ART2 时不再需要 ART2 分桶探测
+                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") == ART_PACK_INIT_NO_PACK)
                     sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
+                else
+                    memset(&buckets, 0, sizeof(buckets));
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                     artBuckets_USB = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)

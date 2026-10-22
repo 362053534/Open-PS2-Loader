@@ -469,11 +469,11 @@ int hddLoadSupportModules(void)
         }
 
         // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
-        // 根目录有 art.zip 时进入图包模式，图包模式下不再需要 ART2 分桶探测
-        if (artPackDeviceInit(HDD_MODE, gHDDPrefix))
-            memset(&artBuckets_APA, 0, sizeof(artBuckets_APA));
-        else
+        // ART2 中有图包时进入图包模式；图包模式或没有 ART2 时不再需要 ART2 分桶探测
+        if (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/") == ART_PACK_INIT_NO_PACK)
             sbDetectArtBuckets(gHDDPrefix, "/", &artBuckets_APA);
+        else
+            memset(&artBuckets_APA, 0, sizeof(artBuckets_APA));
 
         // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
         int gDmaMode = -1; // 获取配置失败时，不重设传输模式

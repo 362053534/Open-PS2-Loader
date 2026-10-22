@@ -11,7 +11,7 @@
 #include <strings.h> // strcasecmp
 
 /*
- * 图包加载器（第一阶段）：根目录中文件名含 OPLM_ART（不区分大小写）的 .zip，取 readdir 遇到的第一个；
+ * 图包加载器（第一阶段）：ART2 目录中文件名含 OPLM_ART（不区分大小写）的 .zip，取 readdir 遇到的第一个；
  *
  * 线程模型：
  *  - artPackDeviceInit/End 在设备初始化/清理的线程中执行；
@@ -68,6 +68,7 @@
 /* ---------------- 运行参数 ---------------- */
 
 #define ART_PACK_ZIP_EXT       ".zip" // 图包扩展名（不区分大小写）
+#define ART_PACK_DIR_NAME      "ART2" // 图包所在目录（与 ART2 分桶同一目录）
 #define ART_PACK_IDX_EXT       ".idx" // 索引扩展名，索引名 = 图包名去掉 .zip 再加 .idx
 #define ART_PACK_NAME_KEY      "OPLM_ART" // 图包文件名（不含扩展名）须包含此关键字（不区分大小写）
 #define ART_PACK_HIDDEN_PREFIX "._"   // macOS 拷贝时生成的 AppleDouble 隐藏文件前缀，须排除
@@ -714,7 +715,6 @@ static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
     return 0;
 }
 
-// 列出设备根目录，按不区分大小写的方式找文件，找到时把实际文件名写入 out
 // 不区分大小写地判断 str 的前 len 个字符中是否包含 key
 static int artContainsNoCase(const char *str, size_t len, const char *key)
 {
@@ -730,19 +730,23 @@ static int artContainsNoCase(const char *str, size_t len, const char *key)
     return 0;
 }
 
-// 在根目录中查找图包：文件名以 .zip 结尾、主名包含 OPLM_ART（均不区分大小写），
+// 在 ART2 目录中查找图包（dirPath 为 ART2 目录路径，末尾带分隔符）：文件名以 .zip 结尾、主名包含 OPLM_ART（均不区分大小写），
 // 排除 "._" 开头的隐藏文件；取 readdir 遇到的第一个。
 // 成功时 zipOut 为图包完整路径，idxNameOut 为对应索引文件名（不含路径）。
-static int artFindPackZip(const char *prefix, char *zipOut, size_t zipOutSize, char *idxNameOut, size_t idxNameOutSize)
+// 返回 ART_FIND_PACK_FOUND 表示找到；ART_FIND_PACK_NONE 表示目录存在但没有图包；ART_FIND_PACK_NO_DIR 表示目录打不开（没有 ART2）。
+#define ART_FIND_PACK_FOUND  0
+#define ART_FIND_PACK_NONE   -1
+#define ART_FIND_PACK_NO_DIR -2
+static int artFindPackZip(const char *dirPath, char *zipOut, size_t zipOutSize, char *idxNameOut, size_t idxNameOutSize)
 {
     struct dirent *ent;
-    DIR *dir = opendir(prefix);
+    DIR *dir = opendir(dirPath); // 打开失败即没有 ART2 目录
     size_t extLen = strlen(ART_PACK_ZIP_EXT);
     size_t nameLen, baseLen;
-    int found = -1;
+    int found = ART_FIND_PACK_NONE;
 
     if (!dir)
-        return -1;
+        return ART_FIND_PACK_NO_DIR;
     while ((ent = readdir(dir)) != NULL) {
         nameLen = strlen(ent->d_name);
         if (nameLen <= extLen)
@@ -755,29 +759,10 @@ static int artFindPackZip(const char *prefix, char *zipOut, size_t zipOutSize, c
         if (!artContainsNoCase(ent->d_name, baseLen, ART_PACK_NAME_KEY))
             continue;
 
-        snprintf(zipOut, zipOutSize, "%s%s", prefix, ent->d_name);
+        snprintf(zipOut, zipOutSize, "%s%s", dirPath, ent->d_name);
         snprintf(idxNameOut, idxNameOutSize, "%.*s%s", (int)baseLen, ent->d_name, ART_PACK_IDX_EXT);
-        found = 0;
+        found = ART_FIND_PACK_FOUND;
         break;
-    }
-    closedir(dir);
-    return found;
-}
-
-static int artFindRootFile(const char *prefix, const char *name, char *out, size_t outSize)
-{
-    struct dirent *ent;
-    DIR *dir = opendir(prefix);
-    int found = -1;
-
-    if (!dir)
-        return -1;
-    while ((ent = readdir(dir)) != NULL) {
-        if (!strcasecmp(ent->d_name, name)) {
-            snprintf(out, outSize, "%s%s", prefix, ent->d_name);
-            found = 0;
-            break;
-        }
     }
     closedir(dir);
     return found;
@@ -1033,32 +1018,39 @@ fail:
 
 /* ---------------- 对外接口 ---------------- */
 
-int artPackDeviceInit(int mode, const char *prefix)
+int artPackDeviceInit(int mode, const char *prefix, const char *sep)
 {
     art_pack_dev_t dev;
+    char artDir[ART_PACK_PATH_MAX];
     char idxName[ART_PACK_PATH_MAX];
     off64_t archiveSize;
     int zipFd;
+    int findRet;
 
     if (!artValidMode(mode))
-        return 0;
+        return ART_PACK_INIT_NO_PACK;
 
     artPackDeviceEnd(mode);
-    if (!prefix)
-        return 0;
+    if (!prefix || !sep)
+        return ART_PACK_INIT_NO_PACK;
 
     memset(&dev, 0, sizeof(dev));
-    if (artFindPackZip(prefix, dev.zipPath, sizeof(dev.zipPath), idxName, sizeof(idxName)) < 0)
-        return 0; // 根目录没有图包：图包模式关闭，完全走旧流程
+    // 只在 ART2 目录中查找图包；没有 ART2 或其中没有图包时，图包模式关闭，完全走旧流程
+    snprintf(artDir, sizeof(artDir), "%s%s%s", prefix, ART_PACK_DIR_NAME, sep);
+    // 此前已调用 artPackDeviceEnd，所有失败返回路径上该设备的图包状态都保持未激活
+    findRet = artFindPackZip(artDir, dev.zipPath, sizeof(dev.zipPath), idxName, sizeof(idxName));
+    if (findRet == ART_FIND_PACK_NO_DIR)
+        return ART_PACK_INIT_NO_ART2;
+    if (findRet != ART_FIND_PACK_FOUND)
+        return ART_PACK_INIT_NO_PACK;
 
-    // 索引名跟随图包名；已存在时沿用磁盘上的实际大小写
-    if (artFindRootFile(prefix, idxName, dev.idxPath, sizeof(dev.idxPath)) < 0)
-        snprintf(dev.idxPath, sizeof(dev.idxPath), "%s%s", prefix, idxName);
+    // 索引与图包同在 ART2 目录，名字跟随图包名（索引由本模块按同名写出，无需再扫目录）
+    snprintf(dev.idxPath, sizeof(dev.idxPath), "%s%s", artDir, idxName);
 
     zipFd = open(dev.zipPath, O_RDONLY);
     if (zipFd < 0) {
         LOG("ARTPACK: cannot open %s\n", dev.zipPath);
-        return 0;
+        return ART_PACK_INIT_NO_PACK;
     }
     archiveSize = lseek64(zipFd, 0, SEEK_END);
 
@@ -1070,11 +1062,11 @@ int artPackDeviceInit(int mode, const char *prefix)
             LOG("ARTPACK: index build failed, pack disabled\n");
             close(zipFd);
             artFreeDev(&dev);
-            return 0;
+            return ART_PACK_INIT_NO_PACK;
         }
     } else {
         close(zipFd);
-        return 0;
+        return ART_PACK_INIT_NO_PACK;
     }
     close(zipFd);
 
@@ -1083,7 +1075,7 @@ int artPackDeviceInit(int mode, const char *prefix)
     artFreeDev(&artPackDevs[mode]);
     artPackDevs[mode] = dev;
     pthread_mutex_unlock(&artPackMutex);
-    return 1;
+    return ART_PACK_INIT_ACTIVE;
 }
 
 void artPackDeviceEnd(int mode)
