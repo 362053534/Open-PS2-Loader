@@ -247,7 +247,7 @@ void sfxPlay(int id)
 
 #define BGM_RING_BUFFER_COUNT 16
 #define BGM_RING_BUFFER_SIZE  4096
-#define BGM_THREAD_BASE_PRIO  32 // 原为0x40；作为解码线程优先级，与图片IO线程(32)同级、低于主线程(31)，避免浏览封面时背景音乐卡顿
+#define BGM_THREAD_BASE_PRIO  33 // 原为0x40；作为解码线程优先级，低于主线程(31)、高于图片IO线程(34)，避免浏览封面时背景音乐卡顿
 #define BGM_THREAD_STACK_SIZE 0x1000
 
 extern void *_gp;

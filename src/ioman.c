@@ -225,7 +225,7 @@ void ioInit(void)
     gIOThread.gp_reg = &_gp;
     gIOThread.func = &ioWorkerThread;
     gIOThread.stack = thread_stack;
-    gIOThread.initial_priority = 32;
+    gIOThread.initial_priority = 34; // 原为32，降到BGM解码线程(33)之下，避免浏览封面时背景音乐卡顿
 
     isIORunning = 1;
     isIOPending = 0;
