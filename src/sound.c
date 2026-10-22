@@ -548,7 +548,7 @@ static int bgmInit(void)
     thread.stack = bgmThreadStack;
     thread.stack_size = sizeof(bgmThreadStack);
     thread.gp_reg = &_gp;
-    thread.initial_priority = 32; // 测试：播放线程优先级从0x40改为32，解码线程不变
+    thread.initial_priority = 32; // 测试：播放线程优先级从0x40改为32
     thread.attr = 0;
     thread.option = 0;
 
@@ -560,7 +560,7 @@ static int bgmInit(void)
         thread.stack = bgmIoThreadStack;
         thread.stack_size = sizeof(bgmIoThreadStack);
         thread.gp_reg = &_gp;
-        thread.initial_priority = BGM_THREAD_BASE_PRIO + 1;
+        thread.initial_priority = 32; // 测试：解码线程优先级从0x40+1改为32，与播放线程相同
         thread.attr = 0;
         thread.option = 0;
 
