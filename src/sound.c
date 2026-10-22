@@ -273,7 +273,8 @@ static void bgmThread(void *arg)
     while (!terminateFlag) {
         SleepThread();
 
-        while (PollSema(outSema) == outSema) {
+        // 退出时不再把缓冲里剩余的块播完，避免等待audsrv而拖慢甚至卡住关机/启动游戏
+        while (!terminateFlag && PollSema(outSema) == outSema) {
             audsrv_wait_audio(BGM_RING_BUFFER_SIZE);
             audsrv_play_audio(bgmBuffer[rdPtr], BGM_RING_BUFFER_SIZE);
             rdPtr = (rdPtr + 1) % BGM_RING_BUFFER_COUNT;
@@ -649,6 +650,8 @@ void bgmStop(void)
 
     terminateFlag = 1;
     WakeupThread(bgmThreadID);
+    // 播放线程退出时不再归还空块，需在此唤醒可能阻塞在WaitSema(inSema)上的解码线程，使其检查terminateFlag后退出
+    SignalSema(inSema);
 
     threadId = GetThreadId();
     while (bgmIoThreadRunning) {
