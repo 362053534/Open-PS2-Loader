@@ -3011,6 +3011,10 @@ static void init(void)
     readPads();
     if (!getKeyPressed(KEY_START)) {
         _loadConfig(); // only try to restore config if emergency key is not being pressed
+        // 内置封面流主题在thmInit()时已按默认封面数5加载，读配置后主题ID不变不会重载，
+        // 导致cfg中的同屏封面数不生效；此时背景音乐尚未启动，强制重载一次不会打断音乐
+        if (thmGetGuiValue() == 0 && gCfCoverCount != 5)
+            thmSetGuiValue(0, 1);
     } else {
         LOG("--- SKIPPING OPL CONFIG LOADING\n");
         applyConfig(-1, -1, 0);
