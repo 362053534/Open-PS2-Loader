@@ -2080,8 +2080,12 @@ void guiUpdateScrollSpeed(void)
     // fast - 80 ms
     // medium - 160 ms
     // slow - 600 ms
-    setButtonDelay(KEY_UP, !gScrollSpeed ? 40 : (10 / gScrollSpeed)); // 0,1,2 -> 600, 160, 80(换算成帧数36,10,5)
-    setButtonDelay(KEY_DOWN, !gScrollSpeed ? 40 : (10 / gScrollSpeed));
+    int scrollDelay = !gScrollSpeed ? 40 : (10 / gScrollSpeed); // 0,1,2 -> 600, 160, 80(换算成帧数36,10,5)
+    setButtonDelay(KEY_UP, scrollDelay);
+    setButtonDelay(KEY_DOWN, scrollDelay);
+    // CF主题下左右键移动封面，同样跟随滚动速度设置
+    setButtonDelay(KEY_LEFT, scrollDelay);
+    setButtonDelay(KEY_RIGHT, scrollDelay);
 }
 
 void guiUpdateScreenScale(void)

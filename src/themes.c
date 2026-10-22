@@ -49,6 +49,12 @@ theme_t *gTheme;
 static image_cache_t *deferredCoverflowBgCache = NULL;
 static item_list_t *deferredCoverflowBgList = NULL;
 static u64 deferredCoverflowBgFrame = 0;
+// Coverflow 背景图连按cd：cd期间不允许BG入队
+static int cfBgCdStep = 0; // 单步动画未结束又触发单步时激活，单步动画停止后取消
+static int cfBgCdPage = 0; // 按住L1/R1自动连按翻页时激活，L1、R1都松开后取消
+// 动画状态定义在下方 Coverflow 段，这里先做前置声明供 BG 连按cd使用
+static int isAnimating;
+static int animationSteps;
 
 typedef struct retired_theme {
     theme_t *theme;
@@ -657,6 +663,13 @@ static void armDeferredCoverflowBackground(image_cache_t *cache, item_list_t *li
 
 static void flushDeferredCoverflowBackground(submenu_list_t *item)
 {
+    // 单步动画已停止：取消单步连按cd
+    if (!isAnimating)
+        cfBgCdStep = 0;
+    // L1、R1都已松开：取消翻页连按cd
+    if (!getKeyPressed(KEY_L1) && !getKeyPressed(KEY_R1))
+        cfBgCdPage = 0;
+
     if (deferredCoverflowBgFrame != guiFrameId) {
         deferredCoverflowBgCache = NULL;
         deferredCoverflowBgList = NULL;
@@ -670,8 +683,9 @@ static void flushDeferredCoverflowBackground(submenu_list_t *item)
         return;
     }
 
-    // 仅入队；显示与回退已在背景元素绘制阶段完成。
-    getCoverflowTexture(deferredCoverflowBgCache, deferredCoverflowBgList, &item->item, 1);
+    // 仅入队；显示与回退已在背景元素绘制阶段完成。连按cd期间不允许BG入队
+    if (!cfBgCdStep && !cfBgCdPage)
+        getCoverflowTexture(deferredCoverflowBgCache, deferredCoverflowBgList, &item->item, 1);
 
     deferredCoverflowBgCache = NULL;
     deferredCoverflowBgList = NULL;
@@ -1234,6 +1248,10 @@ void thmTriggerCoverflowAnim(int direction)
     if (!gTheme || gTheme->coverflow == NULL)
         return;
 
+    // 单步动画未结束时又触发单步：激活单步连按cd（须在覆盖动画状态之前判断）
+    if (isAnimating && animationSteps == 1)
+        cfBgCdStep = 1;
+
     isAnimating = 1;
     animationDirection = direction;
     animationSteps = 1;
@@ -1251,6 +1269,11 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
 
     if (steps < 1)
         steps = 1;
+
+    // 按住L1/R1进入自动连按后的翻页：激活翻页连按cd
+    // 首次按下那一帧不算连按，排除上下键残留的isRepeating标记造成误判
+    if (!getKeyOn(KEY_L1) && !getKeyOn(KEY_R1) && padGetRepeating())
+        cfBgCdPage = 1;
 
     isAnimating = 1;
     animationDirection = direction;
