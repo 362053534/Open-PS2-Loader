@@ -561,6 +561,10 @@ void bgmStart(void)
         audsrv_set_format(&audsrvFmt);
 
         bgmIsPlaying = 1;
+        // 在主线程中先置位运行标志：线程与主线程同优先级，StartThread后不会立即执行，
+        // 若此时快速调用bgmStop，会因标志仍为0而不等待线程退出就释放资源，导致死机
+        bgmThreadRunning = 1;
+        bgmIoThreadRunning = 1;
 
         StartThread(bgmIoThreadID, NULL);
         StartThread(bgmThreadID, NULL);
