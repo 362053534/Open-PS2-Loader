@@ -671,7 +671,10 @@ static void flushDeferredCoverflowBackground(submenu_list_t *item)
     }
 
     // 仅入队；显示与回退已在背景元素绘制阶段完成。
-    getCoverflowTexture(deferredCoverflowBgCache, deferredCoverflowBgList, &item->item, 1);
+    // 图片IO队列中还有其它请求（如封面预取）时，背景图本帧不入队，
+    // 等队列清空后的下一帧再请求，避免大图解码挤占封面加载
+    if (!ioHasPendingRequests())
+        getCoverflowTexture(deferredCoverflowBgCache, deferredCoverflowBgList, &item->item, 1);
 
     deferredCoverflowBgCache = NULL;
     deferredCoverflowBgList = NULL;
