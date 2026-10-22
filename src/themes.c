@@ -2194,16 +2194,6 @@ static void thmFree(theme_t *theme)
     }
 }
 
-// 【调试】待回收的旧主题数量
-int thmDebugRetiredCount(void)
-{
-    int count = 0;
-    retired_theme_t *it;
-    for (it = retiredThemes; it; it = it->next)
-        count++;
-    return count;
-}
-
 static void thmCollectRetiredThemes(void)
 {
     retired_theme_t **link;

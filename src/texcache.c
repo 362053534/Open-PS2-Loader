@@ -481,16 +481,6 @@ void flushBatchRequests(void)
     //}
 }
 
-// 【调试】读取图片缓存内部状态，供屏幕调试信息显示
-void cacheDebugGetState(int *prevCov, int *prevIco, int *prevBg, int *prev, int *cdFrames)
-{
-    *prevCov = PrevCacheID_COV;
-    *prevIco = PrevCacheID_ICO;
-    *prevBg = PrevCacheID_BG;
-    *prev = PrevCacheID;
-    *cdFrames = cdFramesCount;
-}
-
 void cacheInit()
 {
     ioRegisterHandler(IO_CACHE_LOAD_ART, &cacheLoadImage1);

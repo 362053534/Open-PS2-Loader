@@ -71,8 +71,6 @@ GSTEXTURE *cacheGetTextureQuietNoRequest(image_cache_t *cache, item_list_t *list
 extern int ForceRefreshPrevTexCache;
 extern int forceSkipQr;
 extern int texLoading;
-// 【调试】读取图片缓存内部状态，供屏幕调试信息显示
-void cacheDebugGetState(int *prevCov, int *prevIco, int *prevBg, int *prev, int *cdFrames);
 void flushBatchRequests(void);
 void cacheCancelPendingArtRequests(void);
 
