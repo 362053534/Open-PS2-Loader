@@ -3,6 +3,7 @@
 #include "include/lang.h"
 #include "include/gui.h"
 #include "include/supportbase.h"
+#include "include/artpack.h"
 #include "include/hddsupport.h"
 #include "include/bdmsupport.h"
 #include "include/util.h"
@@ -468,7 +469,11 @@ int hddLoadSupportModules(void)
         }
 
         // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
-        sbDetectArtBuckets(gHDDPrefix, "/", &artBuckets_APA);
+        // 根目录有 art.zip 时进入图包模式，图包模式下不再需要 ART2 分桶探测
+        if (artPackDeviceInit(HDD_MODE, gHDDPrefix))
+            memset(&artBuckets_APA, 0, sizeof(artBuckets_APA));
+        else
+            sbDetectArtBuckets(gHDDPrefix, "/", &artBuckets_APA);
 
         // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
         int gDmaMode = -1; // 获取配置失败时，不重设传输模式
@@ -1163,6 +1168,8 @@ static void hddCleanUp(item_list_t *itemList, int exception)
 {
     LOG("HDDSUPPORT CleanUp\n");
 
+    artPackDeviceEnd(HDD_MODE);
+
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);
         free(hddIsoGames);
@@ -1193,6 +1200,8 @@ static int hddCheckVMC(item_list_t *itemList, char *name, int createSize)
 static void hddShutdown(item_list_t *itemList)
 {
     LOG("HDDSUPPORT Shutdown\n");
+
+    artPackDeviceEnd(HDD_MODE);
 
     if (hddGameList.enabled) {
         hddFreeHDLGamelist(&hddGames);

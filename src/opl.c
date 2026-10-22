@@ -26,6 +26,7 @@
 #include "httpclient.h"
 
 #include "include/supportbase.h"
+#include "include/artpack.h"
 #include "include/bdmsupport.h"
 #include "include/ethsupport.h"
 #include "include/hddsupport.h"
@@ -686,6 +687,9 @@ int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, ch
 
     listSupport = list_support[mode].support;
     if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
+        // 源设备处于 art.zip 图包模式：POPS 从图包 PS1 取图，ELF 无图，不回退散文件
+        if (artPackIsActive(mode, isRelative))
+            return artPackLoadImage(mode, folder, isRelative, value, suffix, resultTex) >= 0 ? 0 : -1;
         if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1) >= 0)
             return 0;
     }
