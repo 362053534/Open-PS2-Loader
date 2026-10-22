@@ -247,7 +247,7 @@ void sfxPlay(int id)
 
 #define BGM_RING_BUFFER_COUNT 16
 #define BGM_RING_BUFFER_SIZE  4096
-#define BGM_THREAD_BASE_PRIO  0x40
+#define BGM_THREAD_BASE_PRIO  31 // 原为0x40，与主线程同级、高于图片IO线程(32)，避免浏览封面时背景音乐卡顿
 #define BGM_THREAD_STACK_SIZE 0x1000
 
 extern void *_gp;
@@ -271,7 +271,8 @@ static void bgmThread(void *arg)
     while (!terminateFlag) {
         SleepThread();
 
-        while (PollSema(outSema) == outSema) {
+        // 退出时不再把缓冲里剩余的块播完，避免等待audsrv而拖慢甚至卡住关机/启动游戏
+        while (!terminateFlag && PollSema(outSema) == outSema) {
             audsrv_wait_audio(BGM_RING_BUFFER_SIZE);
             audsrv_play_audio(bgmBuffer[rdPtr], BGM_RING_BUFFER_SIZE);
             rdPtr = (rdPtr + 1) % BGM_RING_BUFFER_COUNT;
@@ -301,7 +302,9 @@ static void bgmIoThread(void *arg)
         while ((wrPtr + partsToRead < BGM_RING_BUFFER_COUNT) && (PollSema(inSema) == inSema))
             partsToRead++;
 
-        decodeTotal = BGM_RING_BUFFER_SIZE;
+        // 一次攒了多个空块时要把这些块全部解码(二维数组连续存放，且上面的条件保证不会越过数组末尾)，
+        // 原来只解码第一块却前移partsToRead块，多出的块会播放旧数据，造成重复或卡顿
+        decodeTotal = BGM_RING_BUFFER_SIZE * partsToRead;
         int bufferPtr = 0;
         do {
             int ret = ov_read(vorbisFile, bgmBuffer[wrPtr] + bufferPtr, decodeTotal, 0, 2, 1, &bitStream);
@@ -487,7 +490,7 @@ static int bgmInit(void)
         thread.stack = bgmIoThreadStack;
         thread.stack_size = sizeof(bgmIoThreadStack);
         thread.gp_reg = &_gp;
-        thread.initial_priority = BGM_THREAD_BASE_PRIO + 1;
+        thread.initial_priority = BGM_THREAD_BASE_PRIO; // 解码线程与播放线程同为31
         thread.attr = 0;
         thread.option = 0;
 
@@ -577,6 +580,8 @@ void bgmStop(void)
 
     terminateFlag = 1;
     WakeupThread(bgmThreadID);
+    // 播放线程退出时不再归还空块，需在此唤醒可能阻塞在WaitSema(inSema)上的解码线程，使其检查terminateFlag后退出
+    SignalSema(inSema);
 
     threadId = GetThreadId();
     while (bgmIoThreadRunning) {
