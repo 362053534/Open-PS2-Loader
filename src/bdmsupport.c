@@ -13,6 +13,7 @@
 #include "include/extern_irx.h"
 #include "include/cheatman.h"
 #include "include/sound.h"
+#include "include/artpack.h"
 #include "modules/iopcore/common/cdvd_config.h"
 
 #include <usbhdfsd-common.h>
@@ -1036,6 +1037,8 @@ static int bdmGetIconId(item_list_t *itemList)
 // This may be called, even if bdmInit() was not.
 static void bdmCleanUp(item_list_t *itemList, int exception)
 {
+    artPackDeviceEnd(itemList->mode);
+
     if (itemList->enabled) {
         LOG("BDMSUPPORT CleanUp\n");
 
@@ -1055,6 +1058,8 @@ static void bdmShutdown(item_list_t *itemList)
     char path[16];
 
     LOG("BDMSUPPORT Shutdown\n");
+
+    artPackDeviceEnd(itemList->mode);
 
     // Format the device path.
     // Getting the device number is only relevant per module ie usb0 and mx40 will result in both being massDeviceIndex = 0 or mass0, use mode to determine instead.
@@ -1282,7 +1287,11 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
                 art_buckets_t buckets;
 
-                sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
+                // 根目录有 art.zip 时进入图包模式（以 itemList->mode 区分设备），图包模式下不再需要 ART2 分桶探测
+                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix))
+                    memset(&buckets, 0, sizeof(buckets));
+                else
+                    sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                     artBuckets_USB = buckets;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)

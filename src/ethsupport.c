@@ -2,6 +2,7 @@
 #include "include/lang.h"
 #include "include/gui.h"
 #include "include/supportbase.h"
+#include "include/artpack.h"
 #include "include/appsupport.h"
 #include "include/ethsupport.h"
 #include "include/util.h"
@@ -171,9 +172,15 @@ static void ethSMBConnect(void)
 
     if (gNetworkStartup == 0) {
         // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
-        sbDetectArtBuckets(ethPrefix, "\\", &artBuckets_SMB);
-    } else
+        // 根目录有 art.zip 时进入图包模式，图包模式下不再需要 ART2 分桶探测
+        if (artPackDeviceInit(ETH_MODE, ethPrefix))
+            memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
+        else
+            sbDetectArtBuckets(ethPrefix, "\\", &artBuckets_SMB);
+    } else {
         memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
+        artPackDeviceEnd(ETH_MODE);
+    }
 }
 
 // 背景音乐搜索用：SMB共享已成功打开时返回共享根目录，否则返回NULL
@@ -846,6 +853,8 @@ static int ethGetIconId(item_list_t *itemList)
 // This may be called, even if ethInit() was not.
 static void ethCleanUp(item_list_t *itemList, int exception)
 {
+    artPackDeviceEnd(ETH_MODE);
+
     if (ethGameList.enabled) {
         LOG("ETHSUPPORT CleanUp\n");
 
@@ -863,6 +872,8 @@ static void ethCleanUp(item_list_t *itemList, int exception)
 // This may be called, even if ethInit() was not.
 static void ethShutdown(item_list_t *itemList)
 {
+    artPackDeviceEnd(ETH_MODE);
+
     if (ethGameList.enabled) {
         LOG("ETHSUPPORT Shutdown\n");
 
