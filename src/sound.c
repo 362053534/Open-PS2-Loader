@@ -247,7 +247,7 @@ void sfxPlay(int id)
 /*--    Theme Background Music    -------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------------------*/
 
-#define BGM_RING_BUFFER_COUNT 64 // 原为16(约0.37秒)，加大到约1.5秒，避免浏览封面时缓冲耗尽
+#define BGM_RING_BUFFER_COUNT 16
 #define BGM_RING_BUFFER_SIZE  4096
 #define BGM_THREAD_BASE_PRIO  0x40
 #define BGM_THREAD_STACK_SIZE 0x1000
@@ -303,7 +303,9 @@ static void bgmIoThread(void *arg)
         while ((wrPtr + partsToRead < BGM_RING_BUFFER_COUNT) && (PollSema(inSema) == inSema))
             partsToRead++;
 
-        decodeTotal = BGM_RING_BUFFER_SIZE;
+        // 一次攒了多个空块时要把这些块全部解码(二维数组连续存放，且上面的条件保证不会越过数组末尾)，
+        // 原来只解码第一块却前移partsToRead块，多出的块会播放旧数据，造成重复或卡顿
+        decodeTotal = BGM_RING_BUFFER_SIZE * partsToRead;
         int bufferPtr = 0;
         do {
             int ret = ov_read(vorbisFile, bgmBuffer[wrPtr] + bufferPtr, decodeTotal, 0, 2, 1, &bitStream);
@@ -545,7 +547,7 @@ static int bgmInit(void)
     thread.stack = bgmThreadStack;
     thread.stack_size = sizeof(bgmThreadStack);
     thread.gp_reg = &_gp;
-    thread.initial_priority = BGM_THREAD_BASE_PRIO;
+    thread.initial_priority = 32; // 测试：播放线程优先级从0x40改为32，解码线程不变
     thread.attr = 0;
     thread.option = 0;
 
