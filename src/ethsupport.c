@@ -172,11 +172,11 @@ static void ethSMBConnect(void)
 
     if (gNetworkStartup == 0) {
         // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
-        // 根目录有 art.zip 时进入图包模式，图包模式下不再需要 ART2 分桶探测
-        if (artPackDeviceInit(ETH_MODE, ethPrefix))
-            memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
-        else
+        // ART2 中有图包时进入图包模式；图包模式或没有 ART2 时不再需要 ART2 分桶探测
+        if (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") == ART_PACK_INIT_NO_PACK)
             sbDetectArtBuckets(ethPrefix, "\\", &artBuckets_SMB);
+        else
+            memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
     } else {
         memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
         artPackDeviceEnd(ETH_MODE);
