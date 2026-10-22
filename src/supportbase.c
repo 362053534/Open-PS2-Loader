@@ -2225,46 +2225,8 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
         sbCreateFoldersFromList(path, discImgFolders);
 }
 
-static int sbArtDirExists(const char *path)
-{
-    struct stat st;
-
-    // 与原来的 opendir 探测一样，只把真实目录视为 ART2 分桶。
-    return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
-}
-
-void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets)
-{
-    char path[128];
-
-    if (!buckets)
-        return;
-
-    memset(buckets, 0, sizeof(*buckets));
-    if (!prefix || !sep)
-        return;
-
-    snprintf(path, sizeof(path), "%sART2", prefix);
-    if (!sbArtDirExists(path))
-        return;
-
-    buckets->useBuckets = 1;
-
-    snprintf(path, sizeof(path), "%sART2%sPS2", prefix, sep);
-    buckets->hasPS2 = sbArtDirExists(path);
-
-    snprintf(path, sizeof(path), "%sART2%sPS1", prefix, sep);
-    buckets->hasPS1 = sbArtDirExists(path);
-
-    snprintf(path, sizeof(path), "%sART2%sAPPS", prefix, sep);
-    buckets->hasAPPS = sbArtDirExists(path);
-
-    snprintf(path, sizeof(path), "%sART2%sGAMES", prefix, sep);
-    buckets->hasGAMES = sbArtDirExists(path);
-}
-
 void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
-                         const art_buckets_t *buckets, const char *folder, int isRelative,
+                         int useArt2, const char *folder, int isRelative,
                          const char *value, const char *suffix)
 {
     const char *bucket = NULL;
@@ -2279,36 +2241,15 @@ void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const cha
     if (folder && (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_ELF)))
         artFolder = ART_FOLDER_NAME;
 
-    if (buckets && buckets->useBuckets && folder) {
-        if (!strcmp(folder, ART_FOLDER_ELF)) {
-            if (buckets->hasAPPS)
-                bucket = "APPS";
-        } else if (!strcmp(folder, ART_FOLDER_PS1)) {
-            /* POPS：GAMES 优先，没有才进 PS1。 */
-            if (buckets->hasGAMES)
-                bucket = "GAMES";
-            else if (buckets->hasPS1)
-                bucket = "PS1";
-        } else if (!strcmp(folder, ART_FOLDER_NAME)) {
-            /* 游戏列表进不了 ELF，这里不看文件名后缀，避免误进 ART2/APPS。
-               PS2：GAMES 优先，没有才进 PS2。 */
-            if (buckets->hasGAMES)
-                bucket = "GAMES";
-            else if (buckets->hasPS2)
-                bucket = "PS2";
-        }
+    /* useArt2 非 0 时只用 ART2（ELF 进 APPS，PS2/POPS 进 GAMES），否则用 ART。不检查子目录是否存在。 */
+    if (useArt2 && folder) {
+        if (!strcmp(folder, ART_FOLDER_ELF))
+            bucket = "APPS";
+        else if (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_NAME))
+            bucket = "GAMES";
     }
 
     if (bucket) {
-        /* 只有落到 PS1/PS2 时 BG/SCR 才带序号；GAMES 仍用旧后缀。 */
-        if ((!strcmp(bucket, "PS1") || !strcmp(bucket, "PS2")) && suffix) {
-            if (!strcmp(suffix, "BG"))
-                suffix = "BG_00";
-            else if (!strcmp(suffix, "SCR"))
-                suffix = "SCR_00";
-            else if (!strcmp(suffix, "SCR2"))
-                suffix = "SCR_01";
-        }
         snprintf(path, pathSize, "%sART2%s%s%s%s%s%s_%s", prefix, sep, bucket, sep, value, sep, value, suffix);
     } else
         snprintf(path, pathSize, "%s%s%s%s_%s", prefix, artFolder, sep, value, suffix);

@@ -48,8 +48,8 @@ static int ethReadNetConfig(void);
 
 static int ethInitSemaID = -1;
 
-// SMB 连接成功后探测一次 ART2 分桶
-static art_buckets_t artBuckets_SMB;
+// SMB 是否走 ART2 散文件（由 artPackDeviceInit 结果决定）
+static int artUseArt2_SMB;
 
 // Initializes locking semaphore for network support (not for just SMB support, but for the network subsystem).
 static int ethInitSema(void)
@@ -172,13 +172,11 @@ static void ethSMBConnect(void)
 
     if (gNetworkStartup == 0) {
         // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
-        // ART2 中有图包时进入图包模式；图包模式或没有 ART2 时不再需要 ART2 分桶探测
-        if (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") == ART_PACK_INIT_NO_PACK)
-            sbDetectArtBuckets(ethPrefix, "\\", &artBuckets_SMB);
-        else
-            memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
+        // ART2 中有图包时进入图包模式
+        // 只有确认 ART2 存在且未进入图包模式时才走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
+        artUseArt2_SMB = (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") == ART_PACK_INIT_NO_PACK);
     } else {
-        memset(&artBuckets_SMB, 0, sizeof(artBuckets_SMB));
+        artUseArt2_SMB = 0;
         artPackDeviceEnd(ETH_MODE);
     }
 }
@@ -836,7 +834,7 @@ static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char
 
     char path[256];
 
-    sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", &artBuckets_SMB, folder, isRelative, value, suffix);
+    sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", artUseArt2_SMB, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 

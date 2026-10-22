@@ -33,11 +33,11 @@ int bdmDeviceModeStarted;
 static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
 
-// 各BDM类型在设备初始化时探测一次 ART2 分桶
-static art_buckets_t artBuckets_USB;
-static art_buckets_t artBuckets_ILINK;
-static art_buckets_t artBuckets_SDC;
-static art_buckets_t artBuckets_ATA;
+// 各BDM类型是否走 ART2 散文件（由 artPackDeviceInit 结果决定）
+static int artUseArt2_USB;
+static int artUseArt2_ILINK;
+static int artUseArt2_SDC;
+static int artUseArt2_ATA;
 
 void bdmInitDevicesData();
 
@@ -977,7 +977,7 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
 static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
-    const art_buckets_t *buckets = NULL;
+    int useArt2 = 0;
     char path[256];
 
     (void)id;
@@ -986,15 +986,15 @@ static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char
         return ERR_BAD_FILE;
 
     if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-        buckets = &artBuckets_USB;
+        useArt2 = artUseArt2_USB;
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-        buckets = &artBuckets_ILINK;
+        useArt2 = artUseArt2_ILINK;
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-        buckets = &artBuckets_SDC;
+        useArt2 = artUseArt2_SDC;
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-        buckets = &artBuckets_ATA;
+        useArt2 = artUseArt2_ATA;
 
-    sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", buckets, folder, isRelative, value, suffix);
+    sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", useArt2, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 
@@ -1283,23 +1283,21 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             else
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
 
-            // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
+            // 设备就绪后探测 ART2 是否存在
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
-                art_buckets_t buckets;
+                int useArt2;
 
-                // ART2 中有图包时进入图包模式（以 itemList->mode 区分设备）；图包模式或没有 ART2 时不再需要 ART2 分桶探测
-                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") == ART_PACK_INIT_NO_PACK)
-                    sbDetectArtBuckets(pDeviceData->bdmPrefix, "/", &buckets);
-                else
-                    memset(&buckets, 0, sizeof(buckets));
+                // ART2 中有图包时进入图包模式（以 itemList->mode 区分设备）
+                // 只有确认 ART2 存在且未进入图包模式时才走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
+                useArt2 = (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") == ART_PACK_INIT_NO_PACK);
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                    artBuckets_USB = buckets;
+                    artUseArt2_USB = useArt2;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                    artBuckets_ILINK = buckets;
+                    artUseArt2_ILINK = useArt2;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                    artBuckets_SDC = buckets;
+                    artUseArt2_SDC = useArt2;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                    artBuckets_ATA = buckets;
+                    artUseArt2_ATA = useArt2;
             }
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.

@@ -63,19 +63,9 @@ void sbCreateFolders(const char *path, int createDiscImgFolders);
 #define ART_FOLDER_PS1  "ART_PS1"
 #define ART_FOLDER_ELF  "ART_ELF"
 
-/* 设备初始化时探测一次，读图只看这些标志，不再 opendir。 */
-typedef struct
-{
-    unsigned char useBuckets;
-    unsigned char hasPS2;
-    unsigned char hasPS1;
-    unsigned char hasAPPS;
-    unsigned char hasGAMES;
-} art_buckets_t;
-
-void sbDetectArtBuckets(const char *prefix, const char *sep, art_buckets_t *buckets);
+/* useArt2 由 artPackDeviceInit 的结果决定：非 0 时只用 ART2（ELF 进 APPS，PS2/POPS 进 GAMES），为 0 才用 ART。 */
 void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
-                         const art_buckets_t *buckets, const char *folder, int isRelative,
+                         int useArt2, const char *folder, int isRelative,
                          const char *value, const char *suffix);
 
 // ISO9660 filesystem management functions.
