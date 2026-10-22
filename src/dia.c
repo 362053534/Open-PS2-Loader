@@ -450,7 +450,8 @@ static void diaRenderItem(int x, int y, struct UIItem *item, int selected, int h
             // to ODD lines
             ypos &= ~1;
 
-            rmDrawLine(x, ypos, x + UI_BREAK_LEN, ypos, gColWhite);
+            // 分隔横线颜色与“被选定颜色”一致，随主题/颜色设置变化
+            rmDrawLine(x, ypos, x + UI_BREAK_LEN, ypos, gTheme->selTextColor);
             break;
         }
 
