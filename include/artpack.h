@@ -13,11 +13,11 @@
  * 设备以 item_list_t::mode（BDM_MODE..HDD_MODE）区分。
  */
 
-// 设备就绪后调用（在 sbDetectArtBuckets 之前），prefix 为设备根前缀，sep 为路径分隔符（SMB 为 "\\"）
+// 设备就绪后调用（ART2 只在这里探测一次），prefix 为设备根前缀，sep 为路径分隔符（SMB 为 "\\"）
 // 只在 ART2 目录中查找图包，返回值为下面三态之一：
-// ART_PACK_INIT_ACTIVE：进入图包模式（调用方跳过 ART2 分桶探测）
-// ART_PACK_INIT_NO_PACK：ART2 存在但没有图包或图包初始化失败，走旧流程（需要 ART2 分桶探测）
-// ART_PACK_INIT_NO_ART2：ART2 目录不存在（调用方无需 ART2 分桶探测，分桶清零即可）
+// ART_PACK_INIT_ACTIVE：进入图包模式（调用方不走 ART2 散文件）
+// ART_PACK_INIT_NO_PACK：ART2 已确认存在但未进入图包模式（没有图包或图包初始化失败），调用方走 ART2 散文件
+// ART_PACK_INIT_NO_ART2：没有 ART2 或未能探测（参数无效），调用方走旧 ART 目录
 #define ART_PACK_INIT_ACTIVE  1
 #define ART_PACK_INIT_NO_PACK 0
 #define ART_PACK_INIT_NO_ART2 -1

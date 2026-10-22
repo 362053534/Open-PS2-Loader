@@ -68,7 +68,7 @@
 /* ---------------- 运行参数 ---------------- */
 
 #define ART_PACK_ZIP_EXT       ".zip" // 图包扩展名（不区分大小写）
-#define ART_PACK_DIR_NAME      "ART2" // 图包所在目录（与 ART2 分桶同一目录）
+#define ART_PACK_DIR_NAME      "ART2" // 图包所在目录（与 ART2 散文件同一目录）
 #define ART_PACK_IDX_EXT       ".idx" // 索引扩展名，索引名 = 图包名去掉 .zip 再加 .idx
 #define ART_PACK_NAME_KEY      "OPLM_ART" // 图包文件名（不含扩展名）须包含此关键字（不区分大小写）
 #define ART_PACK_HIDDEN_PREFIX "._"   // macOS 拷贝时生成的 AppleDouble 隐藏文件前缀，须排除
@@ -268,7 +268,7 @@ static int artParseSuffix(const char *s, size_t len, u8 *type, u8 *index)
     return -1;
 }
 
-// 主题请求的后缀映射（与 sbBuildArtImagePath 中 PS1/PS2 桶的规则相同，此处独立实现）
+// 主题请求的后缀映射（与 OPLM 图包条目命名规则一致）
 static int artParseRequestSuffix(const char *suffix, u8 *type, u8 *index)
 {
     if (!suffix)
@@ -1027,12 +1027,13 @@ int artPackDeviceInit(int mode, const char *prefix, const char *sep)
     int zipFd;
     int findRet;
 
+    // 参数无效时未能探测 ART2，返回 NO_ART2，保证 NO_PACK 只表示 ART2 已确认存在
     if (!artValidMode(mode))
-        return ART_PACK_INIT_NO_PACK;
+        return ART_PACK_INIT_NO_ART2;
 
     artPackDeviceEnd(mode);
     if (!prefix || !sep)
-        return ART_PACK_INIT_NO_PACK;
+        return ART_PACK_INIT_NO_ART2;
 
     memset(&dev, 0, sizeof(dev));
     // 只在 ART2 目录中查找图包；没有 ART2 或其中没有图包时，图包模式关闭，完全走旧流程

@@ -77,8 +77,8 @@ typedef struct
 // forward declaration
 static item_list_t hddGameList;
 
-// APA 设备初始化时探测一次 ART2 分桶
-static art_buckets_t artBuckets_APA;
+// APA 是否走 ART2 散文件（由 artPackDeviceInit 结果决定）
+static int artUseArt2_APA;
 
 static int hddLoadGameListCache(hdl_games_list_t *cache);
 static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *game_list);
@@ -468,12 +468,9 @@ int hddLoadSupportModules(void)
             gHDDPrefix = "pfs0:OPL/";
         }
 
-        // 设备就绪后探测 ART2 及 PS2/PS1/APPS/GAMES 子目录
-        // ART2 中有图包时进入图包模式；图包模式或没有 ART2 时不再需要 ART2 分桶探测
-        if (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/") == ART_PACK_INIT_NO_PACK)
-            sbDetectArtBuckets(gHDDPrefix, "/", &artBuckets_APA);
-        else
-            memset(&artBuckets_APA, 0, sizeof(artBuckets_APA));
+        // ART2 中有图包时进入图包模式
+        // 只有确认 ART2 存在且未进入图包模式时才走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
+        artUseArt2_APA = (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/") == ART_PACK_INIT_NO_PACK);
 
         // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
         int gDmaMode = -1; // 获取配置失败时，不重设传输模式
@@ -1149,7 +1146,7 @@ static int hddGetImage(item_list_t *itemList, char *folder, int isRelative, char
 
     char path[256];
 
-    sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", &artBuckets_APA, folder, isRelative, value, suffix);
+    sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", artUseArt2_APA, folder, isRelative, value, suffix);
     return texDiscoverLoad(resultTex, path, -1);
 }
 
