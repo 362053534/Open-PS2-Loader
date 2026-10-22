@@ -247,7 +247,7 @@ void sfxPlay(int id)
 
 #define BGM_RING_BUFFER_COUNT 16
 #define BGM_RING_BUFFER_SIZE  4096
-#define BGM_THREAD_BASE_PRIO  31 // 原为0x40，与主线程同级、高于图片IO线程(32)，避免浏览封面时背景音乐卡顿
+#define BGM_THREAD_BASE_PRIO  31 // 原为0x40；作为解码线程优先级，与主线程同级、高于图片IO线程(32)，避免浏览封面时背景音乐卡顿
 #define BGM_THREAD_STACK_SIZE 0x1000
 
 extern void *_gp;
@@ -478,7 +478,7 @@ static int bgmInit(void)
     thread.stack = bgmThreadStack;
     thread.stack_size = sizeof(bgmThreadStack);
     thread.gp_reg = &_gp;
-    thread.initial_priority = BGM_THREAD_BASE_PRIO;
+    thread.initial_priority = BGM_THREAD_BASE_PRIO - 1; // 播放线程比解码线程高一级，可随时抢占解码线程及时送数据
     thread.attr = 0;
     thread.option = 0;
 
@@ -490,7 +490,7 @@ static int bgmInit(void)
         thread.stack = bgmIoThreadStack;
         thread.stack_size = sizeof(bgmIoThreadStack);
         thread.gp_reg = &_gp;
-        thread.initial_priority = BGM_THREAD_BASE_PRIO; // 解码线程与播放线程同为31
+        thread.initial_priority = BGM_THREAD_BASE_PRIO;
         thread.attr = 0;
         thread.option = 0;
 
