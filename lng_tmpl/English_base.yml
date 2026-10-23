@@ -718,3 +718,7 @@ gui_strings:
   string: Search the root of started devices for an ogg file and fill in the path above
 - label: BGM_NOT_FOUND
   string: No ogg file found
+- label: ARTPACK
+  string: OPLM art pack support (instant art)
+- label: HINT_ARTPACK
+  string: Put the OPLM_ART zip pack (do not extract) directly in ART2

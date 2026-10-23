@@ -161,6 +161,8 @@ int gEnableNotifications;
 int gEnableArtBG;
 int gEnableArtCOV;
 int gEnableArtICO;
+int gEnableArtPack;
+int gArtPackDeferMenuSelect;
 int gCfCoverCount; // 内置封面流主题的同屏封面数，覆盖主题CFG中的coverflow_count
 int gEnableJpg;
 int gWideScreen;
@@ -2014,6 +2016,7 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, &gEnableArtBG);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, &gEnableArtCOV);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, &gEnableArtICO);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_PACK, &gEnableArtPack);
             // 缺少该键或数值非法(非1/3/5/7/9)时，一律按默认值5处理
             gCfCoverCount = 5;
             configGetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, &gCfCoverCount);
@@ -2214,6 +2217,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_BG, gEnableArtBG);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, gEnableArtCOV);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, gEnableArtICO);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_PACK, gEnableArtPack);
         configSetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, gCfCoverCount);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_JPG, gEnableJpg);
         configSetInt(configOPL, CONFIG_OPL_WIDESCREEN, gWideScreen);
@@ -2936,6 +2940,7 @@ static void setDefaults(void)
     gEnableArtBG = 1;
     gEnableArtCOV = 1;
     gEnableArtICO = 1;
+    gEnableArtPack = 1;
     gCfCoverCount = 5;
     gEnableJpg = 1;
     gWideScreen = 0;
@@ -3044,7 +3049,8 @@ static void init(void)
 //    }
 //    return result; // 判断是否初始化成功，如果不成功则由别的逻辑继续尝试初始化
 //}
-static void deferredInit(void)
+// 选择默认启动页（原 deferredInit 的内容）；会入队 GUI_OP_SELECT_MENU，可在 IO 线程或 GUI 线程调用
+void oplSelectDefaultMenu(void)
 {
 
     // inform GUI main init part is over
@@ -3076,6 +3082,19 @@ static void deferredInit(void)
         bdmDefaultNeedsCorrection = 0;
         gInitComplete = 1; // 如果默认设备初始化失败，不要卡住主进程
     }
+}
+
+static void deferredInit(void)
+{
+    // 图包开启时，BDM 图包要等主循环里的 BDM 启动流程才探测；若此时就选中默认页，
+    // 欢迎画面背后会提前请求该页的图并被永久记为无图。改为在 BDM 就绪后再选默认页。
+    // HDD/ETH 的图包探测在 initAllSupport 中已同步完成，无需等待。
+    if (gEnableArtPack) {
+        gArtPackDeferMenuSelect = 1;
+        gInitComplete = 1; // 原本由 SELECT_MENU 置位，guiIntroLoop 靠它结束
+        return;
+    }
+    oplSelectDefaultMenu();
 }
 
 static void deferredAudioInit(void)

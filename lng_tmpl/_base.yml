@@ -718,3 +718,7 @@ gui_strings:
   string: 搜索已启动设备根目录中的ogg文件，并填入上方路径
 - label: BGM_NOT_FOUND
   string: 未找到ogg文件
+- label: ARTPACK
+  string: OPLM图包支持 (秒出图)
+- label: HINT_ARTPACK
+  string: 将OPLM_ART的zip图包(不要解压)，直接放在ART2里即可
