@@ -472,7 +472,7 @@ int hddLoadSupportModules(void)
         // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
         // ART2 存在时再探测 GAMES/APPS 目录：没有 GAMES 时游戏图直接走图包回退，没有 APPS 时 ELF 直接无图
         artArt2Flags_APA = 0;
-        if (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/") != ART_PACK_INIT_NO_ART2) {
+        if (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/", ART_PACK_RANK_APA) != ART_PACK_INIT_NO_ART2) {
             artArt2Flags_APA = ART2_FLAG_ON;
             if (sbArtHasBucket(gHDDPrefix, "/", ART2_BUCKET_GAMES))
                 artArt2Flags_APA |= ART2_FLAG_GAMES;
@@ -1153,6 +1153,10 @@ static int hddGetImage(item_list_t *itemList, char *folder, int isRelative, char
         return ERR_BAD_FILE;
 
     char path[256];
+
+    // 本设备无 ART2 且非 ELF 请求、全局图包可用时，跳过旧 ART/ 目录，直接交由调用方回退到图包
+    if (!(artArt2Flags_APA & ART2_FLAG_ON) && !(folder && !strcmp(folder, ART_FOLDER_ELF)) && artPackIsActive(HDD_MODE, isRelative))
+        return ERR_BAD_FILE;
 
     if (sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", artArt2Flags_APA, folder, isRelative, value, suffix) < 0)
         return ERR_BAD_FILE;

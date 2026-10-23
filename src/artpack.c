@@ -184,10 +184,31 @@ typedef struct
     u32 entryCount;
     u32 entryTableOff;           // art.idx 中条目表偏移
     art_idx_entry_t *memEntries; // 只有 art.idx 写入失败时才常驻内存
+    int rank;                    // 设备速度等级（ART_PACK_RANK_*，越小越快）
 } art_pack_dev_t;
 
 static art_pack_dev_t artPackDevs[MODE_COUNT];
 static pthread_mutex_t artPackMutex = PTHREAD_MUTEX_INITIALIZER;
+
+// 没有任何设备启用图包时的 artPackBestMode 取值
+#define ART_PACK_NO_BEST -1
+// 全局选出的最快图包设备（artPackDevs 下标），由 artPackMutex 保护
+static int artPackBestMode = ART_PACK_NO_BEST;
+
+// 在已激活的设备中选出 rank 最小者（相同时取 mode 较小者）；调用方须持有 artPackMutex
+static void artPackSelectBest(void)
+{
+    int i;
+
+    artPackBestMode = ART_PACK_NO_BEST;
+    for (i = 0; i < MODE_COUNT; i++) {
+        if (!artPackDevs[i].active)
+            continue;
+        // 严格小于：等级相同时保留先遇到的较小 mode
+        if (artPackBestMode == ART_PACK_NO_BEST || artPackDevs[i].rank < artPackDevs[artPackBestMode].rank)
+            artPackBestMode = i;
+    }
+}
 
 /* ---------------- 小工具 ---------------- */
 
@@ -1018,7 +1039,7 @@ fail:
 
 /* ---------------- 对外接口 ---------------- */
 
-int artPackDeviceInit(int mode, const char *prefix, const char *sep)
+int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank)
 {
     art_pack_dev_t dev;
     char artDir[ART_PACK_PATH_MAX];
@@ -1072,9 +1093,12 @@ int artPackDeviceInit(int mode, const char *prefix, const char *sep)
     close(zipFd);
 
     dev.active = 1;
+    dev.rank = rank;
     pthread_mutex_lock(&artPackMutex);
     artFreeDev(&artPackDevs[mode]);
     artPackDevs[mode] = dev;
+    // 新图包发布后重新选择最快设备
+    artPackSelectBest();
     pthread_mutex_unlock(&artPackMutex);
     return ART_PACK_INIT_ACTIVE;
 }
@@ -1085,6 +1109,8 @@ void artPackDeviceEnd(int mode)
         return;
     pthread_mutex_lock(&artPackMutex);
     artFreeDev(&artPackDevs[mode]);
+    // 释放后重新选择最快设备（被释放的可能正是当前最快设备）
+    artPackSelectBest();
     pthread_mutex_unlock(&artPackMutex);
 }
 
@@ -1096,7 +1122,8 @@ int artPackIsActive(int mode, int isRelative)
     if (!isRelative || !artValidMode(mode))
         return 0;
     pthread_mutex_lock(&artPackMutex);
-    active = artPackDevs[mode].active;
+    // 与请求设备无关，只要全局有最快图包即视为可用
+    active = (artPackBestMode != ART_PACK_NO_BEST);
     pthread_mutex_unlock(&artPackMutex);
     return active;
 }
@@ -1129,7 +1156,12 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
 
     pthread_mutex_lock(&artPackMutex);
-    dev = &artPackDevs[mode];
+    // 统一使用全局最快设备的图包，而不是请求设备自己的图包
+    if (artPackBestMode == ART_PACK_NO_BEST) {
+        pthread_mutex_unlock(&artPackMutex);
+        return ERR_BAD_FILE;
+    }
+    dev = &artPackDevs[artPackBestMode];
     if (!dev->active) {
         pthread_mutex_unlock(&artPackMutex);
         return ERR_BAD_FILE;
