@@ -172,9 +172,9 @@ static void ethSMBConnect(void)
 
     if (gNetworkStartup == 0) {
         // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
-        // ART2 中有图包时进入图包模式
-        // 只有确认 ART2 存在且未进入图包模式时才走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
-        artUseArt2_SMB = (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") == ART_PACK_INIT_NO_PACK);
+        // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退
+        // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
+        artUseArt2_SMB = (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") != ART_PACK_INIT_NO_ART2);
     } else {
         artUseArt2_SMB = 0;
         artPackDeviceEnd(ETH_MODE);

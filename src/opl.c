@@ -687,10 +687,10 @@ int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, ch
 
     listSupport = list_support[mode].support;
     if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
-        // 源设备处于 art.zip 图包模式：POPS 从图包 PS1 取图，ELF 无图，不回退散文件
-        if (artPackIsActive(mode, isRelative))
-            return artPackLoadImage(mode, folder, isRelative, value, suffix, resultTex) >= 0 ? 0 : -1;
+        // 先取 ART2/ART 散文件；取不到且源设备有图包时再从图包取图（POPS 取图包 PS1，ELF 图包中无图）
         if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1) >= 0)
+            return 0;
+        if (artPackIsActive(mode, isRelative) && artPackLoadImage(mode, folder, isRelative, value, suffix, resultTex) >= 0)
             return 0;
     }
 

@@ -299,11 +299,10 @@ static void cacheLoadImage1(void *data)
     // 加载图片。itemGetImage() 可能已经无法中途取消；结果先留在原槽位，
     // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
     int result;
-    // 设备处于 art.zip 图包模式时只从图包取图，否则走原 itemGetImage
-    if (artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
+    // 先取 ART2/ART 散文件，取不到且设备有图包时再从图包取图
+    result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
+    if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
         result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture);
-    else
-        result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
 
     if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&entry->texture);
@@ -398,11 +397,10 @@ static void *cacheLoadImage(void *data)
 
         // 加载图片
         int result;
-        // 设备处于 art.zip 图包模式时只从图包取图，否则走原 itemGetImage
-        if (artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
+        // 先取 ART2/ART 散文件，取不到且设备有图包时再从图包取图
+        result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
+        if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
             result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture);
-        else
-            result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
 
         if (result >= 0 && ioReq->compactBackground)
             texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
