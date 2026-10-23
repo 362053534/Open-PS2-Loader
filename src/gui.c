@@ -67,7 +67,6 @@ int txtFileRebuilded = 0;
 
 static int bdmDeviceAlertPending = 0;
 static int artLoadDelayTime = 200;
-#define ART_DBG_FLUSH_DELAY_FRAMES 600 // 【临时调试】
 
 #ifdef __DEBUG
 
@@ -2019,14 +2018,6 @@ void guiMainLoop(void)
             }
         }
 
-        // 【临时调试】预载等待结束约 10 秒后，把缓冲的日志一次性写入文件（只写一次）
-        {
-            static int artDbgFlushFrames = -1;
-            if (mainScreenInitDone && artLoadDelayTime <= 0 && artDbgFlushFrames < 0)
-                artDbgFlushFrames = ART_DBG_FLUSH_DELAY_FRAMES;
-            if (artDbgFlushFrames > 0 && --artDbgFlushFrames == 0)
-                artDbgFlush();
-        }
         if (gEnableNotifications)
             guiShowNotifications();
 
