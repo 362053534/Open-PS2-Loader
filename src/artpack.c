@@ -12,7 +12,7 @@
 #include <sys/stat.h> // stat / S_ISDIR（图包开关关闭时判断 ART2）
 
 /*
- * 图包加载器（第一阶段）：ART2 目录中文件名含 OPLM_ART（不区分大小写）的 .zip，取 readdir 遇到的第一个；
+ * 图包加载器（第一阶段）：ART2 目录中任意命名的 .zip（扩展名不区分大小写，排除 "." 开头的隐藏文件），取 readdir 遇到的第一个；
  *
  * 线程模型：
  *  - artPackDeviceInit/End 在设备初始化/清理的线程中执行；
@@ -77,8 +77,7 @@
 #define ART_PACK_ZIP_EXT       ".zip" // 图包扩展名（不区分大小写）
 #define ART_PACK_DIR_NAME      "ART2" // 图包所在目录（与 ART2 散文件同一目录）
 #define ART_PACK_IDX_EXT       ".idx" // 索引扩展名，索引名 = 图包名去掉 .zip 再加 .idx
-#define ART_PACK_NAME_KEY      "OPLM_ART" // 图包文件名（不含扩展名）须包含此关键字（不区分大小写）
-#define ART_PACK_HIDDEN_PREFIX "._"   // macOS 拷贝时生成的 AppleDouble 隐藏文件前缀，须排除
+#define ART_PACK_HIDDEN_PREFIX "."    // 隐藏文件前缀，须排除（含 macOS 拷贝时生成的 "._" AppleDouble 假 zip）
 #define ART_PACK_PATH_MAX      256
 #define ART_PACK_CHUNK_SIZE    (64 * 1024)   // 中央目录分块读取大小
 #define ART_PACK_MAX_ENTRIES   (256 * 1024)  // 防御异常文件导致的超大内存申请
@@ -841,23 +840,8 @@ static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
     return 0;
 }
 
-// 不区分大小写地判断 str 的前 len 个字符中是否包含 key
-static int artContainsNoCase(const char *str, size_t len, const char *key)
-{
-    size_t keyLen = strlen(key);
-    size_t i;
-
-    if (keyLen == 0 || len < keyLen)
-        return 0;
-    for (i = 0; i + keyLen <= len; i++) {
-        if (!strncasecmp(str + i, key, keyLen))
-            return 1;
-    }
-    return 0;
-}
-
-// 在 ART2 目录中查找图包（dirPath 为 ART2 目录路径，末尾带分隔符）：文件名以 .zip 结尾、主名包含 OPLM_ART（均不区分大小写），
-// 排除 "._" 开头的隐藏文件；取 readdir 遇到的第一个。
+// 在 ART2 目录中查找图包（dirPath 为 ART2 目录路径，末尾带分隔符）：文件名以 .zip 结尾（不区分大小写）即可，主名任意，
+// 排除 "." 开头的隐藏文件（含 macOS 的 "._" AppleDouble 假 zip）；取 readdir 遇到的第一个。
 // 成功时 zipOut 为图包完整路径，idxNameOut 为对应索引文件名（不含路径）。
 // 返回 ART_FIND_PACK_FOUND 表示找到；ART_FIND_PACK_NONE 表示目录存在但没有图包；ART_FIND_PACK_NO_DIR 表示目录打不开（没有 ART2）。
 #define ART_FIND_PACK_FOUND  0
@@ -881,8 +865,6 @@ static int artFindPackZip(const char *dirPath, char *zipOut, size_t zipOutSize, 
         if (strcasecmp(ent->d_name + baseLen, ART_PACK_ZIP_EXT))
             continue;
         if (!strncmp(ent->d_name, ART_PACK_HIDDEN_PREFIX, strlen(ART_PACK_HIDDEN_PREFIX)))
-            continue;
-        if (!artContainsNoCase(ent->d_name, baseLen, ART_PACK_NAME_KEY))
             continue;
 
         snprintf(zipOut, zipOutSize, "%s%s", dirPath, ent->d_name);
