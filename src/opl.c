@@ -687,7 +687,7 @@ int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, ch
 
     listSupport = list_support[mode].support;
     if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
-        // 先取 ART2/ART 散文件；取不到且源设备有图包时再从图包取图（POPS 取图包 PS1，ELF 图包中无图）
+        // 先取 ART2/ART 散文件；取不到且全局有图包时再从最快设备的图包取图（POPS 取图包 PS1，ELF 图包中无图）
         if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1) >= 0)
             return 0;
         if (artPackIsActive(mode, isRelative) && artPackLoadImage(mode, folder, isRelative, value, suffix, resultTex) >= 0)

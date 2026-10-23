@@ -33,6 +33,23 @@ int bdmDeviceModeStarted;
 static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
 
+// BDM 设备类型 -> 图包速度等级（ART_PACK_RANK_*），多设备都有图包时用于选出最快的图包
+static int bdmArtPackRank(int bdmDeviceType)
+{
+    switch (bdmDeviceType) {
+        case BDM_TYPE_ATA:
+            return ART_PACK_RANK_BDM_HDD;
+        case BDM_TYPE_ILINK:
+            return ART_PACK_RANK_BDM_ILINK;
+        case BDM_TYPE_SDC:
+            return ART_PACK_RANK_BDM_MX4SIO;
+        case BDM_TYPE_USB:
+            return ART_PACK_RANK_BDM_USB;
+        default:
+            return ART_PACK_RANK_UNKNOWN;
+    }
+}
+
 // 各BDM类型的 ART2 标志位（ART2_FLAG_*，由 artPackDeviceInit 与 GAMES/APPS 目录探测结果决定）
 static int artArt2Flags_USB;
 static int artArt2Flags_ILINK;
@@ -994,6 +1011,10 @@ static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
         art2Flags = artArt2Flags_ATA;
 
+    // 本设备无 ART2 且非 ELF 请求、全局图包可用时，跳过旧 ART/ 目录，直接交由调用方回退到图包
+    if (!(art2Flags & ART2_FLAG_ON) && !(folder && !strcmp(folder, ART_FOLDER_ELF)) && artPackIsActive(itemList->mode, isRelative))
+        return ERR_BAD_FILE;
+
     if (sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", art2Flags, folder, isRelative, value, suffix) < 0)
         return ERR_BAD_FILE;
     return texDiscoverLoad(resultTex, path, -1);
@@ -1288,10 +1309,10 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
                 int art2Flags = 0;
 
-                // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退（以 itemList->mode 区分设备）
+                // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退（以 itemList->mode 区分设备，多设备时统一用最快设备的图包）
                 // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
                 // ART2 存在时再探测 GAMES/APPS 目录：没有 GAMES 时游戏图直接走图包回退，没有 APPS 时 ELF 直接无图
-                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") != ART_PACK_INIT_NO_ART2) {
+                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/", bdmArtPackRank(pDeviceData->bdmDeviceType)) != ART_PACK_INIT_NO_ART2) {
                     art2Flags = ART2_FLAG_ON;
                     if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_GAMES))
                         art2Flags |= ART2_FLAG_GAMES;

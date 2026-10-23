@@ -299,7 +299,7 @@ static void cacheLoadImage1(void *data)
     // 加载图片。itemGetImage() 可能已经无法中途取消；结果先留在原槽位，
     // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
     int result;
-    // 先取 ART2/ART 散文件，取不到且设备有图包时再从图包取图
+    // 先取 ART2/ART 散文件，取不到且全局有图包时再从最快设备的图包取图
     result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
     if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
         result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture);
@@ -397,7 +397,7 @@ static void *cacheLoadImage(void *data)
 
         // 加载图片
         int result;
-        // 先取 ART2/ART 散文件，取不到且设备有图包时再从图包取图
+        // 先取 ART2/ART 散文件，取不到且全局有图包时再从最快设备的图包取图
         result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
         if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
             result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture);
