@@ -25,6 +25,8 @@
 #include "include/sound.h"
 #include "include/guigame.h"
 #include "include/texcache.h"
+// [图包调试显示] 临时代码，调试完成后删除
+#include "include/artpack.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -1615,6 +1617,42 @@ void guiDrawSubMenuHints(void)
 
 static int endIntro = 0; // Break intro loop and start 'Last Played Auto Start' countdown
 static int busyAlpha = 0x00; // Fully transparant
+// [图包调试显示] 临时代码，调试完成后删除
+#define ART_PACK_OVERLAY_X             10                                  // 左边距
+#define ART_PACK_OVERLAY_BOTTOM_MARGIN 60                                  // 第一行距屏幕底部
+#define ART_PACK_OVERLAY_LINE_STEP     15                                  // 行距
+#define ART_PACK_OVERLAY_COLOR         GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80) // 黄色
+#define ART_PACK_OVERLAY_TEXT_LEN      48                                  // 每行缓冲区大小
+static void guiDrawArtPackStatus(void)
+{
+    static art_pack_status_t snap = {ART_PACK_STATUS_NO_BEST};
+    char text[ART_PACK_OVERLAY_TEXT_LEN];
+    const char *src;
+    int x = ART_PACK_OVERLAY_X;
+    int y = screenHeight - ART_PACK_OVERLAY_BOTTOM_MARGIN;
+
+    // 锁忙时沿用上一帧快照
+    artPackGetStatus(&snap);
+
+    if (snap.bestMode == ART_PACK_STATUS_NO_BEST)
+        snprintf(text, sizeof(text), "ART: none");
+    else
+        snprintf(text, sizeof(text), "ART: mode %d rank %d zipfd %s", snap.bestMode, snap.bestRank, snap.zipFdOpen ? "open" : "-");
+    fntRenderString(gTheme->fonts[0], x, y, ALIGN_LEFT, 0, 0, text, ART_PACK_OVERLAY_COLOR);
+    y += ART_PACK_OVERLAY_LINE_STEP;
+
+    if (snap.entriesInMem)
+        src = (snap.entriesFrom == ART_PACK_ENTRIES_FROM_IDX) ? "MEM(FROM_IDX)" : "MEM(RESIDENT)";
+    else
+        src = snap.loadGaveUp ? "PER-FETCH(gave up)" : "PER-FETCH";
+    snprintf(text, sizeof(text), "IDX: %s n=%u", src, (unsigned int)snap.entryCount);
+    fntRenderString(gTheme->fonts[0], x, y, ALIGN_LEFT, 0, 0, text, ART_PACK_OVERLAY_COLOR);
+    y += ART_PACK_OVERLAY_LINE_STEP;
+
+    snprintf(text, sizeof(text), "fails %d/%d opens %u", snap.loadFails, ART_PACK_ENTRIES_LOAD_RETRY_MAX, (unsigned int)snap.idxOpens);
+    fntRenderString(gTheme->fonts[0], x, y, ALIGN_LEFT, 0, 0, text, ART_PACK_OVERLAY_COLOR);
+}
+
 static void guiDrawOverlays()
 {
     // are there any pending operations?
@@ -1672,6 +1710,9 @@ static void guiDrawOverlays()
         y += yadd;
     }
 #endif
+
+    // [图包调试显示] 临时代码，调试完成后删除
+    guiDrawArtPackStatus();
 
     // Last Played Auto Start
     if (!pending && DisableCron == 0 && endIntro) {

@@ -42,4 +42,29 @@ int artPackIsActive(int mode, int isRelative);
 // 从全局选出的最快设备的图包加载一张图片到 GSTEXTURE（mode 只做有效性检查），返回值与 itemGetImage 一致：>=0 成功，<0 无图
 int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex);
 
+// memEntries 来源：写索引失败时的常驻副本，必须保留
+#define ART_PACK_ENTRIES_RESIDENT 0
+// memEntries 来源：因成为最快设备而从 art.idx 载入，不再是最快设备时可释放
+#define ART_PACK_ENTRIES_FROM_IDX 1
+// 最快设备条目表懒加载的最大连续失败次数，用尽后改为每次取图按需读 art.idx
+#define ART_PACK_ENTRIES_LOAD_RETRY_MAX 3
+
+// [图包调试显示] 临时代码，调试完成后删除
+// 没有最快设备时 bestMode 的取值（与 artpack.c 中 ART_PACK_NO_BEST 一致）
+#define ART_PACK_STATUS_NO_BEST (-1)
+typedef struct
+{
+    int bestMode;     // 最快设备 mode，无则 ART_PACK_STATUS_NO_BEST
+    int bestRank;     // 最快设备速度等级
+    int zipFdOpen;    // art.zip 常驻 fd 是否打开
+    int entriesInMem; // 条目表是否在内存
+    int entriesFrom;  // 条目表来源 ART_PACK_ENTRIES_*
+    u32 entryCount;   // 条目总数
+    int loadFails;    // 条目表连续载入失败次数
+    int loadGaveUp;   // 是否已放弃载入（改为按需读 art.idx）
+    u32 idxOpens;     // 按需打开 art.idx 的累计次数
+} art_pack_status_t;
+// 非阻塞读取图包状态：成功返回 1；锁被占用返回 0 且不修改 *out
+int artPackGetStatus(art_pack_status_t *out);
+
 #endif

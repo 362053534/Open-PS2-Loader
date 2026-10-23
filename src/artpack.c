@@ -192,11 +192,6 @@ typedef struct
     int rank;                    // 设备速度等级（ART_PACK_RANK_*，越小越快）
 } art_pack_dev_t;
 
-// memEntries 来源：写索引失败时的常驻副本，必须保留
-#define ART_PACK_ENTRIES_RESIDENT 0
-// memEntries 来源：因成为最快设备而从 art.idx 载入，不再是最快设备时可释放
-#define ART_PACK_ENTRIES_FROM_IDX 1
-
 static art_pack_dev_t artPackDevs[MODE_COUNT];
 static pthread_mutex_t artPackMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -211,10 +206,11 @@ static int artPackBestMode = ART_PACK_NO_BEST;
 static int artPackBestFd = ART_PACK_FD_NONE;
 static int artPackBestFdMode = ART_PACK_NO_BEST;
 
-// 最快设备条目表懒加载的最大连续失败次数，用尽后改为每次取图按需读 art.idx
-#define ART_PACK_ENTRIES_LOAD_RETRY_MAX 3
 // 条目表连续载入失败次数；最快设备变化或载入成功时清零，由 artPackMutex 保护
 static int artPackEntriesLoadFails = 0;
+// [图包调试显示] 临时代码，调试完成后删除
+// 按需打开 art.idx 的累计次数，由 artPackMutex 保护
+static u32 artPackIdxOpens = 0;
 
 static int artReadAt(int fd, u64 offset, void *buf, size_t size);
 
@@ -1328,6 +1324,8 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
             return ERR_BAD_FILE;
         }
         close(fd);
+        // [图包调试显示] 临时代码，调试完成后删除
+        artPackIdxOpens++;
         entries = list;
     }
 
@@ -1385,4 +1383,31 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     result = artDecodePng(buf + dataStart, bufLen, resultTex);
     free(buf);
     return result;
+}
+
+// [图包调试显示] 临时代码，调试完成后删除
+int artPackGetStatus(art_pack_status_t *out)
+{
+    if (!out || pthread_mutex_trylock(&artPackMutex) != 0)
+        return 0;
+
+    out->bestMode = artPackBestMode;
+    if (artPackBestMode != ART_PACK_NO_BEST) {
+        art_pack_dev_t *dev = &artPackDevs[artPackBestMode];
+        out->bestRank = dev->rank;
+        out->entriesInMem = (dev->memEntries != NULL);
+        out->entriesFrom = dev->memEntriesFromIdx;
+        out->entryCount = dev->entryCount;
+    } else {
+        out->bestRank = 0;
+        out->entriesInMem = 0;
+        out->entriesFrom = ART_PACK_ENTRIES_RESIDENT;
+        out->entryCount = 0;
+    }
+    out->zipFdOpen = (artPackBestFd != ART_PACK_FD_NONE);
+    out->loadFails = artPackEntriesLoadFails;
+    out->loadGaveUp = (artPackEntriesLoadFails >= ART_PACK_ENTRIES_LOAD_RETRY_MAX);
+    out->idxOpens = artPackIdxOpens;
+    pthread_mutex_unlock(&artPackMutex);
+    return 1;
 }
