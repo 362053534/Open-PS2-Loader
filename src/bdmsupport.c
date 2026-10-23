@@ -1287,9 +1287,9 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
                 int useArt2;
 
-                // ART2 中有图包时进入图包模式（以 itemList->mode 区分设备）
-                // 只有确认 ART2 存在且未进入图包模式时才走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
-                useArt2 = (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") == ART_PACK_INIT_NO_PACK);
+                // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退（以 itemList->mode 区分设备）
+                // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
+                useArt2 = (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") != ART_PACK_INIT_NO_ART2);
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
                     artUseArt2_USB = useArt2;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
