@@ -8,6 +8,27 @@
 #include "include/pad.h"
 #include "include/artpack.h"
 #include <pthread.h>
+#include <stdarg.h>
+
+// 【临时调试】图包启动时序日志，定位完后删除
+#define ART_DBG_LOG_PATH "mass0:artdbg.txt"
+void artDbgLog(const char *fmt, ...)
+{
+    FILE *f = fopen(ART_DBG_LOG_PATH, "ab");
+    va_list ap;
+    static int artDbgStarted = 0; // 每次开机第一条日志前写分隔行，日志一直追加不用删
+    if (!f)
+        return;
+    if (!artDbgStarted) {
+        artDbgStarted = 1;
+        fprintf(f, "\r\n===== 新一次启动 =====\r\n");
+    }
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fprintf(f, "\r\n");
+    fclose(f);
+}
 
 extern GSGLOBAL *gsGlobal;
 
@@ -257,6 +278,7 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     else
         texLoading = 1;
     pthread_mutex_unlock(&texLoadingMutex);
+    artDbgLog("[%d] 入队 %s%s quiet=%d texLoading=%d", (int)guiFrameId, value ? value : "(null)", cache->suffix, quiet, texLoading); // 【临时调试】
 
     // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
     if (ioPutRequest(IO_CACHE_LOAD_ART, req) != IO_OK)
@@ -288,6 +310,7 @@ static void cacheLoadImage1(void *data)
     // 不依赖这套单封面冷却，所以显式绕过 cdFramesCount。两条路径都必须响应
     // forceSkipQr（cacheEnd 的退出保护）。
     if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
+        artDbgLog("[%d] 丢弃(冷却) %s%s cd=%d skip=%d", (int)guiFrameId, ioReq->value, ioReq->cache->suffix, cdFramesCount, forceSkipQr); // 【临时调试】
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -303,6 +326,7 @@ static void cacheLoadImage1(void *data)
     result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
     if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
         result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture);
+    artDbgLog("[%d] 取图 %s%s mode=%d result=%d", (int)guiFrameId, ioReq->value, ioReq->cache->suffix, handler->mode, result); // 【临时调试】
 
     if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&entry->texture);
@@ -335,6 +359,7 @@ static void cacheLoadImage1(void *data)
     pthread_mutex_unlock(&texLoadingMutex);
 
     if (!keepResult) {
+        artDbgLog("[%d] 丢弃结果 %s%s sameEntry=%d", (int)guiFrameId, ioReq->value, ioReq->cache->suffix, sameEntry); // 【临时调试】
         if (sameEntry && ioReq->trackGeneration)
             cacheClearExpiredItem(entry, ioReq->cacheUID);
         cacheDecreaseLoading();
@@ -401,6 +426,7 @@ static void *cacheLoadImage(void *data)
         result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
         if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
             result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture);
+        artDbgLog("[%d] 取图2 %s%s mode=%d result=%d", (int)guiFrameId, ioReq->value, ioReq->cache->suffix, handler->mode, result); // 【临时调试】
 
         if (result >= 0 && ioReq->compactBackground)
             texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
