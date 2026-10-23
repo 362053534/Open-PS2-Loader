@@ -13,8 +13,6 @@
 #include <timer.h> // GetTimerSystemTime / TimerBusClock2USec
 // [图包调试显示] 临时代码，调试完成后删除
 #include <usbhdfsd-common.h> // USBMASS_IOCTL_GET_FRAGLIST
-// [图包调试显示] 临时代码，调试完成后删除
-#define NEWLIB_PORT_AWARE // 与 bdmsupport.c 相同，允许直接调用 fileXio
 #include <fileXio_rpc.h>     // fileXioIoctl2
 
 /*
