@@ -174,8 +174,12 @@ extern int gEnableArtBG;
 extern int gEnableArtCOV;
 extern int gEnableArtICO;
 extern int gEnableArtPack;           // OPLM图包支持开关，改动后重启生效
-extern int gArtPackDeferMenuSelect;  // 图包开启时，默认页选择推迟到BDM图包探测完成后
+extern int gArtPackDeferMenuSelect;  // 图包开启时，默认页选择推迟到BDM图包探测完成后，取值见 ART_PACK_DEFER_*
+#define ART_PACK_DEFER_NONE    0     // 无需推迟，或预载条目表与默认页选择已完成
+#define ART_PACK_DEFER_PENDING 1     // 等待所有设备的图包探测完成
+#define ART_PACK_DEFER_RUNNING 2     // IO 线程正在预载条目表并选择默认页
 void oplSelectDefaultMenu(void);
+void oplArtPackDeferredSelect(void);
 extern int gCfCoverCount;
 extern int gEnableJpg;
 extern int gWideScreen;

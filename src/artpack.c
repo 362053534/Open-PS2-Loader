@@ -20,7 +20,9 @@
  *  - 所有设备状态由 artPackMutex 保护。建索引耗时较长，在锁外完成，最后在锁内发布；
  *  - 只有全局最快设备的 art.zip 保持打开，其 art.idx 条目表也常驻内存；其它设备不占用 fd，
  *    取图时按需读取 art.idx；
- *  - 最快设备的 fd 与条目表均为懒加载：选出最快设备后，在其第一次取图时才打开/载入；
+ *  - 最快设备的条目表只在启动时载入一次：所有设备探测完、选默认页前由 artPackPreloadBestEntries
+ *    在 IO 线程载入；载入失败或之后最快设备变化时不再整表载入，取图回退为按需读 art.idx；
+ *  - 最快设备的 fd 为懒加载：在其第一次取图时才打开；
  *    artPackDeviceEnd 只关闭 fd、释放内存并重新选择最快设备，不做其它文件 IO；
  *  - 每个设备的 artPackDeviceEnd 都会在卸载前关闭该 fd，避免设备卸载（如 PFS 的
  *    PDIOC_CLOSEALL）后留下失效 fd。
@@ -212,11 +214,6 @@ static int artPackBestMode = ART_PACK_NO_BEST;
 static int artPackBestFd = ART_PACK_FD_NONE;
 static int artPackBestFdMode = ART_PACK_NO_BEST;
 
-// 最快设备条目表懒加载的最大连续失败次数，用尽后改为每次取图按需读 art.idx
-#define ART_PACK_ENTRIES_LOAD_RETRY_MAX 3
-// 条目表连续载入失败次数；最快设备变化或载入成功时清零，由 artPackMutex 保护
-static int artPackEntriesLoadFails = 0;
-
 static int artReadAt(int fd, u64 offset, void *buf, size_t size);
 
 // 关闭最快设备的 art.zip fd；调用方须持有 artPackMutex
@@ -286,9 +283,17 @@ static void artPackLoadBestEntries(void)
     dev->memEntriesFromIdx = ART_PACK_ENTRIES_FROM_IDX;
 }
 
+// 启动时所有设备探测完后调用一次（IO 线程），把最快设备的条目表整表载入内存
+void artPackPreloadBestEntries(void)
+{
+    pthread_mutex_lock(&artPackMutex);
+    artPackLoadBestEntries();
+    pthread_mutex_unlock(&artPackMutex);
+}
+
 // 在已激活的设备中选出 rank 最小者（相同时取 mode 较小者）；调用方须持有 artPackMutex。
 // 只做选择与清理（释放旧设备条目表、关闭不属于新设备的 fd），不做任何文件 IO；
-// 新设备的 fd 与条目表在 artPackLoadImage 中懒加载
+// 新设备的 fd 在 artPackLoadImage 中懒加载；条目表不再补载，取图按需读 art.idx
 static void artPackSelectBest(void)
 {
     int i;
@@ -304,12 +309,8 @@ static void artPackSelectBest(void)
     }
 
     // 最快设备变化：释放旧设备从 art.idx 载入的条目表（已被 artFreeDev 清零时为空操作）
-    if (oldBest != artPackBestMode) {
-        if (oldBest != ART_PACK_NO_BEST)
-            artPackDropIdxEntries(&artPackDevs[oldBest]);
-        // 新的最快设备重新获得完整的载入重试次数
-        artPackEntriesLoadFails = 0;
-    }
+    if (oldBest != artPackBestMode && oldBest != ART_PACK_NO_BEST)
+        artPackDropIdxEntries(&artPackDevs[oldBest]);
     if (artPackBestFdMode != artPackBestMode)
         artPackCloseBestFd();
 }
@@ -1289,15 +1290,6 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     if (!dev->active) {
         pthread_mutex_unlock(&artPackMutex);
         return ERR_BAD_FILE;
-    }
-
-    // 懒加载最快设备的条目表；连续失败达到上限后不再尝试，回退为按需读 art.idx
-    if (!dev->memEntries && dev->entryCount > 0 && artPackEntriesLoadFails < ART_PACK_ENTRIES_LOAD_RETRY_MAX) {
-        artPackLoadBestEntries();
-        if (dev->memEntries)
-            artPackEntriesLoadFails = 0;
-        else
-            artPackEntriesLoadFails++;
     }
 
     // 游戏表按 (bucket, gameId) 排序，二分查找
