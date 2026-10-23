@@ -159,6 +159,7 @@ extern int bdmCacheSize;
 extern int hddCacheSize;
 extern int smbCacheSize;
 extern int gAutoDetectPS1Apps;
+extern int gEnableApaIso; // HDD(APA)直读ISO开关，改动后刷新HDD列表生效
 
 extern int gEnableUSB;
 extern int gEnableILK;

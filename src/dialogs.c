@@ -236,14 +236,14 @@ struct UIItem diaConfig[] = {
     {UI_BUTTON, CFG_BDMMODE, 1, 1, _STR_HINT_BDM_START, 0, 0, {.label = {NULL, -1}}},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_HDDMODE}}},
-    {UI_SPACER},
-    {UI_ENUM, CFG_HDDMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
-    {UI_BREAK},
-
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_ETHMODE}}},
     {UI_SPACER},
     {UI_ENUM, CFG_ETHMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BREAK},
+
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_HDDMODE}}},
+    {UI_SPACER},
+    {UI_ENUM, CFG_HDDMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_APPMODE}}},
@@ -251,14 +251,19 @@ struct UIItem diaConfig[] = {
     {UI_ENUM, CFG_APPMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"APPS & PS1自动识别", -1}}},
-    {UI_SPACER},
-    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
-    {UI_BREAK},
-
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_DEFDEVICE}}},
     {UI_SPACER},
     {UI_ENUM, CFG_DEFDEVICE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_SPLITTER},
+
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"HDD(APA)直读ISO", -1}}},
+    {UI_SPACER},
+    {UI_BOOL, CFG_APAISO, 1, 1, _STR_HINT_APAISO, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BREAK},
+
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"APPS & PS1自动识别", -1}}},
+    {UI_SPACER},
+    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动开启模式1 (提高兼容性)", -1}}},
