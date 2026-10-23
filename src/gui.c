@@ -804,7 +804,6 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_TXTRENAME, gTxtRename);
     diaSetInt(diaUIConfig, UICFG_AUTOSORT, gAutosort);
     diaSetInt(diaUIConfig, UICFG_AUTOREFRESH, gAutoRefresh);
-    diaSetInt(diaUIConfig, UICFG_NOTIFICATIONS, gEnableNotifications);
     diaSetEnum(diaUIConfig, UICFG_COVERART_BG, coverArtBG);
     diaSetEnum(diaUIConfig, UICFG_COVERART_COV, coverArtCOV);
     diaSetEnum(diaUIConfig, UICFG_COVERART_ICO, coverArtICO);
@@ -838,7 +837,6 @@ reselect_video_mode:
         }
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
-        diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);
         diaGetInt(diaUIConfig, UICFG_COVERART_BG, &gEnableArtBG);
         diaGetInt(diaUIConfig, UICFG_COVERART_COV, &gEnableArtCOV);
         diaGetInt(diaUIConfig, UICFG_COVERART_ICO, &gEnableArtICO);

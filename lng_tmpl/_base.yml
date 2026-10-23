@@ -555,13 +555,13 @@ gui_strings:
 - label: ENABLE_NOTIFICATIONS
   string: 通知
 - label: CFG_NOTIFICATION
-  string: 已从%s加载设置
+  string: 设置加载自%s
 - label: THM_NOTIFICATION
-  string: 已从%s加载主题
+  string: 主题加载自%s
 - label: LNG_NOTIFICATION
-  string: 已从%s加载语言
+  string: 语言加载自%s
 - label: PARTITION_NOTIFICATION
-  string: 已挂载%s分区。
+  string: 已挂载分区：%s
 - label: OPTIONS
   string: 游戏设置
 - label: GAME_SETTINGS_SAVED
