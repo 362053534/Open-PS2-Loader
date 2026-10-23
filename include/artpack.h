@@ -33,6 +33,9 @@
 #define ART_PACK_INIT_NO_ART2 -1
 int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank);
 
+// 启动时所有设备的图包探测完后调用一次（IO 线程），把最快设备的条目表载入内存；失败时取图回退为按需读 art.idx
+void artPackPreloadBestEntries(void);
+
 // 设备清理/关闭时调用，释放该设备的全部图包内存；可重复调用
 void artPackDeviceEnd(int mode);
 

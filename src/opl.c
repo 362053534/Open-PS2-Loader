@@ -3084,13 +3084,22 @@ void oplSelectDefaultMenu(void)
     }
 }
 
+// 图包开启时推迟的默认页选择（IO 线程）：先把最快设备的条目表载入内存，再选默认页，
+// 保证 intro 期间的取图都能命中内存中的条目表
+void oplArtPackDeferredSelect(void)
+{
+    artPackPreloadBestEntries();
+    oplSelectDefaultMenu();
+    gArtPackDeferMenuSelect = ART_PACK_DEFER_NONE;
+}
+
 static void deferredInit(void)
 {
     // 图包开启时，BDM 图包要等主循环里的 BDM 启动流程才探测；若此时就选中默认页，
     // 欢迎画面背后会提前请求该页的图并被永久记为无图。改为在 BDM 就绪后再选默认页。
     // HDD/ETH 的图包探测在 initAllSupport 中已同步完成，无需等待。
     if (gEnableArtPack) {
-        gArtPackDeferMenuSelect = 1;
+        gArtPackDeferMenuSelect = ART_PACK_DEFER_PENDING;
         gInitComplete = 1; // 原本由 SELECT_MENU 置位，guiIntroLoop 靠它结束
         return;
     }

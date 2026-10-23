@@ -1941,12 +1941,13 @@ void guiMainLoop(void)
             if ((bdmStartupStatus & BDM_STARTUP_STATUS_READY) &&
                 (gETHStartMode != START_MODE_AUTO || gDefaultDevice != ETH_MODE || !ethIsShareListPending()) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
-                if (!mainScreenInitDone) {
-                    // 图包开启时推迟的默认页选择：此时所有设备的图包已探测完，入队的 SELECT_MENU 由下一行立即执行
-                    if (gArtPackDeferMenuSelect) {
-                        gArtPackDeferMenuSelect = 0;
-                        oplSelectDefaultMenu();
-                    }
+                // 图包开启时推迟的默认页选择：此时所有设备的图包已探测完，交给 IO 线程先预载条目表再选默认页
+                if (!mainScreenInitDone && gArtPackDeferMenuSelect == ART_PACK_DEFER_PENDING) {
+                    gArtPackDeferMenuSelect = ART_PACK_DEFER_RUNNING;
+                    ioPutRequest(IO_CUSTOM_SIMPLEACTION, &oplArtPackDeferredSelect);
+                }
+                // 预载完成、SELECT_MENU 已入队后才继续，由下面的 guiExecDeferredOps 立即执行
+                if (!mainScreenInitDone && gArtPackDeferMenuSelect == ART_PACK_DEFER_NONE) {
                     // 须在首次淡出前应用完整菜单，否则本帧仍会绘制旧列表。
                     guiExecDeferredOps();
                     // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页
