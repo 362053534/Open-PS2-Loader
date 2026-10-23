@@ -33,11 +33,11 @@ int bdmDeviceModeStarted;
 static item_list_t bdmDeviceList[MAX_BDM_DEVICES];
 static int bdmDeviceListInitialized = 0;
 
-// 各BDM类型是否走 ART2 散文件（由 artPackDeviceInit 结果决定）
-static int artUseArt2_USB;
-static int artUseArt2_ILINK;
-static int artUseArt2_SDC;
-static int artUseArt2_ATA;
+// 各BDM类型的 ART2 标志位（ART2_FLAG_*，由 artPackDeviceInit 与 GAMES/APPS 目录探测结果决定）
+static int artArt2Flags_USB;
+static int artArt2Flags_ILINK;
+static int artArt2Flags_SDC;
+static int artArt2Flags_ATA;
 
 void bdmInitDevicesData();
 
@@ -977,7 +977,7 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
 static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
-    int useArt2 = 0;
+    int art2Flags = 0;
     char path[256];
 
     (void)id;
@@ -986,15 +986,16 @@ static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char
         return ERR_BAD_FILE;
 
     if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-        useArt2 = artUseArt2_USB;
+        art2Flags = artArt2Flags_USB;
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-        useArt2 = artUseArt2_ILINK;
+        art2Flags = artArt2Flags_ILINK;
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-        useArt2 = artUseArt2_SDC;
+        art2Flags = artArt2Flags_SDC;
     else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-        useArt2 = artUseArt2_ATA;
+        art2Flags = artArt2Flags_ATA;
 
-    sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", useArt2, folder, isRelative, value, suffix);
+    if (sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", art2Flags, folder, isRelative, value, suffix) < 0)
+        return ERR_BAD_FILE;
     return texDiscoverLoad(resultTex, path, -1);
 }
 
@@ -1285,19 +1286,26 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
 
             // 设备就绪后探测 ART2 是否存在
             if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
-                int useArt2;
+                int art2Flags = 0;
 
                 // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退（以 itemList->mode 区分设备）
                 // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
-                useArt2 = (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") != ART_PACK_INIT_NO_ART2);
+                // ART2 存在时再探测 GAMES/APPS 目录：没有 GAMES 时游戏图直接走图包回退，没有 APPS 时 ELF 直接无图
+                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/") != ART_PACK_INIT_NO_ART2) {
+                    art2Flags = ART2_FLAG_ON;
+                    if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_GAMES))
+                        art2Flags |= ART2_FLAG_GAMES;
+                    if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_APPS))
+                        art2Flags |= ART2_FLAG_APPS;
+                }
                 if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                    artUseArt2_USB = useArt2;
+                    artArt2Flags_USB = art2Flags;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                    artUseArt2_ILINK = useArt2;
+                    artArt2Flags_ILINK = art2Flags;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                    artUseArt2_SDC = useArt2;
+                    artArt2Flags_SDC = art2Flags;
                 else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                    artUseArt2_ATA = useArt2;
+                    artArt2Flags_ATA = art2Flags;
             }
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.

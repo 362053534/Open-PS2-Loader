@@ -63,10 +63,29 @@ void sbCreateFolders(const char *path, int createDiscImgFolders);
 #define ART_FOLDER_PS1  "ART_PS1"
 #define ART_FOLDER_ELF  "ART_ELF"
 
-/* useArt2 由 artPackDeviceInit 的结果决定：非 0 时只用 ART2（ELF 进 APPS，PS2/POPS 进 GAMES），为 0 才用 ART。 */
-void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
-                         int useArt2, const char *folder, int isRelative,
-                         const char *value, const char *suffix);
+/* ART2 标志位，由设备初始化时探测得到 */
+#define ART2_FLAG_ON    (1 << 0) // ART2 存在
+#define ART2_FLAG_GAMES (1 << 1) // ART2/GAMES 存在
+#define ART2_FLAG_APPS  (1 << 2) // ART2/APPS 存在
+
+/* ART2 下的分类目录名 */
+#define ART2_BUCKET_GAMES "GAMES" // PS2/PS1 游戏图
+#define ART2_BUCKET_APPS  "APPS"  // ELF 应用图
+
+/* 探测 ART2 分类目录时使用的路径缓冲区大小 */
+#define ART2_PATH_MAX 256
+
+/* sbBuildArtImagePath 返回值：不拼路径，调用方应跳过散文件 */
+#define ART_PATH_SKIP -1
+
+/* art2Flags 含 ART2_FLAG_ON 时只用 ART2（ELF 进 APPS，PS2/POPS 进 GAMES），否则用 ART。
+ * 成功拼出路径返回 0；ART2 存在但缺少所需的 GAMES/APPS 目录时返回 ART_PATH_SKIP。 */
+int sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
+                        int art2Flags, const char *folder, int isRelative,
+                        const char *value, const char *suffix);
+
+/* 检查 prefix 下 ART2/<bucket> 目录是否存在（bucket 取 ART2_BUCKET_*），存在返回非 0 */
+int sbArtHasBucket(const char *prefix, const char *sep, const char *bucket);
 
 // ISO9660 filesystem management functions.
 u32 sbGetISO9660MaxLBA(const char *path);

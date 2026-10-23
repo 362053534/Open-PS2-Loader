@@ -2225,34 +2225,52 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
         sbCreateFoldersFromList(path, discImgFolders);
 }
 
-void sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
-                         int useArt2, const char *folder, int isRelative,
-                         const char *value, const char *suffix)
+int sbArtHasBucket(const char *prefix, const char *sep, const char *bucket)
+{
+    char path[ART2_PATH_MAX];
+    struct stat st;
+
+    snprintf(path, sizeof(path), "%sART2%s%s", prefix, sep, bucket);
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+int sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char *sep,
+                        int art2Flags, const char *folder, int isRelative,
+                        const char *value, const char *suffix)
 {
     const char *bucket = NULL;
     const char *artFolder = folder;
 
     if (!isRelative) {
         snprintf(path, pathSize, "%s%s_%s", folder, value, suffix);
-        return;
+        return 0;
     }
 
     /* ART_PS1 / ART_ELF 只用来选桶，落回旧 ART 时必须还原成真实目录名。 */
     if (folder && (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_ELF)))
         artFolder = ART_FOLDER_NAME;
 
-    /* useArt2 非 0 时只用 ART2（ELF 进 APPS，PS2/POPS 进 GAMES），否则用 ART。不检查子目录是否存在。 */
-    if (useArt2 && folder) {
-        if (!strcmp(folder, ART_FOLDER_ELF))
-            bucket = "APPS";
-        else if (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_NAME))
-            bucket = "GAMES";
+    /* ART2 存在时只用 ART2（ELF 进 APPS，PS2/POPS 进 GAMES），否则用 ART。 */
+    if ((art2Flags & ART2_FLAG_ON) && folder) {
+        if (!strcmp(folder, ART_FOLDER_ELF)) {
+            // 没有 APPS 时不拼路径，ELF 直接无图，不回退图包也不回退 ART
+            if (!(art2Flags & ART2_FLAG_APPS))
+                return ART_PATH_SKIP;
+            bucket = ART2_BUCKET_APPS;
+        }
+        else if (!strcmp(folder, ART_FOLDER_PS1) || !strcmp(folder, ART_FOLDER_NAME)) {
+            // 没有 GAMES 时不拼路径，调用方直接跳过散文件，由图包回退取图
+            if (!(art2Flags & ART2_FLAG_GAMES))
+                return ART_PATH_SKIP;
+            bucket = ART2_BUCKET_GAMES;
+        }
     }
 
     if (bucket) {
         snprintf(path, pathSize, "%sART2%s%s%s%s%s%s_%s", prefix, sep, bucket, sep, value, sep, value, suffix);
     } else
         snprintf(path, pathSize, "%s%s%s%s_%s", prefix, artFolder, sep, value, suffix);
+    return 0;
 }
 
 int sbLoadCheats(const char *path, const char *file, config_set_t *configSet)

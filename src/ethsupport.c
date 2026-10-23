@@ -48,8 +48,8 @@ static int ethReadNetConfig(void);
 
 static int ethInitSemaID = -1;
 
-// SMB 是否走 ART2 散文件（由 artPackDeviceInit 结果决定）
-static int artUseArt2_SMB;
+// SMB 的 ART2 标志位（ART2_FLAG_*，由 artPackDeviceInit 与 GAMES/APPS 目录探测结果决定）
+static int artArt2Flags_SMB;
 
 // Initializes locking semaphore for network support (not for just SMB support, but for the network subsystem).
 static int ethInitSema(void)
@@ -174,9 +174,17 @@ static void ethSMBConnect(void)
         // 共享未成功打开时访问smb:目录可能永久等待，只在连接完成后检测ART2。
         // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退
         // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
-        artUseArt2_SMB = (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") != ART_PACK_INIT_NO_ART2);
+        // ART2 存在时再探测 GAMES/APPS 目录：没有 GAMES 时游戏图直接走图包回退，没有 APPS 时 ELF 直接无图
+        artArt2Flags_SMB = 0;
+        if (artPackDeviceInit(ETH_MODE, ethPrefix, "\\") != ART_PACK_INIT_NO_ART2) {
+            artArt2Flags_SMB = ART2_FLAG_ON;
+            if (sbArtHasBucket(ethPrefix, "\\", ART2_BUCKET_GAMES))
+                artArt2Flags_SMB |= ART2_FLAG_GAMES;
+            if (sbArtHasBucket(ethPrefix, "\\", ART2_BUCKET_APPS))
+                artArt2Flags_SMB |= ART2_FLAG_APPS;
+        }
     } else {
-        artUseArt2_SMB = 0;
+        artArt2Flags_SMB = 0;
         artPackDeviceEnd(ETH_MODE);
     }
 }
@@ -834,7 +842,8 @@ static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char
 
     char path[256];
 
-    sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", artUseArt2_SMB, folder, isRelative, value, suffix);
+    if (sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", artArt2Flags_SMB, folder, isRelative, value, suffix) < 0)
+        return ERR_BAD_FILE;
     return texDiscoverLoad(resultTex, path, -1);
 }
 

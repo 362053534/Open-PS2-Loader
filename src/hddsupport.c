@@ -77,8 +77,8 @@ typedef struct
 // forward declaration
 static item_list_t hddGameList;
 
-// APA 是否走 ART2 散文件（由 artPackDeviceInit 结果决定）
-static int artUseArt2_APA;
+// APA 的 ART2 标志位（ART2_FLAG_*，由 artPackDeviceInit 与 GAMES/APPS 目录探测结果决定）
+static int artArt2Flags_APA;
 
 static int hddLoadGameListCache(hdl_games_list_t *cache);
 static int hddUpdateGameListCache(hdl_games_list_t *cache, hdl_games_list_t *game_list);
@@ -470,7 +470,15 @@ int hddLoadSupportModules(void)
 
         // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退
         // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
-        artUseArt2_APA = (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/") != ART_PACK_INIT_NO_ART2);
+        // ART2 存在时再探测 GAMES/APPS 目录：没有 GAMES 时游戏图直接走图包回退，没有 APPS 时 ELF 直接无图
+        artArt2Flags_APA = 0;
+        if (artPackDeviceInit(HDD_MODE, gHDDPrefix, "/") != ART_PACK_INIT_NO_ART2) {
+            artArt2Flags_APA = ART2_FLAG_ON;
+            if (sbArtHasBucket(gHDDPrefix, "/", ART2_BUCKET_GAMES))
+                artArt2Flags_APA |= ART2_FLAG_GAMES;
+            if (sbArtHasBucket(gHDDPrefix, "/", ART2_BUCKET_APPS))
+                artArt2Flags_APA |= ART2_FLAG_APPS;
+        }
 
         // 根据全局DMA设置，来重设DMA传输模式，加快Art图片的读取速度
         int gDmaMode = -1; // 获取配置失败时，不重设传输模式
@@ -1146,7 +1154,8 @@ static int hddGetImage(item_list_t *itemList, char *folder, int isRelative, char
 
     char path[256];
 
-    sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", artUseArt2_APA, folder, isRelative, value, suffix);
+    if (sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", artArt2Flags_APA, folder, isRelative, value, suffix) < 0)
+        return ERR_BAD_FILE;
     return texDiscoverLoad(resultTex, path, -1);
 }
 
