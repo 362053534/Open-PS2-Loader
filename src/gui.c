@@ -1619,10 +1619,13 @@ static int endIntro = 0; // Break intro loop and start 'Last Played Auto Start' 
 static int busyAlpha = 0x00; // Fully transparant
 // [图包调试显示] 临时代码，调试完成后删除
 #define ART_PACK_OVERLAY_X             10                                  // 左边距
-#define ART_PACK_OVERLAY_BOTTOM_MARGIN 60                                  // 第一行距屏幕底部
+#define ART_PACK_OVERLAY_BOTTOM_MARGIN 90                                  // 第一行距屏幕底部（[图包调试显示] 临时代码，调试完成后删除：增加一行 FRAG）
 #define ART_PACK_OVERLAY_LINE_STEP     15                                  // 行距
 #define ART_PACK_OVERLAY_COLOR         GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80) // 黄色
 #define ART_PACK_OVERLAY_TEXT_LEN      48                                  // 每行缓冲区大小
+// [图包调试显示] 临时代码，调试完成后删除
+#define ART_PACK_OVERLAY_US_PER_TENTH  100  // 每 0.1 毫秒微秒数
+#define ART_PACK_OVERLAY_TENTHS_PER_MS 10   // 每毫秒的 0.1 毫秒数
 static void guiDrawArtPackStatus(void)
 {
     static art_pack_status_t snap = {ART_PACK_STATUS_NO_BEST};
@@ -1650,6 +1653,37 @@ static void guiDrawArtPackStatus(void)
     y += ART_PACK_OVERLAY_LINE_STEP;
 
     snprintf(text, sizeof(text), "fails %d/%d opens %u", snap.loadFails, ART_PACK_ENTRIES_LOAD_RETRY_MAX, (unsigned int)snap.idxOpens);
+    fntRenderString(gTheme->fonts[0], x, y, ALIGN_LEFT, 0, 0, text, ART_PACK_OVERLAY_COLOR);
+    y += ART_PACK_OVERLAY_LINE_STEP;
+
+    // [图包调试显示] 临时代码，调试完成后删除
+    // 快速定位 A/B 测时，毫秒保留一位小数
+    if (snap.fsabState == ART_PACK_FSAB_DONE) {
+        u32 n = snap.fsabNormalUs / ART_PACK_OVERLAY_US_PER_TENTH;
+        u32 f = snap.fsabFastUs / ART_PACK_OVERLAY_US_PER_TENTH;
+        snprintf(text, sizeof(text), "FS: normal %u.%ums fast %u.%ums",
+                 (unsigned int)(n / ART_PACK_OVERLAY_TENTHS_PER_MS), (unsigned int)(n % ART_PACK_OVERLAY_TENTHS_PER_MS),
+                 (unsigned int)(f / ART_PACK_OVERLAY_TENTHS_PER_MS), (unsigned int)(f % ART_PACK_OVERLAY_TENTHS_PER_MS));
+    } else if (snap.fsabState == ART_PACK_FSAB_NOT_BDM)
+        snprintf(text, sizeof(text), "FS: N/A");
+    else if (snap.fsabState == ART_PACK_FSAB_ERROR)
+        snprintf(text, sizeof(text), "FS: err");
+    else
+        snprintf(text, sizeof(text), "FS: ?");
+    fntRenderString(gTheme->fonts[0], x, y, ALIGN_LEFT, 0, 0, text, ART_PACK_OVERLAY_COLOR);
+    y += ART_PACK_OVERLAY_LINE_STEP;
+
+    // [图包调试显示] 临时代码，调试完成后删除
+    // art.zip 碎片数 / 驱动快速定位表容量，超出则快速定位不可用
+    if (snap.fragState == ART_PACK_FSAB_DONE)
+        snprintf(text, sizeof(text), "FRAG: %d/%d%s", snap.fragCount, ART_PACK_FASTSEEK_MAX_FRAGS,
+                 snap.fragCount > ART_PACK_FASTSEEK_MAX_FRAGS ? " (over)" : "");
+    else if (snap.fragState == ART_PACK_FSAB_NOT_BDM)
+        snprintf(text, sizeof(text), "FRAG: N/A");
+    else if (snap.fragState == ART_PACK_FSAB_ERROR)
+        snprintf(text, sizeof(text), "FRAG: err");
+    else
+        snprintf(text, sizeof(text), "FRAG: ?");
     fntRenderString(gTheme->fonts[0], x, y, ALIGN_LEFT, 0, 0, text, ART_PACK_OVERLAY_COLOR);
 }
 

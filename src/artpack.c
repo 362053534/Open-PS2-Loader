@@ -9,6 +9,11 @@
 #include <pthread.h>
 #include <setjmp.h>
 #include <strings.h> // strcasecmp
+// [图包调试显示] 临时代码，调试完成后删除
+#include <timer.h> // GetTimerSystemTime / TimerBusClock2USec
+// [图包调试显示] 临时代码，调试完成后删除
+#include <usbhdfsd-common.h> // USBMASS_IOCTL_GET_FRAGLIST
+#include <fileXio_rpc.h>     // fileXioIoctl2
 
 /*
  * 图包加载器（第一阶段）：ART2 目录中文件名含 OPLM_ART（不区分大小写）的 .zip，取 readdir 遇到的第一个；
@@ -214,6 +219,86 @@ static u32 artPackIdxOpens = 0;
 
 static int artReadAt(int fd, u64 offset, void *buf, size_t size);
 
+// [图包调试显示] 临时代码，调试完成后删除
+// 测时目标：距文件末尾的字节数，以及读取字节数
+#define ART_PACK_FSAB_TAIL_BYTES 4096
+#define ART_PACK_FSAB_READ_BYTES 16
+// 每秒微秒数
+#define ART_PACK_USEC_PER_SEC 1000000
+// 常驻 fd 每次打开测一次的结果，由 artPackMutex 保护
+static int artPackFsabState = ART_PACK_FSAB_NONE;
+static u32 artPackFsabNormalUs = 0;
+static u32 artPackFsabFastUs = 0;
+// [图包调试显示] 临时代码，调试完成后删除
+// 常驻 fd 每次打开查询一次的碎片总数，由 artPackMutex 保护
+static int artPackFragState = ART_PACK_FSAB_NONE;
+static int artPackFragCount = 0;
+
+// [图包调试显示] 临时代码，调试完成后删除
+// 查询 art.zip 碎片总数：不传缓冲区时驱动只遍历簇链计数并返回总数。调用方须持有 artPackMutex
+static void artPackQueryFragCount(int fd)
+{
+    int count = fileXioIoctl2(ps2sdk_get_iop_fd(fd), USBMASS_IOCTL_GET_FRAGLIST, NULL, 0, NULL, 0);
+
+    if (count < 0) {
+        artPackFragState = ART_PACK_FSAB_ERROR;
+        return;
+    }
+    artPackFragCount = count;
+    artPackFragState = ART_PACK_FSAB_DONE;
+}
+
+// [图包调试显示] 临时代码，调试完成后删除
+// 计时：对 fd 定位到 target 并读取，成功返回耗时微秒，失败返回 -1
+static s64 artPackTimeSeekRead(int fd, off64_t target)
+{
+    u8 tmp[ART_PACK_FSAB_READ_BYTES];
+    u64 start, clocks;
+    u32 sec, usec;
+
+    start = GetTimerSystemTime();
+    if (lseek64(fd, target, SEEK_SET) != target || read(fd, tmp, sizeof(tmp)) < 0)
+        return -1;
+    clocks = GetTimerSystemTime() - start;
+    TimerBusClock2USec(clocks, &sec, &usec);
+    return (s64)sec * ART_PACK_USEC_PER_SEC + usec;
+}
+
+// [图包调试显示] 临时代码，调试完成后删除
+// 先用临时第二个 fd（无快速定位表）测普通定位，再用常驻 fd（持有快速定位表）测快速定位。调用方须持有 artPackMutex
+static void artPackMeasureFastSeek(int fd, const char *zipPath)
+{
+    off64_t size, target;
+    s64 normalUs, fastUs;
+    int tmpFd;
+
+    artPackFsabState = ART_PACK_FSAB_ERROR;
+    size = lseek64(fd, 0, SEEK_END);
+    if (size < 0)
+        return;
+    target = size - ART_PACK_FSAB_TAIL_BYTES;
+    if (target < 0)
+        target = 0;
+
+    // 普通定位：新打开的 fd 位置为 0
+    tmpFd = open(zipPath, O_RDONLY);
+    if (tmpFd < 0)
+        return;
+    normalUs = artPackTimeSeekRead(tmpFd, target);
+    close(tmpFd);
+
+    // 快速定位：先回到 0，使起点与普通定位一致
+    if (normalUs < 0 || lseek64(fd, 0, SEEK_SET) != 0)
+        return;
+    fastUs = artPackTimeSeekRead(fd, target);
+    if (fastUs < 0)
+        return;
+
+    artPackFsabNormalUs = (u32)normalUs;
+    artPackFsabFastUs = (u32)fastUs;
+    artPackFsabState = ART_PACK_FSAB_DONE;
+}
+
 // 关闭最快设备的 art.zip fd；调用方须持有 artPackMutex
 static void artPackCloseBestFd(void)
 {
@@ -221,6 +306,13 @@ static void artPackCloseBestFd(void)
         close(artPackBestFd);
     artPackBestFd = ART_PACK_FD_NONE;
     artPackBestFdMode = ART_PACK_NO_BEST;
+    // [图包调试显示] 临时代码，调试完成后删除
+    artPackFsabState = ART_PACK_FSAB_NONE;
+    artPackFsabNormalUs = 0;
+    artPackFsabFastUs = 0;
+    // [图包调试显示] 临时代码，调试完成后删除
+    artPackFragState = ART_PACK_FSAB_NONE;
+    artPackFragCount = 0;
 }
 
 // 返回最快设备的 art.zip fd，必要时打开；失败返回 ART_PACK_FD_NONE，下次取图再重试。调用方须持有 artPackMutex
@@ -238,6 +330,17 @@ static int artPackEnsureBestFd(void)
         return ART_PACK_FD_NONE;
     }
     artPackBestFdMode = artPackBestMode;
+    // [图包调试显示] 临时代码，调试完成后删除
+    // 只有 BDM 设备（BDM_MODE..BDM_MODE4）走 bdmfs_fatfs 快速定位
+    if (artPackBestMode >= BDM_MODE && artPackBestMode <= BDM_MODE4) {
+        artPackMeasureFastSeek(artPackBestFd, artPackDevs[artPackBestMode].zipPath);
+        // [图包调试显示] 临时代码，调试完成后删除
+        artPackQueryFragCount(artPackBestFd);
+    } else {
+        artPackFsabState = ART_PACK_FSAB_NOT_BDM;
+        // [图包调试显示] 临时代码，调试完成后删除
+        artPackFragState = ART_PACK_FSAB_NOT_BDM;
+    }
     return artPackBestFd;
 }
 
@@ -1408,6 +1511,13 @@ int artPackGetStatus(art_pack_status_t *out)
     out->loadFails = artPackEntriesLoadFails;
     out->loadGaveUp = (artPackEntriesLoadFails >= ART_PACK_ENTRIES_LOAD_RETRY_MAX);
     out->idxOpens = artPackIdxOpens;
+    // [图包调试显示] 临时代码，调试完成后删除
+    out->fsabState = artPackFsabState;
+    out->fsabNormalUs = artPackFsabNormalUs;
+    out->fsabFastUs = artPackFsabFastUs;
+    // [图包调试显示] 临时代码，调试完成后删除
+    out->fragState = artPackFragState;
+    out->fragCount = artPackFragCount;
     pthread_mutex_unlock(&artPackMutex);
     return 1;
 }

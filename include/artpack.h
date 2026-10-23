@@ -50,6 +50,14 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
 #define ART_PACK_ENTRIES_LOAD_RETRY_MAX 3
 
 // [图包调试显示] 临时代码，调试完成后删除
+// 快速定位 A/B 测时状态：未测 / 非 BDM 设备 / 完成 / 出错
+#define ART_PACK_FSAB_NONE    0
+#define ART_PACK_FSAB_NOT_BDM 1
+#define ART_PACK_FSAB_DONE    2
+#define ART_PACK_FSAB_ERROR   3
+// [图包调试显示] 临时代码，调试完成后删除
+// 驱动快速定位表可映射的最大碎片数；必须与 ps2sdk iop/fs/bdmfs_fatfs/src/fs_driver.c 中 FASTSEEK_MAX_FRAGS 保持一致
+#define ART_PACK_FASTSEEK_MAX_FRAGS 511
 // 没有最快设备时 bestMode 的取值（与 artpack.c 中 ART_PACK_NO_BEST 一致）
 #define ART_PACK_STATUS_NO_BEST (-1)
 typedef struct
@@ -63,6 +71,13 @@ typedef struct
     int loadFails;    // 条目表连续载入失败次数
     int loadGaveUp;   // 是否已放弃载入（改为按需读 art.idx）
     u32 idxOpens;     // 按需打开 art.idx 的累计次数
+    // [图包调试显示] 临时代码，调试完成后删除
+    int fsabState;    // 快速定位 A/B 测时状态 ART_PACK_FSAB_*
+    u32 fsabNormalUs; // 普通定位+读取耗时（微秒）
+    u32 fsabFastUs;   // 快速定位+读取耗时（微秒）
+    // [图包调试显示] 临时代码，调试完成后删除
+    int fragState;    // 碎片数查询状态 ART_PACK_FSAB_*（复用同一组状态值）
+    int fragCount;    // art.zip 碎片总数
 } art_pack_status_t;
 // 非阻塞读取图包状态：成功返回 1；锁被占用返回 0 且不修改 *out
 int artPackGetStatus(art_pack_status_t *out);
