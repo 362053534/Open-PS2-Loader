@@ -131,6 +131,7 @@ enum INTERNAL_TEXTURE {
 int texLookupInternalTexId(const char *name);
 int texLoadInternal(GSTEXTURE *texture, int texId);
 int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId);
+int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg);
 void texFree(GSTEXTURE *texture);
 void texInit(void);
 void texFinish(void);

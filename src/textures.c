@@ -785,6 +785,12 @@ int texLoadInternal(GSTEXTURE *texture, int texId)
 
 int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
 {
+    return texDiscoverLoadEx(texture, path, texId, gEnableJpg);
+}
+
+// allowJpg 为 0 时只找 png（性能模式），为 1 时 png 找不到再找 jpg（兼容模式）
+int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg)
+{
     if (!path)
         return ERR_BAD_FILE;
 
@@ -809,7 +815,7 @@ int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
     if (texLoad(texture, filePath) >= 0)
         return 0;
     else {
-        if (gEnableJpg) {
+        if (allowJpg) {
             if (texId != -1)
                 snprintf(filePath, sizeof(filePath), "%s%s.%s", path, internalDefault[texId].name, "jpg");
             else

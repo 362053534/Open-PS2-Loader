@@ -842,13 +842,17 @@ static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char
 
     char path[256];
 
-    // 本设备无 ART2 且非 ELF 请求、全局图包可用时，跳过旧 ART/ 目录，直接交由调用方回退到图包
-    if (!(artArt2Flags_SMB & ART2_FLAG_ON) && !(folder && !strcmp(folder, ART_FOLDER_ELF)) && artPackIsActive(ETH_MODE, isRelative))
+    // 非 ELF 请求且全局图包可用时，图包模式生效
+    int artPackOn = !(folder && !strcmp(folder, ART_FOLDER_ELF)) && artPackIsActive(ETH_MODE, isRelative);
+
+    // 本设备无 ART2 且图包模式生效时，跳过旧 ART/ 目录，直接交由调用方回退到图包
+    if (!(artArt2Flags_SMB & ART2_FLAG_ON) && artPackOn)
         return ERR_BAD_FILE;
 
     if (sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", artArt2Flags_SMB, folder, isRelative, value, suffix) < 0)
         return ERR_BAD_FILE;
-    return texDiscoverLoad(resultTex, path, -1);
+    // 图包模式生效时强制按性能模式找散图（不找 jpg），否则沿用图集设置
+    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn);
 }
 
 static int ethGetTextId(item_list_t *itemList)
