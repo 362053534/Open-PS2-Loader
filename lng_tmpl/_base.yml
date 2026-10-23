@@ -721,4 +721,4 @@ gui_strings:
 - label: ARTPACK
   string: OPLM图包支持 (秒出图)
 - label: HINT_ARTPACK
-  string: 将OPLM_ART的zip图包(不要解压)，直接放在ART2里即可
+  string: 将OPLM官方zip图包(不要解压)，直接放到ART2里即可
