@@ -173,6 +173,9 @@ extern int gEnableNotifications;
 extern int gEnableArtBG;
 extern int gEnableArtCOV;
 extern int gEnableArtICO;
+extern int gEnableArtPack;           // OPLM图包支持开关，改动后重启生效
+extern int gArtPackDeferMenuSelect;  // 图包开启时，默认页选择推迟到BDM图包探测完成后
+void oplSelectDefaultMenu(void);
 extern int gCfCoverCount;
 extern int gEnableJpg;
 extern int gWideScreen;

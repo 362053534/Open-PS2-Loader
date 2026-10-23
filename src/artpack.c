@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <setjmp.h>
 #include <strings.h> // strcasecmp
+#include <sys/stat.h> // stat / S_ISDIR（图包开关关闭时判断 ART2）
 
 /*
  * 图包加载器（第一阶段）：ART2 目录中文件名含 OPLM_ART（不区分大小写）的 .zip，取 readdir 遇到的第一个；
@@ -1159,6 +1160,16 @@ int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank)
     if (!prefix || !sep)
         return ART_PACK_INIT_NO_ART2;
 
+    // 图包开关关闭：只用 stat 判断 ART2 是否存在（供散图路径使用），不列目录、不打开图包
+    if (!gEnableArtPack) {
+        struct stat st;
+
+        snprintf(artDir, sizeof(artDir), "%s%s", prefix, ART_PACK_DIR_NAME);
+        if (stat(artDir, &st) == 0 && S_ISDIR(st.st_mode))
+            return ART_PACK_INIT_NO_PACK;
+        return ART_PACK_INIT_NO_ART2;
+    }
+
     memset(&dev, 0, sizeof(dev));
     // 只在 ART2 目录中查找图包；没有 ART2 或其中没有图包时，图包模式关闭，完全走旧流程
     snprintf(artDir, sizeof(artDir), "%s%s%s", prefix, ART_PACK_DIR_NAME, sep);
@@ -1226,6 +1237,10 @@ void artPackDeviceEnd(int mode)
 int artPackIsActive(int mode, int isRelative)
 {
     int active;
+
+    // 图包开关关闭时一律走旧流程，不加锁
+    if (!gEnableArtPack)
+        return 0;
 
     // 绝对路径（主题自带图片）不属于游戏 ART，始终走旧流程
     if (!isRelative || !artValidMode(mode))

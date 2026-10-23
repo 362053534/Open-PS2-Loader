@@ -813,6 +813,7 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_COVERART_COV, gEnableArtCOV);
     diaSetInt(diaUIConfig, UICFG_COVERART_ICO, gEnableArtICO);
     diaSetInt(diaUIConfig, UICFG_COVERARTMODE, gEnableJpg);
+    diaSetInt(diaUIConfig, UICFG_ARTPACK, gEnableArtPack);
     diaSetInt(diaUIConfig, UICFG_WIDESCREEN, gWideScreen);
     diaSetInt(diaUIConfig, UICFG_VMODE, gVMode);
     diaSetInt(diaUIConfig, UICFG_XOFF, gXOff);
@@ -842,6 +843,7 @@ reselect_video_mode:
         diaGetInt(diaUIConfig, UICFG_COVERART_COV, &gEnableArtCOV);
         diaGetInt(diaUIConfig, UICFG_COVERART_ICO, &gEnableArtICO);
         diaGetInt(diaUIConfig, UICFG_COVERARTMODE, &gEnableJpg);
+        diaGetInt(diaUIConfig, UICFG_ARTPACK, &gEnableArtPack); // 关闭立即停用图包取图，开启需重启后探测图包
         int cfCountIndex = 2;
         diaGetInt(diaUIConfig, UICFG_CF_COUNT, &cfCountIndex);
         gCfCoverCount = cfCountIndex * 2 + 1;
@@ -1940,6 +1942,11 @@ void guiMainLoop(void)
                 (gETHStartMode != START_MODE_AUTO || gDefaultDevice != ETH_MODE || !ethIsShareListPending()) && appStartInitialScan()) {
                 // 一切就绪后，改变mainScreenInitDone变量
                 if (!mainScreenInitDone) {
+                    // 图包开启时推迟的默认页选择：此时所有设备的图包已探测完，入队的 SELECT_MENU 由下一行立即执行
+                    if (gArtPackDeferMenuSelect) {
+                        gArtPackDeferMenuSelect = 0;
+                        oplSelectDefaultMenu();
+                    }
                     // 须在首次淡出前应用完整菜单，否则本帧仍会绘制旧列表。
                     guiExecDeferredOps();
                     // 须先激活保底页再纠正菜单位置，否则BDM0仍不可见时会滑到右侧第一个可见页
