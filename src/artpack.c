@@ -17,8 +17,12 @@
  *  - artPackDeviceInit/End 在设备初始化/清理的线程中执行；
  *  - artPackLoadImage 在 IO 工作线程中执行；
  *  - 所有设备状态由 artPackMutex 保护。建索引耗时较长，在锁外完成，最后在锁内发布；
- *  - 每次取图都重新 open/close art.idx 与 art.zip，不长期占用文件描述符，
- *    避免设备卸载（如 PFS 的 PDIOC_CLOSEALL）后留下失效 fd。
+ *  - 只有全局最快设备的 art.zip 保持打开，其 art.idx 条目表也常驻内存；其它设备不占用 fd，
+ *    取图时按需读取 art.idx；
+ *  - 最快设备的 fd 与条目表均为懒加载：选出最快设备后，在其第一次取图时才打开/载入；
+ *    artPackDeviceEnd 只关闭 fd、释放内存并重新选择最快设备，不做其它文件 IO；
+ *  - 每个设备的 artPackDeviceEnd 都会在卸载前关闭该 fd，避免设备卸载（如 PFS 的
+ *    PDIOC_CLOSEALL）后留下失效 fd。
  *
  * 64 位定位统一使用 ps2sdk libcglue 的 lseek64（supportbase.c 读 ISO 时也是如此）。
  */
@@ -183,9 +187,15 @@ typedef struct
     art_idx_game_t *games;       // 常驻内存，二分查找
     u32 entryCount;
     u32 entryTableOff;           // art.idx 中条目表偏移
-    art_idx_entry_t *memEntries; // 只有 art.idx 写入失败时才常驻内存
+    art_idx_entry_t *memEntries; // art.idx 写入失败时常驻；或作为最快设备时从 art.idx 载入
+    int memEntriesFromIdx;       // ART_PACK_ENTRIES_* ：memEntries 的来源
     int rank;                    // 设备速度等级（ART_PACK_RANK_*，越小越快）
 } art_pack_dev_t;
+
+// memEntries 来源：写索引失败时的常驻副本，必须保留
+#define ART_PACK_ENTRIES_RESIDENT 0
+// memEntries 来源：因成为最快设备而从 art.idx 载入，不再是最快设备时可释放
+#define ART_PACK_ENTRIES_FROM_IDX 1
 
 static art_pack_dev_t artPackDevs[MODE_COUNT];
 static pthread_mutex_t artPackMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -195,10 +205,93 @@ static pthread_mutex_t artPackMutex = PTHREAD_MUTEX_INITIALIZER;
 // 全局选出的最快图包设备（artPackDevs 下标），由 artPackMutex 保护
 static int artPackBestMode = ART_PACK_NO_BEST;
 
-// 在已激活的设备中选出 rank 最小者（相同时取 mode 较小者）；调用方须持有 artPackMutex
+// 无效文件描述符
+#define ART_PACK_FD_NONE -1
+// 最快设备常驻打开的 art.zip fd 及其所属设备，由 artPackMutex 保护
+static int artPackBestFd = ART_PACK_FD_NONE;
+static int artPackBestFdMode = ART_PACK_NO_BEST;
+
+// 最快设备条目表懒加载的最大连续失败次数，用尽后改为每次取图按需读 art.idx
+#define ART_PACK_ENTRIES_LOAD_RETRY_MAX 3
+// 条目表连续载入失败次数；最快设备变化或载入成功时清零，由 artPackMutex 保护
+static int artPackEntriesLoadFails = 0;
+
+static int artReadAt(int fd, u64 offset, void *buf, size_t size);
+
+// 关闭最快设备的 art.zip fd；调用方须持有 artPackMutex
+static void artPackCloseBestFd(void)
+{
+    if (artPackBestFd != ART_PACK_FD_NONE)
+        close(artPackBestFd);
+    artPackBestFd = ART_PACK_FD_NONE;
+    artPackBestFdMode = ART_PACK_NO_BEST;
+}
+
+// 返回最快设备的 art.zip fd，必要时打开；失败返回 ART_PACK_FD_NONE，下次取图再重试。调用方须持有 artPackMutex
+static int artPackEnsureBestFd(void)
+{
+    if (artPackBestFd != ART_PACK_FD_NONE && artPackBestFdMode == artPackBestMode)
+        return artPackBestFd;
+    artPackCloseBestFd();
+    if (artPackBestMode == ART_PACK_NO_BEST || !artPackDevs[artPackBestMode].active)
+        return ART_PACK_FD_NONE;
+    artPackBestFd = open(artPackDevs[artPackBestMode].zipPath, O_RDONLY);
+    if (artPackBestFd < 0) {
+        LOG("ARTPACK: cannot open %s\n", artPackDevs[artPackBestMode].zipPath);
+        artPackBestFd = ART_PACK_FD_NONE;
+        return ART_PACK_FD_NONE;
+    }
+    artPackBestFdMode = artPackBestMode;
+    return artPackBestFd;
+}
+
+// 释放某设备因曾是最快设备而从 art.idx 载入的条目表；常驻副本保留。调用方须持有 artPackMutex
+static void artPackDropIdxEntries(art_pack_dev_t *dev)
+{
+    if (dev->memEntriesFromIdx != ART_PACK_ENTRIES_FROM_IDX)
+        return;
+    free(dev->memEntries);
+    dev->memEntries = NULL;
+    dev->memEntriesFromIdx = ART_PACK_ENTRIES_RESIDENT;
+}
+
+// 把最快设备的整个条目表一次读入内存；失败时保持 NULL，取图回退为按需读 art.idx。调用方须持有 artPackMutex
+static void artPackLoadBestEntries(void)
+{
+    art_pack_dev_t *dev;
+    art_idx_entry_t *list;
+    size_t bytes;
+    int fd;
+
+    if (artPackBestMode == ART_PACK_NO_BEST)
+        return;
+    dev = &artPackDevs[artPackBestMode];
+    if (!dev->active || dev->memEntries || dev->entryCount == 0)
+        return;
+    bytes = (size_t)dev->entryCount * sizeof(art_idx_entry_t);
+    list = malloc(bytes);
+    if (!list)
+        return;
+    fd = open(dev->idxPath, O_RDONLY);
+    if (fd < 0 || artReadAt(fd, (u64)dev->entryTableOff, list, bytes) < 0) {
+        if (fd >= 0)
+            close(fd);
+        free(list);
+        LOG("ARTPACK: cannot load entries from %s\n", dev->idxPath);
+        return;
+    }
+    close(fd);
+    dev->memEntries = list;
+    dev->memEntriesFromIdx = ART_PACK_ENTRIES_FROM_IDX;
+}
+
+// 在已激活的设备中选出 rank 最小者（相同时取 mode 较小者）；调用方须持有 artPackMutex。
+// 只做选择与清理（释放旧设备条目表、关闭不属于新设备的 fd），不做任何文件 IO；
+// 新设备的 fd 与条目表在 artPackLoadImage 中懒加载
 static void artPackSelectBest(void)
 {
     int i;
+    int oldBest = artPackBestMode;
 
     artPackBestMode = ART_PACK_NO_BEST;
     for (i = 0; i < MODE_COUNT; i++) {
@@ -208,6 +301,16 @@ static void artPackSelectBest(void)
         if (artPackBestMode == ART_PACK_NO_BEST || artPackDevs[i].rank < artPackDevs[artPackBestMode].rank)
             artPackBestMode = i;
     }
+
+    // 最快设备变化：释放旧设备从 art.idx 载入的条目表（已被 artFreeDev 清零时为空操作）
+    if (oldBest != artPackBestMode) {
+        if (oldBest != ART_PACK_NO_BEST)
+            artPackDropIdxEntries(&artPackDevs[oldBest]);
+        // 新的最快设备重新获得完整的载入重试次数
+        artPackEntriesLoadFails = 0;
+    }
+    if (artPackBestFdMode != artPackBestMode)
+        artPackCloseBestFd();
 }
 
 /* ---------------- 小工具 ---------------- */
@@ -1095,6 +1198,9 @@ int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank)
     dev.active = 1;
     dev.rank = rank;
     pthread_mutex_lock(&artPackMutex);
+    // 路径可能变化，先关闭指向旧图包的 fd
+    if (artPackBestFdMode == mode)
+        artPackCloseBestFd();
     artFreeDev(&artPackDevs[mode]);
     artPackDevs[mode] = dev;
     // 新图包发布后重新选择最快设备
@@ -1108,6 +1214,9 @@ void artPackDeviceEnd(int mode)
     if (!artValidMode(mode))
         return;
     pthread_mutex_lock(&artPackMutex);
+    // 卸载前必须关闭该设备上的 fd
+    if (artPackBestFdMode == mode)
+        artPackCloseBestFd();
     artFreeDev(&artPackDevs[mode]);
     // 释放后重新选择最快设备（被释放的可能正是当前最快设备）
     artPackSelectBest();
@@ -1165,6 +1274,15 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     if (!dev->active) {
         pthread_mutex_unlock(&artPackMutex);
         return ERR_BAD_FILE;
+    }
+
+    // 懒加载最快设备的条目表；连续失败达到上限后不再尝试，回退为按需读 art.idx
+    if (!dev->memEntries && dev->entryCount > 0 && artPackEntriesLoadFails < ART_PACK_ENTRIES_LOAD_RETRY_MAX) {
+        artPackLoadBestEntries();
+        if (dev->memEntries)
+            artPackEntriesLoadFails = 0;
+        else
+            artPackEntriesLoadFails++;
     }
 
     // 游戏表按 (bucket, gameId) 排序，二分查找
@@ -1228,26 +1346,34 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     }
 
     // 一次读取 本地头 + 文件名/extra 余量 + 数据；extra 过长时再补读一次
-    fd = open(dev->zipPath, O_RDONLY);
-    if (fd >= 0) {
+    // 使用最快设备常驻的 fd；定位/读取失败时关闭，下次取图重新打开
+    fd = artPackEnsureBestFd();
+    if (fd != ART_PACK_FD_NONE) {
         size_t want = ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK + found.dataSize;
         buf = malloc(want);
-        if (buf && lseek64(fd, (off64_t)found.localHdrOff, SEEK_SET) == (off64_t)found.localHdrOff) {
-            ssize_t got = read(fd, buf, want);
-            if (got >= ZIP_LOCAL_HDR_SIZE && artRd32(buf) == ZIP_SIG_LOCAL) {
-                dataStart = ZIP_LOCAL_HDR_SIZE + artRd16(&buf[ZIP_LOCAL_OFF_NAME_LEN]) + artRd16(&buf[ZIP_LOCAL_OFF_EXTRA_LEN]);
-                if ((size_t)got >= dataStart + found.dataSize) {
-                    bufLen = found.dataSize;
-                } else if (dataStart > ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK) {
-                    // 头部超出余量：直接定位到数据处重读
-                    if (artReadAt(fd, found.localHdrOff + dataStart, buf, found.dataSize) == 0) {
-                        dataStart = 0;
+        if (buf) {
+            if (lseek64(fd, (off64_t)found.localHdrOff, SEEK_SET) != (off64_t)found.localHdrOff) {
+                artPackCloseBestFd();
+            } else {
+                ssize_t got = read(fd, buf, want);
+                if (got < 0) {
+                    artPackCloseBestFd();
+                } else if (got >= ZIP_LOCAL_HDR_SIZE && artRd32(buf) == ZIP_SIG_LOCAL) {
+                    dataStart = ZIP_LOCAL_HDR_SIZE + artRd16(&buf[ZIP_LOCAL_OFF_NAME_LEN]) + artRd16(&buf[ZIP_LOCAL_OFF_EXTRA_LEN]);
+                    if ((size_t)got >= dataStart + found.dataSize) {
                         bufLen = found.dataSize;
+                    } else if (dataStart > ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK) {
+                        // 头部超出余量：直接定位到数据处重读
+                        if (artReadAt(fd, found.localHdrOff + dataStart, buf, found.dataSize) == 0) {
+                            dataStart = 0;
+                            bufLen = found.dataSize;
+                        } else {
+                            artPackCloseBestFd();
+                        }
                     }
                 }
             }
         }
-        close(fd);
     }
     pthread_mutex_unlock(&artPackMutex);
 
