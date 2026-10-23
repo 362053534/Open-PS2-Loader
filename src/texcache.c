@@ -11,23 +11,51 @@
 #include <stdarg.h>
 
 // 【临时调试】图包启动时序日志，定位完后删除
+// 先写入内存缓冲，只在 artDbgFlush 时一次性追加到文件，避免每行打开文件拖慢时序
 #define ART_DBG_LOG_PATH "mass0:artdbg.txt"
+#define ART_DBG_BUF_SIZE (32 * 1024)
+#define ART_DBG_LINE_MAX 160
+static char artDbgBuf[ART_DBG_BUF_SIZE];
+static int artDbgLen = 0;
+static int artDbgStarted = 0; // 每次开机第一次写文件前加分隔行，日志一直追加不用删
+static pthread_mutex_t artDbgMutex = PTHREAD_MUTEX_INITIALIZER;
+
 void artDbgLog(const char *fmt, ...)
 {
-    FILE *f = fopen(ART_DBG_LOG_PATH, "ab");
     va_list ap;
-    static int artDbgStarted = 0; // 每次开机第一条日志前写分隔行，日志一直追加不用删
-    if (!f)
-        return;
-    if (!artDbgStarted) {
-        artDbgStarted = 1;
-        fprintf(f, "\r\n===== 新一次启动 =====\r\n");
+    int n;
+
+    pthread_mutex_lock(&artDbgMutex);
+    if (artDbgLen < ART_DBG_BUF_SIZE - ART_DBG_LINE_MAX) {
+        va_start(ap, fmt);
+        n = vsnprintf(artDbgBuf + artDbgLen, ART_DBG_LINE_MAX - 2, fmt, ap);
+        va_end(ap);
+        if (n > ART_DBG_LINE_MAX - 3)
+            n = ART_DBG_LINE_MAX - 3;
+        if (n > 0) {
+            artDbgLen += n;
+            artDbgBuf[artDbgLen++] = '\r';
+            artDbgBuf[artDbgLen++] = '\n';
+        }
     }
-    va_start(ap, fmt);
-    vfprintf(f, fmt, ap);
-    va_end(ap);
-    fprintf(f, "\r\n");
-    fclose(f);
+    pthread_mutex_unlock(&artDbgMutex);
+}
+
+void artDbgFlush(void)
+{
+    FILE *f;
+
+    pthread_mutex_lock(&artDbgMutex);
+    if (artDbgLen > 0 && (f = fopen(ART_DBG_LOG_PATH, "ab")) != NULL) {
+        if (!artDbgStarted) {
+            artDbgStarted = 1;
+            fprintf(f, "\r\n===== 新一次启动 =====\r\n");
+        }
+        fwrite(artDbgBuf, 1, artDbgLen, f);
+        fclose(f);
+        artDbgLen = 0;
+    }
+    pthread_mutex_unlock(&artDbgMutex);
 }
 
 extern GSGLOBAL *gsGlobal;

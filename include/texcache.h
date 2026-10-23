@@ -74,5 +74,6 @@ extern int texLoading;
 void flushBatchRequests(void);
 void cacheCancelPendingArtRequests(void);
 void artDbgLog(const char *fmt, ...); // 【临时调试】
+void artDbgFlush(void);                // 【临时调试】
 
 #endif
