@@ -563,7 +563,14 @@ static int hddUpdateGameList(item_list_t *itemList)
         }
     }
 
-    sbReadList(&hddIsoGames, gHDDPrefix, &hddIsoFileSize, &hddIsoGameCount);
+    // 关闭 HDD(APA)直读ISO 时不读取 ISO 列表，并清空已有列表，ISO 数量为 0，后续 ISO 链路均不会进入
+    if (gEnableApaIso) {
+        sbReadList(&hddIsoGames, gHDDPrefix, &hddIsoFileSize, &hddIsoGameCount);
+    } else {
+        free(hddIsoGames);
+        hddIsoGames = NULL;
+        hddIsoGameCount = 0;
+    }
 
     hddForceUpdate = 1; // Subsequent refresh operations will cause the HDD to be scanned.
     return (ret == 0 ? hddGames.count + hddIsoGameCount : 0);
