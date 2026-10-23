@@ -73,6 +73,5 @@ extern int forceSkipQr;
 extern int texLoading;
 void flushBatchRequests(void);
 void cacheCancelPendingArtRequests(void);
-void artDbgLog(const char *fmt, ...); // 【临时调试】
 
 #endif

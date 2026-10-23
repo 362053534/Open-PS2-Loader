@@ -1945,7 +1945,6 @@ void guiMainLoop(void)
                     // 图包开启时推迟的默认页选择：此时所有设备的图包已探测完，入队的 SELECT_MENU 由下一行立即执行
                     if (gArtPackDeferMenuSelect) {
                         gArtPackDeferMenuSelect = 0;
-                        artDbgLog("[%d] 选择默认页", (int)guiFrameId); // 【临时调试】
                         oplSelectDefaultMenu();
                     }
                     // 须在首次淡出前应用完整菜单，否则本帧仍会绘制旧列表。
@@ -1993,7 +1992,6 @@ void guiMainLoop(void)
         if (mainScreenInitDone) {
             if (artLoadDelayTime > 0) {
                 artLoadDelayTime--;
-                artDbgLog("[%d] 预载等待 剩余=%d texLoading=%d ioPending=%d", (int)guiFrameId, artLoadDelayTime, texLoading, ioHasPendingRequests()); // 【临时调试】
                 // 启动画面的延迟期间，预加载art图片
                 if (!texLoading) {
                     item_list_t *ethSupport = ethGetObject(1);
@@ -2001,7 +1999,6 @@ void guiMainLoop(void)
                         artLoadDelayTime = 0;
                 }
                 if (artLoadDelayTime <= 0) {
-                    artDbgLog("[%d] 预载等待结束", (int)guiFrameId); // 【临时调试】
                     // 手动启动BDM后的变量处理
                     if (bdmManualTrigger) {
                         bdmManualTrigger = 0; // 用于结束guishow的黑屏
