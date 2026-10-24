@@ -194,7 +194,7 @@ struct UIItem diaConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_CACHE_HDD_GAME_LIST}}},
     {UI_SPACER},
-    {UI_BOOL, CFG_HDDGAMELISTCACHE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, CFG_HDDGAMELISTCACHE, 1, 1, _STR_HINT_CACHE_HDD_GAME_LIST, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_EXITTO}}},
@@ -209,7 +209,7 @@ struct UIItem diaConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_LASTPLAYED}}},
     {UI_SPACER},
-    {UI_BOOL, CFG_LASTPLAYED, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, CFG_LASTPLAYED, 1, 1, _STR_HINT_LASTPLAYED, 0, 0, {.intvalue = {0, 0}}},
     {UI_SPACER},
     {UI_LABEL, CFG_LBL_AUTOSTARTLAST, 1, 1, -1, 0, 0, {.label = {NULL, _STR_AUTOSTARTLAST}}},
     {UI_SPACER},
@@ -263,12 +263,12 @@ struct UIItem diaConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"APPS & PS1自动识别", -1}}},
     {UI_SPACER},
-    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, _STR_HINT_AUTODETECT_PS1APPS, 0, 0, {.intvalue = {1, 1}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动开启模式1 (提高兼容性)", -1}}},
     {UI_SPACER},
-    {UI_BOOL, CFG_AUTO_MODE1, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, CFG_AUTO_MODE1, 1, 1, _STR_HINT_AUTO_MODE1, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     /* 暂时隐藏三个扇区缓存设置入口，保留底层缓存功能。 */
@@ -313,7 +313,7 @@ struct UIItem diaUIConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_TXTRENAME}}},
     {UI_SPACER},
-    {UI_BOOL, UICFG_TXTRENAME, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, UICFG_TXTRENAME, 1, 1, _STR_HINT_TXTRENAME, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_AUTOSORT}}},
@@ -323,7 +323,7 @@ struct UIItem diaUIConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_AUTOREFRESH}}},
     {UI_SPACER},
-    {UI_BOOL, UICFG_AUTOREFRESH, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, UICFG_AUTOREFRESH, 1, 1, _STR_HINT_AUTOREFRESH, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_ARTPACK}}},
@@ -340,7 +340,7 @@ struct UIItem diaUIConfig[] = {
     {UI_SPACER},
     {UI_BOOL, UICFG_COVERART_ICO, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
     {UI_SPACER},
-    {UI_BOOL, UICFG_COVERARTMODE, 1, 1, -1, 0, 0, {.intvalue = {1, 1}}},
+    {UI_BOOL, UICFG_COVERARTMODE, 1, 1, _STR_HINT_COVERARTMODE, 0, 0, {.intvalue = {1, 1}}},
     {UI_BREAK},
 
     {UI_SPLITTER},

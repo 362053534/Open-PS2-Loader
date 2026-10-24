@@ -237,7 +237,7 @@ gui_strings:
 - label: GFX_SETTINGS
   string: 图像设置
 - label: ENABLE_WRITE
-  string: 启用写入功能
+  string: 解锁删除权限
 - label: LASTPLAYED
   string: 记住上次玩的游戏
 - label: SELECTBUTTON
@@ -307,9 +307,9 @@ gui_strings:
 - label: HINT_EXITPATH
   string: 自定义IGR启动文件
 - label: HINT_SPINDOWN
-  string: 数值以分钟计，设为0则禁用降速
+  string: 数值以分钟计，设为0则禁用休眠
 - label: HDD_SPINDOWN
-  string: HDD自动降速
+  string: HDD自动休眠
 - label: VMODE
   string: 影片模式
 - label: UICOLOR
@@ -551,7 +551,7 @@ gui_strings:
 - label: CFM_VMODE_CHG
   string: 确认更改视频模式？
 - label: CACHE_HDD_GAME_LIST
-  string: HDD(APA)列表缓存
+  string: HDL列表缓存
 - label: ENABLE_NOTIFICATIONS
   string: 通知
 - label: CFG_NOTIFICATION
@@ -677,9 +677,9 @@ gui_strings:
 - label: BGM_VOLUME
   string: 背景音乐音量
 - label: DEF_BGM_PATH
-  string: 默认主题音乐
+  string: 自定义背景音乐
 - label: DEF_BGM_PATH_HINT
-  string: 为内置主题设置音乐路径。
+  string: 手动编辑ogg文件路径
 - label: HIGH
   string: High
 - label: LOW
@@ -711,7 +711,7 @@ gui_strings:
 - label: HINT_DMA_SOURCE
   string: 全局生效，或只对当前游戏生效
 - label: HINT_CF_COUNT
-  string: 同屏封面太多，可能会导致死机，建议保持默认值5
+  string: 可增减同屏封面数量，建议保持默认值5
 - label: BGM_SEARCH
   string: 搜索ogg文件
 - label: HINT_BGM_SEARCH
@@ -724,3 +724,17 @@ gui_strings:
   string: 将OPLM官方zip图包(不要解压)，直接放到ART2里即可
 - label: HINT_APAISO
   string: 将ISO拷贝到+OPL/DVD或CD里，可直接读取，无需灌录
+- label: HINT_AUTODETECT_PS1APPS
+  string: 直接识别APPS目录里的ELF，以及POPS目录里的VCD
+- label: HINT_AUTO_MODE1
+  string: 模式1(精准读取)可解决大部分兼容问题，建议开启
+- label: HINT_CACHE_HDD_GAME_LIST
+  string: 可加快HDL列表生成速度。若使用APA直读ISO，请关闭此选项。
+- label: HINT_LASTPLAYED
+  string: 启动OPL时，光标会停留在上次游玩的游戏
+- label: HINT_COVERARTMODE
+  string: 兼容模式会大幅拖慢图片加载速度，建议使用性能模式
+- label: HINT_AUTOREFRESH
+  string: 热插拔U盘等块设备时，OPL能实时做出响应
+- label: HINT_TXTRENAME
+  string: 生成txt文件，用于将游戏名映射为任意文字
