@@ -724,3 +724,17 @@ gui_strings:
   string: Put the OPLM_ART zip pack (do not extract) directly in ART2
 - label: HINT_APAISO
   string: Copy ISOs into +OPL/DVD or CD to read them directly, no HDL conversion needed
+- label: HINT_AUTODETECT_PS1APPS
+  string: Directly detect ELFs in the APPS folder and VCDs in the POPS folder
+- label: HINT_AUTO_MODE1
+  string: Mode 1 (precise read) solves most compatibility issues, recommended
+- label: HINT_CACHE_HDD_GAME_LIST
+  string: List cache used by the HDL install format, not needed when reading ISOs directly
+- label: HINT_LASTPLAYED
+  string: When OPL starts, the cursor stays on the last game you played
+- label: HINT_COVERARTMODE
+  string: Compatibility mode greatly slows down image loading, performance mode is recommended
+- label: HINT_AUTOREFRESH
+  string: OPL responds in real time when block devices such as USB drives are hot-plugged
+- label: HINT_TXTRENAME
+  string: Generates a txt file used to map game names to any text
