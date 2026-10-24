@@ -673,7 +673,7 @@ gui_strings:
 - label: SYSTEM_DEFAULT
   string: System Default
 - label: BGM
-  string: 背景音乐
+  string: 当前主题背景音乐
 - label: BGM_VOLUME
   string: 背景音乐音量
 - label: DEF_BGM_PATH

@@ -24,7 +24,6 @@ void sfxPlay(int id);
 
 void bgmStart(void);
 int bgmSearchFile(char *path, int size);
-int bgmUsesDefaultPath(void);
 void bgmStop(void);
 int isBgmPlaying(void);
 void bgmMute(void);

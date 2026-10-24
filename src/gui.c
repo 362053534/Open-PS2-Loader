@@ -1031,6 +1031,10 @@ void guiShowParentalLockConfig(void)
 
 static void guiSetAudioSettingsState(void)
 {
+    char previousBgmPath[sizeof(gDefaultBGMPath)];
+
+    strcpy(previousBgmPath, gDefaultBGMPath);
+
     diaGetInt(diaAudioConfig, CFG_SFX, &gEnableSFX);
     diaGetInt(diaAudioConfig, CFG_BOOT_SND, &gEnableBootSND);
     diaGetInt(diaAudioConfig, CFG_BGM, &gEnableBGM);
@@ -1039,6 +1043,10 @@ static void guiSetAudioSettingsState(void)
     diaGetInt(diaAudioConfig, CFG_BGM_VOLUME, &gBGMVolume);
     diaGetString(diaAudioConfig, CFG_DEFAULT_BGM_PATH, gDefaultBGMPath, sizeof(gDefaultBGMPath));
     audioSetVolume();
+
+    // 自定义路径改变且正在播放时，停掉后按新路径重新播放，让新路径立即生效
+    if (isBgmPlaying() && strcmp(previousBgmPath, gDefaultBGMPath) != 0)
+        bgmStop();
 
     if (gEnableBGM && !isBgmPlaying())
         bgmStart();
@@ -1084,8 +1092,8 @@ void guiShowAudioConfig(void)
                 guiMsgBox(_l(_STR_BGM_NOT_FOUND), 0, diaAudioConfig);
 
             // 只改输入框不会触发updater，需在此手动重启背景音乐：
-            // 搜索前在播放的恢复播放；找到新路径且当前主题使用该路径(内置主题或没有自带bgm.ogg的第三方主题)时立即播放
-            if (wasPlaying || (found && gEnableBGM && bgmUsesDefaultPath()))
+            // 搜索前在播放的恢复播放；找到新路径时(自定义路径对所有主题生效)立即播放
+            if (wasPlaying || (found && gEnableBGM))
                 bgmStart();
         }
     } while (ret == CFG_BGM_SEARCH);
