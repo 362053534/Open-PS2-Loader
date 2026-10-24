@@ -250,12 +250,23 @@ void sfxPlay(int id)
 #define BGM_THREAD_BASE_PRIO  33 // 原为0x40；作为解码线程优先级，低于主线程(31)、高于图片IO线程(34)，避免浏览封面时背景音乐卡顿
 #define BGM_THREAD_STACK_SIZE 0x1000
 
+// 送入audsrv的块大小按"每次喂给声卡的数据量"对齐，使单次wait_audio的等待约等于一个块的时长(约21毫秒)，
+// 不会长时间占住audsrv的RPC线程而拖慢界面音效。须与ps2sdk中audsrv的缓冲放大倍数(RINGBUF_LOW_RATE_FEED_COUNT=20)配套
+#define BGM_AUDSRV_FEED_SAMPLES   512   // audsrv每次喂给声卡的输出采样点数
+#define BGM_AUDSRV_OUTPUT_RATE    48000 // audsrv输出采样率(Hz)
+#define BGM_AUDSRV_CHUNK_FEED_NUM 2     // 每块包含的"喂给量"个数
+#define BGM_SAMPLE_BYTES          2     // 解码输出为16位
+#define BGM_MS_PER_SEC            1000  // 每秒毫秒数
+#define BGM_WHOLE_BLOCK_MAX_MS    32    // 整个解码块的播放时长不超过它就整块送入，不再拆分(如44.1kHz立体声约23毫秒)
+#define BGM_TAIL_MERGE_DIVISOR    2     // 末尾零头不足半个块(块大小/该值)时并入上一段一起送，避免单独发起一次很小的请求
+
 extern void *_gp;
 
 static int bgmThreadID, bgmIoThreadID;
 static int outSema, inSema;
 static unsigned char terminateFlag, bgmIsPlaying;
 static unsigned char rdPtr, wrPtr;
+static int bgmChunkSize = BGM_RING_BUFFER_SIZE; // 每次送入audsrv的字节数，在bgmStart中按采样率和声道数计算
 static char bgmBuffer[BGM_RING_BUFFER_COUNT][BGM_RING_BUFFER_SIZE];
 static volatile unsigned char bgmThreadRunning, bgmIoThreadRunning;
 
@@ -273,8 +284,19 @@ static void bgmThread(void *arg)
 
         // 退出时不再把缓冲里剩余的块播完，避免等待audsrv而拖慢甚至卡住关机/启动游戏
         while (!terminateFlag && PollSema(outSema) == outSema) {
-            audsrv_wait_audio(BGM_RING_BUFFER_SIZE);
-            audsrv_play_audio(bgmBuffer[rdPtr], BGM_RING_BUFFER_SIZE);
+            // 把一个解码块按bgmChunkSize拆成小段送入，每段先等待audsrv腾出对应空间。
+            // 剩余不足"一段加半段"时就一次送完(零头并入最后一段，整块送入时也走这个分支)；
+            // 块大小与每段大小都是帧字节数的整数倍，不会错位
+            int offset = 0;
+            while (!terminateFlag && offset < BGM_RING_BUFFER_SIZE) {
+                int len = BGM_RING_BUFFER_SIZE - offset;
+                if (len >= bgmChunkSize + bgmChunkSize / BGM_TAIL_MERGE_DIVISOR)
+                    len = bgmChunkSize;
+
+                audsrv_wait_audio(len);
+                audsrv_play_audio(bgmBuffer[rdPtr] + offset, len);
+                offset += len;
+            }
             rdPtr = (rdPtr + 1) % BGM_RING_BUFFER_COUNT;
 
             SignalSema(inSema);
@@ -631,6 +653,14 @@ void bgmStart(void)
         audsrvFmt.bits = 16;
 
         audsrv_set_format(&audsrvFmt);
+
+        // 每段 = 2倍audsrv的喂给量(8kHz单声道为340字节，约21毫秒)；不能超过解码块大小。
+        // 整个解码块本身就播放不超过约32毫秒的格式(如44.1kHz立体声)等待很短，保持整块送入不拆分
+        bgmChunkSize = BGM_AUDSRV_CHUNK_FEED_NUM * ((BGM_AUDSRV_FEED_SAMPLES * audsrvFmt.freq) / BGM_AUDSRV_OUTPUT_RATE) * audsrvFmt.channels * BGM_SAMPLE_BYTES;
+        if (BGM_RING_BUFFER_SIZE * BGM_MS_PER_SEC <= BGM_WHOLE_BLOCK_MAX_MS * audsrvFmt.freq * audsrvFmt.channels * BGM_SAMPLE_BYTES)
+            bgmChunkSize = BGM_RING_BUFFER_SIZE;
+        if (bgmChunkSize <= 0 || bgmChunkSize > BGM_RING_BUFFER_SIZE)
+            bgmChunkSize = BGM_RING_BUFFER_SIZE;
 
         bgmIsPlaying = 1;
         // 在主线程中先置位运行标志：线程与主线程同优先级，StartThread后不会立即执行，
