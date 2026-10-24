@@ -249,6 +249,7 @@ void sfxPlay(int id)
 #define BGM_RING_BUFFER_SIZE  4096
 #define BGM_THREAD_BASE_PRIO  33 // 原为0x40；作为解码线程优先级，低于主线程(31)、高于图片IO线程(34)，避免浏览封面时背景音乐卡顿
 #define BGM_THREAD_STACK_SIZE 0x1000
+#define BGM_THREAD_EXIT_PRIO  1 // 线程退出前临时提到的最高优先级：保证通知主线程后自己立即跑完退出流程，主线程醒来时它已处于DORMANT
 
 // 送入audsrv的块大小按"每次喂给声卡的数据量"对齐，使单次wait_audio的等待约等于一个块的时长(约21毫秒)，
 // 不会长时间占住audsrv的RPC线程而拖慢界面音效。须与ps2sdk中audsrv的缓冲放大倍数(RINGBUF_LOW_RATE_FEED_COUNT=20)配套
@@ -265,12 +266,11 @@ void sfxPlay(int id)
 extern void *_gp;
 
 static int bgmThreadID, bgmIoThreadID;
-static int outSema, inSema;
+static int outSema, inSema, exitSema; // exitSema：两个音乐线程退出时各发一个信号，bgmStop据此等待它们真正退出
 static unsigned char terminateFlag, bgmIsPlaying;
 static unsigned char rdPtr, wrPtr;
 static int bgmChunkSize = BGM_RING_BUFFER_SIZE; // 每次送入audsrv的字节数，在bgmStart中按采样率和声道数计算
 static char bgmBuffer[BGM_RING_BUFFER_COUNT][BGM_RING_BUFFER_SIZE];
-static volatile unsigned char bgmThreadRunning, bgmIoThreadRunning;
 
 static u8 bgmThreadStack[BGM_THREAD_STACK_SIZE] __attribute__((aligned(16)));
 static u8 bgmIoThreadStack[BGM_THREAD_STACK_SIZE] __attribute__((aligned(16)));
@@ -279,8 +279,6 @@ static OggVorbis_File *vorbisFile;
 
 static void bgmThread(void *arg)
 {
-    bgmThreadRunning = 1;
-
     while (!terminateFlag) {
         SleepThread();
 
@@ -310,15 +308,18 @@ static void bgmThread(void *arg)
     rdPtr = 0;
     wrPtr = 0;
 
-    bgmThreadRunning = 0;
     bgmIsPlaying = 0;
+
+    // 先提到最高优先级再通知主线程：否则主线程(优先级更高)会在通知的瞬间抢占，
+    // 在本线程还没退出时就删除线程并复用同一块栈
+    ChangeThreadPriority(GetThreadId(), BGM_THREAD_EXIT_PRIO);
+    SignalSema(exitSema);
 }
 
 static void bgmIoThread(void *arg)
 {
     int partsToRead, decodeTotal, bitStream, i;
 
-    bgmIoThreadRunning = 1;
     do {
         WaitSema(inSema);
         partsToRead = 1;
@@ -349,9 +350,12 @@ static void bgmIoThread(void *arg)
         WakeupThread(bgmThreadID);
     } while (!terminateFlag && gEnableBGM);
 
-    bgmIoThreadRunning = 0;
     terminateFlag = 1;
     WakeupThread(bgmThreadID);
+
+    // 同播放线程：提到最高优先级后再通知，保证通知后立即退出
+    ChangeThreadPriority(GetThreadId(), BGM_THREAD_EXIT_PRIO);
+    SignalSema(exitSema);
 }
 
 // 内嵌的默认背景音乐(audio/default_bgm.ogg，由bin2c生成)
@@ -598,8 +602,6 @@ static int bgmInit(void)
     terminateFlag = 0;
     rdPtr = 0;
     wrPtr = 0;
-    bgmThreadRunning = 0;
-    bgmIoThreadRunning = 0;
 
     sema.max_count = BGM_RING_BUFFER_COUNT;
     sema.init_count = BGM_RING_BUFFER_COUNT;
@@ -617,6 +619,19 @@ static int bgmInit(void)
         if (outSema < 0) {
             DeleteSema(inSema);
             return outSema;
+        }
+
+        // 两个线程各发一个信号，计数上限为2
+        sema.max_count = 2;
+        sema.init_count = 0;
+        sema.attr = 0;
+        sema.option = (u32) "bgm-exit-sema";
+        exitSema = CreateSema(&sema);
+
+        if (exitSema < 0) {
+            DeleteSema(inSema);
+            DeleteSema(outSema);
+            return exitSema;
         }
     } else
         return inSema;
@@ -648,6 +663,7 @@ static int bgmInit(void)
         } else {
             DeleteSema(inSema);
             DeleteSema(outSema);
+            DeleteSema(exitSema);
             DeleteThread(bgmThreadID);
             result = bgmIoThreadID;
         }
@@ -655,6 +671,7 @@ static int bgmInit(void)
         result = bgmThreadID;
         DeleteSema(inSema);
         DeleteSema(outSema);
+        DeleteSema(exitSema);
     }
 
     return result;
@@ -664,6 +681,7 @@ static void bgmDeinit(void)
 {
     DeleteSema(inSema);
     DeleteSema(outSema);
+    DeleteSema(exitSema);
     DeleteThread(bgmThreadID);
     DeleteThread(bgmIoThreadID);
 
@@ -671,11 +689,6 @@ static void bgmDeinit(void)
     ov_clear(vorbisFile);
     free(vorbisFile);
     vorbisFile = NULL;
-}
-
-static void bgmShutdownDelayCallback(s32 alarm_id, u16 time, void *common)
-{
-    iWakeupThread((int)common);
 }
 
 void bgmStart(void)
@@ -712,10 +725,6 @@ void bgmStart(void)
             bgmChunkSize = BGM_RING_BUFFER_SIZE;
 
         bgmIsPlaying = 1;
-        // 在主线程中先置位运行标志：线程与主线程同优先级，StartThread后不会立即执行，
-        // 若此时快速调用bgmStop，会因标志仍为0而不等待线程退出就释放资源，导致死机
-        bgmThreadRunning = 1;
-        bgmIoThreadRunning = 1;
 
         StartThread(bgmIoThreadID, NULL);
         StartThread(bgmThreadID, NULL);
@@ -724,8 +733,6 @@ void bgmStart(void)
 
 void bgmStop(void)
 {
-    int threadId;
-
     if (!audio_initialized) {
         LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
         return;
@@ -738,15 +745,10 @@ void bgmStop(void)
     // 播放线程退出时不再归还空块，需在此唤醒可能阻塞在WaitSema(inSema)上的解码线程，使其检查terminateFlag后退出
     SignalSema(inSema);
 
-    threadId = GetThreadId();
-    while (bgmIoThreadRunning) {
-        SetAlarm(200 * 16, &bgmShutdownDelayCallback, (void *)threadId);
-        SleepThread();
-    }
-    while (bgmThreadRunning) {
-        SetAlarm(200 * 16, &bgmShutdownDelayCallback, (void *)threadId);
-        SleepThread();
-    }
+    // 用信号量等待两个音乐线程各自退出。不能用SleepThread：主线程的唤醒通道与垂直同步中断共用，
+    // 会吞掉垂直同步的唤醒并让界面一直睡在rmEndFrame里；信号量也不会留下未取消的闹钟
+    WaitSema(exitSema);
+    WaitSema(exitSema);
 
     bgmDeinit();
 
