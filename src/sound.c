@@ -268,10 +268,6 @@ extern void *_gp;
 static int bgmThreadID, bgmIoThreadID;
 static int outSema, inSema, exitSema; // exitSema：两个音乐线程退出时各发一个信号，bgmStop据此等待它们真正退出
 static unsigned char terminateFlag, bgmIsPlaying;
-// 加载在IO线程上异步进行：bgmLoading从提交任务到任务结束为1；bgmLoadSema在任务结束时发信号，供bgmStop等待；
-// bgmThreadsStarted表示任务已成功启动两个音乐线程(失败时任务自己已清理资源，bgmStop无需再清理)
-static volatile unsigned char bgmLoading, bgmThreadsStarted;
-static int bgmLoadSema = -1; // 只创建一次，不随每次播放销毁，避免与正在等待的bgmStop冲突
 static unsigned char rdPtr, wrPtr;
 static int bgmChunkSize = BGM_RING_BUFFER_SIZE; // 每次送入audsrv的字节数，在bgmStart中按采样率和声道数计算
 static char bgmBuffer[BGM_RING_BUFFER_COUNT][BGM_RING_BUFFER_SIZE];
@@ -690,25 +686,27 @@ static void bgmDeinit(void)
     DeleteThread(bgmIoThreadID);
 
     // Vorbisfile takes care of fclose.
-    // 加载任务被bgmStop中止时还没打开音乐，vorbisFile为NULL
-    if (vorbisFile != NULL) {
-        ov_clear(vorbisFile);
-        free(vorbisFile);
-        vorbisFile = NULL;
-    }
+    ov_clear(vorbisFile);
+    free(vorbisFile);
+    vorbisFile = NULL;
 }
 
-// 在IO线程上执行：打开并解码初始化背景音乐，成功则启动两个音乐线程。
-// 读文件(整个读入内存或打开流)可能耗时很久，放在IO队列里，主线程才能继续画界面，加载图标正常转动
-static void bgmLoadAndPlay(void)
+void bgmStart(void)
 {
     struct audsrv_fmt_t audsrvFmt;
 
-    // bgmStop已请求停止时不再加载
-    if (terminateFlag || bgmLoad() != 0) {
-        bgmDeinit();
-        bgmIsPlaying = 0;
-    } else {
+    if (!audio_initialized) {
+        LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
+        return;
+    }
+
+    int ret = bgmInit();
+    if (ret >= 0) {
+        if (bgmLoad() != 0) {
+            bgmDeinit();
+            return;
+        }
+
         vorbis_info *vi = ov_info(vorbisFile, -1);
         ov_pcm_seek(vorbisFile, 0);
 
@@ -726,48 +724,10 @@ static void bgmLoadAndPlay(void)
         if (bgmChunkSize <= 0 || bgmChunkSize > BGM_RING_BUFFER_SIZE)
             bgmChunkSize = BGM_RING_BUFFER_SIZE;
 
-        bgmThreadsStarted = 1;
+        bgmIsPlaying = 1;
+
         StartThread(bgmIoThreadID, NULL);
         StartThread(bgmThreadID, NULL);
-    }
-
-    bgmLoading = 0;
-    SignalSema(bgmLoadSema);
-}
-
-void bgmStart(void)
-{
-    if (!audio_initialized) {
-        LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
-        return;
-    }
-
-    if (bgmLoadSema < 0) {
-        ee_sema_t sema;
-
-        sema.max_count = 1;
-        sema.init_count = 0;
-        sema.attr = 0;
-        sema.option = (u32) "bgm-load-sema";
-        bgmLoadSema = CreateSema(&sema);
-        if (bgmLoadSema < 0)
-            return;
-    }
-
-    int ret = bgmInit();
-    if (ret >= 0) {
-        // 清掉上一次可能残留的信号，避免bgmStop误以为这次加载已经结束
-        while (PollSema(bgmLoadSema) == bgmLoadSema)
-            ;
-
-        // 立即标记为播放中，防止加载期间被重复启动；加载失败时由任务清零
-        bgmIsPlaying = 1;
-        bgmThreadsStarted = 0;
-        bgmLoading = 1;
-
-        // 提交到IO队列；IO队列被阻塞(如正在启动游戏)时无法排队，退回在当前线程同步执行
-        if (ioPutRequest(IO_CUSTOM_SIMPLEACTION, &bgmLoadAndPlay) != IO_OK)
-            bgmLoadAndPlay();
     }
 }
 
@@ -781,18 +741,6 @@ void bgmStop(void)
     LOG("BGM: terminating threads...\n");
 
     terminateFlag = 1;
-
-    // 加载任务还在IO队列里或正在执行时，先等它结束(它看到terminateFlag会跳过加载)
-    if (bgmLoading)
-        WaitSema(bgmLoadSema);
-
-    // 加载失败或被中止时，任务已自行清理，没有音乐线程需要停
-    if (!bgmThreadsStarted) {
-        LOG("BGM: stopped (not started).\n");
-        return;
-    }
-    bgmThreadsStarted = 0;
-
     WakeupThread(bgmThreadID);
     // 播放线程退出时不再归还空块，需在此唤醒可能阻塞在WaitSema(inSema)上的解码线程，使其检查terminateFlag后退出
     SignalSema(inSema);
