@@ -260,6 +260,8 @@ void sfxPlay(int id)
 #define BGM_WHOLE_BLOCK_MAX_MS    32    // 整个解码块的播放时长不超过它就整块送入，不再拆分(如44.1kHz立体声约23毫秒)
 #define BGM_TAIL_MERGE_DIVISOR    2     // 末尾零头不足半个块(块大小/该值)时并入上一段一起送，避免单独发起一次很小的请求
 
+#define BGM_MEMORY_LOAD_MAX_SIZE (2 * 1024 * 1024) // 自定义背景音乐文件不超过该大小(字节)时整个读入内存播放
+
 extern void *_gp;
 
 static int bgmThreadID, bgmIoThreadID;
@@ -356,67 +358,99 @@ static void bgmIoThread(void *arg)
 extern unsigned char default_bgm_ogg[];
 extern unsigned int size_default_bgm_ogg;
 
-// 内嵌背景音乐的内存读取状态。同一时间只有一个播放实例，用静态变量即可
+// 背景音乐的内存读取状态(内嵌的默认音乐，或整个读入内存的自定义音乐)。同一时间只有一个播放实例，用静态变量即可
 static struct
 {
     const unsigned char *data;
     long size;
     long pos;
-} embeddedBgm;
+    unsigned char *owned; // 需要释放的内存(自定义音乐读入的缓冲)；内嵌音乐在ELF里，为NULL
+} memBgm;
 
 // 以下四个回调让vorbisfile直接从内存读取数据，语义与fread/fseek/ftell/fclose一致
-static size_t embeddedBgmRead(void *ptr, size_t size, size_t nmemb, void *datasource)
+static size_t memBgmRead(void *ptr, size_t size, size_t nmemb, void *datasource)
 {
     size_t items;
 
     if (size == 0 || nmemb == 0)
         return 0;
 
-    items = (size_t)(embeddedBgm.size - embeddedBgm.pos) / size;
+    items = (size_t)(memBgm.size - memBgm.pos) / size;
     if (items > nmemb)
         items = nmemb;
 
-    memcpy(ptr, embeddedBgm.data + embeddedBgm.pos, items * size);
-    embeddedBgm.pos += (long)(items * size);
+    memcpy(ptr, memBgm.data + memBgm.pos, items * size);
+    memBgm.pos += (long)(items * size);
     return items;
 }
 
-static int embeddedBgmSeek(void *datasource, ogg_int64_t offset, int whence)
+static int memBgmSeek(void *datasource, ogg_int64_t offset, int whence)
 {
     ogg_int64_t target;
 
     if (whence == SEEK_SET)
         target = offset;
     else if (whence == SEEK_CUR)
-        target = embeddedBgm.pos + offset;
+        target = memBgm.pos + offset;
     else if (whence == SEEK_END)
-        target = embeddedBgm.size + offset;
+        target = memBgm.size + offset;
     else
         return -1;
 
-    if (target < 0 || target > embeddedBgm.size)
+    if (target < 0 || target > memBgm.size)
         return -1;
 
-    embeddedBgm.pos = (long)target;
+    memBgm.pos = (long)target;
     return 0;
 }
 
-static int embeddedBgmClose(void *datasource)
+static int memBgmClose(void *datasource)
 {
-    return 0; // 数据在ELF里，无需释放
+    // 内嵌音乐在ELF里无需释放；自定义音乐读入的缓冲在这里释放(ov_clear时调用)
+    if (memBgm.owned != NULL) {
+        free(memBgm.owned);
+        memBgm.owned = NULL;
+    }
+    memBgm.data = NULL;
+    return 0;
 }
 
-static long embeddedBgmTell(void *datasource)
+static long memBgmTell(void *datasource)
 {
-    return embeddedBgm.pos;
+    return memBgm.pos;
 }
 
-static const ov_callbacks embeddedBgmCallbacks = {embeddedBgmRead, embeddedBgmSeek, embeddedBgmClose, embeddedBgmTell};
+static const ov_callbacks memBgmCallbacks = {memBgmRead, memBgmSeek, memBgmClose, memBgmTell};
+
+// 从内存中的Ogg数据初始化解码器，成功返回0
+// owned不为NULL时表示data是malloc出来的缓冲，成功后由解码器在ov_clear时释放，失败时在这里释放
+static int bgmOpenMemory(const unsigned char *data, long size, unsigned char *owned)
+{
+    memBgm.data = data;
+    memBgm.size = size;
+    memBgm.pos = 0;
+    memBgm.owned = owned;
+
+    memset(vorbisFile, 0, sizeof(OggVorbis_File));
+    if (ov_open_callbacks(&memBgm, vorbisFile, NULL, 0, memBgmCallbacks) < 0) {
+        LOG("BGM: Ogg data in memory is invalid.\n");
+        // 解码初始化失败时vorbisfile不会调用关闭回调，缓冲需要在这里释放
+        free(owned);
+        memBgm.owned = NULL;
+        memBgm.data = NULL;
+        memset(vorbisFile, 0, sizeof(OggVorbis_File));
+        return -ENOENT;
+    }
+
+    return 0;
+}
 
 // 用文件路径打开并初始化解码器，成功返回0。失败时不留下打开的句柄，vorbisFile保持清零，可继续尝试下一个来源
+// 文件不超过 BGM_MEMORY_LOAD_MAX_SIZE 时整个读入内存播放(播放期间不再访问存储设备)，否则或内存不足时从文件流式读取
 static int bgmOpenPath(const char *path)
 {
     FILE *bgmFile;
+    long fileSize = -1;
 
     if (path[0] == '\0')
         return -ENOENT;
@@ -425,6 +459,32 @@ static int bgmOpenPath(const char *path)
     if (bgmFile == NULL) {
         LOG("BGM: Failed to open Ogg file %s\n", path);
         return -ENOENT;
+    }
+
+    if (fseek(bgmFile, 0, SEEK_END) == 0)
+        fileSize = ftell(bgmFile);
+    if (fseek(bgmFile, 0, SEEK_SET) != 0)
+        fileSize = -1;
+
+    if (fileSize > 0 && fileSize <= BGM_MEMORY_LOAD_MAX_SIZE) {
+        unsigned char *buffer = malloc(fileSize);
+
+        if (buffer != NULL) {
+            if (fread(buffer, 1, fileSize, bgmFile) == (size_t)fileSize) {
+                fclose(bgmFile);
+                LOG("BGM: Loaded %s into memory (%ld bytes)\n", path, fileSize);
+                return bgmOpenMemory(buffer, fileSize, buffer);
+            }
+
+            // 读取不完整：放弃内存方式，回到文件开头改为流式读取
+            LOG("BGM: Failed to read %s into memory, falling back to streaming.\n", path);
+            free(buffer);
+            if (fseek(bgmFile, 0, SEEK_SET) != 0) {
+                fclose(bgmFile);
+                return -ENOENT;
+            }
+        } else
+            LOG("BGM: Not enough memory for %s (%ld bytes), falling back to streaming.\n", path, fileSize);
     }
 
     memset(vorbisFile, 0, sizeof(OggVorbis_File));
@@ -443,18 +503,7 @@ static int bgmOpenPath(const char *path)
 // 从内嵌的默认背景音乐初始化解码器，成功返回0
 static int bgmOpenEmbedded(void)
 {
-    embeddedBgm.data = default_bgm_ogg;
-    embeddedBgm.size = (long)size_default_bgm_ogg;
-    embeddedBgm.pos = 0;
-
-    memset(vorbisFile, 0, sizeof(OggVorbis_File));
-    if (ov_open_callbacks(&embeddedBgm, vorbisFile, NULL, 0, embeddedBgmCallbacks) < 0) {
-        LOG("BGM: Embedded Ogg data is invalid.\n");
-        memset(vorbisFile, 0, sizeof(OggVorbis_File));
-        return -ENOENT;
-    }
-
-    return 0;
+    return bgmOpenMemory(default_bgm_ogg, (long)size_default_bgm_ogg, NULL);
 }
 
 // 按优先级选择背景音乐：
