@@ -268,6 +268,8 @@ extern void *_gp;
 static int bgmThreadID, bgmIoThreadID;
 static int outSema, inSema, exitSema; // exitSema：两个音乐线程退出时各发一个信号，bgmStop据此等待它们真正退出
 static unsigned char terminateFlag, bgmIsPlaying;
+static unsigned char bgmSessionAllocated; // 已经bgmInit成功且还没bgmDeinit：线程、信号量等资源仍在，需要bgmStop回收
+static int bgmPrepare(void);              // 在解码线程里打开音乐并设置格式，定义在bgmLoad之后
 static unsigned char rdPtr, wrPtr;
 static int bgmChunkSize = BGM_RING_BUFFER_SIZE; // 每次送入audsrv的字节数，在bgmStart中按采样率和声道数计算
 static char bgmBuffer[BGM_RING_BUFFER_COUNT][BGM_RING_BUFFER_SIZE];
@@ -316,7 +318,8 @@ static void bgmThread(void *arg)
     SignalSema(exitSema);
 }
 
-static void bgmIoThread(void *arg)
+// 解码循环：不断把解码好的块放进环形缓冲，直到被要求停止
+static void bgmDecodeLoop(void)
 {
     int partsToRead, decodeTotal, bitStream, i;
 
@@ -349,6 +352,16 @@ static void bgmIoThread(void *arg)
             SignalSema(outSema);
         WakeupThread(bgmThreadID);
     } while (!terminateFlag && gEnableBGM);
+}
+
+static void bgmIoThread(void *arg)
+{
+    // 读文件(整个读入内存或打开流)可能很慢，放在这个线程里做，主线程才不会被卡住；
+    // 加载期间bgmStop被调用或加载失败时不进入解码循环，直接走下面的退出流程，播放线程随之退出
+    if (bgmPrepare() == 0 && !terminateFlag)
+        bgmDecodeLoop();
+    else
+        LOG("BGM: not playing (load failed or stopped).\n");
 
     terminateFlag = 1;
     WakeupThread(bgmThreadID);
@@ -674,6 +687,9 @@ static int bgmInit(void)
         DeleteSema(exitSema);
     }
 
+    if (result >= 0)
+        bgmSessionAllocated = 1;
+
     return result;
 }
 
@@ -686,44 +702,58 @@ static void bgmDeinit(void)
     DeleteThread(bgmIoThreadID);
 
     // Vorbisfile takes care of fclose.
-    ov_clear(vorbisFile);
-    free(vorbisFile);
-    vorbisFile = NULL;
+    if (vorbisFile != NULL) {
+        ov_clear(vorbisFile);
+        free(vorbisFile);
+        vorbisFile = NULL;
+    }
+    bgmSessionAllocated = 0;
+}
+
+// 在解码线程中执行：打开并解码初始化背景音乐，设置audsrv格式；成功返回0。
+// 必须在第一次唤醒播放线程之前完成，播放线程依赖这里算出的bgmChunkSize
+static int bgmPrepare(void)
+{
+    struct audsrv_fmt_t audsrvFmt;
+
+    if (bgmLoad() != 0)
+        return -1;
+
+    vorbis_info *vi = ov_info(vorbisFile, -1);
+    ov_pcm_seek(vorbisFile, 0);
+
+    audsrvFmt.channels = vi->channels;
+    audsrvFmt.freq = vi->rate;
+    audsrvFmt.bits = 16;
+
+    audsrv_set_format(&audsrvFmt);
+
+    // 每段 = 2倍audsrv的喂给量(8kHz单声道为340字节，约21毫秒)；不能超过解码块大小。
+    // 整个解码块本身就播放不超过约32毫秒的格式(如44.1kHz立体声)等待很短，保持整块送入不拆分
+    bgmChunkSize = BGM_AUDSRV_CHUNK_FEED_NUM * ((BGM_AUDSRV_FEED_SAMPLES * audsrvFmt.freq) / BGM_AUDSRV_OUTPUT_RATE) * audsrvFmt.channels * BGM_SAMPLE_BYTES;
+    if (BGM_RING_BUFFER_SIZE * BGM_MS_PER_SEC <= BGM_WHOLE_BLOCK_MAX_MS * audsrvFmt.freq * audsrvFmt.channels * BGM_SAMPLE_BYTES)
+        bgmChunkSize = BGM_RING_BUFFER_SIZE;
+    if (bgmChunkSize <= 0 || bgmChunkSize > BGM_RING_BUFFER_SIZE)
+        bgmChunkSize = BGM_RING_BUFFER_SIZE;
+
+    return 0;
 }
 
 void bgmStart(void)
 {
-    struct audsrv_fmt_t audsrvFmt;
-
     if (!audio_initialized) {
         LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
         return;
     }
 
+    // 上一次的资源还没回收(例如加载失败或线程自己退出了，没人调用bgmStop)：先回收，避免泄露
+    if (bgmSessionAllocated)
+        bgmStop();
+
     int ret = bgmInit();
     if (ret >= 0) {
-        if (bgmLoad() != 0) {
-            bgmDeinit();
-            return;
-        }
-
-        vorbis_info *vi = ov_info(vorbisFile, -1);
-        ov_pcm_seek(vorbisFile, 0);
-
-        audsrvFmt.channels = vi->channels;
-        audsrvFmt.freq = vi->rate;
-        audsrvFmt.bits = 16;
-
-        audsrv_set_format(&audsrvFmt);
-
-        // 每段 = 2倍audsrv的喂给量(8kHz单声道为340字节，约21毫秒)；不能超过解码块大小。
-        // 整个解码块本身就播放不超过约32毫秒的格式(如44.1kHz立体声)等待很短，保持整块送入不拆分
-        bgmChunkSize = BGM_AUDSRV_CHUNK_FEED_NUM * ((BGM_AUDSRV_FEED_SAMPLES * audsrvFmt.freq) / BGM_AUDSRV_OUTPUT_RATE) * audsrvFmt.channels * BGM_SAMPLE_BYTES;
-        if (BGM_RING_BUFFER_SIZE * BGM_MS_PER_SEC <= BGM_WHOLE_BLOCK_MAX_MS * audsrvFmt.freq * audsrvFmt.channels * BGM_SAMPLE_BYTES)
-            bgmChunkSize = BGM_RING_BUFFER_SIZE;
-        if (bgmChunkSize <= 0 || bgmChunkSize > BGM_RING_BUFFER_SIZE)
-            bgmChunkSize = BGM_RING_BUFFER_SIZE;
-
+        // 立即标记为播放中，防止加载期间被重复启动；加载失败时由播放线程退出时清零。
+        // 加载在解码线程里进行，这里只启动两个线程就返回，主线程不会被读文件卡住
         bgmIsPlaying = 1;
 
         StartThread(bgmIoThreadID, NULL);
@@ -737,6 +767,10 @@ void bgmStop(void)
         LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
         return;
     }
+
+    // 没有可回收的资源(从未启动，或已经回收过)
+    if (!bgmSessionAllocated)
+        return;
 
     LOG("BGM: terminating threads...\n");
 
