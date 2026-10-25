@@ -697,11 +697,11 @@ gui_strings:
 - label: TXTRENAME
   string: txt映射列表
 - label: ABOUT_CHINESE_CONTRIBUTORS
-  string: FGOPL贡献名单（第1/2页）
+  string: FGOPL贡献者名单（第1/2页）
 - label: ABOUT_CONTRIBUTORS_PENDING
   string: 名单待补充
 - label: ABOUT_ORIGINAL_CONTRIBUTORS
-  string: 官方OPL贡献名单（第2/2页）
+  string: 官方OPL贡献者名单（第2/2页）
 - label: ABOUT_NEXT_PAGE
   string: 下一页
 - label: ABOUT_PREVIOUS_PAGE
