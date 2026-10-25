@@ -740,3 +740,5 @@ gui_strings:
   string: Generates a txt file used to map game names to any text
 - label: HINT_ENABLE_WRITE
   string: OPL's delete function is not absolutely safe, please use it with caution
+- label: HINT_THEME
+  string: Two built-in themes can be switched. Place third-party themes in the THM folder
