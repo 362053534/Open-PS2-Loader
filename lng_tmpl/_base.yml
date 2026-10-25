@@ -597,7 +597,7 @@ gui_strings:
 - label: CONTROLLER_SETTINGS
   string: 控制器设置
 - label: HINT_BDM_START
-  string: 打开/关闭块设备管理器。
+  string: 管理USB、iLink、MX4SIO和内置exFAT硬盘
 - label: HINT_BLOCK_DEVICES
   string: 打开/关闭块设备(例如USB)。
 - label: USB_GAMES
@@ -738,3 +738,5 @@ gui_strings:
   string: 热插拔U盘等块设备时，OPL能实时做出响应
 - label: HINT_TXTRENAME
   string: 生成txt文件，用于将游戏名映射为任意文字
+- label: HINT_ENABLE_WRITE
+  string: OPL的删除功能并不是绝对安全，请谨慎使用
