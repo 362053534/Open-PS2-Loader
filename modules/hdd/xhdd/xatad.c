@@ -41,6 +41,10 @@ static void ata_ultra_dma_mode(int mode)
             val = 0x62;
             break;
         case 4:
+        case 5:
+        case 6:
+        case 7:
+            // 主机端时序没有UDMA 5/6/7的可靠数值，统一沿用UDMA 4的值，而不是落到UDMA 0的默认值
             val = 0x61;
             break;
         default:
