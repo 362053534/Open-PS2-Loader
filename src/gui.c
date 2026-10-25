@@ -66,7 +66,9 @@ int txtFileCreated = 0;
 int txtFileRebuilded = 0;
 
 static int bdmDeviceAlertPending = 0;
-static int artLoadDelayTime = 200;
+// 启动或手动启动BDM后，等待封面预加载的最大帧数，超时后不再等待
+#define ART_LOAD_DELAY_FRAMES 360
+static int artLoadDelayTime = ART_LOAD_DELAY_FRAMES;
 
 #ifdef __DEBUG
 
@@ -1821,7 +1823,7 @@ void reFindBDM()
 {
     if (bdmManualTrigger) {
         if (!artLoadDelayTime)
-            artLoadDelayTime = 200;
+            artLoadDelayTime = ART_LOAD_DELAY_FRAMES;
     }
     //int curLongDelayFrame = defaultDelayFrame;
     //int curShortDelayFrame = ShortDelayTime;
