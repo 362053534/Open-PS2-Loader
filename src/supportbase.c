@@ -2116,17 +2116,18 @@ static void sbCreatePath_name(const base_game_info_t *game, char *path, const ch
             snprintf(path, 256, "%sul.%s.%s.%02x", prefix, game->crc32name, game->startup, part);
             break;
         case GAME_FORMAT_ISO:
-            snprintf(path, 256, "%s%s%s%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, gTxtRename ? game->indexName : game->name, game->extension);
+            snprintf(path, 256, "%s%s%s%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, game_name, game->extension);
             break;
         case GAME_FORMAT_OLD_ISO:
-            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, game->startup, gTxtRename ? game->indexName : game->name, game->extension);
+            snprintf(path, 256, "%s%s%s%s.%s%s", prefix, sbGetISODirectoryName(prefix, game->media), sep, game->startup, game_name, game->extension);
             break;
     }
 }
 
 void sbCreatePath(const base_game_info_t *game, char *path, const char *prefix, const char *sep, int part)
 {
-    sbCreatePath_name(game, path, prefix, sep, part, game->name);
+    // 当前磁盘上的文件名：开启txt映射时是索引名，否则就是游戏名
+    sbCreatePath_name(game, path, prefix, sep, part, gTxtRename ? game->indexName : game->name);
 }
 
 void sbDelete(base_game_info_t **list, const char *prefix, const char *sep, int gamecount, int id)
@@ -2152,7 +2153,8 @@ void sbRename(base_game_info_t **list, const char *prefix, const char *sep, int 
     base_game_info_t *game = &(*list)[id];
 
     for (part = 0; part < game->parts; part++) {
-        sbCreatePath_name(game, oldpath, prefix, sep, part, game->indexName);
+        // 旧路径必须用当前磁盘上的文件名，新路径用新名字，否则两者相同，重命名无效
+        sbCreatePath_name(game, oldpath, prefix, sep, part, gTxtRename ? game->indexName : game->name);
         sbCreatePath_name(game, newpath, prefix, sep, part, newname);
         rename(oldpath, newpath);
     }
