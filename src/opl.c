@@ -2953,7 +2953,7 @@ static void setDefaults(void)
     gEnableBGM = 1; // 默认开启背景音乐
     gSFXVolume = 80;
     gBootSndVolume = 80;
-    gBGMVolume = 80;
+    gBGMVolume = 100;
     gDefaultBGMPath[0] = '\0';
     gXSensitivity = 1;
     gYSensitivity = 1;

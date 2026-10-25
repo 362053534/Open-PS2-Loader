@@ -679,7 +679,7 @@ gui_strings:
 - label: DEF_BGM_PATH
   string: 自定义背景音乐
 - label: DEF_BGM_PATH_HINT
-  string: 手动编辑ogg文件路径
+  string: 自定义ogg文件路径，留空则播放主题自带背景音乐
 - label: HIGH
   string: High
 - label: LOW
@@ -715,7 +715,7 @@ gui_strings:
 - label: BGM_SEARCH
   string: 搜索ogg文件
 - label: HINT_BGM_SEARCH
-  string: 搜索已启动设备根目录中的ogg文件，并填入上方路径
+  string: 搜索根目录的ogg文件，并自动填入上方路径
 - label: BGM_NOT_FOUND
   string: 未找到ogg文件
 - label: ARTPACK
