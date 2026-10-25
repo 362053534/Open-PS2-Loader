@@ -62,6 +62,7 @@ enum CONFIG_INDEX {
 #define CONFIG_ITEM_ENABLECHEAT  "$EnableCheat"
 #define CONFIG_ITEM_CHEATMODE    "$CheatMode"
 #define CONFIG_ITEM_CHEAT_SELECTION_PREFIX "$CheatSel"
+#define CONFIG_ITEM_CHEAT_SELECTION_ID_PREFIX "$CheatSelId" // 与同序号的标题配对保存第一行代码的校验值，用于区分同名金手指
 
 #define CONFIG_ITEM_PADEMUSOURCE     "$PADEMUSource"
 #define CONFIG_ITEM_ENABLEPADEMU     "$EnablePadEmu"
