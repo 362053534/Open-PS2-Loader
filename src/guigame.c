@@ -1154,7 +1154,8 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
         else
             configRemoveKey(configSet, CONFIG_ITEM_ENABLECHEAT);
 
-        if (CheatMode != 0)
+        // 与默认值相同时不写入，没有该键即为默认模式
+        if (CheatMode != CHEAT_MODE_DEFAULT)
             result = configSetInt(configSet, CONFIG_ITEM_CHEATMODE, CheatMode);
         else
             configRemoveKey(configSet, CONFIG_ITEM_CHEATMODE);
@@ -1343,7 +1344,7 @@ static void guiGameLoadGSMConfig(config_set_t *configSet, config_set_t *configGa
 static void guiGameLoadCheatsConfig(config_set_t *configSet, config_set_t *configGame)
 {
     EnableCheat = 0;
-    CheatMode = 0;
+    CheatMode = CHEAT_MODE_DEFAULT;
 
     // set global settings.
     gCheatSource = 0;
@@ -1356,7 +1357,7 @@ static void guiGameLoadCheatsConfig(config_set_t *configSet, config_set_t *confi
         if (!configGetInt(configSet, CONFIG_ITEM_ENABLECHEAT, &EnableCheat))
             EnableCheat = 0;
         if (!configGetInt(configSet, CONFIG_ITEM_CHEATMODE, &CheatMode))
-            CheatMode = 0;
+            CheatMode = CHEAT_MODE_DEFAULT;
     }
 
     // set gui settings.

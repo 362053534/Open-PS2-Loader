@@ -40,7 +40,7 @@ void InitCheatsConfig(config_set_t *configSet)
     // Default values.
     gCheatSource = 0;
     gEnableCheat = 0;
-    gCheatMode = 0;
+    gCheatMode = CHEAT_MODE_DEFAULT;
 
     if (configGetInt(configSet, CONFIG_ITEM_CHEATSSOURCE, &gCheatSource)) {
         // Load the rest of the per-game CHEAT configuration if CHEAT is enabled.
@@ -289,7 +289,7 @@ static int parse_buf(const char *buf)
                         cheat_index++; // Move to the next cheat entry
                         strncpy(gCheats[cheat_index].name, temp_name, CHEAT_NAME_MAX);
                         gCheats[cheat_index].name[CHEAT_NAME_MAX] = NUL;
-                        gCheats[cheat_index].enabled = (gCheatMode == 0) || cheatConfigIsMasterCode(gCheats[cheat_index].name); // Auto mode enables all; select mode enables required code only
+                        gCheats[cheat_index].enabled = (gCheatMode == CHEAT_MODE_AUTO) || cheatConfigIsMasterCode(gCheats[cheat_index].name); // Auto mode enables all; select mode enables required code only
                         temp_name[0] = NUL;               // Clear temp_name after use
                     }
                     // Add the cheat code to the current cheat entry
@@ -384,7 +384,7 @@ int load_cheats(const char *cheatfile)
     if (ret < 0)
         return ret;
 
-    return (gCheatMode == 0) ? 0 : 1;
+    return (gCheatMode == CHEAT_MODE_AUTO) ? 0 : 1;
 }
 
 void set_cheats_list(void)

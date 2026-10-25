@@ -36,6 +36,12 @@
 
 #define CHEAT_VERSION "0.5.3.7"
 
+// 金手指模式：0为自动（启用全部金手指），1为手动（由用户选择）
+#define CHEAT_MODE_AUTO    0
+#define CHEAT_MODE_SELECT  1
+// 默认为手动模式；配置中没有该键时视为默认值
+#define CHEAT_MODE_DEFAULT CHEAT_MODE_SELECT
+
 #define MAX_HOOKS      5
 #define MAX_CODES      250
 #define MAX_CHEATLIST  (MAX_HOOKS * 2 + MAX_CODES * 2)
