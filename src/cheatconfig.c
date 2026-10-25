@@ -7,6 +7,9 @@
 
 #define CHEAT_SELECTION_KEY_MAX CONFIG_KEY_NAME_LEN
 
+// 校验值把第一行代码的值循环移位后与地址异或，一个整数里同时保留地址和值的信息
+#define CHEAT_CHECK_VALUE_ROTATE_BITS 16
+
 static void normalizeCheatName(const char *source, char *destination, size_t destinationSize)
 {
     size_t output = 0;
@@ -37,6 +40,15 @@ static void normalizeCheatName(const char *source, char *destination, size_t des
     destination[output] = NUL;
 }
 
+// 用第一行代码（地址和值）算出一个校验值，不含标题，用来区分同名金手指
+static u32 cheatCodeHash(const cheat_entry_t *cheat)
+{
+    u32 addr = cheat->codes[0].addr;
+    u32 val = cheat->codes[0].val;
+
+    return addr ^ ((val << CHEAT_CHECK_VALUE_ROTATE_BITS) | (val >> (32 - CHEAT_CHECK_VALUE_ROTATE_BITS)));
+}
+
 int cheatConfigIsMasterCode(const char *name)
 {
     char normalized[CHEAT_NAME_MAX + 1];
@@ -49,23 +61,24 @@ int cheatConfigIsMasterCode(const char *name)
            strncmp(normalized, "enable code", 11) == 0;
 }
 
+// 同名金手指的标题按原样逐字节比较，不忽略空格，也不统一大小写
 static int cheatNamesMatch(const char *first, const char *second)
 {
-    char normalizedFirst[CHEAT_NAME_MAX + 1];
-    char normalizedSecond[CHEAT_NAME_MAX + 1];
-
-    normalizeCheatName(first, normalizedFirst, sizeof(normalizedFirst));
-    normalizeCheatName(second, normalizedSecond, sizeof(normalizedSecond));
-
-    return strcmp(normalizedFirst, normalizedSecond) == 0;
+    return strcmp(first, second) == 0;
 }
 
 void cheatConfigLoadSelections(config_set_t *configSet)
 {
     int cheatIndex;
     int selectionIndex;
+    int selectionCount = 0;
+    int pass;
     char key[CHEAT_SELECTION_KEY_MAX];
-    char savedName[CONFIG_KEY_VALUE_LEN];
+    // 数组较大，放静态区，避免占用线程栈
+    static char savedName[MAX_CODES][CONFIG_KEY_VALUE_LEN];
+    static int savedHash[MAX_CODES];
+    static int savedHasHash[MAX_CODES];
+    static char savedMatched[MAX_CODES];
 
     /* First use is safe: required code on, every optional code off. */
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++)
@@ -74,16 +87,41 @@ void cheatConfigLoadSelections(config_set_t *configSet)
     if (configSet == NULL)
         return;
 
+    // 先读出全部已保存的选择，后面分两轮匹配
     for (selectionIndex = 0; selectionIndex < MAX_CODES; selectionIndex++) {
         snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_PREFIX, selectionIndex);
 
-        if (!configGetStrCopy(configSet, key, savedName, sizeof(savedName)))
+        if (!configGetStrCopy(configSet, key, savedName[selectionIndex], sizeof(savedName[selectionIndex])))
             break;
 
-        for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
-            if (!cheatConfigIsMasterCode(gCheats[cheatIndex].name) &&
-                cheatNamesMatch(gCheats[cheatIndex].name, savedName)) {
+        snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_ID_PREFIX, selectionIndex);
+        savedHasHash[selectionIndex] = configGetInt(configSet, key, &savedHash[selectionIndex]);
+        savedMatched[selectionIndex] = 0;
+        selectionCount++;
+    }
+
+    /* 第一轮：标题和第一行代码都一致的才算精确匹配；第二轮：没有精确匹配上的（旧配置或第一行代码被编辑过）按标题匹配第一个尚未勾选的同名金手指。
+     * 每个金手指最多被一条选择占用，所以同名金手指不会都落到第一个上。 */
+    for (pass = 0; pass < 2; pass++) {
+        for (selectionIndex = 0; selectionIndex < selectionCount; selectionIndex++) {
+            if (savedMatched[selectionIndex])
+                continue;
+
+            if (pass == 0 && !savedHasHash[selectionIndex])
+                continue;
+
+            for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
+                if (gCheats[cheatIndex].enabled || cheatConfigIsMasterCode(gCheats[cheatIndex].name))
+                    continue;
+
+                if (!cheatNamesMatch(gCheats[cheatIndex].name, savedName[selectionIndex]))
+                    continue;
+
+                if (pass == 0 && (u32)savedHash[selectionIndex] != cheatCodeHash(&gCheats[cheatIndex]))
+                    continue;
+
                 gCheats[cheatIndex].enabled = 1;
+                savedMatched[selectionIndex] = 1;
                 break;
             }
         }
@@ -109,12 +147,17 @@ void cheatConfigSaveSelections(config_set_t *configSet)
     for (cheatIndex = 0; cheatIndex < MAX_CODES; cheatIndex++) {
         snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_PREFIX, cheatIndex);
         configRemoveKey(configSet, key);
+        snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_ID_PREFIX, cheatIndex);
+        configRemoveKey(configSet, key);
     }
 
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
         if (gCheats[cheatIndex].enabled && !cheatConfigIsMasterCode(gCheats[cheatIndex].name)) {
-            snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_PREFIX, selectionIndex++);
+            snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_PREFIX, selectionIndex);
             configSetStr(configSet, key, gCheats[cheatIndex].name);
+            snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_ID_PREFIX, selectionIndex);
+            configSetInt(configSet, key, (int)cheatCodeHash(&gCheats[cheatIndex]));
+            selectionIndex++;
         }
     }
 }

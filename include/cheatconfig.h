@@ -6,7 +6,7 @@
 /* Returns non-zero for standardized required-code headings. */
 int cheatConfigIsMasterCode(const char *name);
 
-/* Reset optional cheats to off, then restore enabled entries by normalized name. */
+/* Reset optional cheats to off, then restore enabled entries by name plus first-code checksum. */
 void cheatConfigLoadSelections(config_set_t *configSet);
 
 /* Save enabled optional cheats as numbered per-game CFG values. */
