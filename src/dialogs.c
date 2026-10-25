@@ -300,7 +300,7 @@ struct UIItem diaUIConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_THEME}}},
     {UI_SPACER},
-    {UI_ENUM, UICFG_THEME, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_ENUM, UICFG_THEME, 1, 1, _STR_HINT_THEME, 0, 0, {.intvalue = {0, 0}}},
     {UI_SPACER},
     // 同屏封面数：仅在选中内置封面流主题时显示
     {UI_ENUM, UICFG_CF_COUNT, 1, 1, _STR_HINT_CF_COUNT, 0, 0, {.intvalue = {0, 0}}},
