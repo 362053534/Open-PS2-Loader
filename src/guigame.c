@@ -997,16 +997,16 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
         diaSetEnum(diaCompatConfig, COMPAT_DMASOURCE, settingsSource);
         int ataHighestUDMAMode = getHighestUdmaMode();
         if (ataHighestUDMAMode == 5) {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 官方最高模式", "UDMA 5 检测到的最高模式", "UDMA 6", "UDMA 7 极速模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5 当前硬盘最高模式", "UDMA 6", "UDMA 7 极速模式", NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         } else if (ataHighestUDMAMode == 6) {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 官方最高模式", "UDMA 5", "UDMA 6 检测到的最高模式", "UDMA 7 极速模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5", "UDMA 6 当前硬盘最高模式", "UDMA 7 极速模式", NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         } else if (ataHighestUDMAMode == 7) {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 官方最高模式", "UDMA 5", "UDMA 6", "UDMA 7 检测到的最高模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5", "UDMA 6", "UDMA 7 当前硬盘最高模式", NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         } else {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 官方最高模式", "UDMA 5", "UDMA 6", "UDMA 7 极速模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5", "UDMA 6", "UDMA 7 极速模式", NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         }
     } else {

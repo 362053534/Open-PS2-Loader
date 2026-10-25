@@ -738,3 +738,5 @@ gui_strings:
   string: OPL responds in real time when block devices such as USB drives are hot-plugged
 - label: HINT_TXTRENAME
   string: Generates a txt file used to map game names to any text
+- label: HINT_ENABLE_WRITE
+  string: OPL's delete function is not absolutely safe, please use it with caution
