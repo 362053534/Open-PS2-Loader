@@ -330,56 +330,132 @@ static void bgmIoThread(void *arg)
     WakeupThread(bgmThreadID);
 }
 
-// 判断当前主题是否会使用设置里的背景音乐路径：内置主题总是使用；
-// 第三方主题自带sound/bgm.ogg时用自带的，没有时回退到设置里的路径。用stat判断，不开句柄
-int bgmUsesDefaultPath(void)
+// 内嵌的默认背景音乐(audio/default_bgm.ogg，由bin2c生成)
+extern unsigned char default_bgm_ogg[];
+extern unsigned int size_default_bgm_ogg;
+
+// 内嵌背景音乐的内存读取状态。同一时间只有一个播放实例，用静态变量即可
+static struct
 {
-    char thmBgm[256];
-    struct stat st;
-    int themeID = thmGetGuiValue();
+    const unsigned char *data;
+    long size;
+    long pos;
+} embeddedBgm;
 
-    if (themeID < THM_NUM_BUILTIN)
-        return 1;
+// 以下四个回调让vorbisfile直接从内存读取数据，语义与fread/fseek/ftell/fclose一致
+static size_t embeddedBgmRead(void *ptr, size_t size, size_t nmemb, void *datasource)
+{
+    size_t items;
 
-    snprintf(thmBgm, sizeof(thmBgm), "%ssound/bgm.ogg", thmGetFilePath(themeID));
-    return stat(thmBgm, &st) != 0;
+    if (size == 0 || nmemb == 0)
+        return 0;
+
+    items = (size_t)(embeddedBgm.size - embeddedBgm.pos) / size;
+    if (items > nmemb)
+        items = nmemb;
+
+    memcpy(ptr, embeddedBgm.data + embeddedBgm.pos, items * size);
+    embeddedBgm.pos += (long)(items * size);
+    return items;
 }
 
-static int bgmLoad(void)
+static int embeddedBgmSeek(void *datasource, ogg_int64_t offset, int whence)
+{
+    ogg_int64_t target;
+
+    if (whence == SEEK_SET)
+        target = offset;
+    else if (whence == SEEK_CUR)
+        target = embeddedBgm.pos + offset;
+    else if (whence == SEEK_END)
+        target = embeddedBgm.size + offset;
+    else
+        return -1;
+
+    if (target < 0 || target > embeddedBgm.size)
+        return -1;
+
+    embeddedBgm.pos = (long)target;
+    return 0;
+}
+
+static int embeddedBgmClose(void *datasource)
+{
+    return 0; // 数据在ELF里，无需释放
+}
+
+static long embeddedBgmTell(void *datasource)
+{
+    return embeddedBgm.pos;
+}
+
+static const ov_callbacks embeddedBgmCallbacks = {embeddedBgmRead, embeddedBgmSeek, embeddedBgmClose, embeddedBgmTell};
+
+// 用文件路径打开并初始化解码器，成功返回0。失败时不留下打开的句柄，vorbisFile保持清零，可继续尝试下一个来源
+static int bgmOpenPath(const char *path)
 {
     FILE *bgmFile;
-    char bgmPath[256];
 
-    vorbisFile = malloc(sizeof(OggVorbis_File));
-    memset(vorbisFile, 0, sizeof(OggVorbis_File));
+    if (path[0] == '\0')
+        return -ENOENT;
 
-    int themeID = thmGetGuiValue();
-    if (themeID >= THM_NUM_BUILTIN) {
-        char *thmPath = thmGetFilePath(themeID);
-        snprintf(bgmPath, sizeof(bgmPath), "%ssound/bgm.ogg", thmPath);
-    } else
-        snprintf(bgmPath, sizeof(bgmPath), gDefaultBGMPath);
-
-    bgmFile = fopen(bgmPath, "rb");
-    // 第三方主题没有自带bgm.ogg时，回退到设置里的背景音乐路径
-    if (bgmFile == NULL && themeID >= THM_NUM_BUILTIN && gDefaultBGMPath[0] != '\0') {
-        snprintf(bgmPath, sizeof(bgmPath), "%s", gDefaultBGMPath);
-        bgmFile = fopen(bgmPath, "rb");
-    }
+    bgmFile = fopen(path, "rb");
     if (bgmFile == NULL) {
-        LOG("BGM: Failed to open Ogg file %s\n", bgmPath);
+        LOG("BGM: Failed to open Ogg file %s\n", path);
         return -ENOENT;
     }
 
+    memset(vorbisFile, 0, sizeof(OggVorbis_File));
     if (ov_open_callbacks(bgmFile, vorbisFile, NULL, 0, OV_CALLBACKS_DEFAULT) < 0) {
         LOG("BGM: Input does not appear to be an Ogg bitstream.\n");
         // 解码初始化失败时vorbisfile不会接管文件，ov_clear也不会关闭它，必须手动关闭，
         // 否则每次重载主题都会泄露一个文件句柄，累积后封面等图片全部无法读取
         fclose(bgmFile);
+        memset(vorbisFile, 0, sizeof(OggVorbis_File));
         return -ENOENT;
     }
 
     return 0;
+}
+
+// 从内嵌的默认背景音乐初始化解码器，成功返回0
+static int bgmOpenEmbedded(void)
+{
+    embeddedBgm.data = default_bgm_ogg;
+    embeddedBgm.size = (long)size_default_bgm_ogg;
+    embeddedBgm.pos = 0;
+
+    memset(vorbisFile, 0, sizeof(OggVorbis_File));
+    if (ov_open_callbacks(&embeddedBgm, vorbisFile, NULL, 0, embeddedBgmCallbacks) < 0) {
+        LOG("BGM: Embedded Ogg data is invalid.\n");
+        memset(vorbisFile, 0, sizeof(OggVorbis_File));
+        return -ENOENT;
+    }
+
+    return 0;
+}
+
+// 按优先级选择背景音乐：
+// 1. 设置里的自定义路径有效时，任何主题都播放它
+// 2. 第三方主题自带sound/bgm.ogg时播放自带的
+// 3. 内置主题播放内嵌的默认背景音乐；第三方主题没有自带文件时不播放(不回退到内嵌音乐)
+static int bgmLoad(void)
+{
+    char bgmPath[256];
+    int themeID = thmGetGuiValue();
+
+    vorbisFile = malloc(sizeof(OggVorbis_File));
+    memset(vorbisFile, 0, sizeof(OggVorbis_File));
+
+    if (bgmOpenPath(gDefaultBGMPath) == 0)
+        return 0;
+
+    if (themeID >= THM_NUM_BUILTIN) {
+        snprintf(bgmPath, sizeof(bgmPath), "%ssound/bgm.ogg", thmGetFilePath(themeID));
+        return bgmOpenPath(bgmPath);
+    }
+
+    return bgmOpenEmbedded();
 }
 
 // 在指定根目录中查找第一个后缀为.ogg的文件(不区分大小写)，找到返回0
@@ -539,10 +615,6 @@ void bgmStart(void)
         LOG("BGM: %s: ERROR: not initialized!\n", __FUNCTION__);
         return;
     }
-
-    // 需要使用设置里的路径但路径为空时直接返回，不创建线程、不尝试打开文件
-    if (gDefaultBGMPath[0] == '\0' && bgmUsesDefaultPath())
-        return;
 
     int ret = bgmInit();
     if (ret >= 0) {
