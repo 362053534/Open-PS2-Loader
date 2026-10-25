@@ -96,14 +96,14 @@ int diaShowKeyb(char *text, int maxLen, int hide_text, const char *title)
         if (title != NULL) {
             fntRenderString(gTheme->fonts[0], 25, 20, ALIGN_NONE, 0, 0, title, gTheme->textColor);
             // separating line
-            rmDrawLine(25, 38, 615, 38, gColWhite);
+            rmDrawLine(25, 38, 615, 38, gTheme->selTextColor);
         }
 
         // Text
         fntRenderString(gTheme->fonts[0], 50, 120, ALIGN_NONE, 0, 0, hide_text ? mask_buffer : text, gTheme->textColor);
 
         // separating line for simpler orientation
-        rmDrawLine(25, 138, 615, 138, gColWhite);
+        rmDrawLine(25, 138, 615, 138, gTheme->selTextColor);
 
         for (j = 0; j < KEYB_HEIGHT; j++) {
             for (i = 0; i < KEYB_WIDTH; i++) {
