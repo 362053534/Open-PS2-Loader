@@ -2392,16 +2392,56 @@ void guiManageCheats(config_set_t *configSet)
         guiStartFrame();
         readPads();
 
-        if (getKeyOn(KEY_UP) && selectedCheat > 0) {
+        if (getKey(KEY_UP) && selectedCheat > 0) {
             selectedCheat -= 1;
             if (selectedCheat < offset)
                 offset = selectedCheat;
         }
 
-        if (getKeyOn(KEY_DOWN) && selectedCheat < cheatCount - 1) {
+        if (getKey(KEY_DOWN) && selectedCheat < cheatCount - 1) {
             selectedCheat += 1;
             if (selectedCheat >= offset + visibleCheats)
                 offset = selectedCheat - visibleCheats + 1;
+        }
+
+        /* L1/R1 翻页（可连发），L2/R2 跳到首项/末项（不连发），与游戏列表操作一致 */
+        if (cheatCount > 0) {
+            int jumped = 0;
+            int maxOffset = (cheatCount > visibleCheats) ? cheatCount - visibleCheats : 0;
+
+            if (getKey(KEY_L1)) {
+                selectedCheat -= visibleCheats;
+                offset -= visibleCheats;
+                jumped = 1;
+            } else if (getKey(KEY_R1)) {
+                selectedCheat += visibleCheats;
+                offset += visibleCheats;
+                jumped = 1;
+            } else if (getKeyOn(KEY_L2)) {
+                selectedCheat = 0;
+                offset = 0;
+                jumped = 1;
+            } else if (getKeyOn(KEY_R2)) {
+                selectedCheat = cheatCount - 1;
+                offset = maxOffset;
+                jumped = 1;
+            }
+
+            if (jumped) {
+                if (selectedCheat < 0)
+                    selectedCheat = 0;
+                if (selectedCheat > cheatCount - 1)
+                    selectedCheat = cheatCount - 1;
+                if (offset < 0)
+                    offset = 0;
+                if (offset > maxOffset)
+                    offset = maxOffset;
+                // 保证光标仍在可见范围内
+                if (selectedCheat < offset)
+                    offset = selectedCheat;
+                if (selectedCheat >= offset + visibleCheats)
+                    offset = selectedCheat - visibleCheats + 1;
+            }
         }
 
         if (getKeyOn(gSelectButton)) {
