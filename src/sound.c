@@ -110,9 +110,18 @@ static int sfxRead(const char *full_path, struct sfxEffect *sfx)
     return 0;
 }
 
-static int sfxCalculateSoundDuration(int nSamples)
+// ADPCM 文件头里的音高值：音高 = 采样率 * 4096 / 48000（与 adpenc 编码时一致）
+#define SFX_ADPCM_PITCH_UNIT   4096
+#define SFX_ADPCM_PITCH_BASE_HZ 48000
+
+// 按文件头里的音高换算出采样率，再算时长，这样 8kHz 等非 44.1kHz 的音效时长也正确
+// 音高为 0（头无效）时返回 0，由调用方按文件大小估算
+static int sfxCalculateSoundDuration(u32 nSamples, u32 pitch)
 {
-    float sampleRate = 44100; // 44.1kHz
+    float sampleRate = (float)pitch * SFX_ADPCM_PITCH_BASE_HZ / SFX_ADPCM_PITCH_UNIT;
+
+    if (sampleRate <= 0)
+        return 0;
 
     // Return duration in milliseconds
     return (nSamples / sampleRate) * 1000;
@@ -149,7 +158,7 @@ static int sfxLoad(struct sfxEffect *sfxData, audsrv_adpcm_t *sfx)
     int ret;
 
     // Calculate duration based on number of samples
-    sfxData->duration_ms = sfxCalculateSoundDuration(((u32 *)sfxData->buffer)[3]);
+    sfxData->duration_ms = sfxCalculateSoundDuration(((u32 *)sfxData->buffer)[3], ((u32 *)sfxData->buffer)[2]);
     // Estimate duration based on filesize, if the ADPCM header was 0
     if (sfxData->duration_ms == 0)
         sfxData->duration_ms = sfxData->size / 47;
