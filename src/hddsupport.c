@@ -615,6 +615,9 @@ static void hddDeleteGame(item_list_t *itemList, int id)
     if (id < hddGames.count) {
         hddDeleteHDLGame(&hddGames.games[id]);
         hddForceUpdate = 1;
+    } else if (id - hddGames.count < hddIsoGameCount) {
+        // APA 直读 ISO 游戏：编号在 HDL 游戏之后，按 ISO 列表内的序号删除
+        sbDelete(&hddIsoGames, gHDDPrefix, "/", hddIsoGameCount, id - hddGames.count);
     }
 }
 
@@ -625,6 +628,9 @@ static void hddRenameGame(item_list_t *itemList, int id, char *newName)
         strcpy(game->name, newName);
         hddSetHDLGameInfo(&hddGames.games[id]);
         hddForceUpdate = 1;
+    } else if (id - hddGames.count < hddIsoGameCount) {
+        // APA 直读 ISO 游戏：按 ISO 列表内的序号重命名
+        sbRename(&hddIsoGames, gHDDPrefix, "/", hddIsoGameCount, id - hddGames.count, newName);
     }
 }
 
