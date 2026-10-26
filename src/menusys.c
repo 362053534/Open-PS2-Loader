@@ -78,6 +78,9 @@ static submenu_list_t *gameMenu;
 // active item in game settings
 static submenu_list_t *gameMenuCurrent;
 
+// 游戏设置页面整体下移的像素数（避开屏幕上边缘，坐标按 640x480 计）
+#define GAME_MENU_Y_OFFSET 15
+
 static submenu_list_t *appMenu;
 static submenu_list_t *appMenuCurrent;
 
@@ -1376,15 +1379,15 @@ void menuRenderGameMenu()
     }
 
     int spacing = 25;
-    int y = (gTheme->usedHeight >> 1) - (spacing * (count >> 1));
+    int y = (gTheme->usedHeight >> 1) - (spacing * (count >> 1)) + GAME_MENU_Y_OFFSET;
     int cp = 0; // current position
 
     // game title
-    fntRenderString(gTheme->fonts[0], 320, 20, ALIGN_CENTER, 0, 0, selected_item->item->current->item.text, gTheme->selTextColor);
+    fntRenderString(gTheme->fonts[0], 320, 20 + GAME_MENU_Y_OFFSET, ALIGN_CENTER, 0, 0, selected_item->item->current->item.text, gTheme->selTextColor);
 
     // config source
     char *cfgSource = gameConfigSource();
-    fntRenderString(gTheme->fonts[0], 320, 40, ALIGN_CENTER, 0, 0, cfgSource, gTheme->textColor);
+    fntRenderString(gTheme->fonts[0], 320, 40 + GAME_MENU_Y_OFFSET, ALIGN_CENTER, 0, 0, cfgSource, gTheme->textColor);
 
     // settings list
     for (it = gameMenu; it; it = it->next, cp++) {
