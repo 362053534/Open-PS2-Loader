@@ -2557,7 +2557,7 @@ void guiManageCheats(config_set_t *configSet)
 
         guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? CIRCLE_ICON : CROSS_ICON, _STR_SELECT, gTheme->fonts[0], 70, 417, gTheme->selTextColor);
         guiDrawIconAndText(SELECT_ICON, _STR_CHEAT_TOGGLE_ALL, gTheme->fonts[0], 270, 417, gTheme->selTextColor);
-        guiDrawIconAndText(START_ICON, _STR_RUN, gTheme->fonts[0], 500, 417, gTheme->selTextColor);
+        guiDrawIconAndText(START_ICON, _STR_CHEAT_SAVE_AND_RUN, gTheme->fonts[0], 500, 417, gTheme->selTextColor);
 
         guiEndFrame();
     }
