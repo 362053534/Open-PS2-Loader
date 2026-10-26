@@ -82,7 +82,7 @@ void cheatConfigLoadSelections(config_set_t *configSet)
 
     /* First use is safe: required code on, every optional code off. */
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++)
-        gCheats[cheatIndex].enabled = cheatConfigIsMasterCode(gCheats[cheatIndex].name);
+        gCheats[cheatIndex].enabled = !cheatIsInfoEntry(&gCheats[cheatIndex]) && cheatConfigIsMasterCode(gCheats[cheatIndex].name);
 
     if (configSet == NULL)
         return;
@@ -111,7 +111,7 @@ void cheatConfigLoadSelections(config_set_t *configSet)
                 continue;
 
             for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
-                if (gCheats[cheatIndex].enabled || cheatConfigIsMasterCode(gCheats[cheatIndex].name))
+                if (gCheats[cheatIndex].enabled || cheatIsInfoEntry(&gCheats[cheatIndex]) || cheatConfigIsMasterCode(gCheats[cheatIndex].name))
                     continue;
 
                 if (!cheatNamesMatch(gCheats[cheatIndex].name, savedName[selectionIndex]))
@@ -129,7 +129,7 @@ void cheatConfigLoadSelections(config_set_t *configSet)
 
     /* Database changes must never leave the required code disabled. */
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
-        if (cheatConfigIsMasterCode(gCheats[cheatIndex].name))
+        if (!cheatIsInfoEntry(&gCheats[cheatIndex]) && cheatConfigIsMasterCode(gCheats[cheatIndex].name))
             gCheats[cheatIndex].enabled = 1;
     }
 }
