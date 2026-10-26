@@ -719,9 +719,9 @@ gui_strings:
 - label: BGM_NOT_FOUND
   string: 未找到ogg文件
 - label: ARTPACK
-  string: OPLM图包支持 (秒出图)
+  string: zip图包支持(封面秒出)
 - label: HINT_ARTPACK
-  string: 将OPLM官方zip图包(不要解压)，直接放到ART2里即可
+  string: 将OPLM官方zip图包放到ART2里(不要解压)，即可实现封面秒出
 - label: HINT_APAISO
   string: 将ISO拷贝到+OPL/DVD或CD里，可直接读取，无需灌录
 - label: HINT_AUTODETECT_PS1APPS
@@ -735,7 +735,7 @@ gui_strings:
 - label: HINT_COVERARTMODE
   string: 兼容模式会大幅拖慢图片加载速度，建议使用性能模式
 - label: HINT_AUTOREFRESH
-  string: 热插拔U盘等块设备时，OPL能实时做出响应
+  string: 热插拔U盘等块设备时，OPL能实时作出响应
 - label: HINT_TXTRENAME
   string: 生成txt文件，用于将游戏名映射为任意文字
 - label: HINT_ENABLE_WRITE
