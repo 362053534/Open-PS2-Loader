@@ -75,6 +75,12 @@ typedef struct
 
 extern cheat_entry_t gCheats[MAX_CODES];
 
+// 说明行：只有文字、后面没有跟代码的条目，只用于在选择界面里显示，不能选中
+static inline int cheatIsInfoEntry(const cheat_entry_t *cheat)
+{
+    return cheat->codes[0].addr == 0 && cheat->codes[0].val == 0;
+}
+
 void InitCheatsConfig(config_set_t *configSet);
 int GetCheatsEnabled(void);
 const u32 *GetCheatsList(void);

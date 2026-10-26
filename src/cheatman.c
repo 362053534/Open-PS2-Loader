@@ -234,6 +234,21 @@ static int is_empty_substr(const char *s, size_t count)
 #define CHEAT_LINE_MAX 255
 
 /**
+ * add_info_entry - 把后面没有跟代码的文字存成说明行条目。
+ * 只有手动模式才会显示选择界面，自动模式下不建，避免占用条目名额。
+ */
+static void add_info_entry(const char *name, int *cheat_index)
+{
+    if (gCheatMode != CHEAT_MODE_SELECT || name[0] == NUL || *cheat_index + 1 >= MAX_CODES)
+        return;
+
+    (*cheat_index)++;
+    strncpy(gCheats[*cheat_index].name, name, CHEAT_NAME_MAX);
+    gCheats[*cheat_index].name[CHEAT_NAME_MAX] = NUL;
+    gCheats[*cheat_index].enabled = 0;
+}
+
+/**
  * parse_buf - Parse a text buffer for cheats.
  * @buf: buffer holding text (must be NUL-terminated!)
  * @return: 0: success, -1: error
@@ -275,6 +290,8 @@ static int parse_buf(const char *buf)
 
             // Check if the line is a cheat name
             if (!is_cheat_code(line) && strlen(line) > 0) {
+                // 上一个文字后面没有跟代码，又来了新的文字，把上一个存成说明行
+                add_info_entry(temp_name, &cheat_index);
                 // Store the cheat name temporarily
                 strncpy(temp_name, line, CHEAT_NAME_MAX);
                 temp_name[CHEAT_NAME_MAX] = NUL;
@@ -304,6 +321,9 @@ static int parse_buf(const char *buf)
             break;
         buf += line_len + 1;
     }
+
+    // 文件末尾还有没跟代码的文字，也存成说明行
+    add_info_entry(temp_name, &cheat_index);
 
     return 0;
 }

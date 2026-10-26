@@ -2375,6 +2375,19 @@ int guiGameShowRemoveSettings(config_set_t *configSet, config_set_t *configGame)
     return 1;
 }
 
+// 金手指说明行（后面没有代码的文字）的显示颜色，灰色，与可选条目区分
+#define CHEAT_INFO_TEXT_COLOR GS_SETREG_RGBA(0x60, 0x60, 0x60, 0x80)
+
+// 从from开始按step方向（1向后，-1向前）找第一个可选条目（非说明行），找不到返回-1
+static int cheatFindSelectable(int from, int step, int cheatCount)
+{
+    for (; from >= 0 && from < cheatCount; from += step) {
+        if (!cheatIsInfoEntry(&gCheats[from]))
+            return from;
+    }
+    return -1;
+}
+
 void guiManageCheats(config_set_t *configSet)
 {
     int offset = 0;
@@ -2385,6 +2398,15 @@ void guiManageCheats(config_set_t *configSet)
 
     while (cheatCount < MAX_CODES && strlen(gCheats[cheatCount].name) > 0)
         cheatCount++;
+
+    // 光标初始停在第一个可选条目上，前面如果有说明行则跳过
+    {
+        int first = cheatFindSelectable(0, 1, cheatCount);
+        if (first >= 0)
+            selectedCheat = first;
+        if (selectedCheat >= visibleCheats)
+            offset = selectedCheat - visibleCheats + 1;
+    }
     fntRefreshCache(); // 刷新字模缓存
     sfxPlay(SFX_MESSAGE);
 
@@ -2392,50 +2414,67 @@ void guiManageCheats(config_set_t *configSet)
         guiStartFrame();
         readPads();
 
-        if (getKey(KEY_UP) && selectedCheat > 0) {
-            selectedCheat -= 1;
-            if (selectedCheat < offset)
-                offset = selectedCheat;
+        if (getKey(KEY_UP)) {
+            int prev = cheatFindSelectable(selectedCheat - 1, -1, cheatCount); // 跳过说明行
+            if (prev >= 0) {
+                selectedCheat = prev;
+                if (selectedCheat < offset)
+                    offset = selectedCheat;
+            }
         }
 
-        if (getKey(KEY_DOWN) && selectedCheat < cheatCount - 1) {
-            selectedCheat += 1;
-            if (selectedCheat >= offset + visibleCheats)
-                offset = selectedCheat - visibleCheats + 1;
+        if (getKey(KEY_DOWN)) {
+            int next = cheatFindSelectable(selectedCheat + 1, 1, cheatCount); // 跳过说明行
+            if (next >= 0) {
+                selectedCheat = next;
+                if (selectedCheat >= offset + visibleCheats)
+                    offset = selectedCheat - visibleCheats + 1;
+            }
         }
 
-        /* L1/R1 翻页（可连发），L2/R2 跳到首项/末项（不连发），与游戏列表操作一致 */
+        /* L1/R1 翻页（可连发），落在新一页的第一个可选条目上；L2/R2 跳到第一个/最后一个可选条目（不连发） */
         if (cheatCount > 0) {
             int jumped = 0;
+            int target = -1;
+            int oldOffset = offset;
             int maxOffset = (cheatCount > visibleCheats) ? cheatCount - visibleCheats : 0;
 
             if (getKey(KEY_L1)) {
-                selectedCheat -= visibleCheats;
                 offset -= visibleCheats;
+                if (offset < 0)
+                    offset = 0;
+                target = cheatFindSelectable(offset, 1, cheatCount);
+                // 上一页没有可选条目（或没有往前移动）时，找页起点之前最近的一个
+                if (target < 0 || target >= selectedCheat)
+                    target = cheatFindSelectable(offset - 1, -1, cheatCount);
                 jumped = 1;
             } else if (getKey(KEY_R1)) {
-                selectedCheat += visibleCheats;
                 offset += visibleCheats;
+                if (offset > maxOffset)
+                    offset = maxOffset;
+                target = cheatFindSelectable(offset, 1, cheatCount);
+                // 末页页起点可能在光标之前，或后面已没有可选条目：改跳到最后一个可选条目
+                if (target <= selectedCheat) {
+                    target = cheatFindSelectable(cheatCount - 1, -1, cheatCount);
+                    if (target <= selectedCheat)
+                        target = -1;
+                }
                 jumped = 1;
             } else if (getKeyOn(KEY_L2)) {
-                selectedCheat = 0;
                 offset = 0;
+                target = cheatFindSelectable(0, 1, cheatCount);
                 jumped = 1;
             } else if (getKeyOn(KEY_R2)) {
-                selectedCheat = cheatCount - 1;
                 offset = maxOffset;
+                target = cheatFindSelectable(cheatCount - 1, -1, cheatCount);
                 jumped = 1;
             }
 
             if (jumped) {
-                if (selectedCheat < 0)
-                    selectedCheat = 0;
-                if (selectedCheat > cheatCount - 1)
-                    selectedCheat = cheatCount - 1;
-                if (offset < 0)
-                    offset = 0;
-                if (offset > maxOffset)
-                    offset = maxOffset;
+                if (target >= 0)
+                    selectedCheat = target;
+                else
+                    offset = oldOffset; // 没有可去的位置，列表不动
                 // 保证光标仍在可见范围内
                 if (selectedCheat < offset)
                     offset = selectedCheat;
@@ -2444,8 +2483,15 @@ void guiManageCheats(config_set_t *configSet)
             }
         }
 
+        // 光标之上（或之下）没有可选条目时，让首部（或尾部）的说明行也显示出来
+        if (selectedCheat < visibleCheats && cheatFindSelectable(selectedCheat - 1, -1, cheatCount) < 0)
+            offset = 0;
+        else if (cheatCount > visibleCheats && selectedCheat >= cheatCount - visibleCheats && cheatFindSelectable(selectedCheat + 1, 1, cheatCount) < 0)
+            offset = cheatCount - visibleCheats;
+
         if (getKeyOn(gSelectButton)) {
-            if (!cheatConfigIsMasterCode(gCheats[selectedCheat].name))
+            // 说明行和必选的主代码都不能勾选
+            if (!cheatIsInfoEntry(&gCheats[selectedCheat]) && !cheatConfigIsMasterCode(gCheats[selectedCheat].name))
                 gCheats[selectedCheat].enabled = !gCheats[selectedCheat].enabled;
         }
 
@@ -2478,6 +2524,8 @@ void guiManageCheats(config_set_t *configSet)
             }
 
             u32 textColour = (i == selectedCheat) ? gTheme->selTextColor : gTheme->textColor;
+            if (cheatIsInfoEntry(&gCheats[i]))
+                textColour = CHEAT_INFO_TEXT_COLOR;
             fntRenderString(gTheme->fonts[0], boxX + 35, boxY + 3, ALIGN_LEFT, 0, 0, gCheats[i].name, textColour);
 
             renderedCheats++;
