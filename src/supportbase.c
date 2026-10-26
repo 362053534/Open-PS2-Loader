@@ -2280,11 +2280,25 @@ int sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char
 #define CHEAT_FILE_EXT      ".cht"
 #define CHEAT_FILE_EXT_LEN  4
 
+// 在文件名主体（不含.cht）里，从任意偏移处查找游戏ID，不区分大小写
+static int sbCheatStemHasId(const char *fileName, size_t stemLen, const char *id, size_t idLen)
+{
+    size_t offset;
+
+    if (idLen == 0 || stemLen < idLen)
+        return 0;
+    for (offset = 0; offset + idLen <= stemLen; offset++) {
+        if (strncasecmp(&fileName[offset], id, idLen) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 /*
  * 查找本游戏的金手指文件，找到则把完整路径写入cheatfile并返回1，找不到返回0。
  * 1. 先直接打开 CHT/<ID>.cht，存在就用，不需要遍历文件夹。
  * 2. 找不到才遍历CHT文件夹里的.cht文件，按目录顺序，先命中谁用谁：
- *    - 文件名以游戏ID开头（含只写ID、以及ID加任意后缀）；
+ *    - 文件名（不含.cht）里任意位置出现游戏ID（含只写ID、ID在开头或在中间）；
  *    - 或者去掉.cht后和游戏名完全一致（游戏名为文件系统里的原名，不是txt映射名）。
  *    文件名一律不区分大小写。
  */
@@ -2322,7 +2336,7 @@ static int sbFindCheatFile(const char *path, const char *id, const char *name, c
             continue;
         stemLen = len - CHEAT_FILE_EXT_LEN;
 
-        if ((idLen > 0 && len >= idLen && strncasecmp(dirent->d_name, id, idLen) == 0) ||
+        if (sbCheatStemHasId(dirent->d_name, stemLen, id, idLen) ||
             (nameLen > 0 && stemLen == nameLen && strncasecmp(dirent->d_name, name, nameLen) == 0)) {
             if (snprintf(cheatfile, size, "%sCHT/%s", path, dirent->d_name) < (int)size)
                 found = 1;
