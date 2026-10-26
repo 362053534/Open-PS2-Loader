@@ -505,6 +505,7 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
     mutableImage->overlayTextureLinked = 0;
     mutableImage->maskTexture = NULL;
     mutableImage->maskTextureLinked = 0;
+    mutableImage->dimGameBackground = 0;
 
     char elemProp[64];
 
@@ -533,11 +534,17 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
         configGetStr(themeConfig, elemProp, &overlayTexture);
     }
 
-    // 背景元素可选的 <元素>_mask：仅当真正画出当前游戏背景图时才叠加的 alpha 遮罩。
+    // 背景元素可选的 <元素>_mask：仅当真正画出当前游戏背景图时才生效。
+    // 内置主题（themePath 为空）：有该键即开启亮度压暗，不加载贴图；
+    // 第三方主题：值为遮罩贴图名，加载后叠加在背景上（与原来一致）。
     const char *maskTexture = NULL;
     if (type == ELEM_TYPE_BACKGROUND) {
         snprintf(elemProp, sizeof(elemProp), "%s_mask", name);
-        configGetStr(themeConfig, elemProp, &maskTexture);
+        int hasMask = configGetStr(themeConfig, elemProp, &maskTexture);
+        if (!themePath) {
+            mutableImage->dimGameBackground = hasMask;
+            maskTexture = NULL;
+        }
     }
 
     findDuplicate(theme->mainElems.first, cachePattern, defaultTexture, overlayTexture, mutableImage);
@@ -562,11 +569,7 @@ static mutable_image_t *initMutableImage(const char *themePath, config_set_t *th
     if (overlayTexture && !mutableImage->overlayTexture)
         mutableImage->overlayTexture = initImageTexture(themePath, themeConfig, name, overlayTexture, 1);
 
-    if (!themePath)
-        if (maskTexture && !mutableImage->maskTexture)
-            mutableImage->maskTexture = initImageInternalTexture(themeConfig, maskTexture);
-
-    if (maskTexture && !mutableImage->maskTexture)
+    if (themePath && maskTexture && !mutableImage->maskTexture)
         mutableImage->maskTexture = initImageTexture(themePath, themeConfig, name, maskTexture, 0);
 
     return mutableImage;
@@ -707,6 +710,10 @@ static GSTEXTURE *getCoverflowIcoTexture(item_list_t *list, submenu_list_t *item
                                           startup, item->item.id);
 }
 
+// 游戏背景图压暗后的颜色：RGB 为原亮度的 50%（0x80=100%），由原先 1 像素遮罩（黑色，alpha 128）反推得出
+#define GAME_BG_DIM_RGB   0x40
+#define GAME_BG_DIM_COLOR GS_SETREG_RGBA(GAME_BG_DIM_RGB, GAME_BG_DIM_RGB, GAME_BG_DIM_RGB, 0x80)
+
 static void drawGameImage(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
 {
     mutable_image_t *gameImage = (mutable_image_t *)elem->extended;
@@ -739,15 +746,19 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
             }
         }
 
+        // 仅当真正画出游戏外部背景图且内置主题开启压暗时，用压暗后的颜色与纹理相乘来降低亮度，
+        // 回退到兜底默认背景时不压暗，避免影响兜底背景图。
+        u64 drawColor = (drewGameArt && gameImage->dimGameBackground) ? GAME_BG_DIM_COLOR : gDefaultCol;
+
         if (gameImage->overlayTexture) {
             rmDrawOverlayPixmap(&gameImage->overlayTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,
                                 texture, gameImage->overlayTexture->upperLeft_x, gameImage->overlayTexture->upperLeft_y, gameImage->overlayTexture->upperRight_x, gameImage->overlayTexture->upperRight_y,
                                 gameImage->overlayTexture->lowerLeft_x, gameImage->overlayTexture->lowerLeft_y, gameImage->overlayTexture->lowerRight_x, gameImage->overlayTexture->lowerRight_y);
         } else
-            rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+            rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, drawColor);
 
-        // 仅当真正画出游戏外部背景图时，才在其上叠加 alpha 遮罩压暗背景；
-        // 回退到兜底默认背景时不叠加，避免遮罩影响兜底背景图。
+        // 第三方主题：仅当真正画出游戏外部背景图时，才叠加透明遮罩图片压暗背景；
+        // 回退到兜底默认背景时不叠加。
         if (drewGameArt && gameImage->maskTexture)
             rmDrawPixmap(&gameImage->maskTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
