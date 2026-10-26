@@ -41,9 +41,6 @@ struct pad_data_t
     // pad_dma_buf is provided by the user, one buf for each pad
     // contains the pad's current state
     char padBuf[256] __attribute__((aligned(64)));
-
-    char actAlign[6];
-    int actuators;
 };
 
 // 是否正在自动重复按键
@@ -79,6 +76,9 @@ static const int keyToPad[17] = {
     PAD_R2,
     PAD_L2};
 
+// 等待手柄就绪时，每次轮询之间睡眠的时间(微秒)
+#define PAD_WAIT_SLEEP_US 1000
+
 /*
  * waitPadReady()
  */
@@ -86,9 +86,12 @@ static int waitPadReady(struct pad_data_t *pad)
 {
     int state;
 
-    // busy wait for the pad to get ready
+    // 等待手柄就绪。每次轮询后睡一小会儿，让出CPU给优先级更低的背景音乐线程，
+    // 否则忙等期间音乐线程得不到运行，声卡缓冲耗尽会重复播放前几帧
     do {
         state = padGetState(pad->port, pad->slot);
+        if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1) && (state != PAD_STATE_DISCONN))
+            usleep(PAD_WAIT_SLEEP_US);
     } while ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1) && (state != PAD_STATE_DISCONN));
 
     return state;
@@ -158,34 +161,9 @@ static int initializePad(struct pad_data_t *pad)
     LOG("PAD Enabling dual shock functions\n");
 
     // When using MMODE_LOCK, user cant change mode with Select button
+    // 只设置模拟模式（左摇杆需要）。压感模式和震动马达OPL用不到，不再初始化，
+    // 否则每一步都要在主线程里忙等手柄响应，插拔手柄时会卡住主线程和背景音乐
     padSetMainMode(pad->port, pad->slot, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
-
-    waitPadReady(pad);
-    tmp = padInfoPressMode(pad->port, pad->slot);
-    LOG("PAD infoPressMode: %d\n", tmp);
-
-    waitPadReady(pad);
-    tmp = padEnterPressMode(pad->port, pad->slot);
-    LOG("PAD enterPressMode: %d\n", tmp);
-
-    waitPadReady(pad);
-    pad->actuators = padInfoAct(pad->port, pad->slot, -1, 0);
-    LOG("PAD # of actuators: %d\n", pad->actuators);
-
-    if (pad->actuators != 0) {
-        pad->actAlign[0] = 0; // Enable small engine
-        pad->actAlign[1] = 1; // Enable big engine
-        pad->actAlign[2] = 0xff;
-        pad->actAlign[3] = 0xff;
-        pad->actAlign[4] = 0xff;
-        pad->actAlign[5] = 0xff;
-
-        waitPadReady(pad);
-        tmp = padSetActAlign(pad->port, pad->slot, pad->actAlign);
-        LOG("PAD padSetActAlign: %d\n", tmp);
-    } else {
-        LOG("PAD Did not find any actuators.\n");
-    }
 
     waitPadReady(pad);
 
