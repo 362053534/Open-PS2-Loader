@@ -71,6 +71,7 @@ typedef struct
     char name[CHEAT_NAME_MAX + 1];
     code_t codes[MAX_CHEATLIST];
     int enabled;
+    int isMaster; // 是否是主代码，解析时算好一次，之后直接读取
 } cheat_entry_t;
 
 extern cheat_entry_t gCheats[MAX_CODES];

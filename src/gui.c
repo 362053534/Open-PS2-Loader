@@ -2378,11 +2378,11 @@ int guiGameShowRemoveSettings(config_set_t *configSet, config_set_t *configGame)
 // 金手指说明行（后面没有代码的文字）的显示颜色，灰色，与可选条目区分
 #define CHEAT_INFO_TEXT_COLOR GS_SETREG_RGBA(0x60, 0x60, 0x60, 0x80)
 
-// 从from开始按step方向（1向后，-1向前）找第一个可选条目（非说明行），找不到返回-1
+// 从from开始按step方向（1向后，-1向前）找第一个可选条目（非说明行、非主代码），找不到返回-1
 static int cheatFindSelectable(int from, int step, int cheatCount)
 {
     for (; from >= 0 && from < cheatCount; from += step) {
-        if (!cheatIsInfoEntry(&gCheats[from]))
+        if (!cheatIsInfoEntry(&gCheats[from]) && !gCheats[from].isMaster)
             return from;
     }
     return -1;
@@ -2415,7 +2415,7 @@ void guiManageCheats(config_set_t *configSet)
         readPads();
 
         if (getKey(KEY_UP)) {
-            int prev = cheatFindSelectable(selectedCheat - 1, -1, cheatCount); // 跳过说明行
+            int prev = cheatFindSelectable(selectedCheat - 1, -1, cheatCount); // 跳过说明行和主代码
             if (prev >= 0) {
                 selectedCheat = prev;
                 if (selectedCheat < offset)
@@ -2424,7 +2424,7 @@ void guiManageCheats(config_set_t *configSet)
         }
 
         if (getKey(KEY_DOWN)) {
-            int next = cheatFindSelectable(selectedCheat + 1, 1, cheatCount); // 跳过说明行
+            int next = cheatFindSelectable(selectedCheat + 1, 1, cheatCount); // 跳过说明行和主代码
             if (next >= 0) {
                 selectedCheat = next;
                 if (selectedCheat >= offset + visibleCheats)
@@ -2496,7 +2496,7 @@ void guiManageCheats(config_set_t *configSet)
             int i;
 
             for (i = 0; i < cheatCount; i++) {
-                if (cheatIsInfoEntry(&gCheats[i]) || cheatConfigIsMasterCode(gCheats[i].name))
+                if (cheatIsInfoEntry(&gCheats[i]) || gCheats[i].isMaster)
                     continue;
                 hasToggleable = 1;
                 if (!gCheats[i].enabled) {
@@ -2507,7 +2507,7 @@ void guiManageCheats(config_set_t *configSet)
 
             if (hasToggleable) {
                 for (i = 0; i < cheatCount; i++) {
-                    if (!cheatIsInfoEntry(&gCheats[i]) && !cheatConfigIsMasterCode(gCheats[i].name))
+                    if (!cheatIsInfoEntry(&gCheats[i]) && !gCheats[i].isMaster)
                         gCheats[i].enabled = !allEnabled;
                 }
             }
@@ -2515,7 +2515,7 @@ void guiManageCheats(config_set_t *configSet)
 
         if (getKeyOn(gSelectButton)) {
             // 说明行和必选的主代码都不能勾选
-            if (!cheatIsInfoEntry(&gCheats[selectedCheat]) && !cheatConfigIsMasterCode(gCheats[selectedCheat].name))
+            if (!cheatIsInfoEntry(&gCheats[selectedCheat]) && !gCheats[selectedCheat].isMaster)
                 gCheats[selectedCheat].enabled = !gCheats[selectedCheat].enabled;
         }
 

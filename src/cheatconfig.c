@@ -61,6 +61,18 @@ int cheatConfigIsMasterCode(const char *name)
            strncmp(normalized, "enable code", 11) == 0;
 }
 
+// 第一条有代码的条目，标题以 m 或 M 加一个空格开头，或者任意位置含“码”字，也当作主代码
+#define CHEAT_FIRST_MASTER_PREFIX_SPACE_INDEX 1
+#define CHEAT_FIRST_MASTER_KEYWORD "码"
+
+int cheatConfigIsFirstEntryMasterTitle(const char *name)
+{
+    if ((name[0] == 'm' || name[0] == 'M') && name[CHEAT_FIRST_MASTER_PREFIX_SPACE_INDEX] == SPACE)
+        return 1;
+
+    return strstr(name, CHEAT_FIRST_MASTER_KEYWORD) != NULL;
+}
+
 // 同名金手指的标题按原样逐字节比较，不忽略空格，也不统一大小写
 static int cheatNamesMatch(const char *first, const char *second)
 {
@@ -82,7 +94,7 @@ void cheatConfigLoadSelections(config_set_t *configSet)
 
     /* First use is safe: required code on, every optional code off. */
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++)
-        gCheats[cheatIndex].enabled = !cheatIsInfoEntry(&gCheats[cheatIndex]) && cheatConfigIsMasterCode(gCheats[cheatIndex].name);
+        gCheats[cheatIndex].enabled = !cheatIsInfoEntry(&gCheats[cheatIndex]) && gCheats[cheatIndex].isMaster;
 
     if (configSet == NULL)
         return;
@@ -111,7 +123,7 @@ void cheatConfigLoadSelections(config_set_t *configSet)
                 continue;
 
             for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
-                if (gCheats[cheatIndex].enabled || cheatIsInfoEntry(&gCheats[cheatIndex]) || cheatConfigIsMasterCode(gCheats[cheatIndex].name))
+                if (gCheats[cheatIndex].enabled || cheatIsInfoEntry(&gCheats[cheatIndex]) || gCheats[cheatIndex].isMaster)
                     continue;
 
                 if (!cheatNamesMatch(gCheats[cheatIndex].name, savedName[selectionIndex]))
@@ -129,7 +141,7 @@ void cheatConfigLoadSelections(config_set_t *configSet)
 
     /* Database changes must never leave the required code disabled. */
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
-        if (!cheatIsInfoEntry(&gCheats[cheatIndex]) && cheatConfigIsMasterCode(gCheats[cheatIndex].name))
+        if (!cheatIsInfoEntry(&gCheats[cheatIndex]) && gCheats[cheatIndex].isMaster)
             gCheats[cheatIndex].enabled = 1;
     }
 }
@@ -152,7 +164,7 @@ void cheatConfigSaveSelections(config_set_t *configSet)
     }
 
     for (cheatIndex = 0; cheatIndex < MAX_CODES && gCheats[cheatIndex].name[0] != NUL; cheatIndex++) {
-        if (gCheats[cheatIndex].enabled && !cheatConfigIsMasterCode(gCheats[cheatIndex].name)) {
+        if (gCheats[cheatIndex].enabled && !gCheats[cheatIndex].isMaster) {
             snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_PREFIX, selectionIndex);
             configSetStr(configSet, key, gCheats[cheatIndex].name);
             snprintf(key, sizeof(key), "%s%03d", CONFIG_ITEM_CHEAT_SELECTION_ID_PREFIX, selectionIndex);
