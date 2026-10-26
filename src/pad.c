@@ -79,19 +79,30 @@ static const int keyToPad[17] = {
 // 等待手柄就绪时，每次轮询之间睡眠的时间(微秒)
 #define PAD_WAIT_SLEEP_US 1000
 
+// 等待手柄就绪的超时时间(微秒)，超时后放弃等待，避免个别手柄一直不就绪时永久卡死
+#define PAD_WAIT_TIMEOUT_US 2000000
+
+// 超时时间对应的最大轮询次数
+#define PAD_WAIT_MAX_POLLS (PAD_WAIT_TIMEOUT_US / PAD_WAIT_SLEEP_US)
+
 /*
  * waitPadReady()
  */
 static int waitPadReady(struct pad_data_t *pad)
 {
     int state;
+    int polls = 0;
 
     // 等待手柄就绪。每次轮询后睡一小会儿，让出CPU给优先级更低的背景音乐线程，
-    // 否则忙等期间音乐线程得不到运行，声卡缓冲耗尽会重复播放前几帧
+    // 否则忙等期间音乐线程得不到运行，声卡缓冲耗尽会重复播放前几帧。
+    // 超过最大轮询次数仍未就绪就返回当前状态，调用方只认就绪状态，其余状态会被忽略
     do {
         state = padGetState(pad->port, pad->slot);
-        if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1) && (state != PAD_STATE_DISCONN))
+        if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1) && (state != PAD_STATE_DISCONN)) {
+            if (++polls >= PAD_WAIT_MAX_POLLS)
+                break;
             usleep(PAD_WAIT_SLEEP_US);
+        }
     } while ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1) && (state != PAD_STATE_DISCONN));
 
     return state;
