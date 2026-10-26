@@ -744,3 +744,5 @@ gui_strings:
   string: 内置两套主题可供选择，第三方主题请放入THM文件夹
 - label: CHEAT_TOGGLE_ALL
   string: 全选/全不选
+- label: CHEAT_SAVE_AND_RUN
+  string: 保存并运行

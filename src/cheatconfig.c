@@ -49,6 +49,10 @@ static u32 cheatCodeHash(const cheat_entry_t *cheat)
     return addr ^ ((val << CHEAT_CHECK_VALUE_ROTATE_BITS) | (val >> (32 - CHEAT_CHECK_VALUE_ROTATE_BITS)));
 }
 
+// 中文主代码名，同样按前缀匹配（UTF-8）
+#define CHEAT_MASTER_NAME_ZH_1 "主码"
+#define CHEAT_MASTER_NAME_ZH_2 "必须码"
+
 int cheatConfigIsMasterCode(const char *name)
 {
     char normalized[CHEAT_NAME_MAX + 1];
@@ -58,7 +62,9 @@ int cheatConfigIsMasterCode(const char *name)
     /* 魔改金手指常在主代码名后追加后缀，因此按前缀匹配。 */
     return strncmp(normalized, "mastercode", 10) == 0 ||
            strncmp(normalized, "master code", 11) == 0 ||
-           strncmp(normalized, "enable code", 11) == 0;
+           strncmp(normalized, "enable code", 11) == 0 ||
+           strncmp(normalized, CHEAT_MASTER_NAME_ZH_1, sizeof(CHEAT_MASTER_NAME_ZH_1) - 1) == 0 ||
+           strncmp(normalized, CHEAT_MASTER_NAME_ZH_2, sizeof(CHEAT_MASTER_NAME_ZH_2) - 1) == 0;
 }
 
 // 第一条有代码的条目，标题以 m 或 M 加一个空格开头，或者任意位置含“码”字，也当作主代码

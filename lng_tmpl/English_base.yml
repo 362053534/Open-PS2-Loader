@@ -744,3 +744,5 @@ gui_strings:
   string: Two built-in themes can be switched. Place third-party themes in the THM folder
 - label: CHEAT_TOGGLE_ALL
   string: Select/Deselect All
+- label: CHEAT_SAVE_AND_RUN
+  string: Save and Run
