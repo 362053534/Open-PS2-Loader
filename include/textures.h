@@ -48,7 +48,6 @@ enum INTERNAL_TEXTURE {
     R3_ICON, */
     // 兜底背景纹理（内置两套默认主题共用），文件为 gfx/settings_bg.png。
     SETTINGS_BG,
-    MAIN_BG_MASK,
     INFO_BG,
     COVER_DEFAULT,
     /*DISC_DEFAULT,*/
