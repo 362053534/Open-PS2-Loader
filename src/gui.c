@@ -2489,6 +2489,30 @@ void guiManageCheats(config_set_t *configSet)
         else if (cheatCount > visibleCheats && selectedCheat >= cheatCount - visibleCheats && cheatFindSelectable(selectedCheat + 1, 1, cheatCount) < 0)
             offset = cheatCount - visibleCheats;
 
+        // SELECT键：全选/全不选。说明行和必选的主代码不参与；所有可选条目都已启用时取消全选，否则全选
+        if (getKeyOn(KEY_SELECT)) {
+            int allEnabled = 1;
+            int hasToggleable = 0;
+            int i;
+
+            for (i = 0; i < cheatCount; i++) {
+                if (cheatIsInfoEntry(&gCheats[i]) || cheatConfigIsMasterCode(gCheats[i].name))
+                    continue;
+                hasToggleable = 1;
+                if (!gCheats[i].enabled) {
+                    allEnabled = 0;
+                    break;
+                }
+            }
+
+            if (hasToggleable) {
+                for (i = 0; i < cheatCount; i++) {
+                    if (!cheatIsInfoEntry(&gCheats[i]) && !cheatConfigIsMasterCode(gCheats[i].name))
+                        gCheats[i].enabled = !allEnabled;
+                }
+            }
+        }
+
         if (getKeyOn(gSelectButton)) {
             // 说明行和必选的主代码都不能勾选
             if (!cheatIsInfoEntry(&gCheats[selectedCheat]) && !cheatConfigIsMasterCode(gCheats[selectedCheat].name))
@@ -2532,6 +2556,7 @@ void guiManageCheats(config_set_t *configSet)
         }
 
         guiDrawIconAndText(gSelectButton == KEY_CIRCLE ? CIRCLE_ICON : CROSS_ICON, _STR_SELECT, gTheme->fonts[0], 70, 417, gTheme->selTextColor);
+        guiDrawIconAndText(SELECT_ICON, _STR_CHEAT_TOGGLE_ALL, gTheme->fonts[0], 270, 417, gTheme->selTextColor);
         guiDrawIconAndText(START_ICON, _STR_RUN, gTheme->fonts[0], 500, 417, gTheme->selTextColor);
 
         guiEndFrame();
