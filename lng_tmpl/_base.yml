@@ -742,3 +742,5 @@ gui_strings:
   string: OPL的删除功能并不是绝对安全，请谨慎使用
 - label: HINT_THEME
   string: 内置两套主题可供选择，第三方主题请放入THM文件夹
+- label: CHEAT_TOGGLE_ALL
+  string: 全选/全不选

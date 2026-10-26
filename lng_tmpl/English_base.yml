@@ -742,3 +742,5 @@ gui_strings:
   string: OPL's delete function is not absolutely safe, please use it with caution
 - label: HINT_THEME
   string: Two built-in themes can be switched. Place third-party themes in the THM folder
+- label: CHEAT_TOGGLE_ALL
+  string: Select/Deselect All
