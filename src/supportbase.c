@@ -2275,13 +2275,72 @@ int sbBuildArtImagePath(char *path, int pathSize, const char *prefix, const char
     return 0;
 }
 
-int sbLoadCheats(const char *path, const char *file, config_set_t *configSet)
+// 金手指文件完整路径的缓冲区大小：前缀 + "CHT/" + 最长的目录项文件名
+#define CHEAT_FILE_PATH_MAX 320
+#define CHEAT_FILE_EXT      ".cht"
+#define CHEAT_FILE_EXT_LEN  4
+
+/*
+ * 查找本游戏的金手指文件，找到则把完整路径写入cheatfile并返回1，找不到返回0。
+ * 1. 先直接打开 CHT/<ID>.cht，存在就用，不需要遍历文件夹。
+ * 2. 找不到才遍历CHT文件夹里的.cht文件，按目录顺序，先命中谁用谁：
+ *    - 文件名以游戏ID开头（含只写ID、以及ID加任意后缀）；
+ *    - 或者去掉.cht后和游戏名完全一致（游戏名为文件系统里的原名，不是txt映射名）。
+ *    文件名一律不区分大小写。
+ */
+static int sbFindCheatFile(const char *path, const char *id, const char *name, char *cheatfile, size_t size)
 {
-    char cheatfile[64];
+    char dirPath[CHEAT_FILE_PATH_MAX];
+    size_t idLen = strlen(id);
+    size_t nameLen = (name != NULL) ? strlen(name) : 0;
+    int found = 0;
+    int fd;
+    DIR *dir;
+    struct dirent *dirent;
+
+    // 第一步：直接按ID打开。打开成功后立即关闭句柄，失败时没有句柄需要释放。
+    if (snprintf(cheatfile, size, "%sCHT/%s" CHEAT_FILE_EXT, path, id) < (int)size) {
+        fd = open(cheatfile, O_RDONLY);
+        if (fd >= 0) {
+            close(fd);
+            return 1;
+        }
+    }
+
+    // 第二步：遍历文件夹。closedir只在下面这一处调用，所有出口都会经过它。
+    if (snprintf(dirPath, sizeof(dirPath), "%sCHT", path) >= (int)sizeof(dirPath))
+        return 0;
+    dir = opendir(dirPath);
+    if (dir == NULL)
+        return 0;
+
+    while (!found && (dirent = readdir(dir)) != NULL) {
+        size_t len = strlen(dirent->d_name);
+        size_t stemLen;
+
+        if (len <= CHEAT_FILE_EXT_LEN || strcasecmp(&dirent->d_name[len - CHEAT_FILE_EXT_LEN], CHEAT_FILE_EXT) != 0)
+            continue;
+        stemLen = len - CHEAT_FILE_EXT_LEN;
+
+        if ((idLen > 0 && len >= idLen && strncasecmp(dirent->d_name, id, idLen) == 0) ||
+            (nameLen > 0 && stemLen == nameLen && strncasecmp(dirent->d_name, name, nameLen) == 0)) {
+            if (snprintf(cheatfile, size, "%sCHT/%s", path, dirent->d_name) < (int)size)
+                found = 1;
+        }
+    }
+    closedir(dir);
+
+    return found;
+}
+
+int sbLoadCheats(const char *path, const char *file, const char *gameName, config_set_t *configSet)
+{
+    char cheatfile[CHEAT_FILE_PATH_MAX];
     int cheatMode = 0;
 
     if (GetCheatsEnabled()) {
-        snprintf(cheatfile, sizeof(cheatfile), "%sCHT/%s.cht", path, file);
+        if (!sbFindCheatFile(path, file, gameName, cheatfile, sizeof(cheatfile)))
+            snprintf(cheatfile, sizeof(cheatfile), "%sCHT/%s" CHEAT_FILE_EXT, path, file); // 没找到：保持原来的报错流程
         LOG("Loading Cheat File %s\n", cheatfile);
 
         if ((cheatMode = load_cheats(cheatfile)) < 0)

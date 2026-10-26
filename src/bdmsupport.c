@@ -900,7 +900,7 @@ vmc_prepared:;
     // adjust ZSO cache
     settings->common.zso_cache = bdmCacheSize;
 
-    if ((result = sbLoadCheats(pDeviceData->bdmPrefix, game->startup, configSet)) < 0) {
+    if ((result = sbLoadCheats(pDeviceData->bdmPrefix, game->startup, game->name, configSet)) < 0) {
         if (gAutoLaunchBDMGame == NULL) {
             switch (result) {
                 case -ENOENT:

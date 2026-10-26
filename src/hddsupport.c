@@ -1053,7 +1053,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     if (compatMode < 0) /* 出错时兜底为配置中的模式，等同于原先的计算方式。 */
         compatMode = sbGetCompatMask(configSet, gAutoMode1);
 
-    if ((result = sbLoadCheats(gHDDPrefix, game->startup, configSet)) < 0) {
+    if ((result = sbLoadCheats(gHDDPrefix, game->startup, game->name, configSet)) < 0) {
         if (gAutoLaunchGame == NULL) {
             switch (result) {
                 case -ENOENT:
