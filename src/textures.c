@@ -567,8 +567,9 @@ static void texReadPixels32(GSTEXTURE *texture, png_bytep *rowPointers, size_t s
 }
 
 
-// 直读：CT24 和 T8 的 libpng 行数据布局与纹理内存完全一致，
+// 直读：CT24 和 T8 的 libpng 行数据布局与旧路径写入纹理内存的布局一致（像素紧密排列），
 // 逐行直接读进 texture->Mem，省掉整图大小的行缓冲和第二遍拷贝
+// 注意：gsKit 按每像素 4 字节计算 CT24 的 EE 内存大小，所以行数据总量可以小于分配大小
 static int texReadDirect(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr, png_texture_t *pngTexture)
 {
     png_size_t rowBytes = png_get_rowbytes(pngPtr, infoPtr);
@@ -576,8 +577,9 @@ static int texReadDirect(GSTEXTURE *texture, png_structp pngPtr, png_infop infoP
     unsigned char *dst;
     int row;
 
-    // 行宽与纹理内存尺寸必须严格吻合，否则说明格式判断有误，直接失败
-    if (rowBytes == 0 || texture->Height == 0 || size != (size_t)rowBytes * (size_t)texture->Height) {
+    // 行数据总量不能超过分配的纹理内存，否则说明格式判断有误，直接失败
+    // （CT24 的分配大小按每像素 4 字节，比紧密排列的 3 字节行数据大，不能要求严格相等）
+    if (rowBytes == 0 || texture->Height == 0 || (size_t)rowBytes * (size_t)texture->Height > size) {
         LOG("TEXTURES PngReadDirect: Row layout mismatch\n");
         return -1;
     }
