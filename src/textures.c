@@ -332,10 +332,17 @@ static void texPrepare(GSTEXTURE *texture)
 // CT24 与带 alpha 的 CT32 背景都压缩；CT32 的 alpha 被忽略，全部写成不透明
 // （原来半透明/透明处透出的只是帧清屏黑色）。失败时不破坏原始纹理，调用方仍可按原路径绘制。
 #define TEX_BACKGROUND_COMPACT_THRESHOLD (512 * 1024)
+// 标准 4x4 Bayer 阈值（0~15，共 16 级）。8 位颜色转 5 位色时按半级精度抖动：
+// 先把 8 位值乘 2，加上阈值，再右移 TEX_DITHER_SHIFT 位。阈值全部非负，
+// 取整是向下，平均偏差小于 1 级，不会再整体偏暗；也不需要判断小于 0，只需限制上限。
+#define TEX_DITHER_SHIFT    4
+#define TEX_COLOR5_MAX      31
 void texCompactBackground(GSTEXTURE *texture)
 {
-    static const s8 ditherMatrix[16] = {-4, 2, -3, 3, 0, -2, 1, -1,
-                                        -3, 3, -4, 2, 1, -1, 0, -2};
+    static const u8 ditherMatrix[16] = {0, 8, 2, 10,
+                                        12, 4, 14, 6,
+                                        3, 11, 1, 9,
+                                        15, 7, 13, 5};
     u16 *pixels16;
     u8 *pixels24;
     size_t pixelCount;
@@ -361,21 +368,18 @@ void texCompactBackground(GSTEXTURE *texture)
         for (x = 0; x < texture->Width; x++) {
             int index = y * texture->Width + x;
             int dither = ditherMatrix[(y & 3) * 4 + (x & 3)];
-            int red = pixels24[index * bytesPerPixel + 0] + dither;
-            int green = pixels24[index * bytesPerPixel + 1] + dither;
-            int blue = pixels24[index * bytesPerPixel + 2] + dither;
+            int red = (pixels24[index * bytesPerPixel + 0] * 2 + dither) >> TEX_DITHER_SHIFT;
+            int green = (pixels24[index * bytesPerPixel + 1] * 2 + dither) >> TEX_DITHER_SHIFT;
+            int blue = (pixels24[index * bytesPerPixel + 2] * 2 + dither) >> TEX_DITHER_SHIFT;
 
-            if (red < 0) red = 0;
-            if (red > 255) red = 255;
-            if (green < 0) green = 0;
-            if (green > 255) green = 255;
-            if (blue < 0) blue = 0;
-            if (blue > 255) blue = 255;
+            // 255 * 2 + 15 右移后会到 32，超出 5 位，需要限制到 31
+            if (red > TEX_COLOR5_MAX) red = TEX_COLOR5_MAX;
+            if (green > TEX_COLOR5_MAX) green = TEX_COLOR5_MAX;
+            if (blue > TEX_COLOR5_MAX) blue = TEX_COLOR5_MAX;
 
             // CT16S: opaque A1 B5 G5 R5. A=1 is exact for CT24; for CT32 the
             // source alpha is dropped on purpose so the whole image stays visible.
-            pixels16[index] = 0x8000 | ((blue >> 3) << 10) |
-                              ((green >> 3) << 5) | (red >> 3);
+            pixels16[index] = 0x8000 | (blue << 10) | (green << 5) | red;
         }
     }
 
