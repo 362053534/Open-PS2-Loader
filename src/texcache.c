@@ -7,6 +7,7 @@
 #include "include/renderman.h"
 #include "include/pad.h"
 #include "include/artpack.h"
+#include "include/themes.h"
 #include <pthread.h>
 
 extern GSGLOBAL *gsGlobal;
@@ -125,9 +126,10 @@ static void cacheDecreaseLoading(void)
 
 static int cacheShouldCompactBackground(image_cache_t *cache)
 {
-    // 所有视频模式都压缩（含 720p/1080i，其 framebuffer 本身就是 CT16S）；
+    // 仅内置 Coverflow 主题压缩 BG；列表主题和第三方主题保持原画质，不压缩。
+    // 在内置 Coverflow 下所有视频模式都压缩（含 720p/1080i，其 framebuffer 本身就是 CT16S）；
     // 是否真正转换由 texCompactBackground() 判断：仅 >512KB 的 CT24/CT32 图（CT32 的 alpha 被忽略）。
-    return cache && !strncmp(cache->suffix, "BG", 2);
+    return cache && !strncmp(cache->suffix, "BG", 2) && thmGetGuiValue() == THM_COVERFLOW_GUI_ID;
 }
 
 static void cacheCancelImageRequest(void *data)
