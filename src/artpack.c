@@ -994,7 +994,7 @@ static void artCopyPixels(GSTEXTURE *tex, png_bytep *rows, size_t memSize)
     }
 }
 
-static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex)
+static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlpha)
 {
     art_png_reader_t reader = {data, size};
     png_structp pngPtr;
@@ -1046,7 +1046,8 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex)
 
     switch (png_get_color_type(pngPtr, infoPtr)) {
         case PNG_COLOR_TYPE_RGB_ALPHA:
-            tex->PSM = GS_PSM_CT32;
+            // BG/COV 忽略 alpha：行缓冲本来就是每像素 4 字节，按 CT24 只拷前 3 字节
+            tex->PSM = dropAlpha ? GS_PSM_CT24 : GS_PSM_CT32;
             break;
         case PNG_COLOR_TYPE_RGB:
             tex->PSM = GS_PSM_CT24;
@@ -1371,7 +1372,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
     }
 
-    result = artDecodePng(buf + dataStart, bufLen, resultTex);
+    result = artDecodePng(buf + dataStart, bufLen, resultTex, texSuffixDropsAlpha(suffix));
     free(buf);
     return result;
 }

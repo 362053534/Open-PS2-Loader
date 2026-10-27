@@ -1177,7 +1177,7 @@ static int hddGetImage(item_list_t *itemList, char *folder, int isRelative, char
     if (sbBuildArtImagePath(path, sizeof(path), gHDDPrefix, "/", artArt2Flags_APA, folder, isRelative, value, suffix) < 0)
         return ERR_BAD_FILE;
     // 图包模式生效时强制按性能模式找散图（不找 jpg），否则沿用图集设置
-    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn);
+    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn, texSuffixDropsAlpha(suffix));
 }
 
 static int hddGetTextId(item_list_t *itemList)

@@ -2498,7 +2498,7 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
             return -1;
 
         snprintf(path, sizeof(path), "%sART/%s_%s", device, artValue, suffix);
-        return texDiscoverLoad(resultTex, path, -1);
+        return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg, texSuffixDropsAlpha(suffix));
     }
 
     if (device[0])
