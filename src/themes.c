@@ -1204,6 +1204,7 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_COUNT 5   // 同屏显示的封面数默认值（也是尺寸/间距基线）
 // 封面主图基准尺寸：普通分辨率沿用现有的 480 逻辑坐标高度；448i/p、512i/p
 // 使用单独的低分辨率高度宏。宽度保持 140，其他布局计算仍使用选出的高度。
+#define COVERFLOW_LOGICAL_WIDTH 640 // 主题逻辑坐标系宽度（rmGetScreenExtents 固定为 640×480）
 #define COVERFLOW_COVER_W 140
 #define COVERFLOW_COVER_H 214
 #define COVERFLOW_COVER_H_LOWRES 200
@@ -1684,7 +1685,23 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // targetCenterX 保持原有静止布局：目标项在原来的中心位置，临时槽位只向
     // 起点所在方向扩展。animOffset 按实际 steps 一次性移动整段 Coverflow。
     float targetCenterX = (float)basePosX + (float)centerIndex * (float)coverDistance;
-    float posX = targetCenterX + animOffset - (float)renderCenterIndex * (float)coverDistance;
+    // 整排封面的平移量按【屏幕整像素】量化后再用于定位：逻辑坐标换算成像素时是
+    // x * 显示宽度 / 640，显示宽度不是 640 的整数倍（如 720 宽模式）或开启宽屏时，
+    // 封面中心距换成像素是小数。若平移量带小数像素，每张封面各自取整的结果会随平移
+    // 变化，相邻非中心封面的间距就在 N 与 N+1 像素之间来回跳。平移量取整数像素后，
+    // 每张封面的小数部分在整个动画中保持不变，取整结果恒定，间距与静止时一致。
+    // 居中程度 cf（决定中心封面的放大与间距补偿）也使用取整后的平移量计算：缓出末段的剩余
+    // 位移不足 1 像素时，若 cf 仍随连续的 animOffset 变化，紧挨中心的封面位置/宽度的取整
+    // 会和外侧封面在不同帧才变化，导致各封面停下的时机不一致。统一使用取整后的平移量后，
+    // 所有封面只在整排平移量变化的那一帧一起更新，同帧停下；动画结束时平移量为 0，不会跳变。
+    float animOffsetPos = animOffset;
+    int displayWidthPx = rmScaleX(COVERFLOW_LOGICAL_WIDTH);
+    if (animOffset != 0.0f && displayWidthPx > 0) {
+        float offsetPx = animOffset * (float)displayWidthPx / (float)COVERFLOW_LOGICAL_WIDTH;
+        offsetPx = (float)(int)(offsetPx + (offsetPx >= 0.0f ? 0.5f : -0.5f));
+        animOffsetPos = offsetPx * (float)COVERFLOW_LOGICAL_WIDTH / (float)displayWidthPx;
+    }
+    float posX = targetCenterX + animOffsetPos - (float)renderCenterIndex * (float)coverDistance;
 
     // 每个封面的"居中程度"cf 根据它在动画中的连续位置计算：中心落在两个槽位
     // 之间时，两个相邻封面分别按距离插值。这样多格翻页时中间封面经过中心也会
@@ -1694,7 +1711,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float totalCf = 0.0f;
     float visualCenterIndex = (float)renderCenterIndex;
     if (animationActive)
-        visualCenterIndex -= animOffset / (float)coverDistance;
+        visualCenterIndex -= animOffsetPos / (float)coverDistance;
     for (i = 0; i < renderCount; i++) {
         float slotDistance = (float)i - visualCenterIndex;
         if (slotDistance < 0.0f)
