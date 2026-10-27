@@ -750,17 +750,20 @@ static void drawGameImage(struct menu_list *menu, struct submenu_list *item, con
         // 回退到兜底默认背景时不压暗，避免影响兜底背景图。
         u64 drawColor = (drewGameArt && gameImage->dimGameBackground) ? GAME_BG_DIM_COLOR : gDefaultCol;
 
+        // 宽屏时优先用 wsX（主题 cfg 的 xxx_wsX）；未配置时 wsX 等于 posX，4:3 也始终用 posX，行为不变
+        int drawX = gWideScreen ? elem->wsX : elem->posX;
+
         if (gameImage->overlayTexture) {
-            rmDrawOverlayPixmap(&gameImage->overlayTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,
+            rmDrawOverlayPixmap(&gameImage->overlayTexture->source, drawX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol,
                                 texture, gameImage->overlayTexture->upperLeft_x, gameImage->overlayTexture->upperLeft_y, gameImage->overlayTexture->upperRight_x, gameImage->overlayTexture->upperRight_y,
                                 gameImage->overlayTexture->lowerLeft_x, gameImage->overlayTexture->lowerLeft_y, gameImage->overlayTexture->lowerRight_x, gameImage->overlayTexture->lowerRight_y);
         } else
-            rmDrawPixmap(texture, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, drawColor);
+            rmDrawPixmap(texture, drawX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, drawColor);
 
         // 第三方主题：仅当真正画出游戏外部背景图时，才叠加透明遮罩图片压暗背景；
         // 回退到兜底默认背景时不叠加。
         if (drewGameArt && gameImage->maskTexture)
-            rmDrawPixmap(&gameImage->maskTexture->source, elem->posX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
+            rmDrawPixmap(&gameImage->maskTexture->source, drawX, elem->posY, elem->aligned, elem->width, elem->height, elem->scaled, gDefaultCol);
 
     } else if (elem->type == ELEM_TYPE_BACKGROUND) {
         if (gameImage->defaultTexture)
