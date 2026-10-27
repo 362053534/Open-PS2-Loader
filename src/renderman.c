@@ -821,31 +821,32 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     // casePixelH 是物理像素，而 baseH 是 640×480 逻辑坐标，二者不能直接相除。
     // 之前的写法正是因此把 448p 的 214 逻辑高度压成了约 199 像素。
     //
-    // 封面目标尺寸继续从【未取整的 caseW/caseH】和 overlay 内框比例得到；这与
-    // drawCoverFlow 中由 inlayW/inlayH 反推 case 的方向相反，因而 Case 只适配封面。
-    // casePixelW/H 只用于确定 Case 已经落地后的实际中心，不能用来缩放封面。
+    // 内框边距继续从【未取整的 caseW/caseH】和 overlay 内框比例得到；caseW/caseH 本身
+    // 已由 drawCoverFlow 按封面目标尺寸反推，因而 Case 只适配封面，不在这里再反算一次。
     float caseScaleX = caseW / fbw;
     float caseScaleY = caseH / fbh;
     float offL = ((float)ovUlx + (float)ovBlx) * 0.5f * caseScaleX;
     float offR = ((float)ovUrx + (float)ovBrx) * 0.5f * caseScaleX;
     float offT = ((float)ovUly + (float)ovUry) * 0.5f * caseScaleY;
     float offB = ((float)ovBly + (float)ovBry) * 0.5f * caseScaleY;
+    // 封面尺寸 = 目标尺寸取整一次（静止时严格等于宏设定的封面宽高，点对点不变）；
+    // 封面位置 = 已取整的 case 左/上边 + 浮点边距取整一次。
+    // 位置只锚定 case 的左/上边，不再用"case 中心 - 半宽"重新取整：旧写法在 case 宽高
+    // 与封面宽高的奇偶性不同步翻转时，左右/上下边距会在 N 与 N+1 之间来回跳，
+    // 表现为封面在 case 里抖动。现在封面左/上边和尺寸都只随缩放单调变化，不再来回跳。
     float inlayWidth = rmPxSnap(offR - offL);
     float inlayHeight = rmPxSnap(offB - offT);
-
-    // 以实际 Case 的中心放置“固定尺寸”的封面。这样 Case 外层即使因整数像素
-    // 锁定与理想浮点尺寸相差不到一像素，也不会把封面本身压缩或拉伸。
-    float innerCenterX = ((float)ovUlx + (float)ovUrx + (float)ovBlx + (float)ovBrx)
-                       * 0.25f * (casePixelW / fbw);
-    float innerCenterY = ((float)ovUly + (float)ovUry + (float)ovBly + (float)ovBry)
-                       * 0.25f * (casePixelH / fbh);
-    float inlayLeft = rmPxSnap(rUlX + innerCenterX - inlayWidth * 0.5f);
-    float inlayTop = rmPxSnap(rUlY + innerCenterY - inlayHeight * 0.5f);
+    if (inlayWidth < 1.0f)
+        inlayWidth = 1.0f;
+    if (inlayHeight < 1.0f)
+        inlayHeight = 1.0f;
+    float inlayLeft = rUlX + rmPxSnap(offL);
+    float inlayTop = rUlY + rmPxSnap(offT);
     float inlayRight = inlayLeft + inlayWidth;
     float inlayBottom = inlayTop + inlayHeight;
 
     // 非矩形内框仍使用 overlay 的四个原始顶点；现有内置 cf_case 是矩形，
-    // 因而会走下面的固定尺寸矩形分支，四个顶点同时保持目标封面尺寸。
+    // 因而会走下面的矩形分支，四个顶点直接取上面算好的四条边。
     int axisAlignedInner = (ovUlx == ovBlx && ovUrx == ovBrx &&
                             ovUly == ovUry && ovBly == ovBry);
     float inlayUlX, inlayUlY, inlayUrx, inlayUry;
