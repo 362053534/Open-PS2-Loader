@@ -1225,8 +1225,9 @@ static clock_t animationStartTime = 0;
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
-// 当前 0（不额外增加相邻封面之间的间隙）。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 0
+// 当前 13：case 与封面等宽后，以 5 张基线非中心宽 104 计算间隙为 13 像素；7 张时非中心宽反推为 70，
+// 中心封面每侧多出的半宽为整数 35，避免半像素偏移导致的抖动。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 13
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 165 = 在原 161 的基础上整体下移 4，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 165
