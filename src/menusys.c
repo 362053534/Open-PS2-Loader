@@ -813,7 +813,7 @@ static void menuPrevV()
 }
 
 // ===== Coverflow 翻页滚动（L1/R1）状态 =====
-// 翻页时 current 会一次性指向目标项；这里仅负责在动画结束前屏蔽其它输入，
+// 翻页时 current 会一次性指向目标项；这里负责在动画结束前屏蔽除 L1/R1 以外的输入，
 // 不再逐格推进列表或串接多段动画。
 static int gCoverflowPageScrollActive = 0;
 
@@ -823,8 +823,12 @@ static int menuTickCoverflowScroll(void)
 {
     if (!gCoverflowPageScrollActive)
         return 0;
-    if (thmCoverflowIsAnimating())
+    if (thmCoverflowIsAnimating()) {
+        // 翻页动画进行中只放行 L1/R1：允许再次翻页并截断当前动画，其它键仍然屏蔽。
+        if (getKey(KEY_L1) || getKey(KEY_R1))
+            return 0;
         return 1;
+    }
 
     gCoverflowPageScrollActive = 0;
     return 0;
