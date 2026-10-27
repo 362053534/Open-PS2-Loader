@@ -1599,13 +1599,13 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
         // next(-1)：起点在目标左侧，因此额外槽位放在左侧；
         // prev(+1)：起点在目标右侧，因此额外槽位放在右侧。
-        if (animationStartItem && steps > 1) {
-            renderCount = coverCount + steps;
-            if (renderCount > COVERFLOW_RENDER_MAX)
-                renderCount = COVERFLOW_RENDER_MAX;
-            if (animationDirection < 0)
-                renderCenterIndex = centerIndex + steps;
-        }
+        // 单步（steps 为 1）同样保留 1 个额外槽位，让被挤出窗口的尾部封面随整排滑出，
+        // 到动画结束或被下一次动画截断时才消失，而不是动画一开始就消失。
+        renderCount = coverCount + steps;
+        if (renderCount > COVERFLOW_RENDER_MAX)
+            renderCount = COVERFLOW_RENDER_MAX;
+        if (animationDirection < 0)
+            renderCenterIndex = centerIndex + steps;
 
         animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
     }
