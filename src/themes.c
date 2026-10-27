@@ -1225,9 +1225,9 @@ static clock_t animationStartTime = 0;
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
-// 当前 15：case 与封面等宽后，以 5 张基线非中心宽 104 计算间隙为 15 像素；7 张时非中心宽反推为 68，
-// 中心封面每侧多出的半宽为整数 36，避免半像素偏移导致的抖动。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 15
+// 当前 16：case 与封面等宽后，5 张基线非中心宽 104 对应间隙 16 像素；7/9 张的间隙随反推出的封面宽按同一百分比计算
+// （7 张：宽 72、间隙 11；9 张：宽 54、间隙 8），中心封面每侧多出的半宽均为整数，避免半像素偏移导致的抖动。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 16
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 165 = 在原 161 的基础上整体下移 4，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 165
@@ -1460,7 +1460,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         referenceNonInlayW = 1.0f;
     int referenceCoverWidthBase = (int)(referenceNonInlayW / fracW + 0.5f);
 
-    // 间隙只取当前 5 封面基线的设置；非中心封面因数量变化而调整大小时，间隙保持不变。
+    // 5 张按基线非中心宽算间隙；3 张沿用该基线大小；7/9 张下面会让间隙随反推出的封面宽按同一间距%重算。
     int spacingPct = gWideScreen ? gCoverflowWideSpacingPercent : gCoverflowSpacingPercent;
     if (spacingPct < 0)
         spacingPct = 0;
@@ -1482,7 +1482,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
 
     // 3 张比 5 张少：保留 5 张的非中心封面大小，反过来计算 3 张专用间距，
     // 再从每个间距扣除 60 像素，为两侧留下约 60 像素安全距离。
-    // 7/9 张比 5 张多：保留 5 张的间距，再反推较小的非中心封面大小来铺满整排。
+    // 7/9 张比 5 张多：间隙与非中心封面宽保持同一个间距%（间隙 = 非中心封面宽 × 间距%），
+    // 再反推非中心封面大小来铺满整排，避免封面缩小后间隙相对封面显得过宽。
     if (coverCount == 3) {
         int gapWidth = screenWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
         if (gapWidth < 0)
@@ -1493,9 +1494,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gap < 0)
             gap = 0;
     } else if (coverCount >= 7) {
-        float targetCoverWidth = ((float)screenWidth - (float)centerCoverWidth -
-                                  (float)(coverCount - 1) * (float)gap) /
-                                 (float)(coverCount - 1);
+        // 整排宽 = (n-1) × (封面宽 + 封面宽 × 间距%) + 中心封面宽，由此解出非中心封面宽的目标值。
+        float targetCoverWidth = ((float)screenWidth - (float)centerCoverWidth) /
+                                 ((float)(coverCount - 1) * (1.0f + (float)spacingPct / 100.0f));
         if (targetCoverWidth < 1.0f)
             targetCoverWidth = 1.0f;
         float wideFactor = gWideScreen ? rmWideScaleF(1.0f) : 1.0f;
@@ -1506,7 +1507,10 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         float targetScale = targetInlayW - (float)baseCoverW;
         int initialScale = (int)(targetScale + (targetScale >= 0.0f ? 0.5f : -0.5f));
         int bestScale = initialScale;
-        int bestDifference = screenWidth;
+        int bestGap = gap;
+        // 奇偶不符的候选会让中心封面每侧多出的半宽带 0.5 像素，这里加上大于屏宽的惩罚，
+        // 只有范围内没有偶差候选时才会选它们。
+        int bestDifference = screenWidth * 4;
         int candidateScale;
         for (candidateScale = initialScale - 3; candidateScale <= initialScale + 3; candidateScale++) {
             if (baseCoverW + candidateScale < 1)
@@ -1514,16 +1518,23 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             float candidateInlayW = (float)baseCoverW + (float)candidateScale;
             int candidateWidthBase = (int)(candidateInlayW / fracW + 0.5f);
             int candidateWidth = gWideScreen ? rmWideScale(candidateWidthBase) : candidateWidthBase;
-            int candidateTotal = (coverCount - 1) * (candidateWidth + gap) + centerCoverWidth;
+            // 每个候选宽度各自按间距%算间隙（宽屏同样做横向压缩），保持间隙与封面宽成比例。
+            int candidateGapBase = (candidateWidthBase * spacingPct) / 100;
+            int candidateGap = gWideScreen ? rmWideScale(candidateGapBase) : candidateGapBase;
+            int candidateTotal = (coverCount - 1) * (candidateWidth + candidateGap) + centerCoverWidth;
             int difference = candidateTotal - screenWidth;
             if (difference < 0)
                 difference = -difference;
+            if (((centerCoverWidth - candidateWidth) & 1) != 0)
+                difference += screenWidth * 2;
             if (difference < bestDifference) {
                 bestDifference = difference;
                 bestScale = candidateScale;
+                bestGap = candidateGap;
             }
         }
         effNonCenterScale = bestScale;
+        gap = bestGap;
     }
 
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
