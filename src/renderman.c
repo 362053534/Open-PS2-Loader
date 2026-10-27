@@ -830,13 +830,10 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     float offT = ((float)ovUly + (float)ovUry) * 0.5f * caseScaleY;
     float offB = ((float)ovBly + (float)ovBry) * 0.5f * caseScaleY;
     // 封面尺寸 = 目标尺寸取整一次（静止时严格等于宏设定的封面宽高，点对点不变）；
-    // 封面位置 = 已取整的 case 左/下边 + 浮点边距取整一次。
-    // 位置只锚定 case 的左/下边，不再用"case 中心 - 半宽"重新取整：旧写法在 case 宽高
-    // 与封面宽高的奇偶性不同步翻转时，左右/上下边距会在 N 与 N+1 之间来回跳，
-    // 表现为封面在 case 里抖动。现在封面左/下边和尺寸都只随缩放单调变化，不再来回跳。
-    // 选左/下作锚点的原因：内置 case 内框的左边距为 0、下边距仅约 1 像素，这两条边差 1 像素
-    // 就会溢出或露缝，非常显眼；而上边/右边有较厚的 case 边框，1 像素误差落在那里几乎不可见。
-    // 下边同时也是 ALIGN_BOTTOM 的取整锚点，所有封面的底边因此严格对齐。
+    // 封面位置：水平锚定已取整的 case 左边 + 浮点左边距取整一次；
+    // 垂直锚定内框的正中水平线：封面中线 = 已取整的 case 上边 + 内框中线到 case 上边的距离（浮点，取整一次）。
+    // 水平方向不再用"case 中心 - 半宽"重新取整，避免左右边距在 N 与 N+1 之间来回跳。
+    // 垂直方向以中线为锚点后，封面上下两端的取整误差各占一半，不会都堆在同一条边上。
     float inlayWidth = rmPxSnap(offR - offL);
     float inlayHeight = rmPxSnap(offB - offT);
     if (inlayWidth < 1.0f)
@@ -844,8 +841,9 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     if (inlayHeight < 1.0f)
         inlayHeight = 1.0f;
     float inlayLeft = rUlX + rmPxSnap(offL);
-    float inlayBottom = rBrY - rmPxSnap(caseH - offB);
-    float inlayTop = inlayBottom - inlayHeight;
+    float inlayCenterFromTop = (offT + offB) * 0.5f; // 内框中线到 case 上边的距离
+    float inlayTop = rUlY + rmPxSnap(inlayCenterFromTop - inlayHeight * 0.5f);
+    float inlayBottom = inlayTop + inlayHeight;
     float inlayRight = inlayLeft + inlayWidth;
 
     // 非矩形内框仍使用 overlay 的四个原始顶点；现有内置 cf_case 是矩形，
