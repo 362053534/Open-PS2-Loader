@@ -50,7 +50,7 @@ static image_cache_t *deferredCoverflowBgCache = NULL;
 static item_list_t *deferredCoverflowBgList = NULL;
 static u64 deferredCoverflowBgFrame = 0;
 // Coverflow 背景图连按cd：cd期间不允许BG入队
-static int cfBgCdStep = 0; // 单步动画未结束又触发单步时激活，单步动画停止后取消
+static int cfBgCdStep = 0; // 动画未结束又触发新动画（单步或翻页）即动画被打断时激活，动画停止后取消
 static int cfBgCdPage = 0; // 按住L1/R1自动连按翻页时激活，L1、R1都松开后取消
 // 动画状态定义在下方 Coverflow 段，这里先做前置声明供 BG 连按cd使用
 static int isAnimating;
@@ -666,7 +666,7 @@ static void armDeferredCoverflowBackground(image_cache_t *cache, item_list_t *li
 
 static void flushDeferredCoverflowBackground(submenu_list_t *item)
 {
-    // 单步动画已停止：取消单步连按cd
+    // 动画已停止：取消动画被打断产生的连按cd
     if (!isAnimating)
         cfBgCdStep = 0;
     // L1、R1都已松开：取消翻页连按cd
@@ -1259,8 +1259,8 @@ void thmTriggerCoverflowAnim(int direction)
     if (!gTheme || gTheme->coverflow == NULL)
         return;
 
-    // 单步动画未结束时又触发单步：激活单步连按cd（须在覆盖动画状态之前判断）
-    if (isAnimating && animationSteps == 1)
+    // 动画未结束时又触发新动画（动画被打断）：激活连按cd（须在覆盖动画状态之前判断）
+    if (isAnimating)
         cfBgCdStep = 1;
 
     isAnimating = 1;
@@ -1280,6 +1280,10 @@ void thmTriggerCoverflowAnimMulti(int direction, int steps, submenu_list_t *star
 
     if (steps < 1)
         steps = 1;
+
+    // 动画未结束时又触发新动画（动画被打断）：激活连按cd（须在覆盖动画状态之前判断）
+    if (isAnimating)
+        cfBgCdStep = 1;
 
     // 按住L1/R1进入自动连按后的翻页：激活翻页连按cd
     // 首次按下那一帧不算连按，排除上下键残留的isRepeating标记造成误判
