@@ -1043,7 +1043,7 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     if (colorType == PNG_COLOR_TYPE_GRAY || colorType == PNG_COLOR_TYPE_GRAY_ALPHA)
         png_set_gray_to_rgb(pngPtr);
     // 直读条件：非隔行扫描，且最终是 CT24（RGB，或忽略 alpha 的 RGBA）或 8 位调色板 T8
-    // 此时 libpng 行数据布局与纹理内存一致，逐行直接读进纹理，省掉整图行缓冲和拷贝
+    // 此时 libpng 行数据布局与旧路径写入的纹理内存布局一致（像素紧密排列），逐行直接读进纹理，省掉整图行缓冲和拷贝
     // 隔行扫描图必须整图解码，其余格式（CT32、T4、灰度等）继续走旧路径
     directRgb = interlace == PNG_INTERLACE_NONE &&
                 (colorType == PNG_COLOR_TYPE_RGB || (colorType == PNG_COLOR_TYPE_RGB_ALPHA && dropAlpha));
@@ -1116,8 +1116,9 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     tex->Mem = memalign(ART_TEX_ALIGN, memSize);
 
     if (directRead) {
-        // 行宽与纹理内存尺寸必须严格吻合，否则说明格式判断有误，直接失败
-        if (rowBytes == 0 || !tex->Mem || memSize != (size_t)rowBytes * tex->Height)
+        // 行数据总量不能超过分配的纹理内存，否则说明格式判断有误，直接失败
+        // （CT24 的分配大小按每像素 4 字节，比紧密排列的 3 字节行数据大，不能要求严格相等）
+        if (rowBytes == 0 || !tex->Mem || (size_t)rowBytes * tex->Height > memSize)
             goto fail;
         for (y = 0; y < tex->Height; y++)
             png_read_row(pngPtr, (png_bytep)tex->Mem + (size_t)y * rowBytes, NULL);
