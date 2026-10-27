@@ -1007,6 +1007,7 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     png_size_t rowBytes;
     size_t memSize;
     int y;
+    int directRgb, directRead;
 
     artTexPrepare(tex);
 
@@ -1041,7 +1042,19 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     // 旧解码器不支持灰度图；新解码器转成 RGB 后按真彩处理
     if (colorType == PNG_COLOR_TYPE_GRAY || colorType == PNG_COLOR_TYPE_GRAY_ALPHA)
         png_set_gray_to_rgb(pngPtr);
-    png_set_filler(pngPtr, 0xff, PNG_FILLER_AFTER);
+    // 直读条件：非隔行扫描，且最终是 CT24（RGB，或忽略 alpha 的 RGBA）或 8 位调色板 T8
+    // 此时 libpng 行数据布局与纹理内存一致，逐行直接读进纹理，省掉整图行缓冲和拷贝
+    // 隔行扫描图必须整图解码，其余格式（CT32、T4、灰度等）继续走旧路径
+    directRgb = interlace == PNG_INTERLACE_NONE &&
+                (colorType == PNG_COLOR_TYPE_RGB || (colorType == PNG_COLOR_TYPE_RGB_ALPHA && dropAlpha));
+    directRead = directRgb || (interlace == PNG_INTERLACE_NONE && colorType == PNG_COLOR_TYPE_PALETTE && bitDepth == 8);
+    if (directRgb) {
+        // 行缓冲直接是每像素 3 字节，不补 filler；RGBA 在解码时就去掉 alpha
+        if (colorType == PNG_COLOR_TYPE_RGB_ALPHA)
+            png_set_strip_alpha(pngPtr);
+    } else {
+        png_set_filler(pngPtr, 0xff, PNG_FILLER_AFTER);
+    }
     png_read_update_info(pngPtr, infoPtr);
 
     switch (png_get_color_type(pngPtr, infoPtr)) {
@@ -1101,6 +1114,18 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     rowBytes = png_get_rowbytes(pngPtr, infoPtr);
     memSize = gsKit_texture_size_ee(tex->Width, tex->Height, tex->PSM);
     tex->Mem = memalign(ART_TEX_ALIGN, memSize);
+
+    if (directRead) {
+        // 行宽与纹理内存尺寸必须严格吻合，否则说明格式判断有误，直接失败
+        if (rowBytes == 0 || !tex->Mem || memSize != (size_t)rowBytes * tex->Height)
+            goto fail;
+        for (y = 0; y < tex->Height; y++)
+            png_read_row(pngPtr, (png_bytep)tex->Mem + (size_t)y * rowBytes, NULL);
+        png_read_end(pngPtr, NULL);
+        png_destroy_read_struct(&pngPtr, &infoPtr, NULL);
+        return 0; // Mem/Clut 所有权交给调用方（texcache）
+    }
+
     rows = calloc(tex->Height, sizeof(png_bytep));
     allRows = malloc((size_t)rowBytes * tex->Height);
     if (rowBytes == 0 || !tex->Mem || !rows || !allRows)
