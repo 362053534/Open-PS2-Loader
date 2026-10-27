@@ -781,11 +781,14 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int d
     if (bitDepth == 16)
         png_set_strip_16(pngPtr);
 
-    if (colorType == PNG_COLOR_TYPE_GRAY || bitDepth < 4) {
+    if (colorType == PNG_COLOR_TYPE_GRAY || colorType == PNG_COLOR_TYPE_GRAY_ALPHA || bitDepth < 4) {
         png_set_expand(pngPtr);
         if (png_get_valid(pngPtr, infoPtr, PNG_INFO_tRNS))
             png_set_tRNS_to_alpha(pngPtr);
     }
+    // 灰度图（含灰度加 alpha）转成 RGB（RGBA）后按真彩处理，否则颜色类型仍是灰度，会被当作不支持的格式而加载失败
+    if (colorType == PNG_COLOR_TYPE_GRAY || colorType == PNG_COLOR_TYPE_GRAY_ALPHA)
+        png_set_gray_to_rgb(pngPtr);
 
     // 直读条件：非隔行扫描，且最终是 CT24（RGB，或忽略 alpha 的 RGBA）或 8 位调色板 T8
     // 隔行扫描图必须整图解码，其余格式（CT32、T4 等）继续走旧路径
