@@ -1216,22 +1216,13 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_APPS_COVER_H 150
 #define COVERFLOW_APPS_COVER_H_LOWRES 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
-#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；7/9张自动反推，3张保持此大小
-// 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
-// 7/9张仍以该间距为基准反推较小的非中心封面，3张则保持5张大小并反算更大的间距。
-// 语义同下面的间距%：间隙 = 5张基线非中心封面基准宽 × 此值/100。
-// 当前 57：case 裁掉多余透明区域后内框占比变大、case 变窄，原来的 34 会让宽屏整排偏窄（5 张边距过大），
-// 按新 case 尺寸重新反推为 57（5 张边距 19、7 张 9、9 张 7，均不溢出屏幕）。
-#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 57
-// 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
-//   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
-// 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
-// 当前 15：5 张基线非中心 case 宽 106 对应间隙 15 像素（向下取整）；7/9 张的间隙随反推出的封面宽按同一百分比计算
-// （向下取整），再各缩紧 COVERFLOW_MULTI_GAP_TIGHTEN；间隙允许有 1 像素误差，只保证左右边距一致。
-// 中心封面每侧多出的半宽均为整数，避免半像素偏移导致的抖动。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 15
-// 7/9 张时，在按间距%选定非中心封面宽之后，再把间隙额外缩紧的逻辑像素数（只缩间隙，不改封面大小）。
-#define COVERFLOW_MULTI_GAP_TIGHTEN 2
+#define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；仅用于非中心封面底边对齐基线，3/5/7/9张的封面宽由间距宏反算
+// 相邻封面【间距宏】（4:3 逻辑像素，按 3/5/7/9 张依次各一项，1 张不使用；宽屏复用这一组，不另设宏）。
+// 3/5/7/9 张用同一套平铺公式：以逻辑宽度 640 为基准，整排 = 左右边距各 g/2 + n 张封面 + (n-1) 个间隙 g，
+// 由此反算非中心封面宽 = (640 - 中心封面宽 - n × g) ÷ (n-1)（向下取到与中心封面宽同奇偶，保证左右对称），
+// 再把取整剩下的像素摊进间隙，所以边距约等于间隙的一半，左右相等。
+// 宽屏的封面宽 = 上面 4:3 算出的宽 × 现有的横向压缩系数（rmWideScale），间隙与边距按同一公式用剩余宽度撑满 640。
+#define COVERFLOW_GAP { 95, 14, 6, 6 }
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 165 = 在原 161 的基础上整体下移 4，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 165
@@ -1253,8 +1244,6 @@ static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图
 static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（448 基线逻辑值150）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 5张基线非中心封面相对基准的等比增减【像素】
-static int gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT; // 宽屏 5 张基线间距%（7/9 张据此缩放封面）
-static int gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT; // 相邻封面中心距相对封面宽的额外百分比
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
 static int gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;     // 是否将非中心封面变暗
 static int gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;   // 每侧屏幕外预取的封面数（无上限，见主题解析处说明）
@@ -1455,94 +1444,36 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             fracH = (float)ih / (float)elem->height;
     }
 
-    // 5 封面布局是现有的大小/间距基线。先从该基线得到非中心封面大小和真实可见间隙，
-    // 再根据主题选择的 1/3/5/7/9 个槽位决定尺寸或间距，保持整排的观感。
-    // 中心封面仍使用 gCoverflowCenterScale，并参与最终的整排宽度计算。
+    // 5 张基线非中心封面大小只用于下面的非中心封面底边对齐补偿；
+    // 3/5/7/9 张的封面宽与间隙都由间距宏按平铺公式算出。中心封面使用 gCoverflowCenterScale，并参与整排宽度计算。
     int effNonCenterScale = gCoverflowNonCenterScale;
     float referenceNonInlayW = (float)baseCoverW + (float)effNonCenterScale;
     if (referenceNonInlayW < 1.0f)
         referenceNonInlayW = 1.0f;
-    int referenceCoverWidthBase = (int)(referenceNonInlayW / fracW + 0.5f);
-
-    // 5 张按基线非中心宽算间隙；3 张沿用该基线大小；7/9 张下面会让间隙随反推出的封面宽按同一间距%重算。
-    int spacingPct = gWideScreen ? gCoverflowWideSpacingPercent : gCoverflowSpacingPercent;
-    if (spacingPct < 0)
-        spacingPct = 0;
-    int gap = (referenceCoverWidthBase * spacingPct) / 100;
-    if (gWideScreen)
-        gap = rmWideScale(gap);
-    int referenceCoverWidth = referenceCoverWidthBase;
-    if (gWideScreen)
-        referenceCoverWidth = rmWideScale(referenceCoverWidth);
 
     // 中心封面的 case 宽（用于间距补偿）：中心封面比非中心封面宽时，
     // 下面的布局会把中心封面两侧多出的半宽均匀摊开，保证可见间隙一致。
     float centerInlayWF = (float)baseCoverW + (float)gCoverflowCenterScale;
     if (centerInlayWF < 1.0f)
         centerInlayWF = 1.0f;
-    int centerCoverWidth = (int)(centerInlayWF / fracW + 0.5f);
-    if (gWideScreen)
-        centerCoverWidth = rmWideScale(centerCoverWidth);
+    int centerCoverWidthBase = (int)(centerInlayWF / fracW + 0.5f); // 4:3 逻辑宽
+    int centerCoverWidth = gWideScreen ? rmWideScale(centerCoverWidthBase) : centerCoverWidthBase;
 
-    // 3 张比 5 张少：保留 5 张的非中心封面大小，反过来计算 3 张专用间距，
-    // 再从每个间距扣除 60 像素，为两侧留下约 60 像素安全距离。
-    // 7/9 张比 5 张多：间隙与非中心封面宽保持同一个间距%（间隙 = 非中心封面宽 × 间距%），
-    // 再反推非中心封面大小来铺满整排，避免封面缩小后间隙相对封面显得过宽。
-    if (coverCount == 3) {
-        int gapWidth = screenWidth - centerCoverWidth - (coverCount - 1) * referenceCoverWidth;
-        if (gapWidth < 0)
-            gapWidth = 0;
-        gap = (gapWidth + ((coverCount - 1) >> 1)) / (coverCount - 1);
-        // 满屏计算得到的是零边距间距；3 张时每侧需留约 60 像素，直接从每个间距扣除 60。
-        gap -= 60;
-        if (gap < 0)
-            gap = 0;
-    } else if (coverCount >= 7) {
-        // 整排宽 = (n-1) × (封面宽 + 封面宽 × 间距%) + 中心封面宽，由此解出非中心封面宽的目标值。
-        float targetCoverWidth = ((float)screenWidth - (float)centerCoverWidth) /
-                                 ((float)(coverCount - 1) * (1.0f + (float)spacingPct / 100.0f));
-        if (targetCoverWidth < 1.0f)
-            targetCoverWidth = 1.0f;
-        float wideFactor = gWideScreen ? rmWideScaleF(1.0f) : 1.0f;
-        if (wideFactor < 0.0001f)
-            wideFactor = 1.0f;
-        float targetUnscaledCaseWidth = targetCoverWidth / wideFactor;
-        float targetInlayW = targetUnscaledCaseWidth * fracW;
-        float targetScale = targetInlayW - (float)baseCoverW;
-        int initialScale = (int)(targetScale + (targetScale >= 0.0f ? 0.5f : -0.5f));
-        int bestScale = initialScale;
-        int bestGap = gap;
-        // 奇偶不符的候选会让中心封面每侧多出的半宽带 0.5 像素，这里加上大于屏宽的惩罚，
-        // 只有范围内没有偶差候选时才会选它们。
-        int bestDifference = screenWidth * 4;
-        int candidateScale;
-        for (candidateScale = initialScale - 3; candidateScale <= initialScale + 3; candidateScale++) {
-            if (baseCoverW + candidateScale < 1)
-                continue;
-            float candidateInlayW = (float)baseCoverW + (float)candidateScale;
-            int candidateWidthBase = (int)(candidateInlayW / fracW + 0.5f);
-            int candidateWidth = gWideScreen ? rmWideScale(candidateWidthBase) : candidateWidthBase;
-            // 每个候选宽度各自按间距%算间隙（宽屏同样做横向压缩），保持间隙与封面宽成比例。
-            int candidateGapBase = (candidateWidthBase * spacingPct) / 100;
-            int candidateGap = gWideScreen ? rmWideScale(candidateGapBase) : candidateGapBase;
-            int candidateTotal = (coverCount - 1) * (candidateWidth + candidateGap) + centerCoverWidth;
-            int difference = candidateTotal - screenWidth;
-            if (difference < 0)
-                difference = -difference;
-            if (((centerCoverWidth - candidateWidth) & 1) != 0)
-                difference += screenWidth * 2;
-            if (difference < bestDifference) {
-                bestDifference = difference;
-                bestScale = candidateScale;
-                bestGap = candidateGap;
-            }
-        }
-        effNonCenterScale = bestScale;
-        // 封面大小已按上面的间隙定下，这里只把间隙再缩紧一点（宽屏同样做横向压缩），整排因此略窄并保持居中。
-        int tighten = gWideScreen ? rmWideScale(COVERFLOW_MULTI_GAP_TIGHTEN) : COVERFLOW_MULTI_GAP_TIGHTEN;
-        gap = bestGap - tighten;
-        if (gap < 0)
-            gap = 0;
+    // 3/5/7/9 张用同一套平铺公式（间距宏见 COVERFLOW_GAP），宽屏同样按 4:3 逻辑宽计算：
+    // 非中心封面宽 = (屏宽 - 中心封面宽 - 张数 × 间距宏) ÷ (张数-1)，再换算回内框缩放量；
+    // 宽屏的实际封面宽由此再做横向压缩，间隙在得到实际封面宽之后按剩余宽度均摊（见下方 gap）。
+    if (coverCount >= 3) {
+        static const int gapTable[4] = COVERFLOW_GAP;
+        int gapSetting = gapTable[coverCount / 2 - 1];
+        if (gapSetting < 0)
+            gapSetting = 0;
+        int targetCoverWidth = (screenWidth - centerCoverWidthBase - coverCount * gapSetting) / (coverCount - 1);
+        // 与中心封面宽同奇偶，中心封面每侧多出的半宽才是整数。
+        if (((centerCoverWidthBase - targetCoverWidth) & 1) != 0)
+            targetCoverWidth--;
+        if (targetCoverWidth < 1)
+            targetCoverWidth = 1;
+        effNonCenterScale = (int)((float)targetCoverWidth * fracW + 0.5f) - baseCoverW;
     }
 
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
@@ -1550,7 +1481,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         nonInlayW = 1.0f;
     int coverWidthBase = (int)(nonInlayW / fracW + 0.5f); // 非中心 case 宽（4:3 逻辑宽）
 
-    // 非中心 case 绘制宽：3 张保持 5 张基线尺寸，7/9 张使用反推后的尺寸。
+    // 非中心 case 绘制宽：3/5/7/9 张均为按间距宏反算出的尺寸。
     int coverWidth = coverWidthBase;                      // 供布局/中心距/居中
     int coverYOffset = COVERFLOW_BASELINE_YOFFSET;        // 整模块基线下移（代码校准，不依赖 cfg 的 y）
     if (isApps)
@@ -1559,6 +1490,15 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 宽屏(16:9)：封面宽和间距沿用原有横向压缩，使电视横向拉伸后比例正确。
     if (gWideScreen)
         coverWidth = rmWideScale(coverWidth);
+
+    // 间隙 = 屏宽扣掉中心封面和其余封面后，剩余宽度均摊到 n 个位置（n-1 个封面间隙 + 两侧边距各占半个），
+    // 因此左右边距相等且约等于间隙的一半；1 张没有间隙。
+    int gap = 0;
+    if (coverCount >= 3) {
+        gap = (screenWidth - centerCoverWidth - (coverCount - 1) * coverWidth) / coverCount;
+        if (gap < 0)
+            gap = 0;
+    }
 
     // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量。
     float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
@@ -1578,9 +1518,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float curNonCaseH = ((float)baseCoverH * nonInlayW / (float)baseCoverW) / fracH;
     float nonCenterBottomFix = (refNonCaseH - curNonCaseH) * 0.5f;
 
-    // 相邻封面【中心距】= 非中心绘制宽 + 间隙。绘制宽由 enlarge 决定、间隙由间距% 决定，二者解耦：
-    //   放大封面 → coverWidth 增大 → 中心距增大，间隙不变（封面不叠压）；
-    //   调间距%  → gap 增大/减小，封面大小不变。外侧封面顶到屏幕边缘时由 scissor 干净裁切。
+    // 相邻封面【中心距】= 非中心绘制宽 + 间隙；二者都由间距宏按上面的平铺公式得出。
     int coverDistance = coverWidth + gap;
     if (coverDistance < 1)
         coverDistance = 1;
@@ -2521,8 +2459,6 @@ static void thmLoad(const char *themePath)
     gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;
     gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;
     gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE;
-    gCoverflowWideSpacingPercent = COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT;
-    gCoverflowSpacingPercent = COVERFLOW_DEFAULT_SPACING_PERCENT;
     gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;
     gCoverflowDimCovers = COVERFLOW_DEFAULT_DIM;
     gCoverflowPreload = COVERFLOW_DEFAULT_PRELOAD;
