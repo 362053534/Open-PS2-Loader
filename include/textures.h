@@ -104,7 +104,6 @@ enum INTERNAL_TEXTURE {
     //  封面占位图沿用默认主题的 cover, 兜底背景复用默认的 background, 不再单独引入)
     PLANK_PICTURE,
     CF_CASE_OVERLAY,
-    CF_APPS_CASE_OVERLAY,
     // wOPL 风格的单设备图标(带 BDM/SMB/APA/APPS 标签), 仅 Coverflow 内置主题使用,
     // 在 thmLoad 里覆盖到对应的设备图标槽(BDM_ICON..APP_ICON), 默认列表主题不受影响。
     CF_DEV_BDM,
