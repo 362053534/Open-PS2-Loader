@@ -488,13 +488,12 @@ static void texReadPixels4(GSTEXTURE *texture, png_bytep *rowPointers, size_t si
     //SignalSema(fileLockId);
 }
 
-static void texReadPixels8(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture)
+// 填充 8 位调色板（含 GS CSM1 的块交换）；旧路径和直读路径共用
+static void texFillClut8(GSTEXTURE *texture, png_texture_t *pngTexture)
 {
-    unsigned char *pixel = (unsigned char *)texture->Mem;
     png_clut_t *clut = (png_clut_t *)texture->Clut;
     int i;
 
-    //WaitSema(fileLockId);
     memset(&clut[pngTexture->numPalette], 0, (256 - pngTexture->numPalette) * sizeof(clut[0]));
 
     for (i = 0; i < pngTexture->numPalette; i++) {
@@ -511,6 +510,15 @@ static void texReadPixels8(GSTEXTURE *texture, png_bytep *rowPointers, size_t si
             clut[i + 8] = tmp;
         }
     }
+}
+
+static void texReadPixels8(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture)
+{
+    unsigned char *pixel = (unsigned char *)texture->Mem;
+    int i;
+
+    //WaitSema(fileLockId);
+    texFillClut8(texture, pngTexture);
 
     for (i = 0; i < texture->Height; i++)
         memcpy(&pixel[i * texture->Width], rowPointers[i], texture->Width);
@@ -555,9 +563,49 @@ static void texReadPixels32(GSTEXTURE *texture, png_bytep *rowPointers, size_t s
 }
 
 
-static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
-                       void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture)
+// 直读：CT24 和 T8 的 libpng 行数据布局与纹理内存完全一致，
+// 逐行直接读进 texture->Mem，省掉整图大小的行缓冲和第二遍拷贝
+static int texReadDirect(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr, png_texture_t *pngTexture)
 {
+    png_size_t rowBytes = png_get_rowbytes(pngPtr, infoPtr);
+    size_t size = gsKit_texture_size_ee(texture->Width, texture->Height, texture->PSM);
+    unsigned char *dst;
+    int row;
+
+    // 行宽与纹理内存尺寸必须严格吻合，否则说明格式判断有误，直接失败
+    if (rowBytes == 0 || texture->Height == 0 || size != (size_t)rowBytes * (size_t)texture->Height) {
+        LOG("TEXTURES PngReadDirect: Row layout mismatch\n");
+        return -1;
+    }
+
+    texture->Mem = memalign(128, size);
+    if (!texture->Mem) {
+        LOG("TEXTURES PngReadDirect: Failed to allocate %u bytes\n", (unsigned int)size);
+        return -1;
+    }
+
+    // 解码失败时由调用方统一释放 texture->Mem/Clut
+    if (setjmp(png_jmpbuf(pngPtr))) {
+        LOG("TEXTURES PngReadDirect: PNG decode failed\n");
+        return -1;
+    }
+
+    dst = (unsigned char *)texture->Mem;
+    for (row = 0; row < texture->Height; row++)
+        png_read_row(pngPtr, dst + (size_t)row * rowBytes, NULL);
+    png_read_end(pngPtr, NULL);
+
+    if (texture->PSM == GS_PSM_T8)
+        texFillClut8(texture, pngTexture);
+    return 0;
+}
+
+static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
+                       void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture, int directRead)
+{
+    if (directRead)
+        return texReadDirect(texture, pngPtr, infoPtr, pngTexture);
+
     png_size_t rowBytes = png_get_rowbytes(pngPtr, infoPtr);
     size_t size = gsKit_texture_size_ee(texture->Width, texture->Height, texture->PSM);
     size_t rowsSize;
@@ -733,7 +781,19 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int d
             png_set_tRNS_to_alpha(pngPtr);
     }
 
-    png_set_filler(pngPtr, 0xff, PNG_FILLER_AFTER);
+    // 直读条件：非隔行扫描，且最终是 CT24（RGB，或忽略 alpha 的 RGBA）或 8 位调色板 T8
+    // 隔行扫描图必须整图解码，其余格式（CT32、T4 等）继续走旧路径
+    int directRgb = interlaceType == PNG_INTERLACE_NONE &&
+                    (colorType == PNG_COLOR_TYPE_RGB || (colorType == PNG_COLOR_TYPE_RGB_ALPHA && dropAlpha));
+    int directRead = directRgb || (interlaceType == PNG_INTERLACE_NONE && colorType == PNG_COLOR_TYPE_PALETTE && bitDepth == 8);
+
+    if (directRgb) {
+        // 行缓冲直接是每像素 3 字节，不补 filler；RGBA 在解码时就去掉 alpha
+        if (colorType == PNG_COLOR_TYPE_RGB_ALPHA)
+            png_set_strip_alpha(pngPtr);
+    } else {
+        png_set_filler(pngPtr, 0xff, PNG_FILLER_AFTER);
+    }
     png_read_update_info(pngPtr, infoPtr);
 
     png_texture_t *pngTexture = calloc(1, sizeof(png_texture_t));
@@ -799,7 +859,7 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int d
     if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0)
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DIMENSION, pngTexture, texture);
 
-    if (texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture) < 0)
+    if (texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture, directRead) < 0)
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
 
     // Successful loads transfer ownership of texture->Mem/Clut to the caller.
