@@ -617,7 +617,36 @@ static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr
     return 0;
 }
 
-static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
+// 忽略 alpha 的 art 后缀（前缀匹配）：这些图都是不透明素材，不需要透明通道
+// BG 同时覆盖图包里带序号的 BG_00；COV 同时覆盖 COV2；SCR 同时覆盖 SCR2 和图包里的 SCR_00/SCR_01
+#define TEX_DROP_ALPHA_SUFFIX_BG  "BG"
+#define TEX_DROP_ALPHA_SUFFIX_COV "COV"
+#define TEX_DROP_ALPHA_SUFFIX_LAB "LAB"
+#define TEX_DROP_ALPHA_SUFFIX_SCR "SCR"
+
+static const char *const texDropAlphaSuffixes[] = {
+    TEX_DROP_ALPHA_SUFFIX_BG,
+    TEX_DROP_ALPHA_SUFFIX_COV,
+    TEX_DROP_ALPHA_SUFFIX_LAB,
+    TEX_DROP_ALPHA_SUFFIX_SCR,
+};
+
+#define TEX_DROP_ALPHA_SUFFIX_COUNT (sizeof(texDropAlphaSuffixes) / sizeof(texDropAlphaSuffixes[0]))
+
+int texSuffixDropsAlpha(const char *suffix)
+{
+    size_t i;
+
+    if (!suffix)
+        return 0;
+    for (i = 0; i < TEX_DROP_ALPHA_SUFFIX_COUNT; i++) {
+        if (!strncmp(suffix, texDropAlphaSuffixes[i], strlen(texDropAlphaSuffixes[i])))
+            return 1;
+    }
+    return 0;
+}
+
+static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int dropAlpha)
 {
     texPrepare(texture);
     tex_read_buffer_t readBuffer;
@@ -714,8 +743,14 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
 
     switch (png_get_color_type(pngPtr, infoPtr)) {
         case PNG_COLOR_TYPE_RGB_ALPHA:
-            texture->PSM = GS_PSM_CT32;
-            texPngReadPixels = &texReadPixels32;
+            if (dropAlpha) {
+                // 行缓冲本来就是每像素 4 字节（RGB 也被补成 RGBX），按 CT24 只拷前 3 字节即可忽略 alpha
+                texture->PSM = GS_PSM_CT24;
+                texPngReadPixels = &texReadPixels24;
+            } else {
+                texture->PSM = GS_PSM_CT32;
+                texPngReadPixels = &texReadPixels32;
+            }
             break;
         case PNG_COLOR_TYPE_RGB:
             texture->PSM = GS_PSM_CT24;
@@ -771,23 +806,23 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId)
     return texEnd(pngPtr, infoPtr, pFileBuffer, 0, pngTexture, NULL);
 }
 
-static int texLoad(GSTEXTURE *texture, const char *filePath)
+static int texLoad(GSTEXTURE *texture, const char *filePath, int dropAlpha)
 {
-    return texLoadAll(texture, filePath, -1);
+    return texLoadAll(texture, filePath, -1, dropAlpha);
 }
 
 int texLoadInternal(GSTEXTURE *texture, int texId)
 {
-    return texLoadAll(texture, NULL, texId);
+    return texLoadAll(texture, NULL, texId, 0);
 }
 
 int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
 {
-    return texDiscoverLoadEx(texture, path, texId, gEnableJpg);
+    return texDiscoverLoadEx(texture, path, texId, gEnableJpg, 0);
 }
 
 // allowJpg 为 0 时只找 png（性能模式），为 1 时 png 找不到再找 jpg（兼容模式）
-int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg)
+int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg, int dropAlpha)
 {
     if (!path)
         return ERR_BAD_FILE;
@@ -810,7 +845,7 @@ int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allow
         snprintf(filePath, sizeof(filePath), "%s.%s", path, "png");
 
     //beforeTime = GetTimerSystemTime(); // 开始搜索图片，记录时间
-    if (texLoad(texture, filePath) >= 0)
+    if (texLoad(texture, filePath, dropAlpha) >= 0)
         return 0;
     else {
         if (allowJpg) {

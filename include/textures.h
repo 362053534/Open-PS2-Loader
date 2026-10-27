@@ -130,7 +130,10 @@ enum INTERNAL_TEXTURE {
 int texLookupInternalTexId(const char *name);
 int texLoadInternal(GSTEXTURE *texture, int texId);
 int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId);
-int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg);
+// dropAlpha 为 1 时，带 alpha 的真彩 PNG 按 CT24 加载并忽略 alpha（BG/COV 不需要透明，省显存、DMA 和混合开销）
+int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg, int dropAlpha);
+// 该 art 后缀（BG、COV、COV2…）的图是否忽略 alpha 通道
+int texSuffixDropsAlpha(const char *suffix);
 void texFree(GSTEXTURE *texture);
 void texInit(void);
 void texFinish(void);
