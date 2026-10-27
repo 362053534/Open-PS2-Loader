@@ -1220,14 +1220,16 @@ static clock_t animationStartTime = 0;
 // 宽屏(16:9)专用的【5张基线封面间距】百分比。5张基线在宽屏下保持封面大小、仅拉大间距；
 // 7/9张仍以该间距为基准反推较小的非中心封面，3张则保持5张大小并反算更大的间距。
 // 语义同下面的间距%：间隙 = 5张基线非中心封面基准宽 × 此值/100。
-// 当前 34；4:3 下用 coverflow_cover_spacing_percent。cfg 可用 coverflow_widescreen_spacing_percent 覆盖。
-#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 34
+// 当前 57：case 裁掉多余透明区域后内框占比变大、case 变窄，原来的 34 会让宽屏整排偏窄（5 张边距过大），
+// 按新 case 尺寸重新反推为 57（5 张边距 19、7 张 9、9 张 7，均不溢出屏幕）。
+#define COVERFLOW_DEFAULT_WIDE_SPACING_PERCENT 57
 // 相邻封面【间隙】——与“封面放大”【完全解耦】的独立参数（间距是间距的参数、放大是放大的参数）：
 //   coverDistance（中心距）= 非中心封面【绘制宽度】 + 间隙，间隙 = 非中心封面【基准宽】× 此值/100。
 // 间隙只由本参数决定：间隙 = 非中心封面基准宽 × 本百分比，改封面大小时间隙按比例跟随（与大小解耦）。
-// 当前 16：case 与封面等宽后，5 张基线非中心宽 104 对应间隙 16 像素；7/9 张的间隙随反推出的封面宽按同一百分比计算
-// （7 张：宽 72、间隙 11；9 张：宽 54、间隙 8），中心封面每侧多出的半宽均为整数，避免半像素偏移导致的抖动。
-#define COVERFLOW_DEFAULT_SPACING_PERCENT 16
+// 当前 15：5 张基线非中心 case 宽 106 对应间隙 15 像素（向下取整）；7/9 张的间隙随反推出的封面宽按同一百分比计算
+// （向下取整），再各缩紧 COVERFLOW_MULTI_GAP_TIGHTEN；间隙允许有 1 像素误差，只保证左右边距一致。
+// 中心封面每侧多出的半宽均为整数，避免半像素偏移导致的抖动。
+#define COVERFLOW_DEFAULT_SPACING_PERCENT 15
 // 7/9 张时，在按间距%选定非中心封面宽之后，再把间隙额外缩紧的逻辑像素数（只缩间隙，不改封面大小）。
 #define COVERFLOW_MULTI_GAP_TIGHTEN 2
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
@@ -1582,8 +1584,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int coverDistance = coverWidth + gap;
     if (coverDistance < 1)
         coverDistance = 1;
-    int totalGroupWidth = (coverCount - 1) * coverDistance + coverWidth;
-    int basePosX = (screenWidth - totalGroupWidth) / 2 + (coverWidth >> 1) + (coverWidth * gTheme->coverflowCoverOffset / 256);
+    // 以屏幕中线直接定位中心封面：基准位置 = 屏幕中心 - 中心槽位序号 × 中心距。
+    // 旧写法 (屏宽 - 整排宽)/2 + (封面宽>>1) 在整排宽或封面宽为奇数时各截断 0.5 像素，
+    // 中心封面会偏离屏幕中线 1 像素，导致整排左右边距不相等（5 张偶数宽时恰好无误差，7/9 张会暴露）。
+    int baseCenterSlot = coverCount / 2;
+    int basePosX = screenWidth / 2 - baseCenterSlot * coverDistance + (coverWidth * gTheme->coverflowCoverOffset / 256);
 
     // 先计算动画进度，再决定本帧需要的临时槽位数量。多格翻页以目标项为最终中心，
     // 并在目标项的反方向额外保留 animationSteps 个槽位，从而把起点和终点之间的
