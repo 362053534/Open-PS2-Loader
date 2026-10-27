@@ -711,7 +711,7 @@ gui_strings:
 - label: HINT_DMA_SOURCE
   string: 全局生效，或只对当前游戏生效
 - label: HINT_CF_COUNT
-  string: 可增减同屏封面数量，建议保持默认值5
+  string: 可修改同屏封面数。如果觉得卡顿，请降低数量。
 - label: BGM_SEARCH
   string: 搜索ogg文件
 - label: HINT_BGM_SEARCH

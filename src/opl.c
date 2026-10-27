@@ -2018,11 +2018,11 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, &gEnableArtCOV);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, &gEnableArtICO);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_PACK, &gEnableArtPack);
-            // 缺少该键或数值非法(非1/3/5/7/9)时，一律按默认值5处理
-            gCfCoverCount = 5;
+            // 缺少该键或数值非法(非1/3/5/7/9)时，一律按默认值7处理
+            gCfCoverCount = 7;
             configGetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, &gCfCoverCount);
             if (gCfCoverCount != 1 && gCfCoverCount != 3 && gCfCoverCount != 5 && gCfCoverCount != 7 && gCfCoverCount != 9)
-                gCfCoverCount = 5;
+                gCfCoverCount = 7;
             configGetInt(configOPL, CONFIG_OPL_ENABLE_JPG, &gEnableJpg);
             configGetInt(configOPL, CONFIG_OPL_WIDESCREEN, &gWideScreen);
 
@@ -2945,7 +2945,7 @@ static void setDefaults(void)
     gEnableArtCOV = 1;
     gEnableArtICO = 1;
     gEnableArtPack = 1;
-    gCfCoverCount = 5;
+    gCfCoverCount = 7;
     gEnableJpg = 1;
     gWideScreen = 0;
     gEnableSFX = 1;
@@ -3024,9 +3024,9 @@ static void init(void)
     readPads();
     if (!getKeyPressed(KEY_START)) {
         _loadConfig(); // only try to restore config if emergency key is not being pressed
-        // 内置封面流主题在thmInit()时已按默认封面数5加载，读配置后主题ID不变不会重载，
+        // 内置封面流主题在thmInit()时已按默认封面数7加载，读配置后主题ID不变不会重载，
         // 导致cfg中的同屏封面数不生效；此时背景音乐尚未启动，强制重载一次不会打断音乐
-        if (thmGetGuiValue() == 0 && gCfCoverCount != 5)
+        if (thmGetGuiValue() == 0 && gCfCoverCount != 7)
             thmSetGuiValue(0, 1);
     } else {
         LOG("--- SKIPPING OPL CONFIG LOADING\n");

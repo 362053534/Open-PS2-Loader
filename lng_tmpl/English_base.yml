@@ -711,7 +711,7 @@ gui_strings:
 - label: HINT_DMA_SOURCE
   string: Apply globally, or only to the current game
 - label: HINT_CF_COUNT
-  string: Too many covers on screen may cause freezes, keeping the default 5 is recommended
+  string: Change the number of covers on screen. If it feels laggy, lower the number.
 - label: BGM_SEARCH
   string: Search ogg file
 - label: HINT_BGM_SEARCH
