@@ -1228,6 +1228,8 @@ static clock_t animationStartTime = 0;
 // 当前 16：case 与封面等宽后，5 张基线非中心宽 104 对应间隙 16 像素；7/9 张的间隙随反推出的封面宽按同一百分比计算
 // （7 张：宽 72、间隙 11；9 张：宽 54、间隙 8），中心封面每侧多出的半宽均为整数，避免半像素偏移导致的抖动。
 #define COVERFLOW_DEFAULT_SPACING_PERCENT 16
+// 7/9 张时，在按间距%选定非中心封面宽之后，再把间隙额外缩紧的逻辑像素数（只缩间隙，不改封面大小）。
+#define COVERFLOW_MULTI_GAP_TIGHTEN 2
 // 整个 Coverflow 封面模块的【底部基线下移】逻辑坐标：在代码里校准绘制基线（不依赖主题 cfg 的 y 值）。
 // 正值下移、负值上移。当前 165 = 在原 161 的基础上整体下移 4，游戏和 APPS 共用。
 #define COVERFLOW_BASELINE_YOFFSET 165
@@ -1534,7 +1536,11 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             }
         }
         effNonCenterScale = bestScale;
-        gap = bestGap;
+        // 封面大小已按上面的间隙定下，这里只把间隙再缩紧一点（宽屏同样做横向压缩），整排因此略窄并保持居中。
+        int tighten = gWideScreen ? rmWideScale(COVERFLOW_MULTI_GAP_TIGHTEN) : COVERFLOW_MULTI_GAP_TIGHTEN;
+        gap = bestGap - tighten;
+        if (gap < 0)
+            gap = 0;
     }
 
     float nonInlayW = (float)baseCoverW + (float)effNonCenterScale;
