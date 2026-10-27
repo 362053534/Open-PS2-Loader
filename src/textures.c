@@ -109,7 +109,6 @@ extern void *apps_case_png;
 // Coverflow(内置主题)专用内置贴图, 对齐 wOPL 的 CF 主题资源
 extern void *plank_png;
 extern void *cf_case_png;
-extern void *cf_apps_case_png;
 // wOPL 风格设备图标(仅 Coverflow 内置主题使用)
 extern void *cf_usb_png;
 extern void *cf_usb_bd_png;
@@ -272,7 +271,6 @@ static texture_t internalDefault[TEXTURES_COUNT] = {
     // Coverflow(内置主题)专用资源, 对齐 wOPL 的 CF 主题
     {PLANK_PICTURE, "plank", &plank_png},
     {CF_CASE_OVERLAY, "cf_case", &cf_case_png},
-    {CF_APPS_CASE_OVERLAY, "cf_apps_case", &cf_apps_case_png},
     // wOPL 风格设备图标(384x256, 带 BDM/SMB/APA/APPS 标签), 仅 Coverflow 主题
     {CF_DEV_BDM, "cf_usb", &cf_usb_png},
     {CF_DEV_USB, "cf_usb_bd", &cf_usb_bd_png},
