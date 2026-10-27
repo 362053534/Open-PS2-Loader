@@ -13,6 +13,8 @@
 //   索引 1 = 强化原生主题-支持背景图（原第一套主题，顺移到 Coverflow 之后）
 // 用户从存储设备加载的主题从索引 THM_NUM_BUILTIN 开始排列。
 #define THM_NUM_BUILTIN 2
+// 内置 Coverflow 主题在 GUI 主题列表中的索引
+#define THM_COVERFLOW_GUI_ID 0
 // 内置 Coverflow 主题在 GUI 列表中显示的名称（同时用于配置保存/匹配）
 #define THM_COVERFLOW_NAME "内置-封面流主题"
 // 原第一套主题（强化原生列表主题）在 GUI 列表中显示的名称
