@@ -2454,7 +2454,8 @@ static void thmLoad(const char *themePath)
     //   coverflow_animation_speed  —— 内部默认动画时长（不从主题覆盖）
     //   coverflow_dim_covers       —— 非中心封面是否变暗（0/1，可由主题覆盖）
     //   coverflow_preload          —— 每侧屏幕外预取封面数（如填 3 = 左右各 3、共 6；无上限）
-    gCoverflowCount = COVERFLOW_DEFAULT_COUNT;
+    // 同屏封面数先取图像设置里的值：第三方主题的cfg没写 coverflow_count 时跟随内置主题，写了则在下面被覆盖
+    gCoverflowCount = gCfCoverCount;
     gCoverflowCoverW = COVERFLOW_COVER_W;
     gCoverflowCoverH = COVERFLOW_COVER_H;
     gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;
