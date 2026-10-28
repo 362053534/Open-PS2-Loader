@@ -1539,7 +1539,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int renderCount = coverCount;
     int renderCenterIndex = centerIndex;
     if (isAnimating) {
-        if (gCoverflowActiveAnimSpeed <= 0) {
+        // 同屏只显示 1 张封面时没有相邻封面可供滑动，也不留过渡槽位：动画一触发就直接切到目标封面，
+        // 上一张封面当帧消失（与动画速度为 0 走同一分支）。
+        if (gCoverflowActiveAnimSpeed <= 0 || coverCount == 1) {
             isAnimating = 0;
             animationStartItem = NULL;
             animationSteps = 1;
