@@ -1510,6 +1510,12 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     float centerYOffset = isApps ? (float)COVERFLOW_APPS_CENTER_YOFFSET : 0.0f;
     float centerBottomY = (float)elem->posY + (float)coverYOffset + centerYOffset;
     float centerInlayH = (float)baseCoverH * centerInlayWF / (float)baseCoverW;
+    // 封面主图高度的两个端点（中心 / 非中心）各自取整到【整数物理像素】，动画中间在两端之间按 centerFactor
+    // 线性插值。这样静止时封面高度严格是整数像素（与按宏取整的结果一致），渲染层再把上下边各自取整一次，
+    // 两条边都随动画单调移动，收尾不会反向抖 1px。
+    float inlayHScale = (float)rmScaleY(480) / 480.0f; // 逻辑 480 高 → 物理像素的比例
+    float centerInlayHPx = (float)(int)(centerInlayH * inlayHScale + 0.5f);
+    float nonInlayHPx = (float)(int)((float)baseCoverH * nonInlayW / (float)baseCoverW * inlayHScale + 0.5f);
     float centerCaseHeight = centerInlayH / fracH;
     float refNonCaseH = ((float)baseCoverH * referenceNonInlayW / (float)baseCoverW) / fracH;
     float nonCenterBottomY = centerBottomY - (centerCaseHeight - refNonCaseH) * 0.5f;
@@ -1826,7 +1832,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         float inlayW = (float)baseCoverW + coverScale;
         if (inlayW < 1.0f)
             inlayW = 1.0f;
-        float inlayH = (float)baseCoverH * inlayW / (float)baseCoverW;
+        float inlayH = (nonInlayHPx + (centerInlayHPx - nonInlayHPx) * centerFactor) / inlayHScale;
         // 反推 case 尺寸：内框占比 fracW/fracH → case = inlay ÷ 占比，使内框正好套住封面。
         // 浮点旁路：宽/高全程 float 连续（交给 coverflowDrawTexture→rmSetupQuadF），放大动画
         // 无整数截断蠕动。宽屏只对 case 宽做浮点横向压缩（高度不压，比例正确）。

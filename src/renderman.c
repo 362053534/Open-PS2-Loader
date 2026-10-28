@@ -785,7 +785,6 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     // 否则 Coverflow 横向移动时，case 的最终宽高会在 N/N+1/N 之间跳动，表现为
     // 封面在动画末尾“放大过头后又吸回”。
     float casePixelW = rmPxSnap(caseW);
-    float casePixelH = rmPxSnap(caseH);
 
     // 父级位置仍按原有对齐方式取整，但远角统一由“近角 + 锁定尺寸”得到。
     // Coverflow 当前使用 ALIGN_HCENTER | ALIGN_BOTTOM，因此这里同时保持中心/底部锚点。
@@ -805,17 +804,11 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
         rBrX = rUlX + casePixelW;
     }
 
-    if (aligned & ALIGN_BOTTOM) {
-        rBrY = rmPxSnap(floatCase.br.y);
-        rUlY = rBrY - casePixelH;
-    } else if (aligned & ALIGN_VCENTER) {
-        float centerY = (floatCase.ul.y + floatCase.br.y) * 0.5f;
-        rUlY = rmPxSnap(centerY - casePixelH * 0.5f);
-        rBrY = rUlY + casePixelH;
-    } else {
-        rUlY = rmPxSnap(floatCase.ul.y);
-        rBrY = rUlY + casePixelH;
-    }
+    // 垂直方向：上下两条边各自从【已按对齐方式算好的浮点边】取整一次，不再用"底边 - 锁定高度"推上边。
+    // 浮点上下边随动画单调移动，各取整一次后也单调，动画收尾每帧只变不到 1px 时不会出现
+    // "上边先上跳 1px 又回落"。代价是 case 高度可能随位置小数部分在 N 与 N+1 之间，横向仍按原方式锁定宽度。
+    rUlY = rmPxSnap(floatCase.ul.y);
+    rBrY = rmPxSnap(floatCase.br.y);
 
     // Case 只是外壳，不能用“已经取整的 casePixelH / baseH”反过来决定封面尺寸：
     // casePixelH 是物理像素，而 baseH 是 640×480 逻辑坐标，二者不能直接相除。
@@ -832,19 +825,17 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     // 封面尺寸 = 目标尺寸取整一次（静止时严格等于宏设定的封面宽高，点对点不变）；
     // 水平：锚定已取整的 case 左边 + 浮点左边距取整一次，不再用"case 中心 - 半宽"重新取整，
     // 避免左右边距在 N 与 N+1 之间来回跳。
-    // 垂直：锚定已取整的 case 底边（封面底边 = case 底边 - 内框到 case 底边的距离，取整一次），
-    // 再向上取整后的封面高度得到上边。底边随动画单调移动、高度单调变化，所以上下两条边都不会
-    // 出现"过头又退回 1px"的反向跳动；若改为按内框中线定位，中线与高度各自取整，动画收尾
-    // 变化很慢时两个取整会先后翻转，封面边缘就会往回抖。
+    // 垂直：封面上、下边各自由 case 浮点上边 + 内框距离取整一次（与 case 上下边同一套规则）。
+    // 浮点上边和高度都随动画单调变化，各边单独取整后同样单调，不会在收尾处反向抖 1px；
+    // 若改为"取整后的底边 - 取整后的高度"，两个取整的翻转时机不同，变化很慢时上边会往回抖。
     float inlayWidth = rmPxSnap(offR - offL);
-    float inlayHeight = rmPxSnap(offB - offT);
     if (inlayWidth < 1.0f)
         inlayWidth = 1.0f;
-    if (inlayHeight < 1.0f)
-        inlayHeight = 1.0f;
     float inlayLeft = rUlX + rmPxSnap(offL);
-    float inlayBottom = rBrY - rmPxSnap(caseH - offB); // 内框下边 = 已取整的 case 底边 - 内框到 case 底边的距离
-    float inlayTop = inlayBottom - inlayHeight;
+    float inlayTop = rmPxSnap(floatCase.ul.y + offT);
+    float inlayBottom = rmPxSnap(floatCase.ul.y + offB);
+    if (inlayBottom < inlayTop + 1.0f)
+        inlayBottom = inlayTop + 1.0f;
     float inlayRight = inlayLeft + inlayWidth;
 
     // 非矩形内框仍使用 overlay 的四个原始顶点；现有内置 cf_case 是矩形，
@@ -875,7 +866,7 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     transform->caseQuad.ul.y = rUlY;
     transform->caseQuad.br.x = rBrX;
     transform->caseQuad.br.y = rBrY;
-    transform->caseHeight = casePixelH;
+    transform->caseHeight = rBrY - rUlY;
     transform->caseLeft = rUlX;
     transform->caseRight = rBrX;
     transform->inlayUlX = inlayUlX;
