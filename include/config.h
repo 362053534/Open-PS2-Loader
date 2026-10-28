@@ -84,6 +84,7 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_ENABLE_ART_COV       "enable_art_cov"
 #define CONFIG_OPL_ENABLE_ART_ICO       "enable_art_ico"
 #define CONFIG_OPL_ENABLE_ART_PACK      "enable_art_pack"
+#define CONFIG_OPL_ART_RANDOM           "art_random" // 图包取图时 BG/SCR/SCR2 是否随机取序号图
 #define CONFIG_OPL_ENABLE_JPG           "enable_jpg"
 #define CONFIG_OPL_CF_COVER_COUNT       "cf_cover_count" // 内置封面流主题的同屏封面数(1/3/5/7/9)
 #define CONFIG_OPL_WIDESCREEN           "wide_screen"

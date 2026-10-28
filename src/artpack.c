@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <setjmp.h>
 #include <strings.h> // strcasecmp
+#include <time.h> // clock（随机取图的种子）
 #include <sys/stat.h> // stat / S_ISDIR（图包开关关闭时判断 ART2）
 
 /*
@@ -179,6 +180,9 @@ static const art_suffix_def_t artSuffixDefs[] = {
 
 #define ART_SUFFIX_DEF_COUNT (sizeof(artSuffixDefs) / sizeof(artSuffixDefs[0]))
 #define ART_SUFFIX_INDEX_DIGITS 2
+// 请求后缀的序号取值：真实序号只有 0..99；下面两个特殊值表示“该类图里随机取一张”
+#define ART_REQ_RANDOM      0xFF // BG / SCR
+#define ART_REQ_RANDOM_SCR2 0xFE // SCR2：随机，且排除 SCR 选中的那张
 
 typedef struct
 {
@@ -398,6 +402,25 @@ static int artParseRequestSuffix(const char *suffix, u8 *type, u8 *index)
 {
     if (!suffix)
         return -1;
+    // 随机取图开启时，BG / SCR / SCR2 在该游戏已有的同类图里每次随机取一张，
+    // SCR2 额外排除 SCR 刚选过的那张（见 artPickRandomEntry）；关闭时走下面原有的固定序号映射。
+    if (gArtRandom) {
+        if (!strcmp(suffix, "BG")) {
+            *type = ART_SUF_BG;
+            *index = ART_REQ_RANDOM;
+            return 0;
+        }
+        if (!strcmp(suffix, "SCR")) {
+            *type = ART_SUF_SCR;
+            *index = ART_REQ_RANDOM;
+            return 0;
+        }
+        if (!strcmp(suffix, "SCR2")) {
+            *type = ART_SUF_SCR;
+            *index = ART_REQ_RANDOM_SCR2;
+            return 0;
+        }
+    }
     if (!strcmp(suffix, "BG"))
         suffix = "BG_00";
     else if (!strcmp(suffix, "SCR"))
@@ -405,6 +428,54 @@ static int artParseRequestSuffix(const char *suffix, u8 *type, u8 *index)
     else if (!strcmp(suffix, "SCR2"))
         suffix = "SCR_01";
     return artParseSuffix(suffix, strlen(suffix), type, index);
+}
+
+// 在该游戏的条目里，从 type 类的所有图中随机选出一张，返回它在条目数组中的下标；没有可选的图返回 -1。
+// 条目按（种类，序号）排序，序号即使不连续也只在实际存在的图里选。
+// SCR2 排除 SCR 最近一次选中的那张，保证同一个游戏的两张截图不会重复；
+// 只有一张 SCR 时 SCR2 没有图可选，返回 -1（不显示）。调用方须持有 artPackMutex。
+static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 type, u8 request, const char *gameId, u8 bucket)
+{
+    static u32 randState = 1;
+    static char lastId[ART_GAME_ID_LEN];
+    static u8 lastBucket;
+    static int lastScr = -1; // 最近一次选中的 SCR 序位（该类图中的第几张）
+    int count = 0, avoid = -1, pick, rank, i;
+
+    for (i = 0; i < (int)entryNum; i++) {
+        if (entries[i].suffixType == type)
+            count++;
+    }
+
+    // 换了游戏，旧的选择记录作废
+    if (bucket != lastBucket || memcmp(lastId, gameId, ART_GAME_ID_LEN)) {
+        memcpy(lastId, gameId, ART_GAME_ID_LEN);
+        lastBucket = bucket;
+        lastScr = -1;
+    }
+
+    if (request == ART_REQ_RANDOM_SCR2)
+        avoid = lastScr;
+    if (avoid >= count)
+        avoid = -1;
+    // SCR2 至少要有 2 张 SCR 才显示：只有 1 张时不显示，避免与 SCR 重复
+    if (count - (avoid >= 0) <= 0 || (request == ART_REQ_RANDOM_SCR2 && count < 2))
+        return -1;
+
+    randState = randState * 1664525u + 1013904223u + (u32)clock();
+    pick = (int)((randState >> 8) % (u32)(count - (avoid >= 0)));
+    if (avoid >= 0 && pick >= avoid)
+        pick++;
+
+    if (type == ART_SUF_SCR && request == ART_REQ_RANDOM)
+        lastScr = pick;
+
+    rank = 0;
+    for (i = 0; i < (int)entryNum; i++) {
+        if (entries[i].suffixType == type && rank++ == pick)
+            return i;
+    }
+    return -1;
 }
 
 /*
@@ -1347,11 +1418,19 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         entries = list;
     }
 
-    for (i = 0; i < (int)entryNum; i++) {
-        if (entries[i].suffixType == sufType && entries[i].suffixIndex == sufIndex) {
+    if (sufIndex >= ART_REQ_RANDOM_SCR2) {
+        i = artPickRandomEntry(entries, entryNum, sufType, sufIndex, key, bucket);
+        if (i >= 0) {
             found = entries[i];
             haveEntry = 1;
-            break;
+        }
+    } else {
+        for (i = 0; i < (int)entryNum; i++) {
+            if (entries[i].suffixType == sufType && entries[i].suffixIndex == sufIndex) {
+                found = entries[i];
+                haveEntry = 1;
+                break;
+            }
         }
     }
     free(list);

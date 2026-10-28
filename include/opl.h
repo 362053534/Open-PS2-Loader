@@ -175,6 +175,7 @@ extern int gEnableArtBG;
 extern int gEnableArtCOV;
 extern int gEnableArtICO;
 extern int gEnableArtPack;           // OPLM图包支持开关，改动后重启生效
+extern int gArtRandom;               // 随机取图开关：开启后图包里 BG/SCR/SCR2 每次随机取一张带序号的图，立即生效
 extern int gArtPackDeferMenuSelect;  // 图包开启时，默认页选择推迟到BDM图包探测完成后，取值见 ART_PACK_DEFER_*
 #define ART_PACK_DEFER_NONE    0     // 无需推迟，或预载条目表与默认页选择已完成
 #define ART_PACK_DEFER_PENDING 1     // 等待所有设备的图包探测完成

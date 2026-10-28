@@ -790,6 +790,7 @@ void guiShowUIConfig(void)
     const char *coverArtICO[] = {"光碟关", "光碟开", NULL};
     const char *coverArtMode[] = {"性能模式(仅支持PNG)", "兼容模式(JPG & PNG)", NULL};
     // 下标0~4 对应同屏封面数 1/3/5/7/9
+    const char *artRandom[] = {"随机取图关", "随机取图开", NULL};
     const char *cfCoverCount[] = {"同屏封面数1", "同屏封面数3", "同屏封面数5", "同屏封面数7", "同屏封面数9", NULL};
     int previousCfCoverCount;
 
@@ -817,6 +818,8 @@ reselect_video_mode:
     diaSetInt(diaUIConfig, UICFG_COVERART_ICO, gEnableArtICO);
     diaSetInt(diaUIConfig, UICFG_COVERARTMODE, gEnableJpg);
     diaSetInt(diaUIConfig, UICFG_ARTPACK, gEnableArtPack);
+    diaSetEnum(diaUIConfig, UICFG_ART_RANDOM, artRandom);
+    diaSetInt(diaUIConfig, UICFG_ART_RANDOM, gArtRandom);
     diaSetInt(diaUIConfig, UICFG_WIDESCREEN, gWideScreen);
     diaSetInt(diaUIConfig, UICFG_VMODE, gVMode);
     diaSetInt(diaUIConfig, UICFG_XOFF, gXOff);
@@ -846,6 +849,7 @@ reselect_video_mode:
         diaGetInt(diaUIConfig, UICFG_COVERART_ICO, &gEnableArtICO);
         diaGetInt(diaUIConfig, UICFG_COVERARTMODE, &gEnableJpg);
         diaGetInt(diaUIConfig, UICFG_ARTPACK, &gEnableArtPack); // 关闭立即停用图包取图，开启需重启后探测图包
+        diaGetInt(diaUIConfig, UICFG_ART_RANDOM, &gArtRandom);
         int cfCountIndex = 2;
         diaGetInt(diaUIConfig, UICFG_CF_COUNT, &cfCountIndex);
         gCfCoverCount = cfCountIndex * 2 + 1;

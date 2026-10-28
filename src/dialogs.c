@@ -329,6 +329,8 @@ struct UIItem diaUIConfig[] = {
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_ARTPACK}}},
     {UI_SPACER},
     {UI_BOOL, UICFG_ARTPACK, 1, 1, _STR_HINT_ARTPACK, 0, 0, {.intvalue = {1, 1}}},
+    {UI_SPACER},
+    {UI_ENUM, UICFG_ART_RANDOM, 1, 1, _STR_HINT_ART_RANDOM, 0, 0, {.intvalue = {0, 0}}},
     {UI_SPLITTER},
     {UI_BREAK},
 
