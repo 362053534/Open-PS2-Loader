@@ -1211,7 +1211,10 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_ICO_W 128
 #define COVERFLOW_ICO_H 138
 #define COVERFLOW_ICO_H_LOWRES 128
-#define COVERFLOW_ICO_POPUP_GAP 13
+#define COVERFLOW_ICO_POPUP_GAP 10
+// 第三方主题的 case 素材右侧常带透明区，主题用 coverflow_cover_offset 补偿；
+// ICO 与封面的间距 = COVERFLOW_ICO_POPUP_GAP + offset × 此系数（四舍五入取整），让观感与内置主题一致（内置 offset 为 0）。
+#define COVERFLOW_ICO_OFFSET_GAP_SCALE 0.2f
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 150
 #define COVERFLOW_APPS_COVER_H_LOWRES 140
@@ -1888,7 +1891,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             // 只压缩横向宽度、右边缘和弹出间距；宽度保持 COVERFLOW_ICO_W，
             // 高度使用当前分辨率对应的宏值（448i/p、512i/p 为 LOWRES 值）。
             float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_W);
-            float icoPopupGap = rmWideScaleF((float)COVERFLOW_ICO_POPUP_GAP);
+            float icoPopupGap = rmWideScaleF((float)(COVERFLOW_ICO_POPUP_GAP + (int)(gTheme->coverflowCoverOffset * COVERFLOW_ICO_OFFSET_GAP_SCALE + (gTheme->coverflowCoverOffset >= 0 ? 0.5f : -0.5f))));
             float popupStartRight = centerIcoLeft + icoWidth;
             float popupTargetRight = centerIcoLeft - icoPopupGap;
             float popupRight = popupStartRight + (popupTargetRight - popupStartRight) * icoPopupEased;
