@@ -82,7 +82,7 @@
 #define ART_PACK_PATH_MAX      256
 #define ART_PACK_CHUNK_SIZE    (64 * 1024)   // 中央目录分块读取大小
 #define ART_PACK_MAX_ENTRIES   (256 * 1024)  // 防御异常文件导致的超大内存申请
-#define ART_PACK_MAX_DATA_SIZE (4 * 1024 * 1024) // 单张 PNG 上限
+#define ART_PACK_MAX_DATA_SIZE ART_ENTRY_SIZE_MAX // 单张 PNG 上限，即条目大小字段（22 位）能表示的最大值
 #define ART_PACK_LOCAL_SLACK   256           // 一次读取时为本地头文件名+extra 预留的余量
 #define ART_PACK_MAX_TEX_DIM   1024          // 与旧解码器的尺寸限制一致
 #define ART_PACK_MAX_TEX_BYTES (720 * 512 * 4) // 与 textures.c 的 maxSize 一致
@@ -92,7 +92,7 @@
 
 #define ART_IDX_MAGIC     "AIDX"
 #define ART_IDX_MAGIC_LEN 4
-#define ART_IDX_VERSION   1
+#define ART_IDX_VERSION   2
 #define ART_GAME_ID_LEN   12 // 含结尾 0，游戏 ID 最长 11 字符
 
 typedef struct
@@ -100,35 +100,47 @@ typedef struct
     char magic[ART_IDX_MAGIC_LEN];
     u32 version;
     u64 archiveSize;
-    u32 gameCount;
+    u32 ps1Count; // 游戏表前 ps1Count 条是 PS1，后面 ps2Count 条是 PS2，各自按 gameId 排序
+    u32 ps2Count;
     u32 entryCount;
-    u32 gameTableOff;
-    u32 entryTableOff;
+    u32 reserved;
 } __attribute__((packed)) art_idx_header_t;
 
+// 游戏表共 ps1Count + ps2Count + 1 条，紧跟 header；最后一条是哨兵（只用 firstEntry = entryCount），
+// 每个游戏的条目数 = 下一条的 firstEntry - 本条的 firstEntry
 typedef struct
 {
     char gameId[ART_GAME_ID_LEN]; // 已转大写
-    u8 bucket;
-    u8 reserved;
-    u16 entryNum; // 用 u16，防止单个游戏超过 255 张图
     u32 firstEntry;
 } __attribute__((packed)) art_idx_game_t;
 
-typedef struct
-{
-    u64 localHdrOff;
-    u32 dataSize;
-    u8 suffixType;
-    u8 suffixIndex;
-    u16 reserved;
-} __attribute__((packed)) art_idx_entry_t;
+/*
+ * 条目表：每条一个 64 位整数，紧跟游戏表（保持 8 字节对齐）。从低位到高位依次是
+ *   序号 5 位 | 种类 3 位 | 数据大小 22 位 | 本地头偏移 34 位
+ * 偏移 34 位可到 16GB，大小 22 位可到 4MB-1，序号只支持 0..31。
+ * 条目只在查找某个游戏时才用下面的宏拆开，不在载入时逐条转换。
+ */
+typedef u64 art_idx_entry_t;
+
+#define ART_ENTRY_INDEX_MAX  31
+#define ART_ENTRY_SIZE_MAX   ((1u << 22) - 1)
+#define ART_ENTRY_OFF_LIMIT  ((u64)1 << 34) // 偏移必须小于该值
+#define ART_ENTRY_INDEX(e)   ((u8)((e) & 0x1F))
+#define ART_ENTRY_TYPE(e)    ((u8)(((e) >> 5) & 0x7))
+#define ART_ENTRY_SIZE(e)    ((u32)(((e) >> 8) & ART_ENTRY_SIZE_MAX))
+#define ART_ENTRY_OFF(e)     ((u64)((e) >> 30))
+#define ART_ENTRY_MAKE(off, size, type, index) \
+    (((u64)(off) << 30) | ((u64)(size) << 8) | ((u64)(type) << 5) | (u64)(index))
+
+// 条目表在 art.idx 中的偏移：header + (gameCount + 哨兵) 条游戏记录
+#define ART_IDX_ENTRY_TABLE_OFF(gameCount) \
+    ((u32)(sizeof(art_idx_header_t) + ((u64)(gameCount) + 1) * sizeof(art_idx_game_t)))
 
 // 编译期检查结构尺寸，保证文件格式固定
 #define ART_STATIC_ASSERT(name, cond) typedef char name[(cond) ? 1 : -1]
 ART_STATIC_ASSERT(art_idx_header_size_check, sizeof(art_idx_header_t) == 32);
-ART_STATIC_ASSERT(art_idx_game_size_check, sizeof(art_idx_game_t) == 20);
-ART_STATIC_ASSERT(art_idx_entry_size_check, sizeof(art_idx_entry_t) == 16);
+ART_STATIC_ASSERT(art_idx_game_size_check, sizeof(art_idx_game_t) == 16);
+ART_STATIC_ASSERT(art_idx_entry_size_check, sizeof(art_idx_entry_t) == 8);
 
 // 建索引时的临时记录
 typedef struct
@@ -189,8 +201,9 @@ typedef struct
     int active;
     char zipPath[ART_PACK_PATH_MAX];
     char idxPath[ART_PACK_PATH_MAX];
-    u32 gameCount;
-    art_idx_game_t *games;       // 常驻内存，二分查找
+    u32 gameCount;               // PS1 + PS2 游戏数，不含哨兵
+    u32 ps1Count;                // 游戏表前 ps1Count 条是 PS1
+    art_idx_game_t *games;       // 常驻内存，二分查找；共 gameCount + 1 条，末尾是哨兵
     u32 entryCount;
     u32 entryTableOff;           // art.idx 中条目表偏移
     art_idx_entry_t *memEntries; // art.idx 写入失败时常驻；或作为最快设备时从 art.idx 载入
@@ -443,7 +456,7 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
     int count = 0, avoid = -1, pick, rank, i;
 
     for (i = 0; i < (int)entryNum; i++) {
-        if (entries[i].suffixType == type)
+        if (ART_ENTRY_TYPE(entries[i]) == type)
             count++;
     }
 
@@ -472,7 +485,7 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
 
     rank = 0;
     for (i = 0; i < (int)entryNum; i++) {
-        if (entries[i].suffixType == type && rank++ == pick)
+        if (ART_ENTRY_TYPE(entries[i]) == type && rank++ == pick)
             return i;
     }
     return -1;
@@ -717,9 +730,11 @@ static int artCollectRecords(int fd, u64 cdOff, u64 cdSize, u64 total, art_build
             u64 uncomp = artRd32(&h[ZIP_CEN_OFF_UNCOMP]);
             u64 localOff = artRd32(&h[ZIP_CEN_OFF_LOCAL]);
 
+            // 序号超过 31、大小或偏移超出条目字段范围的图，装不进紧凑条目，直接跳过
             if (artParseEntryName((const char *)&h[ZIP_CENTRAL_HDR_SIZE], nameLen, rec) == 0 &&
+                rec->suffixIndex <= ART_ENTRY_INDEX_MAX &&
                 artApplyZip64Extra(&h[ZIP_CENTRAL_HDR_SIZE + nameLen], extraLen, &uncomp, &comp, &localOff) == 0 &&
-                comp > 0 && comp <= ART_PACK_MAX_DATA_SIZE) {
+                comp > 0 && comp <= ART_PACK_MAX_DATA_SIZE && localOff < ART_ENTRY_OFF_LIMIT) {
                 rec->reserved = 0;
                 rec->dataSize = (u32)comp;
                 rec->localHdrOff = localOff;
@@ -742,7 +757,7 @@ static int artCollectRecords(int fd, u64 cdOff, u64 cdSize, u64 total, art_build
 // 写 art.idx；成功返回 0
 static int artWriteIndex(const char *idxPath, const art_idx_header_t *hdr, const art_idx_game_t *games, const art_idx_entry_t *entries)
 {
-    size_t gamesBytes = (size_t)hdr->gameCount * sizeof(art_idx_game_t);
+    size_t gamesBytes = ((size_t)hdr->ps1Count + hdr->ps2Count + 1) * sizeof(art_idx_game_t);
     size_t entriesBytes = (size_t)hdr->entryCount * sizeof(art_idx_entry_t);
     int ok, fd = open(idxPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 
@@ -766,7 +781,8 @@ static int artBuildIndex(int zipFd, u64 archiveSize, art_pack_dev_t *dev)
     art_idx_entry_t *entries;
     art_idx_game_t *games;
     art_idx_header_t hdr;
-    u32 i, n, unique = 0, gameCount = 0, g = 0;
+    u32 i, n, unique = 0, gameCount = 0, ps1Count = 0, g = 0;
+    u8 curBucket = ART_BUCKET_NONE;
     int count;
 
     if (artFindCentralDir(zipFd, archiveSize, &cdOff, &cdSize, &total) < 0) {
@@ -791,49 +807,46 @@ static int artBuildIndex(int zipFd, u64 archiveSize, art_pack_dev_t *dev)
 
     qsort(recs, n, sizeof(art_build_rec_t), &artCompareRec);
 
-    // 统计去重后的游戏数
+    // 统计去重后的游戏数；排序后 PS1 在前、PS2 在后
     for (i = 0; i < n; i++) {
-        if (i == 0 || recs[i].bucket != recs[i - 1].bucket || strcmp(recs[i].gameId, recs[i - 1].gameId))
+        if (i == 0 || recs[i].bucket != recs[i - 1].bucket || strcmp(recs[i].gameId, recs[i - 1].gameId)) {
             gameCount++;
+            if (recs[i].bucket == ART_BUCKET_PS1)
+                ps1Count++;
+        }
     }
 
-    games = calloc(gameCount, sizeof(art_idx_game_t));
+    // 多留一条哨兵，用来算最后一个游戏的条目数
+    games = calloc((size_t)gameCount + 1, sizeof(art_idx_game_t));
     if (!games) {
         free(recs);
         return -1;
     }
 
     /*
-     * 原地把 32 字节的临时记录压成 16 字节的条目：第 unique 个条目的写入位置
+     * 原地把 32 字节的临时记录压成 8 字节的条目：第 unique 个条目的写入位置
      * 总在第 i(>=unique) 个记录之前，先把记录拷到栈上再写，不会覆盖未读数据。
      */
     entries = (art_idx_entry_t *)recs;
     for (i = 0; i < n; i++) {
         art_build_rec_t rec = recs[i];
-        int newGame = (i == 0) || rec.bucket != games[g].bucket || strcmp(rec.gameId, games[g].gameId);
+        int newGame = (i == 0) || rec.bucket != curBucket || strcmp(rec.gameId, games[g].gameId);
 
-        if (!newGame && unique > 0 && entries[unique - 1].suffixType == rec.suffixType && entries[unique - 1].suffixIndex == rec.suffixIndex)
+        if (!newGame && unique > 0 && ART_ENTRY_TYPE(entries[unique - 1]) == rec.suffixType && ART_ENTRY_INDEX(entries[unique - 1]) == rec.suffixIndex)
             continue; // 重复条目，保留第一条
 
         if (newGame) {
             if (i != 0)
                 g++;
             memcpy(games[g].gameId, rec.gameId, ART_GAME_ID_LEN);
-            games[g].bucket = rec.bucket;
             games[g].firstEntry = unique;
-            games[g].entryNum = 0;
+            curBucket = rec.bucket;
         }
-        if (games[g].entryNum == ZIP_U16_MAX)
-            continue;
 
-        entries[unique].localHdrOff = rec.localHdrOff;
-        entries[unique].dataSize = rec.dataSize;
-        entries[unique].suffixType = rec.suffixType;
-        entries[unique].suffixIndex = rec.suffixIndex;
-        entries[unique].reserved = 0;
-        games[g].entryNum++;
+        entries[unique] = ART_ENTRY_MAKE(rec.localHdrOff, rec.dataSize, rec.suffixType, rec.suffixIndex);
         unique++;
     }
+    games[gameCount].firstEntry = unique; // 哨兵
 
     // 收缩到条目实际大小
     {
@@ -846,15 +859,15 @@ static int artBuildIndex(int zipFd, u64 archiveSize, art_pack_dev_t *dev)
     memcpy(hdr.magic, ART_IDX_MAGIC, ART_IDX_MAGIC_LEN);
     hdr.version = ART_IDX_VERSION;
     hdr.archiveSize = archiveSize;
-    hdr.gameCount = gameCount;
+    hdr.ps1Count = ps1Count;
+    hdr.ps2Count = gameCount - ps1Count;
     hdr.entryCount = unique;
-    hdr.gameTableOff = sizeof(art_idx_header_t);
-    hdr.entryTableOff = hdr.gameTableOff + gameCount * sizeof(art_idx_game_t);
 
     dev->games = games;
     dev->gameCount = gameCount;
+    dev->ps1Count = ps1Count;
     dev->entryCount = unique;
-    dev->entryTableOff = hdr.entryTableOff;
+    dev->entryTableOff = ART_IDX_ENTRY_TABLE_OFF(gameCount);
 
     if (artWriteIndex(dev->idxPath, &hdr, games, entries) == 0) {
         free(entries);
@@ -873,6 +886,7 @@ static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
     art_idx_header_t hdr;
     art_idx_game_t *games;
     size_t gamesBytes;
+    u32 gameCount;
     off64_t fileSize;
     int fd = open(dev->idxPath, O_RDONLY);
 
@@ -881,22 +895,22 @@ static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
 
     if (read(fd, &hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr) ||
         memcmp(hdr.magic, ART_IDX_MAGIC, ART_IDX_MAGIC_LEN) || hdr.version != ART_IDX_VERSION ||
-        hdr.archiveSize != archiveSize || hdr.gameCount == 0 || hdr.gameCount > ART_PACK_MAX_ENTRIES ||
-        hdr.entryCount > ART_PACK_MAX_ENTRIES || hdr.gameTableOff != sizeof(art_idx_header_t) ||
-        hdr.entryTableOff != hdr.gameTableOff + hdr.gameCount * sizeof(art_idx_game_t)) {
+        hdr.archiveSize != archiveSize || hdr.ps1Count > ART_PACK_MAX_ENTRIES || hdr.ps2Count > ART_PACK_MAX_ENTRIES ||
+        hdr.ps1Count + hdr.ps2Count == 0 || hdr.entryCount > ART_PACK_MAX_ENTRIES) {
         close(fd);
         return -1;
     }
+    gameCount = hdr.ps1Count + hdr.ps2Count;
 
     fileSize = lseek64(fd, 0, SEEK_END);
-    if (fileSize != (off64_t)hdr.entryTableOff + (off64_t)hdr.entryCount * (off64_t)sizeof(art_idx_entry_t)) {
+    if (fileSize != (off64_t)ART_IDX_ENTRY_TABLE_OFF(gameCount) + (off64_t)hdr.entryCount * (off64_t)sizeof(art_idx_entry_t)) {
         close(fd);
         return -1;
     }
 
-    gamesBytes = (size_t)hdr.gameCount * sizeof(art_idx_game_t);
+    gamesBytes = ((size_t)gameCount + 1) * sizeof(art_idx_game_t);
     games = malloc(gamesBytes);
-    if (!games || artReadAt(fd, hdr.gameTableOff, games, gamesBytes) < 0) {
+    if (!games || artReadAt(fd, sizeof(art_idx_header_t), games, gamesBytes) < 0 || games[gameCount].firstEntry != hdr.entryCount) {
         free(games);
         close(fd);
         return -1;
@@ -904,9 +918,10 @@ static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
     close(fd);
 
     dev->games = games;
-    dev->gameCount = hdr.gameCount;
+    dev->gameCount = gameCount;
+    dev->ps1Count = hdr.ps1Count;
     dev->entryCount = hdr.entryCount;
-    dev->entryTableOff = hdr.entryTableOff;
+    dev->entryTableOff = ART_IDX_ENTRY_TABLE_OFF(gameCount);
     dev->memEntries = NULL;
     return 0;
 }
@@ -1336,7 +1351,7 @@ int artPackIsActive(int mode, int isRelative)
 int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex)
 {
     art_pack_dev_t *dev;
-    art_idx_entry_t found;
+    art_idx_entry_t found = 0;
     art_idx_entry_t *list = NULL;
     const art_idx_entry_t *entries;
     char key[ART_GAME_ID_LEN];
@@ -1344,7 +1359,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     u8 *buf = NULL;
     size_t bufLen = 0, dataStart = 0;
     int lo, hi, gi = -1, fd, haveEntry = 0, i, result;
-    u32 firstEntry, entryNum;
+    u32 firstEntry, nextEntry, entryNum;
 
     if (!artValidMode(mode) || !isRelative || !folder || !value || !resultTex)
         return ERR_BAD_FILE;
@@ -1372,13 +1387,18 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
     }
 
-    // 游戏表按 (bucket, gameId) 排序，二分查找
-    lo = 0;
-    hi = (int)dev->gameCount - 1;
+    // 游戏表分 PS1、PS2 两段，各自按 gameId 排序，只在对应的一段里二分查找
+    if (bucket == ART_BUCKET_PS1) {
+        lo = 0;
+        hi = (int)dev->ps1Count - 1;
+    } else {
+        lo = (int)dev->ps1Count;
+        hi = (int)dev->gameCount - 1;
+    }
     while (lo <= hi) {
         int mid = lo + (hi - lo) / 2;
         const art_idx_game_t *g = &dev->games[mid];
-        int cmp = (g->bucket != bucket) ? ((g->bucket < bucket) ? -1 : 1) : strcmp(g->gameId, key);
+        int cmp = strcmp(g->gameId, key);
         if (cmp == 0) {
             gi = mid;
             break;
@@ -1394,11 +1414,12 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     }
 
     firstEntry = dev->games[gi].firstEntry;
-    entryNum = dev->games[gi].entryNum;
-    if (firstEntry + entryNum > dev->entryCount) {
+    nextEntry = dev->games[gi + 1].firstEntry; // 末尾有哨兵，gi + 1 不会越界
+    if (nextEntry < firstEntry || nextEntry > dev->entryCount) {
         pthread_mutex_unlock(&artPackMutex);
         return ERR_BAD_FILE;
     }
+    entryNum = nextEntry - firstEntry;
 
     if (dev->memEntries) {
         entries = &dev->memEntries[firstEntry];
@@ -1426,7 +1447,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         }
     } else {
         for (i = 0; i < (int)entryNum; i++) {
-            if (entries[i].suffixType == sufType && entries[i].suffixIndex == sufIndex) {
+            if (ART_ENTRY_TYPE(entries[i]) == sufType && ART_ENTRY_INDEX(entries[i]) == sufIndex) {
                 found = entries[i];
                 haveEntry = 1;
                 break;
@@ -1435,7 +1456,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     }
     free(list);
 
-    if (!haveEntry || found.dataSize == 0 || found.dataSize > ART_PACK_MAX_DATA_SIZE) {
+    if (!haveEntry || ART_ENTRY_SIZE(found) == 0 || ART_ENTRY_SIZE(found) > ART_PACK_MAX_DATA_SIZE) {
         pthread_mutex_unlock(&artPackMutex);
         return ERR_BAD_FILE;
     }
@@ -1444,10 +1465,10 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     // 使用最快设备常驻的 fd；定位/读取失败时关闭，下次取图重新打开
     fd = artPackEnsureBestFd();
     if (fd != ART_PACK_FD_NONE) {
-        size_t want = ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK + found.dataSize;
+        size_t want = ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK + ART_ENTRY_SIZE(found);
         buf = malloc(want);
         if (buf) {
-            if (lseek64(fd, (off64_t)found.localHdrOff, SEEK_SET) != (off64_t)found.localHdrOff) {
+            if (lseek64(fd, (off64_t)ART_ENTRY_OFF(found), SEEK_SET) != (off64_t)ART_ENTRY_OFF(found)) {
                 artPackCloseBestFd();
             } else {
                 ssize_t got = read(fd, buf, want);
@@ -1455,13 +1476,13 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
                     artPackCloseBestFd();
                 } else if (got >= ZIP_LOCAL_HDR_SIZE && artRd32(buf) == ZIP_SIG_LOCAL) {
                     dataStart = ZIP_LOCAL_HDR_SIZE + artRd16(&buf[ZIP_LOCAL_OFF_NAME_LEN]) + artRd16(&buf[ZIP_LOCAL_OFF_EXTRA_LEN]);
-                    if ((size_t)got >= dataStart + found.dataSize) {
-                        bufLen = found.dataSize;
+                    if ((size_t)got >= dataStart + ART_ENTRY_SIZE(found)) {
+                        bufLen = ART_ENTRY_SIZE(found);
                     } else if (dataStart > ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK) {
                         // 头部超出余量：直接定位到数据处重读
-                        if (artReadAt(fd, found.localHdrOff + dataStart, buf, found.dataSize) == 0) {
+                        if (artReadAt(fd, ART_ENTRY_OFF(found) + dataStart, buf, ART_ENTRY_SIZE(found)) == 0) {
                             dataStart = 0;
-                            bufLen = found.dataSize;
+                            bufLen = ART_ENTRY_SIZE(found);
                         } else {
                             artPackCloseBestFd();
                         }
