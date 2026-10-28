@@ -830,10 +830,12 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     float offT = ((float)ovUly + (float)ovUry) * 0.5f * caseScaleY;
     float offB = ((float)ovBly + (float)ovBry) * 0.5f * caseScaleY;
     // 封面尺寸 = 目标尺寸取整一次（静止时严格等于宏设定的封面宽高，点对点不变）；
-    // 封面位置：水平锚定已取整的 case 左边 + 浮点左边距取整一次；
-    // 垂直锚定内框的正中水平线：封面中线 = 已取整的 case 上边 + 内框中线到 case 上边的距离（浮点，取整一次）。
-    // 水平方向不再用"case 中心 - 半宽"重新取整，避免左右边距在 N 与 N+1 之间来回跳。
-    // 垂直方向以中线为锚点后，封面上下两端的取整误差各占一半，不会都堆在同一条边上。
+    // 水平：锚定已取整的 case 左边 + 浮点左边距取整一次，不再用"case 中心 - 半宽"重新取整，
+    // 避免左右边距在 N 与 N+1 之间来回跳。
+    // 垂直：锚定已取整的 case 底边（封面底边 = case 底边 - 内框到 case 底边的距离，取整一次），
+    // 再向上取整后的封面高度得到上边。底边随动画单调移动、高度单调变化，所以上下两条边都不会
+    // 出现"过头又退回 1px"的反向跳动；若改为按内框中线定位，中线与高度各自取整，动画收尾
+    // 变化很慢时两个取整会先后翻转，封面边缘就会往回抖。
     float inlayWidth = rmPxSnap(offR - offL);
     float inlayHeight = rmPxSnap(offB - offT);
     if (inlayWidth < 1.0f)
@@ -841,9 +843,8 @@ static void rmBuildCoverTransform(GSTEXTURE *overlay, float x, float y, short al
     if (inlayHeight < 1.0f)
         inlayHeight = 1.0f;
     float inlayLeft = rUlX + rmPxSnap(offL);
-    float inlayCenterFromTop = (offT + offB) * 0.5f; // 内框中线到 case 上边的距离
-    float inlayTop = rUlY + rmPxSnap(inlayCenterFromTop - inlayHeight * 0.5f);
-    float inlayBottom = inlayTop + inlayHeight;
+    float inlayBottom = rBrY - rmPxSnap(caseH - offB); // 内框下边 = 已取整的 case 底边 - 内框到 case 底边的距离
+    float inlayTop = inlayBottom - inlayHeight;
     float inlayRight = inlayLeft + inlayWidth;
 
     // 非矩形内框仍使用 overlay 的四个原始顶点；现有内置 cf_case 是矩形，
