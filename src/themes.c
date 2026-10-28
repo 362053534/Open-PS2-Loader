@@ -1211,10 +1211,10 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_ICO_W 128
 #define COVERFLOW_ICO_H 138
 #define COVERFLOW_ICO_H_LOWRES 128
-#define COVERFLOW_ICO_POPUP_GAP 10
+#define COVERFLOW_ICO_POPUP_GAP 7
 // 第三方主题的 case 素材右侧常带透明区，主题用 coverflow_cover_offset 补偿；
 // ICO 与封面的间距 = COVERFLOW_ICO_POPUP_GAP + offset × 此系数（四舍五入取整），让观感与内置主题一致（内置 offset 为 0）。
-#define COVERFLOW_ICO_OFFSET_GAP_SCALE 0.2f
+#define COVERFLOW_ICO_OFFSET_GAP_SCALE 0.4f
 #define COVERFLOW_APPS_COVER_W 140
 #define COVERFLOW_APPS_COVER_H 150
 #define COVERFLOW_APPS_COVER_H_LOWRES 140
