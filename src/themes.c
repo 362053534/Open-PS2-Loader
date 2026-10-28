@@ -1503,20 +1503,16 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     // 中心封面比非中心每侧多出的半宽 = 需要在中心封面两侧各追加的间距补偿量。
     float centerExtraHalf = ((float)centerCoverWidth - (float)coverWidth) / 2.0f;
 
-    // 垂直方向以中心封面的底边作为整个模块的定位锚点；非中心封面不再有独立的 Y 偏移。
-    // 先按中心封面的目标尺寸确定唯一的水平中心线，再让每个动画阶段的封面围绕这条
-    // 中心线绘制。这样中心封面与非中心封面始终中心对齐，不需要反推缩放锚点。
+    // 垂直方向只用两条底线：中心封面的底边 centerBottomY，和所有非中心封面共用的底边 nonCenterBottomY。
+    // 每张封面的底边 = 两条底线按居中程度 cf 线性插值（cf=1 在中心底线，cf=0 在非中心底线），
+    // 3/5/7/9 张完全同一套规则。非中心底线 = 中心封面的中线 + 5 张基线非中心 case 高的一半，
+    // 即与 5 张基线时的非中心封面底边对齐（因此不随张数、非中心封面大小变化）。
     float centerYOffset = isApps ? (float)COVERFLOW_APPS_CENTER_YOFFSET : 0.0f;
     float centerBottomY = (float)elem->posY + (float)coverYOffset + centerYOffset;
     float centerInlayH = (float)baseCoverH * centerInlayWF / (float)baseCoverW;
     float centerCaseHeight = centerInlayH / fracH;
-    float coverCenterY = centerBottomY - centerCaseHeight * 0.5f;
-
-    // 7/9 张时非中心封面缩小，为使其底边与 5 张基线时的非中心封面底边对齐，
-    // 计算底边补偿量 = (5 张基线非中心 case 高 - 当前非中心 case 高) / 2。1/3/5 张时为 0。
     float refNonCaseH = ((float)baseCoverH * referenceNonInlayW / (float)baseCoverW) / fracH;
-    float curNonCaseH = ((float)baseCoverH * nonInlayW / (float)baseCoverW) / fracH;
-    float nonCenterBottomFix = (refNonCaseH - curNonCaseH) * 0.5f;
+    float nonCenterBottomY = centerBottomY - (centerCaseHeight - refNonCaseH) * 0.5f;
 
     // 相邻封面【中心距】= 非中心绘制宽 + 间隙；二者都由间距宏按上面的平铺公式得出。
     int coverDistance = coverWidth + gap;
@@ -1839,10 +1835,8 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         if (gWideScreen)
             currentCoverWidth = rmWideScaleF(currentCoverWidth);
 
-        // 所有封面都以中心封面的目标缩放作为垂直定位基准：保持中心线一致，
-        // 当前封面只根据自身高度计算底边，不再使用独立的 Y 偏移或反推缩放锚点。
-        // 非中心封面叠加底边补偿（随 centerFactor 渐变，中心封面不受影响，动画连续）。
-        float drawBottomY = coverCenterY + currentCoverHeight * 0.5f + nonCenterBottomFix * (1.0f - centerFactor);
+        // 底边在【非中心底线】与【中心底线】之间按 centerFactor 线性插值，3/5/7/9 张同一规则。
+        float drawBottomY = nonCenterBottomY + (centerBottomY - nonCenterBottomY) * centerFactor;
 
         if (i == renderCenterIndex && !animationActive) {
             // currentCoverWidth 是 case 宽，乘内框比例后得到当前中心封面主图宽。
