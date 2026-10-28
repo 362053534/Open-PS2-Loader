@@ -612,8 +612,35 @@ void cacheDestroyCache(image_cache_t *cache)
     free(cache);
 }
 
+// BG 最近一次发起加载的缓存与项 UID（Coverflow 与列表路径共用）。
+// 随机取图开启时用来判断是否刚切换到另一款游戏：切过来时不使用缓存里的旧 BG，重新加载。
+static image_cache_t *bgLoadCache;
+static int bgLoadUID = -1;
+
+// INFO 页的 SCR / SCR2 截图：随机取图开启时不使用缓存命中，每次进入某个游戏的详情页都重新加载并随机取图。
+// 判断“这次访问是否已经加载过”：记录每份缓存（SCR、SCR2 各一份）最近发起加载的 UID；
+// 详情页关闭（连续帧中断）后记录作废，因此离开再回到同一个游戏也会重新加载。
+static int cacheScrSlot(image_cache_t *cache)
+{
+    if (strncmp(cache->suffix, "SCR", 3))
+        return -1;
+    return cache->suffix[3] == '2' ? 1 : 0;
+}
+
+static image_cache_t *scrLoadCache[2];
+static int scrLoadUID[2] = {-1, -1};
+static u64 scrLastFrame[2];
+
 GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId, int *UID, char *value, int itemId)
 {
+    int scrSlot = cacheScrSlot(cache);
+    if (scrSlot >= 0) {
+        // 上一帧没有取过这份截图，说明详情页刚打开（或刚换了游戏）：丢掉上次的加载记录
+        if (guiFrameId > scrLastFrame[scrSlot] + 1)
+            scrLoadUID[scrSlot] = -1;
+        scrLastFrame[scrSlot] = guiFrameId;
+    }
+
     // 默认情况下，触发重复按键时，就会跳过所有Qr
     if (padGetRepeating()) {
         findBGCount = 0;
@@ -732,6 +759,13 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 else if (!strncmp("BG", cache->suffix, 2))
                     PrevCacheID_BG = *cacheId;
                 return NULL;
+            } else if (entry->texFound == 1 && !strncmp("BG", cache->suffix, 2) &&
+                       (cache != bgLoadCache || *UID != bgLoadUID) && artPackRandomActive()) {
+                // 随机取图开启：刚切到这款游戏，不使用缓存里的旧 BG，继续显示上一张（PrevCacheID_BG），
+                // 并走下面的重新加载（连按冷却/跳过加载时仍只显示上一张）
+            } else if (entry->texFound == 1 && scrSlot >= 0 &&
+                       (scrLoadCache[scrSlot] != cache || scrLoadUID[scrSlot] != *UID) && artPackRandomActive()) {
+                // 随机取图开启：本次访问还没有重新加载过截图，不使用缓存里的旧图，走下面的重新加载
             } else if (entry->texFound == 1) {
                 if (entry->texture.Mem) {
                     // entry->lastUsed = guiFrameId;
@@ -795,6 +829,10 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                 oldestEntry->UID = *UID;
 
             cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 0); // quiet=0：常规单封面路径
+            if (!strncmp("BG", cache->suffix, 2)) {
+                bgLoadCache = cache;
+                bgLoadUID = *UID;
+            }
         } else {
             //  加载图片
             if (!strncmp("BG", cache->suffix, 2)) {
@@ -822,6 +860,8 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
                     req1.itemId = itemId;
                     req1.qr = 1;
                     req1.compactBackground = cacheShouldCompactBackground(cache);
+                    bgLoadCache = cache; // 记下最近一次发起 BG 加载的项
+                    bgLoadUID = *UID;
                     if (!pthread_created_BG) {
                         pthread_created_BG = 1;
                         pthread_create(&tid1, &attr, cacheLoadImage, &req1);
@@ -919,6 +959,12 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
             }
         }
 
+        // 记下本次访问已经发起了截图加载，之后同一次访问内的重绘按正常缓存命中处理
+        if (scrSlot >= 0) {
+            scrLoadCache[scrSlot] = cache;
+            scrLoadUID[scrSlot] = *UID;
+        }
+
         // prevGuiFrameId = guiFrameId;
         // artQrCount++;
 
@@ -995,12 +1041,20 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                 return NULL;
             }
             if (entry->texFound == 1 && entry->texture.Mem) {
-                entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
-                if (isBg)
-                    PrevCacheID_BG = *cacheId;
-                return &entry->texture;
-            }
-            if (entry->texFound == 0) {
+                // 随机取图开启时，切换到另一款游戏后背景要重新随机取图，不能因为该游戏的旧 BG
+                // 还留在缓存里就直接显示。判断依据：最近一次真正发起 BG 加载的是不是这一项。
+                // 不是则视为“刚切过来”：不返回缓存里的旧图，继续显示上一张 BG（fallback 保留），
+                // 允许入队时放弃本次命中、走下面的重新加载。
+                if (isBg && (cache != bgLoadCache || *UID != bgLoadUID) && artPackRandomActive()) {
+                    if (!queueRequest)
+                        return cacheQuietBgPrevTexture(cache);
+                } else {
+                    entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
+                    if (isBg)
+                        PrevCacheID_BG = *cacheId;
+                    return &entry->texture;
+                }
+            } else if (entry->texFound == 0) {
                 *cacheId = -2; // 确认无此 art，标记缺失，后续不再排队
                 if (isBg)
                     PrevCacheID_BG = -2;
@@ -1116,8 +1170,11 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
             oldest->UID = *UID;
         oldest->lastUsed = guiFrameId; // 本帧占位，避免同帧其它封面复用同一槽
         cacheQueueImageRequest(cache, *cacheId, list, value, itemId, 1); // quiet=1：Coverflow 路径
-        if (isBg)
+        if (isBg) {
+            bgLoadCache = cache; // 记下最近一次发起 BG 加载的项，见上面命中处的说明
+            bgLoadUID = *UID;
             return cacheQuietBgPrevTexture(cache);
+        }
     } else if (isBg) {
         return cacheQuietBgPrevTexture(cache);
     }

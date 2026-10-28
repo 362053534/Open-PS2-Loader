@@ -42,6 +42,9 @@ void artPackDeviceEnd(int mode);
 // 当前是否有可用图包（全局选出的最快设备的图包，与请求设备无关）；isRelative 为 0（主题内绝对路径图片）或 mode 无效时返回 0
 int artPackIsActive(int mode, int isRelative);
 
+// 随机取图是否正在生效：随机开关打开、图包总开关打开且有可用图包
+int artPackRandomActive(void);
+
 // 从全局选出的最快设备的图包加载一张图片到 GSTEXTURE（mode 只做有效性检查），返回值与 itemGetImage 一致：>=0 成功，<0 无图
 int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex);
 

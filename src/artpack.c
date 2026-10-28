@@ -194,7 +194,7 @@ static const art_suffix_def_t artSuffixDefs[] = {
 #define ART_SUFFIX_INDEX_DIGITS 2
 // 请求后缀的序号取值：真实序号只有 0..99；下面两个特殊值表示“该类图里随机取一张”
 #define ART_REQ_RANDOM      0xFF // BG / SCR
-#define ART_REQ_RANDOM_SCR2 0xFE // SCR2：随机，且排除 SCR 选中的那张
+#define ART_REQ_RANDOM_SCR2 0xFE // SCR2：随机，且排除 SCR 选中的那张（SCR 也排除 SCR2 选中的）
 
 typedef struct
 {
@@ -416,7 +416,7 @@ static int artParseRequestSuffix(const char *suffix, u8 *type, u8 *index)
     if (!suffix)
         return -1;
     // 随机取图开启时，BG / SCR / SCR2 在该游戏已有的同类图里每次随机取一张，
-    // SCR2 额外排除 SCR 刚选过的那张（见 artPickRandomEntry）；关闭时走下面原有的固定序号映射。
+    // SCR 与 SCR2 互相排除对方选过的那张（见 artPickRandomEntry）；关闭时走下面原有的固定序号映射。
     if (gArtRandom) {
         if (!strcmp(suffix, "BG")) {
             *type = ART_SUF_BG;
@@ -443,34 +443,58 @@ static int artParseRequestSuffix(const char *suffix, u8 *type, u8 *index)
     return artParseSuffix(suffix, strlen(suffix), type, index);
 }
 
+// SCR / SCR2 的选图记忆：按游戏记住两张截图各自最近一次选中的序位。
+// SCR 和 SCR2 是两份独立的缓存，各自命中或被淘汰互不影响，请求先后也不固定；
+// 所以排除对象必须取自“对方最近一次选中的序位”，而不是“上一次请求的游戏”。
+// 记忆保留最近若干个游戏，覆盖缓存里仍可能命中的游戏（命中的那张截图就是该游戏记忆里的那一张）。
+#define ART_SCR_MEMO_COUNT 8
+typedef struct
+{
+    char id[ART_GAME_ID_LEN];
+    u8 bucket;
+    u8 used;
+    int pick[2]; // [0]=SCR，[1]=SCR2：最近一次选中的 SCR 序位，-1 表示还没选过
+} art_scr_memo_t;
+
 // 在该游戏的条目里，从 type 类的所有图中随机选出一张，返回它在条目数组中的下标；没有可选的图返回 -1。
 // 条目按（种类，序号）排序，序号即使不连续也只在实际存在的图里选。
-// SCR2 排除 SCR 最近一次选中的那张，保证同一个游戏的两张截图不会重复；
+// SCR 与 SCR2 互相排除对方的记忆，保证同一个游戏的两张截图不会重复，且与谁先请求无关；
 // 只有一张 SCR 时 SCR2 没有图可选，返回 -1（不显示）。调用方须持有 artPackMutex。
 static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 type, u8 request, const char *gameId, u8 bucket)
 {
     static u32 randState = 1;
-    static char lastId[ART_GAME_ID_LEN];
-    static u8 lastBucket;
-    static int lastScr = -1; // 最近一次选中的 SCR 序位（该类图中的第几张）
-    int count = 0, avoid = -1, pick, rank, i;
+    static art_scr_memo_t memos[ART_SCR_MEMO_COUNT];
+    static int memoNext;
+    art_scr_memo_t *memo = NULL;
+    int count = 0, avoid = -1, pick, rank, slot, i;
 
     for (i = 0; i < (int)entryNum; i++) {
         if (ART_ENTRY_TYPE(entries[i]) == type)
             count++;
     }
 
-    // 换了游戏，旧的选择记录作废
-    if (bucket != lastBucket || memcmp(lastId, gameId, ART_GAME_ID_LEN)) {
-        memcpy(lastId, gameId, ART_GAME_ID_LEN);
-        lastBucket = bucket;
-        lastScr = -1;
+    if (type == ART_SUF_SCR) {
+        slot = (request == ART_REQ_RANDOM_SCR2) ? 1 : 0;
+        for (i = 0; i < ART_SCR_MEMO_COUNT; i++) {
+            if (memos[i].used && memos[i].bucket == bucket && !memcmp(memos[i].id, gameId, ART_GAME_ID_LEN)) {
+                memo = &memos[i];
+                break;
+            }
+        }
+        if (!memo) {
+            memo = &memos[memoNext];
+            memoNext = (memoNext + 1) % ART_SCR_MEMO_COUNT;
+            memcpy(memo->id, gameId, ART_GAME_ID_LEN);
+            memo->bucket = bucket;
+            memo->used = 1;
+            memo->pick[0] = memo->pick[1] = -1;
+        }
+        avoid = memo->pick[1 - slot];
+        // 图包更新后序位可能越界，此时记忆作废
+        if (avoid >= count)
+            avoid = -1;
     }
 
-    if (request == ART_REQ_RANDOM_SCR2)
-        avoid = lastScr;
-    if (avoid >= count)
-        avoid = -1;
     // SCR2 至少要有 2 张 SCR 才显示：只有 1 张时不显示，避免与 SCR 重复
     if (count - (avoid >= 0) <= 0 || (request == ART_REQ_RANDOM_SCR2 && count < 2))
         return -1;
@@ -480,8 +504,8 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
     if (avoid >= 0 && pick >= avoid)
         pick++;
 
-    if (type == ART_SUF_SCR && request == ART_REQ_RANDOM)
-        lastScr = pick;
+    if (memo)
+        memo->pick[slot] = pick;
 
     rank = 0;
     for (i = 0; i < (int)entryNum; i++) {
@@ -1328,6 +1352,11 @@ void artPackDeviceEnd(int mode)
     // 释放后重新选择最快设备（被释放的可能正是当前最快设备）
     artPackSelectBest();
     pthread_mutex_unlock(&artPackMutex);
+}
+
+int artPackRandomActive(void)
+{
+    return gArtRandom && gEnableArtPack && artPackBestMode != ART_PACK_NO_BEST;
 }
 
 int artPackIsActive(int mode, int isRelative)
