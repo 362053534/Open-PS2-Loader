@@ -650,7 +650,9 @@ GSTEXTURE *cacheGetTexture(image_cache_t *cache, item_list_t *list, int *cacheId
     skipQr = gScrollSpeed > 0 ? padGetRepeating() : 0;
 
     // 启动id变化时，说明光标有移动（可能用UID判断，效率更高更合理，之后再改。UID一开始是-1，然后再分配一个正整数）
-    if (curStartUp != value) {
+    // 属性图（itemId == -1）传入的 value 是属性值而不是游戏启动串，不参与光标变化判断，
+    // 否则它会覆盖 curStartUp，让紧随其后的 SCR 取图把“同一游戏”误判为换了游戏
+    if (itemId >= 0 && curStartUp != value) {
         // 移动光标时，如果有IO请求，就会跳过Qr，后台也会停止继续加载队列中的图片
         if (curStartUp && !ForceRefreshPrevTexCache && texLoading > 0) {
             if (!padGetRepeating())
@@ -1003,6 +1005,13 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
         return NULL;
 
     isBg = !strncmp(cache->suffix, "BG", 2);
+
+    // Coverflow 的 BG 走本函数，不经过 cacheGetTexture() 里的光标变化检测。详情页里 BG 先于
+    // SCR/SCR2 绘制，若这里不同步 curStartUp，随后的 SCR 取图会把“换了游戏”误判为光标移动，
+    // 在 BG 刚排队（texLoading>0）时触发 cdFrames 帧的连按冷却，SCR/SCR2 因此延迟约半秒才加载。
+    // 列表主题的 BG 本来就经过 cacheGetTexture() 更新了它，这里与之保持一致。
+    if (isBg)
+        curStartUp = value;
 
     // Coverflow 只有 BG quiet 路径使用 ForceRefresh：刷新/切换页签时丢掉上一张
     // fallback，并把标志推进到 2，交给帧末统一清零。使用赋值而不是 ++，因为
