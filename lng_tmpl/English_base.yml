@@ -722,6 +722,8 @@ gui_strings:
   string: OPLM art pack support (instant art)
 - label: HINT_ARTPACK
   string: Put the OPLM_ART zip pack (do not extract) directly in ART2
+- label: HINT_ART_RANDOM
+  string: Backgrounds and screenshots change randomly (zip art pack only)
 - label: HINT_APAISO
   string: Copy ISOs into +OPL/DVD or CD to read them directly, no HDL conversion needed
 - label: HINT_AUTODETECT_PS1APPS

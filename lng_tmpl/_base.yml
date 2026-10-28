@@ -722,6 +722,8 @@ gui_strings:
   string: zip图包支持(封面秒出)
 - label: HINT_ARTPACK
   string: 将OPLM官方zip图包放到ART2里(不要解压)，即可实现封面秒出
+- label: HINT_ART_RANDOM
+  string: 背景图和游戏截图会随机变化(zip图包专属功能)
 - label: HINT_APAISO
   string: 将ISO拷贝到+OPL/DVD或CD里，可直接读取，无需灌录
 - label: HINT_AUTODETECT_PS1APPS

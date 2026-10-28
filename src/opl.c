@@ -163,6 +163,7 @@ int gEnableArtBG;
 int gEnableArtCOV;
 int gEnableArtICO;
 int gEnableArtPack;
+int gArtRandom;
 int gArtPackDeferMenuSelect;
 int gCfCoverCount; // 内置封面流主题的同屏封面数，覆盖主题CFG中的coverflow_count
 int gEnableJpg;
@@ -2018,6 +2019,7 @@ static void _loadConfig(void)
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, &gEnableArtCOV);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, &gEnableArtICO);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ART_PACK, &gEnableArtPack);
+            configGetInt(configOPL, CONFIG_OPL_ART_RANDOM, &gArtRandom);
             // 缺少该键或数值非法(非1/3/5/7/9)时，一律按默认值7处理
             gCfCoverCount = 7;
             configGetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, &gCfCoverCount);
@@ -2220,6 +2222,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_COV, gEnableArtCOV);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_ICO, gEnableArtICO);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ART_PACK, gEnableArtPack);
+        configSetInt(configOPL, CONFIG_OPL_ART_RANDOM, gArtRandom);
         configSetInt(configOPL, CONFIG_OPL_CF_COVER_COUNT, gCfCoverCount);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_JPG, gEnableJpg);
         configSetInt(configOPL, CONFIG_OPL_WIDESCREEN, gWideScreen);
@@ -2945,6 +2948,7 @@ static void setDefaults(void)
     gEnableArtCOV = 1;
     gEnableArtICO = 1;
     gEnableArtPack = 1;
+    gArtRandom = 1;
     gCfCoverCount = 7;
     gEnableJpg = 1;
     gWideScreen = 0;
