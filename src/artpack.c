@@ -52,6 +52,9 @@
 #define ZIP_U32_MAX          0xFFFFFFFFUL
 
 // 本地头字段偏移
+#define ZIP_LOCAL_OFF_METHOD    8
+#define ZIP_LOCAL_OFF_COMP      18
+#define ZIP_LOCAL_OFF_UNCOMP    22
 #define ZIP_LOCAL_OFF_NAME_LEN  26
 #define ZIP_LOCAL_OFF_EXTRA_LEN 28
 
@@ -78,6 +81,7 @@
 #define ART_PACK_ZIP_EXT       ".zip" // 图包扩展名（不区分大小写）
 #define ART_PACK_DIR_NAME      "ART2" // 图包所在目录（与 ART2 散文件同一目录）
 #define ART_PACK_IDX_EXT       ".idx" // 索引扩展名，索引名 = 图包名去掉 .zip 再加 .idx
+#define ART_PACK_EMBED_IDX_NAME "art.idx" // 嵌入 zip 的索引条目名：必须是 zip 的第一个条目，不压缩存放
 #define ART_PACK_HIDDEN_PREFIX "."    // 隐藏文件前缀，须排除（含 macOS 拷贝时生成的 "._" AppleDouble 假 zip）
 #define ART_PACK_PATH_MAX      256
 #define ART_PACK_CHUNK_SIZE    (64 * 1024)   // 中央目录分块读取大小
@@ -904,49 +908,93 @@ static int artBuildIndex(int zipFd, u64 archiveSize, art_pack_dev_t *dev)
     return 0;
 }
 
-// 读取已有的 art.idx；头部不匹配返回 -1（需要重建）。不比较时间戳。
-static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
+/*
+ * 从 fd 的 base 偏移处读取索引（头 + 游戏表），成功时填充 dev；头部不匹配返回 -1（需要重建）。不比较时间戳。
+ * areaSize 是索引所在区域的字节数：外部 art.idx 为文件大小，要求恰好等于表末尾；
+ * 嵌入 zip 的索引为条目的数据区大小（预留区，比实际索引大，多出的部分补零），只要求表末尾不超出。
+ * 成功时 dev->entryTableOff 已加上 base，后续按 entryTableOff 读条目表时不需要再区分来源。
+ */
+static int artLoadIndexAt(int fd, u64 base, u64 areaSize, int embedded, u64 archiveSize, art_pack_dev_t *dev)
 {
     art_idx_header_t hdr;
     art_idx_game_t *games;
     size_t gamesBytes;
     u32 gameCount;
-    off64_t fileSize;
-    int fd = open(dev->idxPath, O_RDONLY);
+    u64 tableEnd;
 
-    if (fd < 0)
-        return -1;
-
-    if (read(fd, &hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr) ||
+    if (artReadAt(fd, base, &hdr, sizeof(hdr)) < 0 ||
         memcmp(hdr.magic, ART_IDX_MAGIC, ART_IDX_MAGIC_LEN) || hdr.version != ART_IDX_VERSION ||
         hdr.archiveSize != archiveSize || hdr.ps1Count > ART_PACK_MAX_ENTRIES || hdr.ps2Count > ART_PACK_MAX_ENTRIES ||
-        hdr.ps1Count + hdr.ps2Count == 0 || hdr.entryCount > ART_PACK_MAX_ENTRIES) {
-        close(fd);
+        hdr.ps1Count + hdr.ps2Count == 0 || hdr.entryCount > ART_PACK_MAX_ENTRIES)
         return -1;
-    }
     gameCount = hdr.ps1Count + hdr.ps2Count;
 
-    fileSize = lseek64(fd, 0, SEEK_END);
-    if (fileSize != (off64_t)ART_IDX_ENTRY_TABLE_OFF(gameCount) + (off64_t)hdr.entryCount * (off64_t)sizeof(art_idx_entry_t)) {
-        close(fd);
+    tableEnd = (u64)ART_IDX_ENTRY_TABLE_OFF(gameCount) + (u64)hdr.entryCount * sizeof(art_idx_entry_t);
+    if (embedded ? (tableEnd > areaSize) : (tableEnd != areaSize))
         return -1;
-    }
+    // entryTableOff 是 u32，base 加上表偏移不得溢出
+    if (base + (u64)ART_IDX_ENTRY_TABLE_OFF(gameCount) > 0xFFFFFFFFu)
+        return -1;
 
     gamesBytes = ((size_t)gameCount + 1) * sizeof(art_idx_game_t);
     games = malloc(gamesBytes);
-    if (!games || artReadAt(fd, sizeof(art_idx_header_t), games, gamesBytes) < 0 || games[gameCount].firstEntry != hdr.entryCount) {
+    if (!games || artReadAt(fd, base + sizeof(art_idx_header_t), games, gamesBytes) < 0 || games[gameCount].firstEntry != hdr.entryCount) {
         free(games);
-        close(fd);
         return -1;
     }
-    close(fd);
 
     dev->games = games;
     dev->gameCount = gameCount;
     dev->ps1Count = hdr.ps1Count;
     dev->entryCount = hdr.entryCount;
-    dev->entryTableOff = ART_IDX_ENTRY_TABLE_OFF(gameCount);
+    dev->entryTableOff = (u32)(base + ART_IDX_ENTRY_TABLE_OFF(gameCount));
     dev->memEntries = NULL;
+    return 0;
+}
+
+// 读取外部 art.idx（与图包同名、扩展名为 .idx）；失败返回 -1
+static int artLoadIndex(u64 archiveSize, art_pack_dev_t *dev)
+{
+    off64_t fileSize;
+    int ret;
+    int fd = open(dev->idxPath, O_RDONLY);
+
+    if (fd < 0)
+        return -1;
+    fileSize = lseek64(fd, 0, SEEK_END);
+    ret = (fileSize < 0) ? -1 : artLoadIndexAt(fd, 0, (u64)fileSize, 0, archiveSize, dev);
+    close(fd);
+    return ret;
+}
+
+/*
+ * 读取嵌入 zip 的索引：第一个本地头必须是不压缩的 art.idx 条目，数据区即索引（后面可有补零的预留空间）。
+ * 数据区起点按本地头里实际的文件名与 extra 长度计算，与取图时一致。
+ * 成功时 dev->idxPath 改为 zip 路径，之后取图与整表载入都按 entryTableOff 从 zip 里读，无需另写一套。
+ * 失败返回 -1，dev 保持不变（继续尝试外部索引或重建）。
+ */
+static int artLoadEmbeddedIndex(int zipFd, u64 archiveSize, art_pack_dev_t *dev)
+{
+    u8 lh[ZIP_LOCAL_HDR_SIZE + sizeof(ART_PACK_EMBED_IDX_NAME) - 1];
+    u32 compSize;
+    u64 dataStart;
+
+    if (archiveSize < sizeof(lh) || artReadAt(zipFd, 0, lh, sizeof(lh)) < 0)
+        return -1;
+    if (artRd32(lh) != ZIP_SIG_LOCAL || artRd16(&lh[ZIP_LOCAL_OFF_METHOD]) != ZIP_METHOD_STORED ||
+        artRd16(&lh[ZIP_LOCAL_OFF_NAME_LEN]) != sizeof(ART_PACK_EMBED_IDX_NAME) - 1 ||
+        memcmp(&lh[ZIP_LOCAL_HDR_SIZE], ART_PACK_EMBED_IDX_NAME, sizeof(ART_PACK_EMBED_IDX_NAME) - 1))
+        return -1;
+    compSize = artRd32(&lh[ZIP_LOCAL_OFF_COMP]);
+    if (compSize == ZIP_U32_MAX || compSize != artRd32(&lh[ZIP_LOCAL_OFF_UNCOMP]))
+        return -1;
+    dataStart = (u64)ZIP_LOCAL_HDR_SIZE + artRd16(&lh[ZIP_LOCAL_OFF_NAME_LEN]) + artRd16(&lh[ZIP_LOCAL_OFF_EXTRA_LEN]);
+    if (dataStart + compSize > archiveSize)
+        return -1;
+
+    if (artLoadIndexAt(zipFd, dataStart, compSize, 1, archiveSize, dev) < 0)
+        return -1;
+    snprintf(dev->idxPath, sizeof(dev->idxPath), "%s", dev->zipPath);
     return 0;
 }
 
@@ -1310,7 +1358,8 @@ int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank)
     }
     archiveSize = lseek64(zipFd, 0, SEEK_END);
 
-    if (archiveSize > 0 && artLoadIndex((u64)archiveSize, &dev) == 0) {
+    // 先试嵌入 zip 的索引，再试外部同名 .idx，最后才从中央目录重建
+    if (archiveSize > 0 && (artLoadEmbeddedIndex(zipFd, (u64)archiveSize, &dev) == 0 || artLoadIndex((u64)archiveSize, &dev) == 0)) {
         LOG("ARTPACK: index loaded %s (%u games)\n", dev.idxPath, (unsigned int)dev.gameCount);
     } else if (archiveSize > 0) {
         LOG("ARTPACK: rebuilding index for %s ...\n", dev.zipPath);
