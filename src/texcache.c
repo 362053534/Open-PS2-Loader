@@ -126,10 +126,10 @@ static void cacheDecreaseLoading(void)
 
 static int cacheShouldCompactBackground(image_cache_t *cache)
 {
-    // 仅内置 Coverflow 主题压缩 BG；列表主题和第三方主题保持原画质，不压缩。
-    // 在内置 Coverflow 下所有视频模式都压缩（含 720p/1080i，其 framebuffer 本身就是 CT16S）；
-    // 是否真正转换由 texCompactBackground() 判断：仅 >512KB 的 CT24/CT32 图（CT32 的 alpha 被忽略）。
-    return cache && !strncmp(cache->suffix, "BG", 2) && thmGetGuiValue() == THM_COVERFLOW_GUI_ID;
+    // 当前主题配置了 coverflow 元素（内置或第三方 Coverflow 主题）时压缩 BG；列表主题保持原画质，不压缩。
+    // 范围与 drawCoverFlow 一致；Coverflow 下所有视频模式都压缩（含 720p/1080i，其 framebuffer 本身就是 CT16S）；
+    // 是否真正转换由压缩函数判断：仅 >512KB 的 CT24/CT32 图（CT32 的 alpha 被忽略）。
+    return cache && !strncmp(cache->suffix, "BG", 2) && gTheme && gTheme->coverflow != NULL;
 }
 
 static void cacheCancelImageRequest(void *data)
