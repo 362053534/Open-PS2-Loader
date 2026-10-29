@@ -2444,7 +2444,7 @@ static config_set_t *appGetConfig(item_list_t *itemList, int id)
     return config;
 }
 
-static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int itemId)
+static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int itemId, int compactBackground)
 {
     char device[8] = "";
     char dummy[8] = "";
@@ -2485,7 +2485,7 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
 
     mode = appResolveMode(app);
     if (mode >= BDM_MODE && mode <= HDD_MODE)
-        return oplGetAppImageByMode(mode, folder, isRelative, artValue, suffix, resultTex, psm);
+        return oplGetAppImageByMode(mode, folder, isRelative, artValue, suffix, resultTex, psm, compactBackground);
 
     // 记忆卡或旧配置：还需要从路径认出 mc0/mc1
     if (srcPath)
@@ -2498,11 +2498,11 @@ static int appGetImage(item_list_t *itemList, char *folder, int isRelative, char
             return -1;
 
         snprintf(path, sizeof(path), "%sART/%s_%s", device, artValue, suffix);
-        return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg, texSuffixDropsAlpha(suffix));
+        return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg, texSuffixDropsAlpha(suffix), compactBackground);
     }
 
     if (device[0])
-        return oplGetAppImage(device, folder, isRelative, artValue, suffix, resultTex, psm);
+        return oplGetAppImage(device, folder, isRelative, artValue, suffix, resultTex, psm, compactBackground);
 
     return -1;
 }

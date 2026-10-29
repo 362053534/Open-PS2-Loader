@@ -4,6 +4,13 @@
 #include "include/ioman.h"
 #include <png.h>
 #include <libjpg_ps2_addons.h>
+#include "texcompact_core.c" // 纯 C 核心并入本翻译单元，artpack 通过链接调用；测试直接编译此文件
+
+/* 核心不包含 gsKit。这里与调用点原来传入的 gsKit_texture_size(w, h, GS_PSM_CT24) 保持一致，测试链接时替换这个符号。 */
+unsigned int texCt24TextureSize(int width, int height)
+{
+    return (unsigned int)gsKit_texture_size(width, height, GS_PSM_CT24);
+}
 //#include <timer.h>
 //#include "include/pad.h"
 
@@ -329,24 +336,16 @@ static void texPrepare(GSTEXTURE *texture)
 // 会让 gsKit 在背景、plank、case 和 Coverflow 封面之间反复驱逐/重新上传。
 // CT24 与带 alpha 的 CT32 背景都压缩；CT32 的 alpha 被忽略，全部写成不透明
 // （原来半透明/透明处透出的只是帧清屏黑色）。失败时不破坏原始纹理，调用方仍可按原路径绘制。
-#define TEX_BACKGROUND_COMPACT_THRESHOLD (512 * 1024)
-// 标准 4x4 Bayer 阈值（0~15，共 16 级）。8 位颜色转 5 位色时按半级精度抖动：
-// 先把 8 位值乘 2，加上阈值，再右移 TEX_DITHER_SHIFT 位。阈值全部非负，
-// 取整是向下，平均偏差小于 1 级，不会再整体偏暗；也不需要判断小于 0，只需限制上限。
-#define TEX_DITHER_SHIFT    4
-#define TEX_COLOR5_MAX      31
+// 8 位颜色转 5 位色不加抖动（抖动会让画面发糊），按最近级四舍五入：
+// v5 = (v * 31 + 127) / 255，结果天然在 0~31。与解码阶段流式路径共用 to5 表。
 void texCompactBackground(GSTEXTURE *texture)
 {
-    static const u8 ditherMatrix[16] = {0, 8, 2, 10,
-                                        12, 4, 14, 6,
-                                        3, 11, 1, 9,
-                                        15, 7, 13, 5};
     u16 *pixels16;
     u8 *pixels24;
     size_t pixelCount;
     size_t size;
     int bytesPerPixel;
-    int x, y;
+    int y;
 
     if (!texture || !texture->Mem || (texture->PSM != GS_PSM_CT24 && texture->PSM != GS_PSM_CT32))
         return;
@@ -363,22 +362,9 @@ void texCompactBackground(GSTEXTURE *texture)
     bytesPerPixel = (texture->PSM == GS_PSM_CT32) ? 4 : 3;
     pixels24 = (u8 *)texture->Mem;
     for (y = 0; y < texture->Height; y++) {
-        for (x = 0; x < texture->Width; x++) {
-            int index = y * texture->Width + x;
-            int dither = ditherMatrix[(y & 3) * 4 + (x & 3)];
-            int red = (pixels24[index * bytesPerPixel + 0] * 2 + dither) >> TEX_DITHER_SHIFT;
-            int green = (pixels24[index * bytesPerPixel + 1] * 2 + dither) >> TEX_DITHER_SHIFT;
-            int blue = (pixels24[index * bytesPerPixel + 2] * 2 + dither) >> TEX_DITHER_SHIFT;
-
-            // 255 * 2 + 15 右移后会到 32，超出 5 位，需要限制到 31
-            if (red > TEX_COLOR5_MAX) red = TEX_COLOR5_MAX;
-            if (green > TEX_COLOR5_MAX) green = TEX_COLOR5_MAX;
-            if (blue > TEX_COLOR5_MAX) blue = TEX_COLOR5_MAX;
-
-            // CT16S: opaque A1 B5 G5 R5. A=1 is exact for CT24; for CT32 the
-            // source alpha is dropped on purpose so the whole image stays visible.
-            pixels16[index] = 0x8000 | (blue << 10) | (green << 5) | red;
-        }
+        texCompactRgbRowToCt16s(pixels16 + (size_t)y * texture->Width,
+                                pixels24 + (size_t)y * texture->Width * bytesPerPixel,
+                                texture->Width, bytesPerPixel);
     }
 
     free(texture->Mem);
@@ -604,9 +590,57 @@ static int texReadDirect(GSTEXTURE *texture, png_structp pngPtr, png_infop infoP
     return 0;
 }
 
-static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
-                       void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture, int directRead)
+// 流式 CT16S：只分配 w*h*2，用单行缓冲解码并立刻转换，避免 CT24 的整图中间缓冲
+static int texReadDirectCt16s(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr)
 {
+    png_size_t rowBytes = png_get_rowbytes(pngPtr, infoPtr);
+    size_t size = (size_t)texture->Width * (size_t)texture->Height * sizeof(u16);
+    png_bytep volatile rowBuf = NULL;
+    u16 *dst;
+    int row;
+
+    if (rowBytes == 0 || texture->Width == 0 || texture->Height == 0 ||
+        rowBytes < (png_size_t)texture->Width * 3) {
+        LOG("TEXTURES PngReadDirectCt16s: Row layout mismatch\n");
+        return -1;
+    }
+
+    texture->PSM = GS_PSM_CT16S;
+    texture->Mem = memalign(128, size);
+    if (!texture->Mem) {
+        LOG("TEXTURES PngReadDirectCt16s: Failed to allocate %u bytes\n", (unsigned int)size);
+        return -1;
+    }
+
+    rowBuf = malloc(rowBytes);
+    if (!rowBuf) {
+        LOG("TEXTURES PngReadDirectCt16s: Failed to allocate row buffer\n");
+        return -1;
+    }
+
+    // 解码失败时由调用方统一释放 texture->Mem/Clut
+    if (setjmp(png_jmpbuf(pngPtr))) {
+        free(rowBuf);
+        LOG("TEXTURES PngReadDirectCt16s: PNG decode failed\n");
+        return -1;
+    }
+
+    dst = (u16 *)texture->Mem;
+    for (row = 0; row < texture->Height; row++) {
+        png_read_row(pngPtr, rowBuf, NULL);
+        texCompactRgbRowToCt16s(dst + (size_t)row * texture->Width, rowBuf, texture->Width, 3);
+    }
+    png_read_end(pngPtr, NULL);
+    free(rowBuf);
+    return 0;
+}
+
+static int texReadData(GSTEXTURE *texture, png_structp pngPtr, png_infop infoPtr,
+                       void (*texPngReadPixels)(GSTEXTURE *texture, png_bytep *rowPointers, size_t size, png_texture_t *pngTexture), png_texture_t *pngTexture, int directRead, int streamCompact)
+{
+    if (streamCompact)
+        return texReadDirectCt16s(texture, pngPtr, infoPtr);
+
     if (directRead)
         return texReadDirect(texture, pngPtr, infoPtr, pngTexture);
 
@@ -698,7 +732,7 @@ int texSuffixDropsAlpha(const char *suffix)
     return 0;
 }
 
-static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int dropAlpha)
+static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int dropAlpha, int compactBackground)
 {
     texPrepare(texture);
     tex_read_buffer_t readBuffer;
@@ -793,6 +827,10 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int d
     int directRgb = interlaceType == PNG_INTERLACE_NONE &&
                     (colorType == PNG_COLOR_TYPE_RGB || (colorType == PNG_COLOR_TYPE_RGB_ALPHA && dropAlpha));
     int directRead = directRgb || (interlaceType == PNG_INTERLACE_NONE && colorType == PNG_COLOR_TYPE_PALETTE && bitDepth == 8);
+    /* compactBackground 只在 BG 且 Coverflow 时为真。为假时不进入判断，也不算 CT24 大小。 */
+    int streamCompact = 0;
+    if (compactBackground)
+        streamCompact = texShouldStreamCompactBackground((int)pngWidth, (int)pngHeight, colorType, interlaceType, dropAlpha);
 
     if (directRgb) {
         // 行缓冲直接是每像素 3 字节，不补 filler；RGBA 在解码时就去掉 alpha
@@ -866,30 +904,30 @@ static int texLoadAll(GSTEXTURE *texture, const char *filePath, int texId, int d
     if (texSizeValidate(texture->Width, texture->Height, texture->PSM) < 0)
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_DIMENSION, pngTexture, texture);
 
-    if (texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture, directRead) < 0)
+    if (texReadData(texture, pngPtr, infoPtr, texPngReadPixels, pngTexture, directRead, streamCompact) < 0)
         return texEnd(pngPtr, infoPtr, pFileBuffer, ERR_BAD_FILE, pngTexture, texture);
 
     // Successful loads transfer ownership of texture->Mem/Clut to the caller.
     return texEnd(pngPtr, infoPtr, pFileBuffer, 0, pngTexture, NULL);
 }
 
-static int texLoad(GSTEXTURE *texture, const char *filePath, int dropAlpha)
+static int texLoad(GSTEXTURE *texture, const char *filePath, int dropAlpha, int compactBackground)
 {
-    return texLoadAll(texture, filePath, -1, dropAlpha);
+    return texLoadAll(texture, filePath, -1, dropAlpha, compactBackground);
 }
 
 int texLoadInternal(GSTEXTURE *texture, int texId)
 {
-    return texLoadAll(texture, NULL, texId, 0);
+    return texLoadAll(texture, NULL, texId, 0, 0);
 }
 
 int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId)
 {
-    return texDiscoverLoadEx(texture, path, texId, gEnableJpg, 0);
+    return texDiscoverLoadEx(texture, path, texId, gEnableJpg, 0, 0);
 }
 
 // allowJpg 为 0 时只找 png（性能模式），为 1 时 png 找不到再找 jpg（兼容模式）
-int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg, int dropAlpha)
+int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg, int dropAlpha, int compactBackground)
 {
     if (!path)
         return ERR_BAD_FILE;
@@ -912,7 +950,7 @@ int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allow
         snprintf(filePath, sizeof(filePath), "%s.%s", path, "png");
 
     //beforeTime = GetTimerSystemTime(); // 开始搜索图片，记录时间
-    if (texLoad(texture, filePath, dropAlpha) >= 0)
+    if (texLoad(texture, filePath, dropAlpha, compactBackground) >= 0)
         return 0;
     else {
         if (allowJpg) {
