@@ -302,10 +302,11 @@ static void cacheLoadImage1(void *data)
     // 但在发布 texFound=1 之前必须重新确认该请求仍属于最新目标。
     int result;
     // 先取 ART2/ART 散文件，取不到且全局有图包时再从最快设备的图包取图
-    result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId);
+    result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId, ioReq->compactBackground);
     if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
-        result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture);
+        result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, ioReq->compactBackground);
 
+    // 解码阶段已转成 CT16S 时因 PSM 不符直接返回；隔行 RGB 等仍走这里兜底。
     if (result >= 0 && ioReq->compactBackground)
         texCompactBackground(&entry->texture);
 
@@ -400,10 +401,11 @@ static void *cacheLoadImage(void *data)
         // 加载图片
         int result;
         // 先取 ART2/ART 散文件，取不到且全局有图包时再从最快设备的图包取图
-        result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId);
+        result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, GS_PSM_CT24, ioReq->itemId, ioReq->compactBackground);
         if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
-            result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture);
+            result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &ioReq->cache->content[ioReq->cacheId].texture, ioReq->compactBackground);
 
+        // 解码阶段已转成 CT16S 时因 PSM 不符直接返回；隔行 RGB 等仍走这里兜底。
         if (result >= 0 && ioReq->compactBackground)
             texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
 

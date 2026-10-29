@@ -46,6 +46,7 @@ int artPackIsActive(int mode, int isRelative);
 int artPackRandomActive(void);
 
 // 从全局选出的最快设备的图包加载一张图片到 GSTEXTURE（mode 只做有效性检查），返回值与 itemGetImage 一致：>=0 成功，<0 无图
-int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex);
+// compactBackground 为 1 时，超 512K 的非隔行真彩 PNG 在解码阶段直接写成 CT16S
+int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex, int compactBackground);
 
 #endif

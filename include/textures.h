@@ -1,6 +1,8 @@
 #ifndef __TEXTURES_H
 #define __TEXTURES_H
 
+#include "texcompact.h"
+
 enum INTERNAL_TEXTURE {
     LOAD0_ICON = 0,
     LOAD1_ICON,
@@ -130,15 +132,17 @@ int texLookupInternalTexId(const char *name);
 int texLoadInternal(GSTEXTURE *texture, int texId);
 int texDiscoverLoad(GSTEXTURE *texture, const char *path, int texId);
 // dropAlpha 为 1 时，带 alpha 的真彩 PNG 按 CT24 加载并忽略 alpha（BG/COV 不需要透明，省显存、DMA 和混合开销）
-int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg, int dropAlpha);
+// compactBackground 为 1 时，超 512K 的非隔行真彩 PNG 在解码阶段直接写成 CT16S
+int texDiscoverLoadEx(GSTEXTURE *texture, const char *path, int texId, int allowJpg, int dropAlpha, int compactBackground);
 // 该 art 后缀（BG、COV、COV2…）的图是否忽略 alpha 通道
 int texSuffixDropsAlpha(const char *suffix);
 void texFree(GSTEXTURE *texture);
 void texInit(void);
 void texFinish(void);
 
-// 对大型背景图进行一次带抖动的 CT24/CT32 -> CT16S 压缩（CT32 的 alpha 被忽略，
+// 对大型背景图进行 CT24/CT32 -> CT16S 压缩（无抖动；CT32 的 alpha 被忽略，
 // 结果全部不透明），减少与 Coverflow 封面同时驻留时的 VRAM 争用；失败时保留原纹理。
+// 解码阶段已写成 CT16S 时因 PSM 不符直接返回。
 void texCompactBackground(GSTEXTURE *texture);
 
 //extern s32 fileLockId;

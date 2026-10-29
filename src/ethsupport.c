@@ -832,7 +832,7 @@ static config_set_t *ethGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&ethGames[id], ethPrefix, "\\");
 }
 
-static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
+static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id, int compactBackground)
 {
     (void)itemList;
     (void)id;
@@ -852,7 +852,7 @@ static int ethGetImage(item_list_t *itemList, char *folder, int isRelative, char
     if (sbBuildArtImagePath(path, sizeof(path), ethPrefix, "\\", artArt2Flags_SMB, folder, isRelative, value, suffix) < 0)
         return ERR_BAD_FILE;
     // 图包模式生效时强制按性能模式找散图（不找 jpg），否则沿用图集设置
-    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn, texSuffixDropsAlpha(suffix));
+    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn, texSuffixDropsAlpha(suffix), compactBackground);
 }
 
 static int ethGetTextId(item_list_t *itemList)

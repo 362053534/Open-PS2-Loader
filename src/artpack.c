@@ -1152,20 +1152,21 @@ static void artCopyPixels(GSTEXTURE *tex, png_bytep *rows, size_t memSize)
     }
 }
 
-static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlpha)
+static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlpha, int compactBackground)
 {
     art_png_reader_t reader = {data, size};
     png_structp pngPtr;
     png_infop infoPtr = NULL;
     png_bytep *volatile rows = NULL;
     png_bytep volatile allRows = NULL;
+    png_bytep volatile rowBuf = NULL;
     volatile int status = ERR_BAD_FILE;
     png_uint_32 w, h;
     int bitDepth, colorType, interlace;
     png_size_t rowBytes;
     size_t memSize;
     int y;
-    int directRgb, directRead;
+    int directRgb, directRead, streamCompact;
 
     artTexPrepare(tex);
 
@@ -1206,6 +1207,10 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     directRgb = interlace == PNG_INTERLACE_NONE &&
                 (colorType == PNG_COLOR_TYPE_RGB || (colorType == PNG_COLOR_TYPE_RGB_ALPHA && dropAlpha));
     directRead = directRgb || (interlace == PNG_INTERLACE_NONE && colorType == PNG_COLOR_TYPE_PALETTE && bitDepth == 8);
+    /* compactBackground 只在 BG 且 Coverflow 时为真。为假时不进入判断，也不算 CT24 大小。 */
+    streamCompact = 0;
+    if (compactBackground)
+        streamCompact = texShouldStreamCompactBackground((int)w, (int)h, colorType, interlace, dropAlpha);
     if (directRgb) {
         // 行缓冲直接是每像素 3 字节，不补 filler；RGBA 在解码时就去掉 alpha
         if (colorType == PNG_COLOR_TYPE_RGB_ALPHA)
@@ -1270,6 +1275,31 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     }
 
     rowBytes = png_get_rowbytes(pngPtr, infoPtr);
+
+    if (streamCompact) {
+        size_t ct16Size = (size_t)tex->Width * (size_t)tex->Height * sizeof(u16);
+        u16 *dst;
+
+        // 流式 CT16S：只分配 w*h*2，用单行缓冲解码并立刻转换
+        if (rowBytes == 0 || rowBytes < (png_size_t)tex->Width * 3)
+            goto fail;
+        tex->PSM = GS_PSM_CT16S;
+        tex->Mem = memalign(ART_TEX_ALIGN, ct16Size);
+        rowBuf = malloc(rowBytes);
+        if (!tex->Mem || !rowBuf)
+            goto fail;
+        dst = (u16 *)tex->Mem;
+        for (y = 0; y < tex->Height; y++) {
+            png_read_row(pngPtr, rowBuf, NULL);
+            texCompactRgbRowToCt16s(dst + (size_t)y * tex->Width, rowBuf, tex->Width, 3);
+        }
+        png_read_end(pngPtr, NULL);
+        free(rowBuf);
+        rowBuf = NULL;
+        png_destroy_read_struct(&pngPtr, &infoPtr, NULL);
+        return 0; // Mem 所有权交给调用方（texcache）
+    }
+
     memSize = gsKit_texture_size_ee(tex->Width, tex->Height, tex->PSM);
     tex->Mem = memalign(ART_TEX_ALIGN, memSize);
 
@@ -1302,6 +1332,7 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     return 0; // Mem/Clut 所有权交给调用方（texcache）
 
 fail:
+    free(rowBuf);
     free(allRows);
     free(rows);
     artTexFree(tex);
@@ -1426,7 +1457,7 @@ int artPackIsActive(int mode, int isRelative)
     return active;
 }
 
-int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex)
+int artPackLoadImage(int mode, const char *folder, int isRelative, const char *value, const char *suffix, GSTEXTURE *resultTex, int compactBackground)
 {
     art_pack_dev_t *dev;
     art_idx_entry_t found = 0;
@@ -1576,7 +1607,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
     }
 
-    result = artDecodePng(buf + dataStart, bufLen, resultTex, texSuffixDropsAlpha(suffix));
+    result = artDecodePng(buf + dataStart, bufLen, resultTex, texSuffixDropsAlpha(suffix), compactBackground);
     free(buf);
     return result;
 }

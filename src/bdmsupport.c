@@ -991,7 +991,7 @@ static config_set_t *bdmGetConfig(item_list_t *itemList, int id)
     return sbPopulateConfig(&pDeviceData->bdmGames[id], pDeviceData->bdmPrefix, "/");
 }
 
-static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id)
+static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int id, int compactBackground)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
     int art2Flags = 0;
@@ -1021,7 +1021,7 @@ static int bdmGetImage(item_list_t *itemList, char *folder, int isRelative, char
     if (sbBuildArtImagePath(path, sizeof(path), pDeviceData->bdmPrefix, "/", art2Flags, folder, isRelative, value, suffix) < 0)
         return ERR_BAD_FILE;
     // 图包模式生效时强制按性能模式找散图（不找 jpg），否则沿用图集设置
-    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn, texSuffixDropsAlpha(suffix));
+    return texDiscoverLoadEx(resultTex, path, -1, gEnableJpg && !artPackOn, texSuffixDropsAlpha(suffix), compactBackground);
 }
 
 static int bdmGetTextId(item_list_t *itemList)

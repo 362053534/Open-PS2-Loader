@@ -682,7 +682,7 @@ int oplPath2Mode(const char *path)
     return -1;
 }
 
-int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int compactBackground)
 {
     item_list_t *listSupport;
 
@@ -692,19 +692,19 @@ int oplGetAppImageByMode(int mode, char *folder, int isRelative, char *value, ch
     listSupport = list_support[mode].support;
     if ((listSupport != NULL) && (listSupport->enabled) && (listSupport->itemGetImage != NULL)) {
         // 先取 ART2/ART 散文件；取不到且全局有图包时再从最快设备的图包取图（POPS 取图包 PS1，ELF 图包中无图）
-        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1) >= 0)
+        if (listSupport->itemGetImage(listSupport, folder, isRelative, value, suffix, resultTex, psm, -1, compactBackground) >= 0)
             return 0;
-        if (artPackIsActive(mode, isRelative) && artPackLoadImage(mode, folder, isRelative, value, suffix, resultTex) >= 0)
+        if (artPackIsActive(mode, isRelative) && artPackLoadImage(mode, folder, isRelative, value, suffix, resultTex, compactBackground) >= 0)
             return 0;
     }
 
     return -1;
 }
 
-int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm)
+int oplGetAppImage(const char *device, char *folder, int isRelative, char *value, char *suffix, GSTEXTURE *resultTex, short psm, int compactBackground)
 {
     if (device != NULL)
-        return oplGetAppImageByMode(oplPath2Mode(device), folder, isRelative, value, suffix, resultTex, psm);
+        return oplGetAppImageByMode(oplPath2Mode(device), folder, isRelative, value, suffix, resultTex, psm, compactBackground);
     // device为NULL时的全设备扫描分支已不再使用（MC现改为本卡ART/）
     //else {
     //    //// We search on ever devices from fatest to slowest.
