@@ -44,13 +44,16 @@ int texShouldStreamCompactBackground(int width, int height, int colorType, int i
 {
     unsigned int ct24Bytes;
 
-    /* 异常尺寸先挡掉：1024 与 texSizeValidate / ART_PACK_MAX_TEX_DIM 的 GS 单边上限一致，
+    /* 格式放在最前：T4/T8 等调色板图直接跳过，不再做其它判断。
+     * BG 的 dropAlpha 恒为 1（texSuffixDropsAlpha），能进入本函数的 RGBA 一定丢弃 alpha，故不再检查 dropAlpha。 */
+    (void)dropAlpha;
+    if (colorType != TEX_PNG_COLOR_TYPE_RGB && colorType != TEX_PNG_COLOR_TYPE_RGBA)
+        return 0;
+    /* 异常尺寸挡掉：1024 与 texSizeValidate / ART_PACK_MAX_TEX_DIM 的 GS 单边上限一致，
      * 超出的图后面一定会被拒绝；提前返回也避免畸形 IHDR 让 gsKit 的大小计算溢出。 */
     if (width <= 0 || height <= 0 || width > TEX_MAX_TEX_DIM || height > TEX_MAX_TEX_DIM)
         return 0;
     if (interlaceType != TEX_PNG_INTERLACE_NONE)
-        return 0;
-    if (colorType != TEX_PNG_COLOR_TYPE_RGB && !(colorType == TEX_PNG_COLOR_TYPE_RGBA && dropAlpha))
         return 0;
     /* 大小放在最后：格式或隔行已经否决时不再调用 gsKit。 */
     ct24Bytes = texCt24TextureSize(width, height);
