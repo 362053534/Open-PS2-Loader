@@ -2332,6 +2332,9 @@ static int sbFindCheatFile(const char *path, const char *id, const char *name, c
         size_t len = strlen(dirent->d_name);
         size_t stemLen;
 
+        // 跳过以.开头的文件：Mac的._资源文件、Linux等系统的隐藏文件，以及.和..
+        if (dirent->d_name[0] == '.')
+            continue;
         if (len <= CHEAT_FILE_EXT_LEN || strcasecmp(&dirent->d_name[len - CHEAT_FILE_EXT_LEN], CHEAT_FILE_EXT) != 0)
             continue;
         stemLen = len - CHEAT_FILE_EXT_LEN;
