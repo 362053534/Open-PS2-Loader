@@ -1890,7 +1890,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             // Coverflow 的横向坐标在宽屏下已经按 4:3 逻辑坐标压缩；ICO 也必须
             // 只压缩横向宽度、右边缘和弹出间距；宽度保持 COVERFLOW_ICO_W，
             // 高度使用当前分辨率对应的宏值（448i/p、512i/p 为 LOWRES 值）。
-            float icoWidth = rmWideScaleF((float)COVERFLOW_ICO_W);
+            // 原图宽度小于 COVERFLOW_ICO_W 时按宏宽高的一半绘制，避免小图被拉伸发糊；
+            // 右下角对齐方式不变，因此底边仍与封面对齐、与封面的间距也不变。
+            int icoHalf = icoTexture->Width < COVERFLOW_ICO_W;
+            int icoBaseW = icoHalf ? COVERFLOW_ICO_W / 2 : COVERFLOW_ICO_W;
+            int icoBaseH = isLowRes ? COVERFLOW_ICO_H_LOWRES : COVERFLOW_ICO_H;
+            if (icoHalf)
+                icoBaseH /= 2;
+            float icoWidth = rmWideScaleF((float)icoBaseW);
             float icoPopupGap = rmWideScaleF((float)(COVERFLOW_ICO_POPUP_GAP + (int)(gTheme->coverflowCoverOffset * COVERFLOW_ICO_OFFSET_GAP_SCALE + (gTheme->coverflowCoverOffset >= 0 ? 0.5f : -0.5f))));
             float popupStartRight = centerIcoLeft + icoWidth;
             float popupTargetRight = centerIcoLeft - icoPopupGap;
@@ -1900,7 +1907,7 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
             rmDrawPixmapReflect(icoTexture, (int)(popupRight + 0.5f),
                                 (int)(centerIcoBottom + 0.5f),
                                 ALIGN_BOTTOM | ALIGN_RIGHT, icoDrawWidth,
-                                isLowRes ? COVERFLOW_ICO_H_LOWRES : COVERFLOW_ICO_H,
+                                icoBaseH,
                                 SCALING_NONE, gDefaultCol);
         }
 
