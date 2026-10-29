@@ -789,7 +789,8 @@ static int scanPOPS(int (*callback)(const char *path, const char *vcdName, void 
     failed = 0;
     if ((pdir = opendir(popsPath)) != NULL) {
         while ((pdirent = readdir(pdir)) != NULL) {
-            if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
+            // 跳过以.开头的文件：.、..以及隐藏文件（如Mac的._资源文件）
+            if (pdirent->d_name[0] == '.' || pdirent->d_type == DT_DIR)
                 continue;
 
             nameLength = strlen(pdirent->d_name);
@@ -821,7 +822,8 @@ static int scanAppELFs(int (*callback)(const char *path, const char *elfName, vo
     failed = 0;
     if ((pdir = opendir(appsPath)) != NULL) {
         while ((pdirent = readdir(pdir)) != NULL) {
-            if (strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0 || pdirent->d_type == DT_DIR)
+            // 跳过以.开头的文件：.、..以及隐藏文件（如Mac的._资源文件）
+            if (pdirent->d_name[0] == '.' || pdirent->d_type == DT_DIR)
                 continue;
 
             nameLength = strlen(pdirent->d_name);

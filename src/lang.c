@@ -111,7 +111,8 @@ char *lngGetValue(void)
 
 static int lngReadEntry(int index, const char *path, const char *separator, const char *name, unsigned char d_type)
 {
-    if (d_type != DT_DIR) {
+    // 跳过以.开头的隐藏文件（如Mac的._资源文件）
+    if (d_type != DT_DIR && name[0] != '.') {
         if (strstr(name, ".lng") || strstr(name, ".LNG")) {
 
             language_t *currLang = &languages[nLanguages + index];

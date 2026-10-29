@@ -75,6 +75,9 @@ int isValidIsoName(char *name, int *pNameLen)
     // Old ISO image naming format: SCUS_XXX.XX.ABCDEFGHIJKLMNOP.iso
     // Minimum is 17 char, GameID (11) + "." (1) + filename (1 min.) + ".iso" (4)
     int size = strlen(name);
+    // 跳过以.开头的隐藏文件（如Mac的._资源文件）
+    if (name[0] == '.')
+        return 0;
     if (strcasecmp(&name[size - 4], ".iso") == 0 || strcasecmp(&name[size - 4], ".zso") == 0) {
         if (size >= 17 && (name[4] == '_') && (name[8] == '.') && (name[11] == '.')) {
             *pNameLen = size - 16;
