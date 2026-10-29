@@ -561,6 +561,9 @@ static int bgmSearchDir(const char *root, char *path, int size)
     while ((pdirent = readdir(pdir)) != NULL) {
         int len = strlen(pdirent->d_name);
 
+        // 跳过以.开头的隐藏文件（如Mac的._资源文件）
+        if (pdirent->d_name[0] == '.')
+            continue;
         if (pdirent->d_type == DT_DIR || len < 5)
             continue;
         if (strcasecmp(&pdirent->d_name[len - 4], ".ogg") != 0)
