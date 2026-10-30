@@ -22,7 +22,14 @@ typedef struct
     u32 requestGeneration;
 
     int texFound; // 图片解析完毕，防止解析到一半就进行使用，也许会造成死机？
+
+    // 随机 BG：这张图所属游戏在图包里的 BG 张数，加载完成时由选图顺手带出；
+    // CACHE_BG_COUNT_LOOSE 表示取的是散图（重载也是同一张），-1 表示不知道。
+    int artCount;
 } cache_entry_t;
+
+// BG 来自散文件：散图优先于图包，重载拿到的还是同一张，命中缓存时直接用
+#define CACHE_BG_COUNT_LOOSE (-2)
 
 
 /// One texture cache instance

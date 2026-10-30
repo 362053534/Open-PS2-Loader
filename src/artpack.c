@@ -447,6 +447,11 @@ static int artParseRequestSuffix(const char *suffix, u8 *type, u8 *index)
     return artParseSuffix(suffix, strlen(suffix), type, index);
 }
 
+/* SCR 记忆和 BG 记忆分开：BG 若占用同一条环，会改变 SCR 的淘汰顺序。
+ * BG 背景缓存固定 2 槽（themes.c 里 ELEM_TYPE_BACKGROUND 的 cacheCount = 2），这里留 8 条。
+ */
+#define ART_BG_MEMO_COUNT 8
+
 // SCR / SCR2 的选图记忆：按游戏记住两张截图各自最近一次选中的序位。
 // SCR 和 SCR2 是两份独立的缓存，各自命中或被淘汰互不影响，请求先后也不固定；
 // 所以排除对象必须取自“对方最近一次选中的序位”，而不是“上一次请求的游戏”。
@@ -460,6 +465,55 @@ typedef struct
     int pick[2]; // [0]=SCR，[1]=SCR2：最近一次选中的 SCR 序位，-1 表示还没选过
 } art_scr_memo_t;
 
+typedef struct
+{
+    char id[ART_GAME_ID_LEN];
+    u8 bucket;
+    u8 used;
+    int pick; // 最近一次选中的 BG 序位，-1 表示没有
+} art_bg_memo_t;
+
+static art_bg_memo_t artBgMemos[ART_BG_MEMO_COUNT];
+static int artBgMemoNext;
+// 最近一次随机 BG 选图时顺手数出的张数，由 artPackTakeBgCount 取走后清成 -1。
+// 单独一把锁：选图时 artPackMutex 已被持有，取走一方不必等别的线程读完 zip。
+static int artLastBgCount = -1;
+static pthread_mutex_t artLastBgCountMutex = PTHREAD_MUTEX_INITIALIZER;
+
+static art_bg_memo_t *artBgMemoLookup(const char *gameId, u8 bucket)
+{
+    int i;
+
+    for (i = 0; i < ART_BG_MEMO_COUNT; i++) {
+        if (artBgMemos[i].used && artBgMemos[i].bucket == bucket &&
+            !memcmp(artBgMemos[i].id, gameId, ART_GAME_ID_LEN))
+            return &artBgMemos[i];
+    }
+    return NULL;
+}
+
+static art_bg_memo_t *artBgMemoCreate(const char *gameId, u8 bucket)
+{
+    art_bg_memo_t *memo = &artBgMemos[artBgMemoNext];
+
+    artBgMemoNext = (artBgMemoNext + 1) % ART_BG_MEMO_COUNT;
+    memcpy(memo->id, gameId, ART_GAME_ID_LEN);
+    memo->bucket = bucket;
+    memo->used = 1;
+    memo->pick = -1;
+    return memo;
+}
+
+static void artBgMemoRemember(const char *gameId, u8 bucket, int pick)
+{
+    art_bg_memo_t *memo = artBgMemoLookup(gameId, bucket);
+
+    if (!memo)
+        memo = artBgMemoCreate(gameId, bucket);
+    memo->pick = pick;
+}
+
+
 // 在该游戏的条目里，从 type 类的所有图中随机选出一张，返回它在条目数组中的下标；没有可选的图返回 -1。
 // 条目按（种类，序号）排序，序号即使不连续也只在实际存在的图里选。
 // SCR 与 SCR2 互相排除对方的记忆，保证同一个游戏的两张截图不会重复，且与谁先请求无关；
@@ -470,7 +524,7 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
     static art_scr_memo_t memos[ART_SCR_MEMO_COUNT];
     static int memoNext;
     art_scr_memo_t *memo = NULL;
-    int count = 0, avoid = -1, pick, rank, slot, i;
+    int count = 0, avoid = -1, pick, rank, slot = 0, i;
 
     for (i = 0; i < (int)entryNum; i++) {
         if (ART_ENTRY_TYPE(entries[i]) == type)
@@ -497,6 +551,18 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
         // 图包更新后序位可能越界，此时记忆作废
         if (avoid >= count)
             avoid = -1;
+    } else if (type == ART_SUF_BG && request == ART_REQ_RANDOM) {
+        art_bg_memo_t *bgMemo = artBgMemoLookup(gameId, bucket);
+
+        // 只剩一张时不能排除：排除后可选张数变成 0，唯一的那张也会被丢掉。
+        if (bgMemo && count > 1) {
+            avoid = bgMemo->pick;
+            // 图包更新后序位对不上，不能再拿来排除
+            if (avoid >= count) {
+                avoid = -1;
+                bgMemo->pick = -1;
+            }
+        }
     }
 
     // SCR2 至少要有 2 张 SCR 才显示：只有 1 张时不显示，避免与 SCR 重复
@@ -510,6 +576,12 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
 
     if (memo)
         memo->pick[slot] = pick;
+    if (type == ART_SUF_BG && request == ART_REQ_RANDOM) {
+        artBgMemoRemember(gameId, bucket, pick);
+        pthread_mutex_lock(&artLastBgCountMutex);
+        artLastBgCount = count;
+        pthread_mutex_unlock(&artLastBgCountMutex);
+    }
 
     rank = 0;
     for (i = 0; i < (int)entryNum; i++) {
@@ -517,6 +589,19 @@ static int artPickRandomEntry(const art_idx_entry_t *entries, u32 entryNum, u8 t
             return i;
     }
     return -1;
+}
+
+// 取走最近一次随机 BG 选图带出的张数并清空；没有选过（散文件、没有 BG、非随机）返回 -1。
+// BG 加载线程在 artPackLoadImage 返回后立刻调用，把张数存进缓存槽。
+int artPackTakeBgCount(void)
+{
+    int count;
+
+    pthread_mutex_lock(&artLastBgCountMutex);
+    count = artLastBgCount;
+    artLastBgCount = -1;
+    pthread_mutex_unlock(&artLastBgCountMutex);
+    return count;
 }
 
 /*
