@@ -74,4 +74,56 @@ extern int texLoading;
 void flushBatchRequests(void);
 void cacheCancelPendingArtRequests(void);
 
+// ===== BG 计时埋点声明 开始 =====
+// 实机诊断开关。为 0 时下面的埋点宏展开为空，L3 不导出。
+#define BG_PROF 1
+
+// GetTimerSystemTime 的单位是总线时钟。147456 tick = 1 ms。
+#define BG_PROF_HZ 147456000
+#define BG_PROF_CAP 4096
+
+#ifndef BG_PROF_NOW
+#define BG_PROF_NOW() GetTimerSystemTime()
+#endif
+#ifndef BG_PROF_LOCK
+#define BG_PROF_LOCK() DIntr()
+#endif
+#ifndef BG_PROF_UNLOCK
+#define BG_PROF_UNLOCK() EIntr()
+#endif
+#ifndef BG_PROF_PATH
+#define BG_PROF_PATH "mass0:/bg_timing.txt"
+#endif
+
+enum {
+    BG_EV_KEY = 0,
+    BG_EV_VISIT,
+    BG_EV_RELOAD,
+    BG_EV_QUEUE,
+    BG_EV_IO_START,
+    BG_EV_IO_DROP,
+    BG_EV_LOOSE_DONE,
+    BG_EV_PACK_LOCK,
+    BG_EV_PICK,
+    BG_EV_SEEK_DONE,
+    BG_EV_READ_DONE,
+    BG_EV_DECODE_DONE,
+    BG_EV_COMPACT_DONE,
+    BG_EV_PUBLISH,
+    BG_EV_DRAW,
+    BG_EV_COUNT
+};
+
+void bgProfMark(int ev, const char *suffix, const char *id, int arg);
+void bgProfDump(void);
+
+#if BG_PROF
+#define BG_PROF_MARK(ev, suf, id, arg) bgProfMark((ev), (suf), (id), (arg))
+#define BG_PROF_DUMP() bgProfDump()
+#else
+#define BG_PROF_MARK(ev, suf, id, arg) ((void)0)
+#define BG_PROF_DUMP() ((void)0)
+#endif
+// ===== BG 计时埋点声明 结束 =====
+
 #endif

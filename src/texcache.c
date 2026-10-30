@@ -9,6 +9,9 @@
 #include "include/artpack.h"
 #include "include/themes.h"
 #include <pthread.h>
+#if BG_PROF
+#include <timer.h>
+#endif
 
 extern GSGLOBAL *gsGlobal;
 
@@ -230,6 +233,230 @@ void cacheCancelPendingArtRequests(void)
     ioRemoveRequestsWithCleanup(IO_CACHE_LOAD_ART, cacheCancelImageRequest);
 }
 
+// ===== BG 计时埋点 开始 =====
+#if BG_PROF
+// 计时期间只写下面这块静态数组，不 printf、不 LOG、也不写文件。
+// 满了就停并累计丢弃数，不回绕。主线程和 IO 线程都会写，所以“取下标 + 写一条”关中断。
+// 147456000/1000 = 147456，用它做毫秒换算，和 ticks*1000/147456000 取整后再留 3 位小数相同，又避免 u64 相乘溢出。
+
+typedef struct {
+    u64 t;
+    u32 frame;
+    s32 arg;
+    u8 ev;
+    char suf[4];
+    char id[12];
+} bg_prof_rec_t;
+
+static bg_prof_rec_t bgProfRecs[BG_PROF_CAP];
+static int bgProfCount;
+static u32 bgProfDropped;
+static u32 bgProfDumpSeq;
+static volatile int bgProfPaused;
+static int bgProfDrawUID = -1;
+
+static const char *bgProfEvName(int ev)
+{
+    static const char *const names[BG_EV_COUNT] = {
+        "KEY",
+        "VISIT",
+        "RELOAD",
+        "QUEUE",
+        "IO_START",
+        "IO_DROP",
+        "LOOSE_DONE",
+        "PACK_LOCK",
+        "PICK",
+        "SEEK_DONE",
+        "READ_DONE",
+        "DECODE_DONE",
+        "COMPACT_DONE",
+        "PUBLISH",
+        "DRAW",
+    };
+
+    if ((unsigned)ev >= (unsigned)BG_EV_COUNT)
+        return "?";
+    return names[ev];
+}
+
+static void bgProfCopyField(char *dst, int cap, const char *src)
+{
+    int i = 0;
+
+    if (cap <= 0)
+        return;
+    if (src) {
+        while (i < cap - 1 && src[i] != '\0') {
+            dst[i] = src[i];
+            i++;
+        }
+    }
+    while (i < cap)
+        dst[i++] = '\0';
+}
+
+static void bgProfFmtMs(char *dst, int cap, u64 ticks)
+{
+    char num[32];
+    char rev[32];
+    u64 ticksPerMs = (u64)BG_PROF_HZ / 1000u;
+    u64 ms = ticks / ticksPerMs;
+    unsigned frac = (unsigned)((ticks % ticksPerMs) * 1000u / ticksPerMs);
+    u64 v = ms;
+    int n = 0;
+    int r = 0;
+
+    if (v == 0) {
+        num[n++] = '0';
+    } else {
+        while (v > 0 && r < (int)sizeof(rev)) {
+            rev[r++] = (char)('0' + (unsigned)(v % 10u));
+            v /= 10u;
+        }
+        while (r > 0)
+            num[n++] = rev[--r];
+    }
+    num[n] = '\0';
+    snprintf(dst, (size_t)cap, "%s.%03u", num, frac);
+}
+
+static void bgProfStore(int ev, const char *suffix, const char *id, int arg)
+{
+    bg_prof_rec_t *rec;
+
+    if (bgProfPaused)
+        return;
+    if (bgProfCount >= BG_PROF_CAP) {
+        bgProfDropped++;
+        return;
+    }
+    rec = &bgProfRecs[bgProfCount++];
+    rec->t = BG_PROF_NOW();
+    rec->frame = (u32)guiFrameId;
+    rec->arg = (s32)arg;
+    rec->ev = (u8)ev;
+    bgProfCopyField(rec->suf, (int)sizeof(rec->suf), suffix);
+    bgProfCopyField(rec->id, (int)sizeof(rec->id), id);
+}
+
+void bgProfMark(int ev, const char *suffix, const char *id, int arg)
+{
+    // 导出线程已经把暂停标志立起来时，不要再去抢关中断。
+    if (bgProfPaused)
+        return;
+    BG_PROF_LOCK();
+    bgProfStore(ev, suffix, id, arg);
+    BG_PROF_UNLOCK();
+}
+
+static void bgProfSetDrawUID(int uid)
+{
+    BG_PROF_LOCK();
+    bgProfDrawUID = uid;
+    BG_PROF_UNLOCK();
+}
+
+static int bgProfTakeDrawUID(int uid)
+{
+    int hit = 0;
+
+    BG_PROF_LOCK();
+    // 初始值 -1 表示没有待画的新 BG，不能和空槽 UID 的 -1 当成同一次发布。
+    if (bgProfDrawUID != -1 && bgProfDrawUID == uid) {
+        bgProfDrawUID = -1;
+        hit = 1;
+    }
+    BG_PROF_UNLOCK();
+    return hit;
+}
+
+void bgProfDump(void)
+{
+    FILE *fp;
+    int count;
+    int i;
+    u32 dropped;
+    u64 t0;
+    u64 prev;
+
+    BG_PROF_LOCK();
+    bgProfPaused = 1;
+    count = bgProfCount;
+    dropped = bgProfDropped;
+    BG_PROF_UNLOCK();
+
+    fp = fopen(BG_PROF_PATH, "a");
+    if (!fp) {
+        LOG("BG_PROF open failed %s\n", BG_PROF_PATH);
+        BG_PROF_LOCK();
+        bgProfCount = 0;
+        bgProfDropped = 0;
+        bgProfPaused = 0;
+        BG_PROF_UNLOCK();
+        return;
+    }
+
+    bgProfDumpSeq++;
+    fprintf(fp, "# dump=%u count=%u dropped=%u freq=%u\n",
+            (unsigned)bgProfDumpSeq, (unsigned)count, (unsigned)dropped, (unsigned)BG_PROF_HZ);
+    t0 = count > 0 ? bgProfRecs[0].t : 0;
+    prev = t0;
+    for (i = 0; i < count; i++) {
+        bg_prof_rec_t *rec = &bgProfRecs[i];
+        char tStr[40];
+        char dtStr[40];
+        char sinceStr[40];
+        u64 rel = rec->t - t0;
+        u64 dt = i == 0 ? 0 : rec->t - prev;
+        int haveVisit = 0;
+        u64 visitT = 0;
+        int j;
+
+        for (j = i; j >= 0; j--) {
+            if (bgProfRecs[j].ev == (u8)BG_EV_VISIT) {
+                haveVisit = 1;
+                visitT = bgProfRecs[j].t;
+                break;
+            }
+        }
+        bgProfFmtMs(tStr, (int)sizeof(tStr), rel);
+        bgProfFmtMs(dtStr, (int)sizeof(dtStr), dt);
+        if (haveVisit)
+            bgProfFmtMs(sinceStr, (int)sizeof(sinceStr), rec->t - visitT);
+        else
+            snprintf(sinceStr, sizeof(sinceStr), "-");
+        fprintf(fp, "%d %s %s %s %u %s %s %s %d\n",
+                i, tStr, dtStr, sinceStr, (unsigned)rec->frame, bgProfEvName((int)rec->ev),
+                rec->suf[0] ? rec->suf : "-", rec->id[0] ? rec->id : "-", (int)rec->arg);
+        prev = rec->t;
+    }
+    fclose(fp);
+
+    BG_PROF_LOCK();
+    bgProfCount = 0;
+    bgProfDropped = 0;
+    bgProfPaused = 0;
+    BG_PROF_UNLOCK();
+}
+
+#else
+
+void bgProfMark(int ev, const char *suffix, const char *id, int arg)
+{
+    (void)ev;
+    (void)suffix;
+    (void)id;
+    (void)arg;
+}
+
+void bgProfDump(void)
+{
+}
+
+#endif
+// ===== BG 计时埋点 结束 =====
+
 static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_t *list, char *value, int itemId, int quiet)
 {
     load_image_request_t *req = calloc(1, sizeof(load_image_request_t));
@@ -263,12 +490,15 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
     if (ioPutRequest(IO_CACHE_LOAD_ART, req) != IO_OK)
         cacheCancelImageRequest(req);
+    else
+        BG_PROF_MARK(BG_EV_QUEUE, cache->suffix, value, cacheId);
 }
 
 // 加载其他图片时用的线程函数
 static void cacheLoadImage1(void *data)
 {
     load_image_request_t *ioReq = (load_image_request_t *)data;
+    BG_PROF_MARK(BG_EV_IO_START, ioReq && ioReq->cache ? ioReq->cache->suffix : NULL, ioReq ? ioReq->value : NULL, 0);
     // Safeguards...
     if (!ioReq->cache || !ioReq->cache->content) {
         cacheDecreaseLoading();
@@ -290,6 +520,9 @@ static void cacheLoadImage1(void *data)
     // 不依赖这套单封面冷却，所以显式绕过 cdFramesCount。两条路径都必须响应
     // forceSkipQr（cacheEnd 的退出保护）。
     if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
+        // 1 冷却，2 forceSkipQr。两者同时成立时记冷却，避免一条记录塞两个原因。
+        BG_PROF_MARK(BG_EV_IO_DROP, ioReq->cache->suffix, ioReq->value,
+                     (cdFramesCount && !ioReq->quiet) ? 1 : 2);
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -303,12 +536,15 @@ static void cacheLoadImage1(void *data)
     int result;
     // 先取 ART2/ART 散文件，取不到且全局有图包时再从最快设备的图包取图
     result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId, ioReq->compactBackground);
+    BG_PROF_MARK(BG_EV_LOOSE_DONE, ioReq->cache->suffix, ioReq->value, result);
     if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
         result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, ioReq->compactBackground);
 
     // 解码阶段已转成 CT16S 时因 PSM 不符直接返回；隔行 RGB 等仍走这里兜底。
-    if (result >= 0 && ioReq->compactBackground)
+    if (result >= 0 && ioReq->compactBackground) {
         texCompactBackground(&entry->texture);
+        BG_PROF_MARK(BG_EV_COMPACT_DONE, ioReq->cache->suffix, ioReq->value, 0);
+    }
 
     // 光标变化会递增 artRequestGeneration；Coverflow 当前可见/预取路径再次
     // 查询仍需要的 active 槽位时，会把 requestGeneration 更新回当前代。
@@ -335,9 +571,15 @@ static void cacheLoadImage1(void *data)
     } else if (sameEntry && entry->qr) {
         entry->qr = 2; // 丢弃期间禁止主线程复用此槽位
     }
+#if BG_PROF
+    // 解锁前先把 UID 武装好。主线程不持有这把锁就会读 texFound，晚写会漏掉第一次画出。
+    if (keepResult && result >= 0 && ioReq->cache->suffix && !strncmp(ioReq->cache->suffix, "BG", 2))
+        bgProfSetDrawUID(ioReq->cacheUID);
+#endif
     pthread_mutex_unlock(&texLoadingMutex);
 
     if (!keepResult) {
+        BG_PROF_MARK(BG_EV_IO_DROP, ioReq->cache->suffix, ioReq->value, 3);
         if (sameEntry && ioReq->trackGeneration)
             cacheClearExpiredItem(entry, ioReq->cacheUID);
         cacheDecreaseLoading();
@@ -346,6 +588,7 @@ static void cacheLoadImage1(void *data)
         return;
     }
 
+    BG_PROF_MARK(BG_EV_PUBLISH, ioReq->cache->suffix, ioReq->value, result);
     cacheDecreaseLoading();
     ioReq->qr = 0;
     free(ioReq);
@@ -1012,6 +1255,9 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
     // SCR/SCR2 绘制，若这里不同步 curStartUp，随后的 SCR 取图会把“换了游戏”误判为光标移动，
     // 在 BG 刚排队（texLoading>0）时触发 cdFrames 帧的连按冷却，SCR/SCR2 因此延迟约半秒才加载。
     // 列表主题的 BG 本来就经过 cacheGetTexture() 更新了它，这里与之保持一致。
+    // 邻居封面的 value 不同，不能当成切了游戏；只在 BG 且启动串指针变化时记一次。
+    if (isBg && curStartUp != value)
+        BG_PROF_MARK(BG_EV_VISIT, cache->suffix, value, 0);
     if (isBg)
         curStartUp = value;
 
@@ -1059,10 +1305,16 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                 if (isBg && (cache != bgLoadCache || *UID != bgLoadUID) && artPackRandomActive()) {
                     if (!queueRequest)
                         return cacheQuietBgPrevTexture(cache);
+                    BG_PROF_MARK(BG_EV_RELOAD, cache->suffix, value, *UID);
                 } else {
                     entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
                     if (isBg)
                         PrevCacheID_BG = *cacheId;
+#if BG_PROF
+                    // 新 BG 发布后的第一次命中才记，避免每一帧都写一条。
+                    if (isBg && bgProfTakeDrawUID(entry->UID))
+                        BG_PROF_MARK(BG_EV_DRAW, cache->suffix, value, 0);
+#endif
                     return &entry->texture;
                 }
             } else if (entry->texFound == 0) {

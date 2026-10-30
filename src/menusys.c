@@ -1235,14 +1235,16 @@ void menuHandleInputMain()
     // 非 coverflow 主题保持默认映射。切回非 coverflow 主题时 gTheme->coverflow 变为 NULL，
     // 会自动恢复默认操作，无需任何持久化状态。
     if (getKey(KEY_LEFT)) {
-        if (gTheme->coverflow)
+        if (gTheme->coverflow) {
+            BG_PROF_MARK(BG_EV_KEY, NULL, NULL, 0); // 先记下切游戏，再翻页，方便和后面的 VISIT 对齐
             menuPrevV(); // 左 = 上一张封面
-        else
+        } else
             menuPrevH();
     } else if (getKey(KEY_RIGHT)) {
-        if (gTheme->coverflow)
+        if (gTheme->coverflow) {
+            BG_PROF_MARK(BG_EV_KEY, NULL, NULL, 1);
             menuNextV(); // 右 = 下一张封面
-        else
+        } else
             menuNextH();
     } else if (getKey(KEY_UP)) {
         if (gTheme->coverflow)
@@ -1276,6 +1278,10 @@ void menuHandleInputMain()
         menuFirstPage();
     } else if (getKeyOn(KEY_R2)) { // end
         menuLastPage();
+#if BG_PROF
+    } else if (getKeyOn(KEY_L3)) {
+        bgProfDump();
+#endif
     }
 
     // Last Played Auto Start

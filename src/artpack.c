@@ -4,6 +4,7 @@
 #include "include/textures.h"
 #include "include/ioman.h"
 #include "include/artpack.h"
+#include "include/texcache.h"
 #include <ps2sdkapi.h> // lseek64
 #include <png.h>
 #include <pthread.h>
@@ -1485,6 +1486,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
 
     pthread_mutex_lock(&artPackMutex);
+    BG_PROF_MARK(BG_EV_PACK_LOCK, suffix, value, 0);
     // 统一使用全局最快设备的图包，而不是请求设备自己的图包
     if (artPackBestMode == ART_PACK_NO_BEST) {
         pthread_mutex_unlock(&artPackMutex);
@@ -1550,6 +1552,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
 
     if (sufIndex >= ART_REQ_RANDOM_SCR2) {
         i = artPickRandomEntry(entries, entryNum, sufType, sufIndex, key, bucket);
+        BG_PROF_MARK(BG_EV_PICK, suffix, value, i >= 0 ? (int)ART_ENTRY_INDEX(entries[i]) : -1);
         if (i >= 0) {
             found = entries[i];
             haveEntry = 1;
@@ -1580,7 +1583,12 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
             if (lseek64(fd, (off64_t)ART_ENTRY_OFF(found), SEEK_SET) != (off64_t)ART_ENTRY_OFF(found)) {
                 artPackCloseBestFd();
             } else {
-                ssize_t got = read(fd, buf, want);
+                ssize_t got;
+                // EE 看不到 IOP FatFs 的 fast seek 是否生效，这里不另记状态。
+                // SEEK_DONE 到 READ_DONE 的间隔可以间接反映定位和读盘。
+                BG_PROF_MARK(BG_EV_SEEK_DONE, suffix, value, 0);
+                got = read(fd, buf, want);
+                BG_PROF_MARK(BG_EV_READ_DONE, suffix, value, (int)got);
                 if (got < 0) {
                     artPackCloseBestFd();
                 } else if (got >= ZIP_LOCAL_HDR_SIZE && artRd32(buf) == ZIP_SIG_LOCAL) {
@@ -1608,6 +1616,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     }
 
     result = artDecodePng(buf + dataStart, bufLen, resultTex, texSuffixDropsAlpha(suffix), compactBackground);
+    BG_PROF_MARK(BG_EV_DECODE_DONE, suffix, value, result);
     free(buf);
     return result;
 }
