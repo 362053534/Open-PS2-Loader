@@ -75,7 +75,7 @@ void flushBatchRequests(void);
 void cacheCancelPendingArtRequests(void);
 
 // ===== BG 计时埋点声明 开始 =====
-// 实机诊断开关。为 0 时下面的埋点宏展开为空，跨度函数变成空操作，L3 不导出。
+// 实机诊断开关。为 0 时下面的埋点宏展开为空，记录函数变成空操作，L3 不导出。
 // 宿主测试会在包含本头之前把 BG_PROF 定义成 0，所以这里不能无条件重定义。
 #ifndef BG_PROF
 #define BG_PROF 1
@@ -84,9 +84,9 @@ void cacheCancelPendingArtRequests(void);
 // GetTimerSystemTime 的单位是总线时钟。147456 tick = 1 ms。
 #define BG_PROF_HZ 147456000
 #define BG_PROF_CAP 4096
-// 只把明显拖住图片 IO 的间隔写进 4096 条缓冲：BGM 一批解码 5ms，主线程一轮工作 10ms。
-#define BG_PROF_BGM_MIN_US 5000
+// 只把明显拖住图片 IO 的间隔写进 4096 条缓冲：主线程一轮工作满 10ms，或本帧纹理上传达到 256KiB。
 #define BG_PROF_FRAME_MIN_US 10000
+#define BG_PROF_UPLOAD_MIN_BYTES 262144
 
 #ifndef BG_PROF_NOW
 #define BG_PROF_NOW() GetTimerSystemTime()
@@ -108,22 +108,17 @@ enum {
     BG_EV_IO_DROP,
     BG_EV_READ_DONE,
     BG_EV_DECODE_DONE,
-    BG_EV_COMPACT_DONE,
     BG_EV_PUBLISH,
     BG_EV_DRAW,
-    BG_EV_BGM_DEC,
-    BG_EV_BGM_SEEK,
-    BG_EV_FRAME_BUSY,
-    BG_EV_PNG_INFO,
-    BG_EV_PNG_ALLOC,
-    BG_EV_PNG_ROWS,
+    BG_EV_FRAME,
     BG_EV_COUNT
 };
 
 void bgProfMark(int ev, const char *suffix, const char *id, int arg);
 void bgProfDump(void);
 u64 bgProfNow(void);
-void bgProfMarkSpan(int ev, const char *suffix, const char *id, u64 start, u32 minUs);
+int bgProfFrameShouldRecord(u32 totalUs, u32 uploadBytes);
+void bgProfMarkFrame(u64 t0, u64 t1, u64 t2, unsigned uploads, u32 uploadBytes);
 
 #if BG_PROF
 #define BG_PROF_MARK(ev, suf, id, arg) bgProfMark((ev), (suf), (id), (arg))

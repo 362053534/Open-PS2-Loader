@@ -234,6 +234,12 @@ void cacheCancelPendingArtRequests(void)
 }
 
 // ===== BG 计时埋点 开始 =====
+int bgProfFrameShouldRecord(u32 totalUs, u32 uploadBytes)
+{
+    // 两个条件是或：主线程忙满 10ms，或者这一帧把大纹理送进了 GS。差一点的帧不占缓冲。
+    return totalUs >= (u32)BG_PROF_FRAME_MIN_US || uploadBytes >= (u32)BG_PROF_UPLOAD_MIN_BYTES;
+}
+
 #if BG_PROF
 // 计时期间只写下面这块静态数组，不 printf、不 LOG、也不写文件。
 // 满了就停并累计丢弃数，不回绕。主线程和 IO 线程都会写，所以“取下标 + 写一条”关中断。
@@ -243,6 +249,7 @@ typedef struct {
     u64 t;
     u32 frame;
     s32 arg;
+    s32 arg2; // FRAME 要把等 GS 的时间和整帧工作时间分开，其它事件没有第二段
     u8 ev;
     char suf[4];
     char id[12];
@@ -264,15 +271,9 @@ static const char *bgProfEvName(int ev)
         "IO_DROP",
         "READ_DONE",
         "DECODE_DONE",
-        "COMPACT_DONE",
         "PUBLISH",
         "DRAW",
-        "BGM_DEC",
-        "BGM_SEEK",
-        "FRAME_BUSY",
-        "PNG_INFO",
-        "PNG_ALLOC",
-        "PNG_ROWS",
+        "FRAME",
     };
 
     if ((unsigned)ev >= (unsigned)BG_EV_COUNT)
@@ -321,7 +322,7 @@ static void bgProfFmtMs(char *dst, int cap, u64 ticks)
     snprintf(dst, (size_t)cap, "%s.%03u", num, frac);
 }
 
-static void bgProfStore(int ev, const char *suffix, const char *id, int arg, u64 t)
+static void bgProfStore(int ev, const char *suffix, const char *id, int arg, int arg2, u64 t)
 {
     bg_prof_rec_t *rec;
 
@@ -335,6 +336,7 @@ static void bgProfStore(int ev, const char *suffix, const char *id, int arg, u64
     rec->t = t;
     rec->frame = (u32)guiFrameId;
     rec->arg = (s32)arg;
+    rec->arg2 = (s32)arg2;
     rec->ev = (u8)ev;
     bgProfCopyField(rec->suf, (int)sizeof(rec->suf), suffix);
     bgProfCopyField(rec->id, (int)sizeof(rec->id), id);
@@ -346,7 +348,7 @@ void bgProfMark(int ev, const char *suffix, const char *id, int arg)
     if (bgProfPaused)
         return;
     BG_PROF_LOCK();
-    bgProfStore(ev, suffix, id, arg, BG_PROF_NOW());
+    bgProfStore(ev, suffix, id, arg, 0, BG_PROF_NOW());
     BG_PROF_UNLOCK();
 }
 
@@ -355,27 +357,33 @@ u64 bgProfNow(void)
     return BG_PROF_NOW();
 }
 
-void bgProfMarkSpan(int ev, const char *suffix, const char *id, u64 start, u32 minUs)
+void bgProfMarkFrame(u64 t0, u64 t1, u64 t2, unsigned uploads, u32 uploadBytes)
 {
-    u64 now;
+    u64 ticksPerMs = (u64)BG_PROF_HZ / 1000u;
     u64 ticks;
-    u64 us;
-    u64 ticksPerMs;
+    u64 totalUs;
+    u64 gsUs;
+    char idBuf[32];
 
-    // 短间隔直接丢掉，避免主线程每帧、BGM 每块都关一次中断。
+    // 147456 tick = 1 ms = 1000 us。先乘后除，整数截断，和导出里的毫秒列同一套时钟。
+    ticks = t2 >= t0 ? t2 - t0 : 0;
+    totalUs = ticks * 1000ull / ticksPerMs;
+    ticks = t2 >= t1 ? t2 - t1 : 0;
+    gsUs = ticks * 1000ull / ticksPerMs;
+
+    // 不到阈值不加锁。主线程每帧都会进来，短帧不能每次都关中断。
     if (bgProfPaused)
         return;
-    now = BG_PROF_NOW();
-    ticks = now >= start ? now - start : 0;
-    ticksPerMs = (u64)BG_PROF_HZ / 1000u;
-    // 147456 tick = 1 ms = 1000 us。先乘后除，整数截断，和导出里的毫秒列同一套时钟。
-    us = ticks * 1000ull / ticksPerMs;
-    if (us < (u64)minUs)
+    if (totalUs > 2147483647ull)
+        totalUs = 2147483647ull;
+    if (gsUs > 2147483647ull)
+        gsUs = 2147483647ull;
+    if (!bgProfFrameShouldRecord((u32)totalUs, uploadBytes))
         return;
-    if (us > 2147483647ull)
-        us = 2147483647ull;
+    // id 只有 11 个可见字符，超长由拷贝截断。suf 只有 3 个字符，放不下最大一次上传，留空。
+    snprintf(idBuf, sizeof(idBuf), "%u:%uK", uploads, (unsigned)(uploadBytes / 1024u));
     BG_PROF_LOCK();
-    bgProfStore(ev, suffix, id, (int)us, now);
+    bgProfStore(BG_EV_FRAME, NULL, idBuf, (int)totalUs, (int)gsUs, t2);
     BG_PROF_UNLOCK();
 }
 
@@ -429,6 +437,7 @@ void bgProfDump(void)
     bgProfDumpSeq++;
     fprintf(fp, "# dump=%u count=%u dropped=%u freq=%u\n",
             (unsigned)bgProfDumpSeq, (unsigned)count, (unsigned)dropped, (unsigned)BG_PROF_HZ);
+    fprintf(fp, "# cols: seq t_ms dt_ms since_visit_ms frame ev suf id arg arg2\n");
     t0 = count > 0 ? bgProfRecs[0].t : 0;
     prev = t0;
     for (i = 0; i < count; i++) {
@@ -455,9 +464,9 @@ void bgProfDump(void)
             bgProfFmtMs(sinceStr, (int)sizeof(sinceStr), rec->t - visitT);
         else
             snprintf(sinceStr, sizeof(sinceStr), "-");
-        fprintf(fp, "%d %s %s %s %u %s %s %s %d\n",
+        fprintf(fp, "%d %s %s %s %u %s %s %s %d %d\n",
                 i, tStr, dtStr, sinceStr, (unsigned)rec->frame, bgProfEvName((int)rec->ev),
-                rec->suf[0] ? rec->suf : "-", rec->id[0] ? rec->id : "-", (int)rec->arg);
+                rec->suf[0] ? rec->suf : "-", rec->id[0] ? rec->id : "-", (int)rec->arg, (int)rec->arg2);
         prev = rec->t;
     }
     fclose(fp);
@@ -476,13 +485,13 @@ u64 bgProfNow(void)
     return 0;
 }
 
-void bgProfMarkSpan(int ev, const char *suffix, const char *id, u64 start, u32 minUs)
+void bgProfMarkFrame(u64 t0, u64 t1, u64 t2, unsigned uploads, u32 uploadBytes)
 {
-    (void)ev;
-    (void)suffix;
-    (void)id;
-    (void)start;
-    (void)minUs;
+    (void)t0;
+    (void)t1;
+    (void)t2;
+    (void)uploads;
+    (void)uploadBytes;
 }
 
 void bgProfMark(int ev, const char *suffix, const char *id, int arg)
@@ -583,7 +592,6 @@ static void cacheLoadImage1(void *data)
     // 解码阶段已转成 CT16S 时因 PSM 不符直接返回；隔行 RGB 等仍走这里兜底。
     if (result >= 0 && ioReq->compactBackground) {
         texCompactBackground(&entry->texture);
-        BG_PROF_MARK(BG_EV_COMPACT_DONE, ioReq->cache->suffix, ioReq->value, 0);
     }
 
     // 光标变化会递增 artRequestGeneration；Coverflow 当前可见/预取路径再次

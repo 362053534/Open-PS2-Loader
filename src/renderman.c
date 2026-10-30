@@ -28,6 +28,29 @@ static u8 rmClipToDisplay = 0;
 static u8 guiWakeupCount;
 static int vsync_id = -1;
 
+#if BG_PROF
+static int bgFrameUploads;
+static u32 bgFrameUploadBytes;
+static u32 bgFrameUploadMax;
+#endif
+
+// 返回值保持 gsKit 原样。调用点原来不用它，这里仍交回去，避免以后接上时行为变了。
+// CLUT 很小，字节只算纹理。BG_PROF 为 0 时不做统计，免得每帧多走一遍。
+static inline unsigned int rmBindTex(GSTEXTURE *tex)
+{
+    unsigned int transferred = gsKit_TexManager_bind(gsGlobal, tex);
+#if BG_PROF
+    if (transferred) {
+        unsigned int bytes = (unsigned int)gsKit_texture_size(tex->Width, tex->Height, tex->PSM);
+        bgFrameUploads++;
+        bgFrameUploadBytes += bytes;
+        if (bytes > bgFrameUploadMax)
+            bgFrameUploadMax = bytes;
+    }
+#endif
+    return transferred;
+}
+
 #define NUM_RM_VMODES 14
 #define RM_VMODE_AUTO 0
 
@@ -112,28 +135,41 @@ void rmStartFrame(void)
 
 void rmEndFrame(void)
 {
+#if BG_PROF
     // 首帧还没从 vsync 回来过。没武装时不记，避免用 0 时刻算出一段假的超长工作时间。
     static u64 bgFrameBusyStart;
     static int bgFrameBusyArmed;
+#endif
 
     if (hires) {
-        // hires 的等待在 gsKit 内部，没有和 SleepThread 一样的返回点，不在这里记 FRAME_BUSY。
+        // hires 的等待在 gsKit 内部，没有和 SleepThread 一样的返回点，不在这里记 FRAME。
         gsKit_hires_sync(gsGlobal);
         gsKit_hires_flip(gsGlobal);
     } else {
+#if BG_PROF
+        // t0 是上次 vsync 醒来。t1 在把队列交给 GS 之前，t2 在 gsKit_finish 返回、入睡之前。
+        u64 t0 = bgFrameBusyStart;
+        u64 t1 = bgProfNow();
+#endif
         gsKit_set_finish(gsGlobal);
         gsKit_queue_exec(gsGlobal);
 
         // Wait for draw ops to finish
         gsKit_finish();
 
+#if BG_PROF
+        u64 t2 = bgProfNow();
+#endif
         if (!gsGlobal->FirstFrame) {
-            // 主线程睡在这里等 vsync。上次醒来到这次入睡是本帧工作时间，满 10ms 才记。
+#if BG_PROF
             if (bgFrameBusyArmed)
-                bgProfMarkSpan(BG_EV_FRAME_BUSY, NULL, NULL, bgFrameBusyStart, BG_PROF_FRAME_MIN_US);
+                bgProfMarkFrame(t0, t1, t2, (unsigned)bgFrameUploads, bgFrameUploadBytes);
+#endif
             SleepThread();
+#if BG_PROF
             bgFrameBusyStart = bgProfNow();
             bgFrameBusyArmed = 1;
+#endif
             guiWakeupCount = 0;
 
             if (gsGlobal->DoubleBuffering == GS_SETTING_ON) {
@@ -147,6 +183,12 @@ void rmEndFrame(void)
         gsKit_setactive(gsGlobal);
     }
 
+#if BG_PROF
+    // 无论这帧有没有写下 FRAME，下帧都从 0 开始计上传。hires 不记，但同样清掉，避免串到下一帧。
+    bgFrameUploads = 0;
+    bgFrameUploadBytes = 0;
+    bgFrameUploadMax = 0;
+#endif
     gsKit_TexManager_nextFrame(gsGlobal);
 }
 
@@ -503,7 +545,7 @@ void rmDrawQuad(rm_quad_t *q)
         gsKit_set_test(gsGlobal, GS_ATEST_OFF);
     }
 
-    gsKit_TexManager_bind(gsGlobal, q->txt);
+    rmBindTex(q->txt);
     if (rmSubmitSpriteTexture(q->txt,
                               q->ul.x + fRenderXOff, q->ul.y + fRenderYOff,
                               q->ul.u, q->ul.v,
@@ -538,7 +580,7 @@ void rmDrawOverlayPixmap(GSTEXTURE *overlay, int x, int y, short aligned, int w,
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
+    rmBindTex(inlay);
     // 内嵌图(inlay，如 Coverflow 的封面主图)与外壳(overlay)共用同一个调制色 color。
     // 原先此处写死 gDefaultCol，导致压暗外壳时封面主图仍是满亮度、两者不一致。
     // 改用传入的 color 后：所有现有调用者传的都是 gDefaultCol（效果不变），
@@ -582,7 +624,7 @@ static void rmDrawReflectionRows(GSTEXTURE *txt, const rm_quad_t *quad, u64 colo
     float screenBottom = screenTop + reflectionHeight;
 
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-    gsKit_TexManager_bind(gsGlobal, txt);
+    rmBindTex(txt);
     if (rmSubmitGoraudQuadTexture(txt,
                                    quad->ul.x + fRenderXOff, screenTop,
                                    quad->ul.u, texTop,
@@ -649,7 +691,7 @@ void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned,
         float texTop = ((totalHeight - row - rowHeight) / totalHeight) * inlay->Height;
         float texBottom = ((totalHeight - row) / totalHeight) * inlay->Height;
 
-        gsKit_TexManager_bind(gsGlobal, inlay);
+        rmBindTex(inlay);
         gsKit_prim_quad_texture(gsGlobal, inlay,
                                 quad.ul.x + ulx + fRenderXOff, screenTop,
                                 0.0f, texTop,
@@ -666,7 +708,7 @@ void rmDrawOverlayPixmapReflect(GSTEXTURE *overlay, int x, int y, short aligned,
         texTop = ((totalHeight - row - rowHeight) / totalHeight) * overlay->Height;
         texBottom = ((totalHeight - row) / totalHeight) * overlay->Height;
 
-        gsKit_TexManager_bind(gsGlobal, overlay);
+        rmBindTex(overlay);
         gsKit_prim_sprite_texture(gsGlobal, overlay,
                                   quad.ul.x + fRenderXOff, screenTop,
                                   quad.ul.u, texTop,
@@ -904,7 +946,7 @@ static void rmDrawCoverTransform(const rm_cover_transform_t *transform, GSTEXTUR
     else
         gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
+    rmBindTex(inlay);
     // 这是直接 quad 提交，不会经过 rmDrawQuad()；在这里补上与普通 sprite
     // 相同的 fRender*Off，避免套上 case 后主图又回到整数采样相位。
     // 四个屏幕顶点与 overlay 的四个内框顶点一一对应。
@@ -953,7 +995,7 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
     float texTop = inlay->Height;
     float texBottom = ((totalHeight - reflectionHeight) / totalHeight) * inlay->Height;
 
-    gsKit_TexManager_bind(gsGlobal, inlay);
+    rmBindTex(inlay);
     if (rmSubmitGoraudQuadTexture(inlay,
                                   transform->inlayLeft + fRenderXOff, screenTop, 0.0f, texTop,
                                   transform->inlayRight + fRenderXOff, screenBottom, inlay->Width, texBottom,
@@ -962,7 +1004,7 @@ static void rmDrawCoverReflectionRows(const rm_cover_transform_t *transform, GST
 
     texTop = overlay->Height;
     texBottom = ((totalHeight - reflectionHeight) / totalHeight) * overlay->Height;
-    gsKit_TexManager_bind(gsGlobal, overlay);
+    rmBindTex(overlay);
     if (rmSubmitGoraudQuadTexture(overlay,
                                   transform->caseLeft + fRenderXOff, screenTop,
                                   transform->caseQuad.ul.u, texTop,
