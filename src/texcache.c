@@ -240,6 +240,65 @@ int bgProfFrameShouldRecord(u32 totalUs, u32 uploadBytes)
     return totalUs >= (u32)BG_PROF_FRAME_MIN_US || uploadBytes >= (u32)BG_PROF_UPLOAD_MIN_BYTES;
 }
 
+int bgProfIoStartShouldRecord(const char *suffix)
+{
+    // COV/ICO 切游戏时一次能排出很多请求。这条缓冲只跟背景。
+    return suffix != NULL && suffix[0] == 'B' && suffix[1] == 'G';
+}
+
+int bgProfUploadDetailShouldRecord(unsigned runFrame)
+{
+    // 序号从 1 起。前三帧看清是谁开始重传，之后每 120 帧抽一次。
+    if (runFrame == 0)
+        return 0;
+    if (runFrame <= 3u)
+        return 1;
+    return (runFrame % 120u) == 0u;
+}
+
+int bgProfVramSnapshotShouldTake(int hires, int reupload, unsigned runFrame, int runJustEnded, int drawFlag)
+{
+    // hires 的显存布局和普通模式不是同一套，这次不看。
+    if (hires)
+        return 0;
+    if (reupload && runFrame == 1u)
+        return 1;
+    if (runJustEnded)
+        return 1;
+    if (drawFlag)
+        return 1;
+    return 0;
+}
+
+void bgProfRunAdvance(int prevOn, unsigned prevFrame, int reupload,
+                      int *nowOn, unsigned *nowFrame, int *justEnded, unsigned *sampleFrame)
+{
+    if (reupload) {
+        *nowOn = 1;
+        if (!prevOn || prevFrame == 0u)
+            *nowFrame = 1u;
+        else if (prevFrame < 0xffffffffu)
+            *nowFrame = prevFrame + 1u;
+        else
+            *nowFrame = prevFrame;
+        *justEnded = 0;
+        *sampleFrame = *nowFrame;
+        return;
+    }
+    *nowOn = 0;
+    *nowFrame = 0;
+    *justEnded = prevOn ? 1 : 0;
+    *sampleFrame = 0;
+}
+
+void bgProfFmtTexId(char *dst, int cap, unsigned width, unsigned height, unsigned psm)
+{
+    if (!dst || cap <= 0)
+        return;
+    // id 只有 11 个可见字符。psm 固定两位，避免把字段撑破。
+    snprintf(dst, (size_t)cap, "%ux%u/%02x", width, height, psm & 0xffu);
+}
+
 #if BG_PROF
 // 计时期间只写下面这块静态数组，不 printf、不 LOG、也不写文件。
 // 满了就停并累计丢弃数，不回绕。主线程和 IO 线程都会写，所以“取下标 + 写一条”关中断。
@@ -249,7 +308,7 @@ typedef struct {
     u64 t;
     u32 frame;
     s32 arg;
-    s32 arg2; // FRAME 要把等 GS 的时间和整帧工作时间分开，其它事件没有第二段
+    s32 arg2; // FRAME 是等 GS 的微秒。PUBLISH/DRAW/TEX_UP/VRAM 是纹理指针的低 32 位，空闲块为 0
     u8 ev;
     char suf[4];
     char id[12];
@@ -261,6 +320,7 @@ static u32 bgProfDropped;
 static u32 bgProfDumpSeq;
 static volatile int bgProfPaused;
 static int bgProfDrawUID = -1;
+static int bgProfVramSnapReq;
 
 static const char *bgProfEvName(int ev)
 {
@@ -268,12 +328,14 @@ static const char *bgProfEvName(int ev)
         "KEY",
         "VISIT",
         "IO_START",
-        "IO_DROP",
         "READ_DONE",
         "DECODE_DONE",
         "PUBLISH",
         "DRAW",
         "FRAME",
+        "TEX_UP",
+        "VRAM",
+        "VRAM_SUM",
     };
 
     if ((unsigned)ev >= (unsigned)BG_EV_COUNT)
@@ -350,6 +412,59 @@ void bgProfMark(int ev, const char *suffix, const char *id, int arg)
     BG_PROF_LOCK();
     bgProfStore(ev, suffix, id, arg, 0, BG_PROF_NOW());
     BG_PROF_UNLOCK();
+}
+
+void bgProfMark2(int ev, const char *suffix, const char *id, int arg, int arg2)
+{
+    if (bgProfPaused)
+        return;
+    BG_PROF_LOCK();
+    bgProfStore(ev, suffix, id, arg, arg2, BG_PROF_NOW());
+    BG_PROF_UNLOCK();
+}
+
+void bgProfMarkAt(int ev, const char *suffix, const char *id, int arg, int arg2, u64 t)
+{
+    // TEX_UP 和显存快照要跟 FRAME 用同一个 t2，不能在这里再取样。
+    if (bgProfPaused)
+        return;
+    BG_PROF_LOCK();
+    bgProfStore(ev, suffix, id, arg, arg2, t);
+    BG_PROF_UNLOCK();
+}
+
+void bgProfRecordTexUps(unsigned runFrame, const bg_prof_upload_t *ups, int count, u64 t)
+{
+    int i;
+    int n;
+
+    if (!bgProfUploadDetailShouldRecord(runFrame))
+        return;
+    if (!ups || count <= 0)
+        return;
+    n = count;
+    if (n > BG_PROF_UPLOAD_LOG_MAX)
+        n = BG_PROF_UPLOAD_LOG_MAX;
+    for (i = 0; i < n; i++) {
+        char idBuf[32];
+
+        bgProfFmtTexId(idBuf, 12, ups[i].width, ups[i].height, ups[i].psm);
+        bgProfMarkAt(BG_EV_TEX_UP, NULL, idBuf, (int)ups[i].bytes, (s32)ups[i].texAddr, t);
+    }
+}
+
+void bgProfRequestVramSnap(void)
+{
+    // 只在主线程记 DRAW 时置位，帧末同一线程取走。
+    bgProfVramSnapReq = 1;
+}
+
+int bgProfTakeVramSnap(void)
+{
+    int on = bgProfVramSnapReq;
+
+    bgProfVramSnapReq = 0;
+    return on;
 }
 
 u64 bgProfNow(void)
@@ -548,7 +663,8 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
 static void cacheLoadImage1(void *data)
 {
     load_image_request_t *ioReq = (load_image_request_t *)data;
-    BG_PROF_MARK(BG_EV_IO_START, ioReq && ioReq->cache ? ioReq->cache->suffix : NULL, ioReq ? ioReq->value : NULL, 0);
+    if (bgProfIoStartShouldRecord(ioReq && ioReq->cache ? ioReq->cache->suffix : NULL))
+        BG_PROF_MARK(BG_EV_IO_START, ioReq->cache->suffix, ioReq->value, 0);
     // Safeguards...
     if (!ioReq->cache || !ioReq->cache->content) {
         cacheDecreaseLoading();
@@ -570,9 +686,6 @@ static void cacheLoadImage1(void *data)
     // 不依赖这套单封面冷却，所以显式绕过 cdFramesCount。两条路径都必须响应
     // forceSkipQr（cacheEnd 的退出保护）。
     if ((cdFramesCount && !ioReq->quiet) || forceSkipQr) {
-        // 1 冷却，2 forceSkipQr。两者同时成立时记冷却，避免一条记录塞两个原因。
-        BG_PROF_MARK(BG_EV_IO_DROP, ioReq->cache->suffix, ioReq->value,
-                     (cdFramesCount && !ioReq->quiet) ? 1 : 2);
         cacheReleaseRequestSlot(ioReq);
         cacheDecreaseLoading();
         free(ioReq);
@@ -627,7 +740,6 @@ static void cacheLoadImage1(void *data)
     pthread_mutex_unlock(&texLoadingMutex);
 
     if (!keepResult) {
-        BG_PROF_MARK(BG_EV_IO_DROP, ioReq->cache->suffix, ioReq->value, 3);
         if (sameEntry && ioReq->trackGeneration)
             cacheClearExpiredItem(entry, ioReq->cacheUID);
         cacheDecreaseLoading();
@@ -636,7 +748,8 @@ static void cacheLoadImage1(void *data)
         return;
     }
 
-    BG_PROF_MARK(BG_EV_PUBLISH, ioReq->cache->suffix, ioReq->value, result);
+    // arg2 是这个槽的 GSTEXTURE，用来和 TEX_UP / VRAM 里的指针对上是哪一次发布。
+    BG_PROF_MARK2(BG_EV_PUBLISH, ioReq->cache->suffix, ioReq->value, result, (s32)(u32)&entry->texture);
     cacheDecreaseLoading();
     ioReq->qr = 0;
     free(ioReq);
@@ -1359,8 +1472,10 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                         PrevCacheID_BG = *cacheId;
 #if BG_PROF
                     // 新 BG 发布后的第一次命中才记，避免每一帧都写一条。
-                    if (isBg && bgProfTakeDrawUID(entry->UID))
-                        BG_PROF_MARK(BG_EV_DRAW, cache->suffix, value, 0);
+                    if (isBg && bgProfTakeDrawUID(entry->UID)) {
+                        BG_PROF_MARK2(BG_EV_DRAW, cache->suffix, value, 0, (s32)(u32)&entry->texture);
+                        bgProfRequestVramSnap();
+                    }
 #endif
                     return &entry->texture;
                 }

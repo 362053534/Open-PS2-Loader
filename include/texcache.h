@@ -83,10 +83,12 @@ void cacheCancelPendingArtRequests(void);
 
 // GetTimerSystemTime 的单位是总线时钟。147456 tick = 1 ms。
 #define BG_PROF_HZ 147456000
-#define BG_PROF_CAP 4096
-// 只把明显拖住图片 IO 的间隔写进 4096 条缓冲：主线程一轮工作满 10ms，或本帧纹理上传达到 256KiB。
+#define BG_PROF_CAP 8192
+// 重传帧会追加 TEX_UP 和显存快照，4096 条不够放一整段。
 #define BG_PROF_FRAME_MIN_US 10000
 #define BG_PROF_UPLOAD_MIN_BYTES 262144
+#define BG_PROF_UPLOAD_LOG_MAX 16
+#define BG_PROF_VRAM_LOG_MAX 64
 
 #ifndef BG_PROF_NOW
 #define BG_PROF_NOW() GetTimerSystemTime()
@@ -105,26 +107,49 @@ enum {
     BG_EV_KEY = 0,
     BG_EV_VISIT,
     BG_EV_IO_START,
-    BG_EV_IO_DROP,
     BG_EV_READ_DONE,
     BG_EV_DECODE_DONE,
     BG_EV_PUBLISH,
     BG_EV_DRAW,
     BG_EV_FRAME,
+    BG_EV_TEX_UP,
+    BG_EV_VRAM,
+    BG_EV_VRAM_SUM,
     BG_EV_COUNT
 };
+
+typedef struct {
+    u32 texAddr;
+    u32 width;
+    u32 height;
+    u32 psm;
+    u32 bytes;
+} bg_prof_upload_t;
 
 void bgProfMark(int ev, const char *suffix, const char *id, int arg);
 void bgProfDump(void);
 u64 bgProfNow(void);
 int bgProfFrameShouldRecord(u32 totalUs, u32 uploadBytes);
+int bgProfIoStartShouldRecord(const char *suffix);
+int bgProfUploadDetailShouldRecord(unsigned runFrame);
+int bgProfVramSnapshotShouldTake(int hires, int reupload, unsigned runFrame, int runJustEnded, int drawFlag);
+void bgProfRunAdvance(int prevOn, unsigned prevFrame, int reupload,
+                      int *nowOn, unsigned *nowFrame, int *justEnded, unsigned *sampleFrame);
+void bgProfFmtTexId(char *dst, int cap, unsigned width, unsigned height, unsigned psm);
 void bgProfMarkFrame(u64 t0, u64 t1, u64 t2, unsigned uploads, u32 uploadBytes);
 
 #if BG_PROF
+void bgProfMark2(int ev, const char *suffix, const char *id, int arg, int arg2);
+void bgProfMarkAt(int ev, const char *suffix, const char *id, int arg, int arg2, u64 t);
+void bgProfRecordTexUps(unsigned runFrame, const bg_prof_upload_t *ups, int count, u64 t);
+void bgProfRequestVramSnap(void);
+int bgProfTakeVramSnap(void);
 #define BG_PROF_MARK(ev, suf, id, arg) bgProfMark((ev), (suf), (id), (arg))
+#define BG_PROF_MARK2(ev, suf, id, arg, arg2) bgProfMark2((ev), (suf), (id), (arg), (arg2))
 #define BG_PROF_DUMP() bgProfDump()
 #else
 #define BG_PROF_MARK(ev, suf, id, arg) ((void)0)
+#define BG_PROF_MARK2(ev, suf, id, arg, arg2) ((void)0)
 #define BG_PROF_DUMP() ((void)0)
 #endif
 // ===== BG 计时埋点声明 结束 =====

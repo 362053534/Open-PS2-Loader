@@ -32,6 +32,8 @@ static int vsync_id = -1;
 static int bgFrameUploads;
 static u32 bgFrameUploadBytes;
 static u32 bgFrameUploadMax;
+static bg_prof_upload_t bgFrameUps[BG_PROF_UPLOAD_LOG_MAX];
+static int bgFrameUpStored;
 #endif
 
 // 返回值保持 gsKit 原样。调用点原来不用它，这里仍交回去，避免以后接上时行为变了。
@@ -46,6 +48,15 @@ static inline unsigned int rmBindTex(GSTEXTURE *tex)
         bgFrameUploadBytes += bytes;
         if (bytes > bgFrameUploadMax)
             bgFrameUploadMax = bytes;
+        // 超出 16 条只留在 bgFrameUploads 里，FRAME 的次数仍然是全量。
+        if (bgFrameUpStored < BG_PROF_UPLOAD_LOG_MAX) {
+            bg_prof_upload_t *slot = &bgFrameUps[bgFrameUpStored++];
+            slot->texAddr = (u32)(unsigned long)tex;
+            slot->width = tex->Width;
+            slot->height = tex->Height;
+            slot->psm = tex->PSM;
+            slot->bytes = bytes;
+        }
     }
 #endif
     return transferred;
@@ -133,12 +144,82 @@ void rmStartFrame(void)
     order = 0;
 }
 
+#if BG_PROF
+// ===== BG 显存遍历 开始 =====
+/* 照抄 gsKit ee/gs/src/gsTexManager.c 的 struct SVramBlock，只改了名字。
+ * gsKit 改字段或顺序时要一起改，否则会把占用和空闲看反。这里只读，不改链表。 */
+struct rmProfVramBlock {
+    unsigned int iStart;
+    unsigned int iSize;
+    unsigned int iUseCount;
+    unsigned int iUseCountPrev;
+    GSTEXTURE *tex;
+    struct rmProfVramBlock *pNext;
+    struct rmProfVramBlock *pPrev;
+};
+
+/* gsKit 里这个头是全局符号，不是 static。只在主线程、和 gsKit 同一条线程上读。 */
+extern struct rmProfVramBlock *__head;
+
+static void rmProfFmtUse(char *dst, int cap, unsigned int use)
+{
+    if (use > 999u)
+        use = 999u;
+    snprintf(dst, (size_t)cap, "%u", use);
+}
+
+static void rmProfLogVram(u64 t)
+{
+    struct rmProfVramBlock *block;
+    unsigned int blocks = 0;
+    unsigned int freeSum = 0;
+    unsigned int freeMax = 0;
+    char idBuf[32];
+    char sufBuf[8];
+    char sumBuf[16];
+
+    for (block = __head; block != NULL; block = block->pNext) {
+        if (blocks < (unsigned)BG_PROF_VRAM_LOG_MAX) {
+            int arg2 = 0;
+            const char *id = "free";
+
+            if (block->tex) {
+                bgProfFmtTexId(idBuf, 12, block->tex->Width, block->tex->Height, block->tex->PSM);
+                id = idBuf;
+                /* 宿主指针更宽。先收成 unsigned long 再截成 s32；PS2 上两者都是 32 位。 */
+                arg2 = (s32)(unsigned long)block->tex;
+            }
+            rmProfFmtUse(sufBuf, (int)sizeof(sufBuf), block->iUseCount);
+            bgProfMarkAt(BG_EV_VRAM, sufBuf, id, (int)block->iSize, arg2, t);
+        }
+        if (block->tex == NULL) {
+            freeSum += block->iSize;
+            if (block->iSize > freeMax)
+                freeMax = block->iSize;
+        }
+        blocks++;
+    }
+    snprintf(sumBuf, sizeof(sumBuf), "%u", blocks);
+    bgProfMarkAt(BG_EV_VRAM_SUM, NULL, sumBuf, (int)freeSum, (int)freeMax, t);
+}
+// ===== BG 显存遍历 结束 =====
+/* 指针在 PS2 上是 4 字节，整块必须是 28 字节才和 gsKit 对齐。宿主测试不编译这一行。 */
+extern char rmProfVramBlockSizeOk[(sizeof(void *) == 4 && sizeof(struct rmProfVramBlock) == 28) ? 1 : -1];
+#endif
+
 void rmEndFrame(void)
 {
 #if BG_PROF
     // 首帧还没从 vsync 回来过。没武装时不记，避免用 0 时刻算出一段假的超长工作时间。
     static u64 bgFrameBusyStart;
     static int bgFrameBusyArmed;
+    static int bgRunOn;
+    static unsigned bgRunFrame;
+    int reupload = 0;
+    unsigned sampleFrame = 0;
+    int runJustEnded = 0;
+    u64 profT2 = 0;
+    int profHaveT2 = 0;
 #endif
 
     if (hires) {
@@ -150,6 +231,16 @@ void rmEndFrame(void)
         // t0 是上次 vsync 醒来。t1 在把队列交给 GS 之前，t2 在 gsKit_finish 返回、入睡之前。
         u64 t0 = bgFrameBusyStart;
         u64 t1 = bgProfNow();
+        {
+            int nowOn = 0;
+            unsigned nowFrame = 0;
+            int isReupload = bgFrameUploadBytes >= (u32)BG_PROF_UPLOAD_MIN_BYTES;
+
+            bgProfRunAdvance(bgRunOn, bgRunFrame, isReupload, &nowOn, &nowFrame, &runJustEnded, &sampleFrame);
+            bgRunOn = nowOn;
+            bgRunFrame = nowFrame;
+            reupload = isReupload;
+        }
 #endif
         gsKit_set_finish(gsGlobal);
         gsKit_queue_exec(gsGlobal);
@@ -159,11 +250,16 @@ void rmEndFrame(void)
 
 #if BG_PROF
         u64 t2 = bgProfNow();
+        profT2 = t2;
+        profHaveT2 = 1;
 #endif
         if (!gsGlobal->FirstFrame) {
 #if BG_PROF
             if (bgFrameBusyArmed)
                 bgProfMarkFrame(t0, t1, t2, (unsigned)bgFrameUploads, bgFrameUploadBytes);
+            /* 跟 FRAME 同一个 t2。放在入睡前，避免 IO 线程的记录插到两次上传明细中间。 */
+            if (bgProfUploadDetailShouldRecord(sampleFrame))
+                bgProfRecordTexUps(sampleFrame, bgFrameUps, bgFrameUpStored, t2);
 #endif
             SleepThread();
 #if BG_PROF
@@ -184,10 +280,24 @@ void rmEndFrame(void)
     }
 
 #if BG_PROF
+    {
+        int drawFlag = bgProfTakeVramSnap();
+
+        if (hires) {
+            /* hires 不打快照。run 也掐掉，免得切回普通模式时把两段重传粘成一段。 */
+            bgRunOn = 0;
+            bgRunFrame = 0;
+        } else if (profHaveT2 &&
+                   bgProfVramSnapshotShouldTake(hires, reupload, sampleFrame, runJustEnded, drawFlag)) {
+            /* nextFrame 会把 iUseCount 清零。快照必须在那之前，才看得到这一帧谁被绑过。 */
+            rmProfLogVram(profT2);
+        }
+    }
     // 无论这帧有没有写下 FRAME，下帧都从 0 开始计上传。hires 不记，但同样清掉，避免串到下一帧。
     bgFrameUploads = 0;
     bgFrameUploadBytes = 0;
     bgFrameUploadMax = 0;
+    bgFrameUpStored = 0;
 #endif
     gsKit_TexManager_nextFrame(gsGlobal);
 }
