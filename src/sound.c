@@ -9,6 +9,7 @@
 
 #include "include/sound.h"
 #include "include/opl.h"
+#include "include/texcache.h"
 #include "include/ioman.h"
 #include "include/themes.h"
 #include "include/ethsupport.h"
@@ -332,9 +333,14 @@ static void bgmThread(void *arg)
 static void bgmIoThread(void *arg)
 {
     int partsToRead, decodeTotal, bitStream, i;
+    u64 decStart;
+    u64 seekStart;
+    char partsId[12];
 
     do {
         WaitSema(inSema);
+        // 从这一批开始解码算到 ov_read 循环结束。短于 5ms 不记，否则音乐块会刷满缓冲。
+        decStart = bgProfNow();
         partsToRead = 1;
 
         while ((wrPtr + partsToRead < BGM_RING_BUFFER_COUNT) && (PollSema(inSema) == inSema))
@@ -353,9 +359,16 @@ static void bgmIoThread(void *arg)
                 LOG("BGM: I/O error while reading.\n");
                 terminateFlag = 1;
                 break;
-            } else if (ret == 0)
+            } else if (ret == 0) {
+                // 循环点单独记，用来区分解码本身慢和回头 seek 慢。
+                seekStart = bgProfNow();
                 ov_pcm_seek(vorbisFile, 0);
+                bgProfMarkSpan(BG_EV_BGM_SEEK, NULL, NULL, seekStart, 0);
+            }
         } while (decodeTotal > 0);
+
+        snprintf(partsId, sizeof(partsId), "%d", partsToRead);
+        bgProfMarkSpan(BG_EV_BGM_DEC, NULL, partsId, decStart, BG_PROF_BGM_MIN_US);
 
         wrPtr = (wrPtr + partsToRead) % BGM_RING_BUFFER_COUNT;
         for (i = 0; i < partsToRead; i++)
@@ -716,6 +729,7 @@ static void bgmLoadAndPlay(void)
 {
     struct audsrv_fmt_t audsrvFmt;
     int loaded = 0;
+    u64 seekStart;
 
     // bgmStop已请求停止时不再加载
     if (!terminateFlag)
@@ -727,7 +741,9 @@ static void bgmLoadAndPlay(void)
         bgmIsPlaying = 0;
     } else {
         vorbis_info *vi = ov_info(vorbisFile, -1);
+        seekStart = bgProfNow();
         ov_pcm_seek(vorbisFile, 0);
+        bgProfMarkSpan(BG_EV_BGM_SEEK, NULL, NULL, seekStart, 0);
 
         audsrvFmt.channels = vi->channels;
         audsrvFmt.freq = vi->rate;

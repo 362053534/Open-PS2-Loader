@@ -260,19 +260,19 @@ static const char *bgProfEvName(int ev)
     static const char *const names[BG_EV_COUNT] = {
         "KEY",
         "VISIT",
-        "RELOAD",
-        "QUEUE",
         "IO_START",
         "IO_DROP",
-        "LOOSE_DONE",
-        "PACK_LOCK",
-        "PICK",
-        "SEEK_DONE",
         "READ_DONE",
         "DECODE_DONE",
         "COMPACT_DONE",
         "PUBLISH",
         "DRAW",
+        "BGM_DEC",
+        "BGM_SEEK",
+        "FRAME_BUSY",
+        "PNG_INFO",
+        "PNG_ALLOC",
+        "PNG_ROWS",
     };
 
     if ((unsigned)ev >= (unsigned)BG_EV_COUNT)
@@ -321,7 +321,7 @@ static void bgProfFmtMs(char *dst, int cap, u64 ticks)
     snprintf(dst, (size_t)cap, "%s.%03u", num, frac);
 }
 
-static void bgProfStore(int ev, const char *suffix, const char *id, int arg)
+static void bgProfStore(int ev, const char *suffix, const char *id, int arg, u64 t)
 {
     bg_prof_rec_t *rec;
 
@@ -332,7 +332,7 @@ static void bgProfStore(int ev, const char *suffix, const char *id, int arg)
         return;
     }
     rec = &bgProfRecs[bgProfCount++];
-    rec->t = BG_PROF_NOW();
+    rec->t = t;
     rec->frame = (u32)guiFrameId;
     rec->arg = (s32)arg;
     rec->ev = (u8)ev;
@@ -346,7 +346,36 @@ void bgProfMark(int ev, const char *suffix, const char *id, int arg)
     if (bgProfPaused)
         return;
     BG_PROF_LOCK();
-    bgProfStore(ev, suffix, id, arg);
+    bgProfStore(ev, suffix, id, arg, BG_PROF_NOW());
+    BG_PROF_UNLOCK();
+}
+
+u64 bgProfNow(void)
+{
+    return BG_PROF_NOW();
+}
+
+void bgProfMarkSpan(int ev, const char *suffix, const char *id, u64 start, u32 minUs)
+{
+    u64 now;
+    u64 ticks;
+    u64 us;
+    u64 ticksPerMs;
+
+    // 短间隔直接丢掉，避免主线程每帧、BGM 每块都关一次中断。
+    if (bgProfPaused)
+        return;
+    now = BG_PROF_NOW();
+    ticks = now >= start ? now - start : 0;
+    ticksPerMs = (u64)BG_PROF_HZ / 1000u;
+    // 147456 tick = 1 ms = 1000 us。先乘后除，整数截断，和导出里的毫秒列同一套时钟。
+    us = ticks * 1000ull / ticksPerMs;
+    if (us < (u64)minUs)
+        return;
+    if (us > 2147483647ull)
+        us = 2147483647ull;
+    BG_PROF_LOCK();
+    bgProfStore(ev, suffix, id, (int)us, now);
     BG_PROF_UNLOCK();
 }
 
@@ -442,6 +471,20 @@ void bgProfDump(void)
 
 #else
 
+u64 bgProfNow(void)
+{
+    return 0;
+}
+
+void bgProfMarkSpan(int ev, const char *suffix, const char *id, u64 start, u32 minUs)
+{
+    (void)ev;
+    (void)suffix;
+    (void)id;
+    (void)start;
+    (void)minUs;
+}
+
 void bgProfMark(int ev, const char *suffix, const char *id, int arg)
 {
     (void)ev;
@@ -490,8 +533,6 @@ static void cacheQueueImageRequest(image_cache_t *cache, int cacheId, item_list_
     // 入队失败时必须同步回滚，否则启动流程会一直等待不存在的请求。
     if (ioPutRequest(IO_CACHE_LOAD_ART, req) != IO_OK)
         cacheCancelImageRequest(req);
-    else
-        BG_PROF_MARK(BG_EV_QUEUE, cache->suffix, value, cacheId);
 }
 
 // 加载其他图片时用的线程函数
@@ -536,7 +577,6 @@ static void cacheLoadImage1(void *data)
     int result;
     // 先取 ART2/ART 散文件，取不到且全局有图包时再从最快设备的图包取图
     result = handler->itemGetImage(handler, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, GS_PSM_CT24, ioReq->itemId, ioReq->compactBackground);
-    BG_PROF_MARK(BG_EV_LOOSE_DONE, ioReq->cache->suffix, ioReq->value, result);
     if (result < 0 && artPackIsActive(handler->mode, ioReq->cache->isPrefixRelative))
         result = artPackLoadImage(handler->mode, ioReq->cache->prefix, ioReq->cache->isPrefixRelative, ioReq->value, ioReq->cache->suffix, &entry->texture, ioReq->compactBackground);
 
@@ -1305,7 +1345,6 @@ static GSTEXTURE *cacheGetTextureQuietInternal(image_cache_t *cache, item_list_t
                 if (isBg && (cache != bgLoadCache || *UID != bgLoadUID) && artPackRandomActive()) {
                     if (!queueRequest)
                         return cacheQuietBgPrevTexture(cache);
-                    BG_PROF_MARK(BG_EV_RELOAD, cache->suffix, value, *UID);
                 } else {
                     entry->lastUsed = guiFrameId; // 命中：续期，防止本帧被其它封面复用
                     if (isBg)

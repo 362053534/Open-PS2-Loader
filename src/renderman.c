@@ -10,6 +10,7 @@
 #include "include/opl.h"
 #include "include/renderman.h"
 #include "include/ioman.h"
+#include "include/texcache.h"
 
 // Allocateable space in vram, as indicated in GsKit's code
 #define __VRAM_SIZE 4194304
@@ -111,7 +112,12 @@ void rmStartFrame(void)
 
 void rmEndFrame(void)
 {
+    // 首帧还没从 vsync 回来过。没武装时不记，避免用 0 时刻算出一段假的超长工作时间。
+    static u64 bgFrameBusyStart;
+    static int bgFrameBusyArmed;
+
     if (hires) {
+        // hires 的等待在 gsKit 内部，没有和 SleepThread 一样的返回点，不在这里记 FRAME_BUSY。
         gsKit_hires_sync(gsGlobal);
         gsKit_hires_flip(gsGlobal);
     } else {
@@ -122,7 +128,12 @@ void rmEndFrame(void)
         gsKit_finish();
 
         if (!gsGlobal->FirstFrame) {
+            // 主线程睡在这里等 vsync。上次醒来到这次入睡是本帧工作时间，满 10ms 才记。
+            if (bgFrameBusyArmed)
+                bgProfMarkSpan(BG_EV_FRAME_BUSY, NULL, NULL, bgFrameBusyStart, BG_PROF_FRAME_MIN_US);
             SleepThread();
+            bgFrameBusyStart = bgProfNow();
+            bgFrameBusyArmed = 1;
             guiWakeupCount = 0;
 
             if (gsGlobal->DoubleBuffering == GS_SETTING_ON) {

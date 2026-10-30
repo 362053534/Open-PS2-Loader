@@ -1153,7 +1153,7 @@ static void artCopyPixels(GSTEXTURE *tex, png_bytep *rows, size_t memSize)
     }
 }
 
-static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlpha, int compactBackground)
+static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlpha, int compactBackground, int profBg, const char *profSuf, const char *profId)
 {
     art_png_reader_t reader = {data, size};
     png_structp pngPtr;
@@ -1189,6 +1189,9 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     png_set_sig_bytes(pngPtr, 0);
     png_read_info(pngPtr, infoPtr);
     png_get_IHDR(pngPtr, infoPtr, &w, &h, &bitDepth, &colorType, &interlace, NULL, NULL);
+    // 头信息已经读完。只给 BG 记，避免封面解码把缓冲刷满。
+    if (profBg)
+        bgProfMark(BG_EV_PNG_INFO, profSuf, profId, 0);
     tex->Width = w;
     tex->Height = h;
 
@@ -1289,11 +1292,17 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
         rowBuf = malloc(rowBytes);
         if (!tex->Mem || !rowBuf)
             goto fail;
+        // 分配失败不记，免得把失败路径当成解码变慢。
+        if (profBg)
+            bgProfMark(BG_EV_PNG_ALLOC, profSuf, profId, 0);
         dst = (u16 *)tex->Mem;
         for (y = 0; y < tex->Height; y++) {
             png_read_row(pngPtr, rowBuf, NULL);
             texCompactRgbRowToCt16s(dst + (size_t)y * tex->Width, rowBuf, tex->Width, 3);
         }
+        // 流式 CT16S 边解码边压缩，行循环结束时转换也结束了。
+        if (profBg)
+            bgProfMark(BG_EV_PNG_ROWS, profSuf, profId, 0);
         png_read_end(pngPtr, NULL);
         free(rowBuf);
         rowBuf = NULL;
@@ -1309,8 +1318,12 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
         // （CT24 的分配大小按每像素 4 字节，比紧密排列的 3 字节行数据大，不能要求严格相等）
         if (rowBytes == 0 || !tex->Mem || (size_t)rowBytes * tex->Height > memSize)
             goto fail;
+        if (profBg)
+            bgProfMark(BG_EV_PNG_ALLOC, profSuf, profId, 0);
         for (y = 0; y < tex->Height; y++)
             png_read_row(pngPtr, (png_bytep)tex->Mem + (size_t)y * rowBytes, NULL);
+        if (profBg)
+            bgProfMark(BG_EV_PNG_ROWS, profSuf, profId, 0);
         png_read_end(pngPtr, NULL);
         png_destroy_read_struct(&pngPtr, &infoPtr, NULL);
         return 0; // Mem/Clut 所有权交给调用方（texcache）
@@ -1320,10 +1333,15 @@ static int artDecodePng(const u8 *data, size_t size, GSTEXTURE *tex, int dropAlp
     allRows = malloc((size_t)rowBytes * tex->Height);
     if (rowBytes == 0 || !tex->Mem || !rows || !allRows)
         goto fail;
+    if (profBg)
+        bgProfMark(BG_EV_PNG_ALLOC, profSuf, profId, 0);
     for (y = 0; y < tex->Height; y++)
         rows[y] = allRows + (size_t)y * rowBytes;
 
     png_read_image(pngPtr, rows);
+    // 行解码结束。后面的 artCopyPixels 才是调色板和通道转换，算在 DECODE_DONE 里。
+    if (profBg)
+        bgProfMark(BG_EV_PNG_ROWS, profSuf, profId, 0);
     artCopyPixels(tex, rows, memSize);
     png_read_end(pngPtr, NULL);
 
@@ -1468,7 +1486,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     u8 bucket, sufType, sufIndex;
     u8 *buf = NULL;
     size_t bufLen = 0, dataStart = 0;
-    int lo, hi, gi = -1, fd, haveEntry = 0, i, result;
+    int lo, hi, gi = -1, fd, haveEntry = 0, i, result, isBg = 0;
     u32 firstEntry, nextEntry, entryNum;
 
     if (!artValidMode(mode) || !isRelative || !folder || !value || !resultTex)
@@ -1484,9 +1502,10 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
 
     if (artNormalizeId(value, strlen(value), key) < 0 || artParseRequestSuffix(suffix, &sufType, &sufIndex) < 0)
         return ERR_BAD_FILE;
+    // 散图和封面的读盘已经排除，读和解码只留 BG，免得把缓冲刷满。
+    isBg = strcmp(suffix, "BG") == 0;
 
     pthread_mutex_lock(&artPackMutex);
-    BG_PROF_MARK(BG_EV_PACK_LOCK, suffix, value, 0);
     // 统一使用全局最快设备的图包，而不是请求设备自己的图包
     if (artPackBestMode == ART_PACK_NO_BEST) {
         pthread_mutex_unlock(&artPackMutex);
@@ -1552,7 +1571,6 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
 
     if (sufIndex >= ART_REQ_RANDOM_SCR2) {
         i = artPickRandomEntry(entries, entryNum, sufType, sufIndex, key, bucket);
-        BG_PROF_MARK(BG_EV_PICK, suffix, value, i >= 0 ? (int)ART_ENTRY_INDEX(entries[i]) : -1);
         if (i >= 0) {
             found = entries[i];
             haveEntry = 1;
@@ -1583,12 +1601,9 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
             if (lseek64(fd, (off64_t)ART_ENTRY_OFF(found), SEEK_SET) != (off64_t)ART_ENTRY_OFF(found)) {
                 artPackCloseBestFd();
             } else {
-                ssize_t got;
-                // EE 看不到 IOP FatFs 的 fast seek 是否生效，这里不另记状态。
-                // SEEK_DONE 到 READ_DONE 的间隔可以间接反映定位和读盘。
-                BG_PROF_MARK(BG_EV_SEEK_DONE, suffix, value, 0);
-                got = read(fd, buf, want);
-                BG_PROF_MARK(BG_EV_READ_DONE, suffix, value, (int)got);
+                ssize_t got = read(fd, buf, want);
+                if (isBg)
+                    BG_PROF_MARK(BG_EV_READ_DONE, suffix, value, (int)got);
                 if (got < 0) {
                     artPackCloseBestFd();
                 } else if (got >= ZIP_LOCAL_HDR_SIZE && artRd32(buf) == ZIP_SIG_LOCAL) {
@@ -1615,8 +1630,9 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
     }
 
-    result = artDecodePng(buf + dataStart, bufLen, resultTex, texSuffixDropsAlpha(suffix), compactBackground);
-    BG_PROF_MARK(BG_EV_DECODE_DONE, suffix, value, result);
+    result = artDecodePng(buf + dataStart, bufLen, resultTex, texSuffixDropsAlpha(suffix), compactBackground, isBg, suffix, value);
+    if (isBg)
+        BG_PROF_MARK(BG_EV_DECODE_DONE, suffix, value, result);
     free(buf);
     return result;
 }
