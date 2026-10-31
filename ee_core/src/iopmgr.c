@@ -281,8 +281,12 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             LoadOPLModule(OPL_MODULE_ID_SMBINIT, 0, 0, NULL);
             break;
         case HDD_MODE:
-            LoadOPLModule(OPL_MODULE_ID_USBD, 0, 11, "thpri=2,3");
-            LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
+        case BDM_HDD_MODE:
+            /* 仅白名单游戏（EnableHddUsbd）加载 USBD，与 EE 侧打包条件一致。 */
+            if (config->EnableHddUsbd) {
+                LoadOPLModule(OPL_MODULE_ID_USBD, 0, 11, "thpri=2,3");
+                LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
+            }
             break;
         case BDM_ILK_MODE:
             LoadOPLModule(OPL_MODULE_ID_ILINK, 0, 0, NULL);
@@ -290,10 +294,6 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             break;
         case BDM_M4S_MODE:
             LoadOPLModule(OPL_MODULE_ID_MX4SIOBD, 0, sizeof("g"), "g");
-            break;
-        case BDM_HDD_MODE:
-            LoadOPLModule(OPL_MODULE_ID_USBD, 0, 11, "thpri=2,3");
-            LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
             break;
     };
 

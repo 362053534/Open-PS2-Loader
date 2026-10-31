@@ -49,6 +49,8 @@ int sbCreateSemaphore(void);
 int sbReadList(base_game_info_t **list, const char *prefix, int *fsize, int *gamecount);
 struct _item_list_t;
 int sbGetCompatMask(config_set_t *configSet, int defaultMode1);
+/* HDD/APA 是否需要附带 USBD（仅白名单游戏，如地狱犬挽歌日版）。 */
+int sbNeedHddUsbd(const char *startup);
 int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex, int defaultMode1);
 void sbUnprepare(void *pCommon);
 void sbRebuildULCfg(base_game_info_t **list, const char *prefix, int gamecount, int excludeID);

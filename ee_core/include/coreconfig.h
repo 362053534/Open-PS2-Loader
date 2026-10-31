@@ -69,6 +69,9 @@ struct EECoreConfig_t
     int PadEmuSettings;
     int PadMacroSettings;
 
+    /* HDD/APA 仅白名单游戏才加载 USBD（见 sbNeedHddUsbd）。 */
+    int EnableHddUsbd;
+
     int EnableGSMOp;
     struct GsmConfig_t GsmConfig;
 };
