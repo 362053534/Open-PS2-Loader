@@ -18,12 +18,12 @@
  * 线程模型：
  *  - artPackDeviceInit/End 在设备初始化/清理的线程中执行；
  *  - artPackLoadImage 在 IO 工作线程中执行；
- *  - 所有设备状态由 artPackMutex 保护。建索引耗时较长，在锁外完成，最后在锁内发布；
+ *  - 所有设备状态由 artPackMutex 保护。索引（含重建）在 artPackLoadBestEntries 中持锁完成，只在 IO 线程执行；
  *  - 只有全局最快设备的 art.zip 保持打开，其 art.idx 条目表也常驻内存；其它设备不占用 fd，
  *    取图时按需读取 art.idx；
- *  - 最快设备的条目表只在启动时载入一次：所有设备探测完、选默认页前由 artPackPreloadBestEntries
- *    在 IO 线程载入；载入失败或之后最快设备变化时不再整表载入，取图回退为按需读 art.idx；
- *  - 最快设备的 fd 为懒加载：在其第一次取图时才打开；
+ *  - 设备初始化只找到图包，不打开；最快设备的索引（游戏表 + 条目表）在所有设备探测完、选默认页前
+ *    由 artPackPreloadBestEntries 在 IO 线程载入，只打开一次 art.zip 并保留为常驻 fd；
+ *    之后最快设备变化时，在其第一次取图时载入；条目表载入失败时取图回退为按需读 art.idx；
  *    artPackDeviceEnd 只关闭 fd、释放内存并重新选择最快设备，不做其它文件 IO；
  *  - 每个设备的 artPackDeviceEnd 都会在卸载前关闭该 fd，避免设备卸载（如 PFS 的
  *    PDIOC_CLOSEALL）后留下失效 fd。
@@ -273,47 +273,9 @@ static void artPackDropIdxEntries(art_pack_dev_t *dev)
     dev->memEntriesFromIdx = ART_PACK_ENTRIES_RESIDENT;
 }
 
-// 把最快设备的整个条目表一次读入内存；失败时保持 NULL，取图回退为按需读 art.idx。调用方须持有 artPackMutex
-static void artPackLoadBestEntries(void)
-{
-    art_pack_dev_t *dev;
-    art_idx_entry_t *list;
-    size_t bytes;
-    int fd;
-
-    if (artPackBestMode == ART_PACK_NO_BEST)
-        return;
-    dev = &artPackDevs[artPackBestMode];
-    if (!dev->active || dev->memEntries || dev->entryCount == 0)
-        return;
-    bytes = (size_t)dev->entryCount * sizeof(art_idx_entry_t);
-    list = malloc(bytes);
-    if (!list)
-        return;
-    fd = open(dev->idxPath, O_RDONLY);
-    if (fd < 0 || artReadAt(fd, (u64)dev->entryTableOff, list, bytes) < 0) {
-        if (fd >= 0)
-            close(fd);
-        free(list);
-        LOG("ARTPACK: cannot load entries from %s\n", dev->idxPath);
-        return;
-    }
-    close(fd);
-    dev->memEntries = list;
-    dev->memEntriesFromIdx = ART_PACK_ENTRIES_FROM_IDX;
-}
-
-// 启动时所有设备探测完后调用一次（IO 线程），把最快设备的条目表整表载入内存
-void artPackPreloadBestEntries(void)
-{
-    pthread_mutex_lock(&artPackMutex);
-    artPackLoadBestEntries();
-    pthread_mutex_unlock(&artPackMutex);
-}
-
 // 在已激活的设备中选出 rank 最小者（相同时取 mode 较小者）；调用方须持有 artPackMutex。
 // 只做选择与清理（释放旧设备条目表、关闭不属于新设备的 fd），不做任何文件 IO；
-// 新设备的 fd 在 artPackLoadImage 中懒加载；条目表不再补载，取图按需读 art.idx
+// 新设备的 fd 与索引由 artPackLoadBestEntries 载入
 static void artPackSelectBest(void)
 {
     int i;
@@ -1427,13 +1389,65 @@ fail:
 
 /* ---------------- 对外接口 ---------------- */
 
+// 载入最快设备的索引：只打开一次 art.zip（保留为常驻 fd），用它读游戏表，嵌入索引时条目表也从它整表读入内存。
+// 已载入（games 非空）时直接返回；载入失败的设备置为未激活并改选下一个设备。调用方须持有 artPackMutex
+static void artPackLoadBestEntries(void)
+{
+    art_pack_dev_t *dev;
+    art_idx_entry_t *list;
+    off64_t archiveSize;
+    size_t bytes;
+    int fd, idxFd;
+
+    while (artPackBestMode != ART_PACK_NO_BEST && !artPackDevs[artPackBestMode].games) {
+        dev = &artPackDevs[artPackBestMode];
+        fd = artPackEnsureBestFd();
+        archiveSize = (fd == ART_PACK_FD_NONE) ? -1 : lseek64(fd, 0, SEEK_END);
+        // 先试嵌入 zip 的索引，再试外部同名 .idx，最后才从中央目录重建
+        if (archiveSize > 0 && (artLoadEmbeddedIndex(fd, (u64)archiveSize, dev) == 0 || artLoadIndex((u64)archiveSize, dev) == 0)) {
+            LOG("ARTPACK: index loaded %s (%u games)\n", dev->idxPath, (unsigned int)dev->gameCount);
+        } else if (archiveSize > 0) {
+            LOG("ARTPACK: rebuilding index for %s ...\n", dev->zipPath);
+            if (artBuildIndex(fd, (u64)archiveSize, dev) < 0)
+                archiveSize = -1;
+        }
+        if (archiveSize <= 0) {
+            LOG("ARTPACK: index load failed, pack disabled %s\n", dev->zipPath);
+            artFreeDev(dev);
+            artPackSelectBest();
+            continue;
+        }
+        // 写索引失败时条目表已常驻内存；否则整表读入，嵌入索引直接用已打开的 zip fd
+        if (dev->memEntries || dev->entryCount == 0)
+            continue;
+        bytes = (size_t)dev->entryCount * sizeof(art_idx_entry_t);
+        list = malloc(bytes);
+        idxFd = strcmp(dev->idxPath, dev->zipPath) ? open(dev->idxPath, O_RDONLY) : fd;
+        if (list && idxFd >= 0 && artReadAt(idxFd, (u64)dev->entryTableOff, list, bytes) == 0) {
+            dev->memEntries = list;
+            dev->memEntriesFromIdx = ART_PACK_ENTRIES_FROM_IDX;
+        } else {
+            free(list);
+            LOG("ARTPACK: cannot load entries from %s\n", dev->idxPath);
+        }
+        if (idxFd >= 0 && idxFd != fd)
+            close(idxFd);
+    }
+}
+
+// 启动时所有设备探测完后调用一次（IO 线程），载入最快设备的索引
+void artPackPreloadBestEntries(void)
+{
+    pthread_mutex_lock(&artPackMutex);
+    artPackLoadBestEntries();
+    pthread_mutex_unlock(&artPackMutex);
+}
+
 int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank)
 {
     art_pack_dev_t dev;
     char artDir[ART_PACK_PATH_MAX];
     char idxName[ART_PACK_PATH_MAX];
-    off64_t archiveSize;
-    int zipFd;
     int findRet;
 
     // 参数无效时未能探测 ART2，返回 NO_ART2，保证 NO_PACK 只表示 ART2 已确认存在
@@ -1467,30 +1481,7 @@ int artPackDeviceInit(int mode, const char *prefix, const char *sep, int rank)
     // 索引与图包同在 ART2 目录，名字跟随图包名（索引由本模块按同名写出，无需再扫目录）
     snprintf(dev.idxPath, sizeof(dev.idxPath), "%s%s", artDir, idxName);
 
-    zipFd = open(dev.zipPath, O_RDONLY);
-    if (zipFd < 0) {
-        LOG("ARTPACK: cannot open %s\n", dev.zipPath);
-        return ART_PACK_INIT_NO_PACK;
-    }
-    archiveSize = lseek64(zipFd, 0, SEEK_END);
-
-    // 先试嵌入 zip 的索引，再试外部同名 .idx，最后才从中央目录重建
-    if (archiveSize > 0 && (artLoadEmbeddedIndex(zipFd, (u64)archiveSize, &dev) == 0 || artLoadIndex((u64)archiveSize, &dev) == 0)) {
-        LOG("ARTPACK: index loaded %s (%u games)\n", dev.idxPath, (unsigned int)dev.gameCount);
-    } else if (archiveSize > 0) {
-        LOG("ARTPACK: rebuilding index for %s ...\n", dev.zipPath);
-        if (artBuildIndex(zipFd, (u64)archiveSize, &dev) < 0) {
-            LOG("ARTPACK: index build failed, pack disabled\n");
-            close(zipFd);
-            artFreeDev(&dev);
-            return ART_PACK_INIT_NO_PACK;
-        }
-    } else {
-        close(zipFd);
-        return ART_PACK_INIT_NO_PACK;
-    }
-    close(zipFd);
-
+    // 这里不打开图包、不读索引（games 为空即未载入），选出最快设备后由 artPackLoadBestEntries 只打开一次并载入
     dev.active = 1;
     dev.rank = rank;
     pthread_mutex_lock(&artPackMutex);
@@ -1570,6 +1561,8 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
         return ERR_BAD_FILE;
 
     pthread_mutex_lock(&artPackMutex);
+    // 最快设备可能在运行中变化，其索引尚未载入时先载入
+    artPackLoadBestEntries();
     // 统一使用全局最快设备的图包，而不是请求设备自己的图包
     if (artPackBestMode == ART_PACK_NO_BEST) {
         pthread_mutex_unlock(&artPackMutex);
