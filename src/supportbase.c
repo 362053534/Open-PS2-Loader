@@ -1857,7 +1857,8 @@ static int sbUseSmbBatchWait(const char *startup)
     static const char *const games[] = {
         "SLUS_206.68", /* 变形金刚（美国版） */
         "SLES_523.88", /* 变形金刚（欧洲版） */
-        "SLPM_654.07"  /* 变形金刚（日本版） */
+        "SLPM_654.07", /* 变形金刚（日本版） */
+        "SCUS_971.24", /* Jak and Daxter: The Precursor Legacy（美版） */
     };
     unsigned int i;
 
