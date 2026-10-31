@@ -1890,6 +1890,11 @@ static const struct
     const char *startup;
     int compat;
 } sbAutoCompatList[] = {
+    {"SCUS_971.24", COMPAT_MODE_3 | COMPAT_MODE_6}, // Jak and Daxter: The Precursor Legacy（美版）
+    {"SCES_503.61", COMPAT_MODE_3 | COMPAT_MODE_6}, // Jak and Daxter: The Precursor Legacy（欧版）
+    {"SCPS_150.21", COMPAT_MODE_3 | COMPAT_MODE_6}, // 杰克与达斯特：旧世界的遗产（日版）
+    {"SCPS_192.10", COMPAT_MODE_3 | COMPAT_MODE_6}, // 杰克与达斯特：旧世界的遗产（日版 the Best）
+    {"SCPS_560.03", COMPAT_MODE_3 | COMPAT_MODE_6}, // Jak and Daxter: The Precursor Legacy（韩版）
     {"SLPM_664.19", COMPAT_MODE_3 | COMPAT_MODE_6}, // 北欧女神2 (日版)
     {"SCPS_150.10", COMPAT_MODE_6}, // GT赛车概念版2001东京 (日版)
     {"SCPS_550.05", COMPAT_MODE_6}, // GT赛车概念版2001东京 (日版)
