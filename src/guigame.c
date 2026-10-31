@@ -1227,49 +1227,11 @@ void guiGameRemoveGlobalSettings(config_set_t *configGame)
 void guiGameRemoveSettings(config_set_t *configSet)
 {
     if (menuCheckParentalLock() == 0) {
-        configRemoveKey(configSet, CONFIG_ITEM_CONFIGSOURCE);
-        configRemoveKey(configSet, CONFIG_ITEM_DMA);
-        configRemoveKey(configSet, CONFIG_ITEM_COMPAT);
-        configRemoveKey(configSet, CONFIG_ITEM_MANUAL_MODE1);
-        configRemoveKey(configSet, CONFIG_ITEM_DNAS);
-        configRemoveKey(configSet, CONFIG_ITEM_ALTSTARTUP);
-
-        // DMA
-        configRemoveKey(configSet, CONFIG_ITEM_DMASOURCE);
-
-        // GSM
-        configRemoveKey(configSet, CONFIG_ITEM_GSMSOURCE);
-        configRemoveKey(configSet, CONFIG_ITEM_ENABLEGSM);
-        configRemoveKey(configSet, CONFIG_ITEM_GSMVMODE);
-        configRemoveKey(configSet, CONFIG_ITEM_GSMXOFFSET);
-        configRemoveKey(configSet, CONFIG_ITEM_GSMYOFFSET);
-        configRemoveKey(configSet, CONFIG_ITEM_GSMFIELDFIX);
-
-        // Cheats
-        configRemoveKey(configSet, CONFIG_ITEM_CHEATSSOURCE);
-        configRemoveKey(configSet, CONFIG_ITEM_ENABLECHEAT);
-        configRemoveKey(configSet, CONFIG_ITEM_CHEATMODE);
-
-        // OSD Language
-        configRemoveKey(configSet, CONFIG_ITEM_OSD_SETTINGS_LANGID);
-        configRemoveKey(configSet, CONFIG_ITEM_OSD_SETTINGS_TV_ASP);
-        configRemoveKey(configSet, CONFIG_ITEM_OSD_SETTINGS_VMODE);
-        configRemoveKey(configSet, CONFIG_ITEM_OSD_SETTINGS_SOURCE);
-        configRemoveKey(configSet, CONFIG_ITEM_OSD_SETTINGS_ENABLE);
-
-#ifdef PADEMU
-        // PADEMU
-        configRemoveKey(configSet, CONFIG_ITEM_PADEMUSOURCE);
-        configRemoveKey(configSet, CONFIG_ITEM_ENABLEPADEMU);
-        configRemoveKey(configSet, CONFIG_ITEM_PADEMUSETTINGS);
-        configRemoveKey(configSet, CONFIG_ITEM_PADMACROSETTINGS);
-        configRemoveKey(configSet, CONFIG_ITEM_PADMACROSOURCE);
-#endif
-        // VMC
-        configRemoveVMC(configSet, 0);
-        configRemoveVMC(configSet, 1);
-
-        menuSaveConfig();
+        // 单游戏设置对应 CFG/<id>.cfg：删文件，避免只清键后再写出空 cfg
+        if (configSet->filename)
+            unlink(configSet->filename);
+        configClear(configSet);
+        configSet->modified = 0; // 盘上已删，勿再 configWrite 重建
     }
 }
 
