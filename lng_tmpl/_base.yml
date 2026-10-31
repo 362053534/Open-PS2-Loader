@@ -741,7 +741,7 @@ gui_strings:
 - label: HINT_TXTRENAME
   string: 生成txt文件，用于将游戏名映射为任意文字
 - label: HINT_ENABLE_WRITE
-  string: OPL的删除功能并不是绝对安全，请谨慎使用
+  string: 可在OPL里直接删除游戏和虚拟存档(慎用)
 - label: HINT_THEME
   string: 内置两套主题可供选择，第三方主题请放入THM文件夹
 - label: CHEAT_TOGGLE_ALL

@@ -2709,7 +2709,8 @@ static int loadLwnbdSvr(void)
     else
         strcpy(config.defaultexport, gExportName);
 
-    config.readonly = !gEnableWrite;
+    // NBD 写入不受「解锁删除权限」(gEnableWrite) 限制
+    config.readonly = 0;
 
     // see gETHStartMode, gNetworkStartup ? this is slow, so if we don't have to do it (like debug build).
     ret = ethLoadInitModules();
@@ -2929,7 +2930,7 @@ static void setDefaults(void)
     gPCPassword[0] = '\0';
     gNetworkStartup = ERROR_ETH_NOT_STARTED;
     gHDDSpindown = 0; // 默认不待机
-    gScrollSpeed = 1;
+    gScrollSpeed = 2;
     gExitPath[0] = '\0';
     gDefaultDevice = BDM_MODE;
     gAutoMode1 = 1;
