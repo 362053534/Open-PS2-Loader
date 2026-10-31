@@ -12,6 +12,7 @@
 #include "include/gui.h"
 #include "include/ethsupport.h"
 #include "include/hddsupport.h"
+#include "include/supportbase.h"
 #include "include/util.h"
 #include "include/pad.h"
 #include "include/system.h"
@@ -552,7 +553,8 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
         irxptr_tab[modcount].info = size_smbinit_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_SMBINIT);
         irxptr_tab[modcount++].ptr = (void *)&smbinit_irx;
     }
-    if (modules & CORE_IRX_HDD) {
+    /* HDD/APA 仅白名单游戏打包 USBD，避免 Jak 等对 USBD 敏感的游戏被全局带上。 */
+    if ((modules & CORE_IRX_HDD) && sbNeedHddUsbd(startup)) {
         irxptr_tab[modcount].info = size_usbd_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_USBD);
         irxptr_tab[modcount++].ptr = (void *)&usbd_irx;
         irxptr_tab[modcount].info = size_usbmass_bd_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_USBMASSBD);
@@ -1009,6 +1011,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     strncpy(config->GameID, filename, CORE_GAME_ID_MAX_LEN);
 
     config->_CompatMask = compatflags;
+    config->EnableHddUsbd = sbNeedHddUsbd(filename);
 
 #ifdef __DEBUG
 
