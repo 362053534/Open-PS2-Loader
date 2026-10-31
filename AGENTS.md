@@ -20,3 +20,20 @@
    - 调用 Grok Build 一律通过 `/grok-build-mac` 技能（Mac 上的 `~/grok-bridge/gb` 桥接脚本），不再直接运行 `grok` 命令；并用该技能的进度汇报功能向用户汇报进度（按里程碑一句话汇报，审批、卡住、出错、完成等真实状态优先）。
    - 模型沿用 `grok-4.7-build-fast`，推理强度 `xhigh`（对应 `grok` 的 `-m grok-4.7-build-fast --effort xhigh`；通过 gb 调用时用 `--model grok-4.7-build-fast`，gb 的 `--effort` 默认就是 xhigh，不要改小）。
    - 模型名以 `grok models` 列出的为准；`grok-4.7-xhigh-fast` 这类写法会报 unknown model id，xhigh 只能通过 `--effort` 指定。
+
+## 上机验证流程（云电脑 PCSX2）
+
+凡是需要运行验证的改动（启动流程、图包加载、金手指、列表刷新、性能对比等），统一按下面的流程在云电脑上验证，不在 Mac 上安装 PCSX2 或 Docker。
+
+1. 先写测试（TDD），在本地单元测试通过，再进入上机验证。
+2. 在云电脑用 Docker 编译 debug 版 ELF。镜像用 GitHub 账号 `362053534` 发布的最新版本。
+3. 准备运行环境：
+   - BIOS 使用 `SCPH-39001.bin`，由用户提供，不放进仓库。
+   - 测试盘二选一：BDM（FAT32 测试盘，里面是假 ISO 和测试用图包 zip 子集）或 APA 硬盘镜像（`+OPL` 分区，OPL 的 APA 启动模式设为 auto）。
+   - 假 ISO 来自 `/Volumes/feng 1t/OPL/DVD` 和 `/Volumes/feng 1t/OPL/POPS`。图包只取与假 ISO 游戏 ID 对应的图，不用完整的 `OPLM_ART_2026.zip`。
+4. 用 PCSX2 以 `-batch -nogui -elf` 方式运行 ELF，截图并保存 emulog。日志里的 `BGDBG`、`ABT` 等标记用来判断结果。
+5. 性能对比必须 A/B：同一台云电脑、同一镜像、同一测试盘，每个版本至少启动 5 次，报告中位数和最小、最大值。
+6. 结论只写真正跑到的结果。没有跑到或没有验证的部分，明确写「未验证」，不推测成结果。
+7. 云电脑上的文件统一放在 `/workspace/opl-debug/` 或 `/workspace/opl-ab/` 下，测试结果保存为 `results.md` 之类的文件，便于复查。
+
+验证完成后仍然不提交，提交由用户决定。
