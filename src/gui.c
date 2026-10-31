@@ -785,13 +785,13 @@ void guiShowUIConfig(void)
     int previousTheme;
     int previousTxtRename;
 
-    const char *coverArtBG[] = {"背景关", "背景开", NULL};
-    const char *coverArtCOV[] = {"封面关", "封面开", NULL};
-    const char *coverArtICO[] = {"光碟关", "光碟开", NULL};
-    const char *coverArtMode[] = {"性能模式(仅支持PNG)", "兼容模式(JPG & PNG)", NULL};
+    const char *coverArtBG[] = {_l(_STR_COVERART_BG_OFF), _l(_STR_COVERART_BG_ON), NULL};
+    const char *coverArtCOV[] = {_l(_STR_COVERART_COV_OFF), _l(_STR_COVERART_COV_ON), NULL};
+    const char *coverArtICO[] = {_l(_STR_COVERART_ICO_OFF), _l(_STR_COVERART_ICO_ON), NULL};
+    const char *coverArtMode[] = {_l(_STR_COVERARTMODE_PERF), _l(_STR_COVERARTMODE_COMPAT), NULL};
     // 下标0~4 对应同屏封面数 1/3/5/7/9
-    const char *artRandom[] = {"随机取图关", "随机取图开", NULL};
-    const char *cfCoverCount[] = {"同屏封面数1", "同屏封面数3", "同屏封面数5", "同屏封面数7", "同屏封面数9", NULL};
+    const char *artRandom[] = {_l(_STR_ART_RANDOM_OFF), _l(_STR_ART_RANDOM_ON), NULL};
+    const char *cfCoverCount[] = {_l(_STR_CF_COVER_COUNT_1), _l(_STR_CF_COVER_COUNT_3), _l(_STR_CF_COVER_COUNT_5), _l(_STR_CF_COVER_COUNT_7), _l(_STR_CF_COVER_COUNT_9), NULL};
     int previousCfCoverCount;
 
 reselect_video_mode:
@@ -1884,8 +1884,7 @@ void guiMainLoop(void)
             unsigned int unavailableTypes = menuGetBDMStartupUnavailableTypes();
             char unavailableDevices[64] = "";
             char deviceAlertMessage[96];
-            const int english = lngGetValue()[0] == 'E';
-            const char *separator = english ? ", " : "、";
+            const char *separator = _l(_STR_MSG_LIST_SEPARATOR);
 
             bdmDeviceAlertPending = 0; // 防止重复弹窗
             if (unavailableTypes & BDM_STARTUP_TYPE_USB)
@@ -1907,7 +1906,7 @@ void guiMainLoop(void)
             }
 
             if (unavailableDevices[0]) {
-                snprintf(deviceAlertMessage, sizeof(deviceAlertMessage), english ? "%s detection timed out. Device compatibility issue." : "%s 检测超时，可使用“手动刷新”重试", unavailableDevices);
+                snprintf(deviceAlertMessage, sizeof(deviceAlertMessage), _l(_STR_MSG_DEVICE_DETECT_TIMEOUT), unavailableDevices);
                 guiMsgBox(deviceAlertMessage, 0, NULL);
             }
         }
@@ -1915,23 +1914,17 @@ void guiMainLoop(void)
             // 如果txt被创建，则弹出提示框
             if (txtFileCreated) {
                 txtFileCreated = 0; // 防止重复弹窗
-                if (lngGetValue()[0] == 'E')
-                    guiMsgBox("The txt file has been created!", 0, NULL);
-                else
-                    guiMsgBox("txt文件已创建，可通过txt映射中文名！", 0, NULL);
+                guiMsgBox(_l(_STR_MSG_TXT_CREATED), 0, NULL);
             } else if (txtFileRebuilded) {
                 txtFileRebuilded = 0; // 防止重复弹窗
-                if (lngGetValue()[0] == 'E')
-                    guiMsgBox("The txt file has been rebuilt!", 0, NULL);
-                else
-                    guiMsgBox("txt文件已通过缓存重建！", 0, NULL);
+                guiMsgBox(_l(_STR_MSG_TXT_REBUILT), 0, NULL);
             }
             if (gHddFormatHint == HDD_FORMAT_HINT_NEED_BDMHDD) {
                 gHddFormatHint = HDD_FORMAT_HINT_NONE;
-                guiMsgBox(lngGetValue()[0] == 'E' ? "Internal HDD is exFAT. Enable HDD(exFAT) in BDM settings." : "内置exFAT硬盘，应启用BDM模式的HDD(exFAT)功能", 0, NULL);
+                guiMsgBox(_l(_STR_MSG_HDD_EXFAT_HINT), 0, NULL);
             } else if (gHddFormatHint == HDD_FORMAT_HINT_NEED_APA) {
                 gHddFormatHint = HDD_FORMAT_HINT_NONE;
-                guiMsgBox(lngGetValue()[0] == 'E' ? "Internal HDD is APA. Enable HDD(APA) start mode." : "内置APA硬盘，应启用HDD(APA)启动模式", 0, NULL);
+                guiMsgBox(_l(_STR_MSG_HDD_APA_HINT), 0, NULL);
             }
         }
 

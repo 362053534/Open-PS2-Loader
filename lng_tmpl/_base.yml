@@ -744,7 +744,81 @@ gui_strings:
   string: 可在OPL里直接删除游戏和虚拟存档(慎用)
 - label: HINT_THEME
   string: 内置两套主题可供选择，第三方主题请放入THM文件夹
+- label: HINT_LANGUAGE
+  string: 将FGOPL语言包放到LNG里，以支持更多语言
+- label: START_MODE_SETTINGS
+  string: 启动模式设置
+- label: DEVICE_SWITCH
+  string: 设备开关 (未使用的设备应关闭，以提升启动速度)
+- label: APAISO
+  string: HDD(APA)直读ISO
+- label: AUTODETECT_PS1APPS
+  string: APPS & PS1自动识别
+- label: AUTO_MODE1
+  string: 自动开启模式1 (提高兼容性)
+- label: COVERART_BG_OFF
+  string: 背景关
+- label: COVERART_BG_ON
+  string: 背景开
+- label: COVERART_COV_OFF
+  string: 封面关
+- label: COVERART_COV_ON
+  string: 封面开
+- label: COVERART_ICO_OFF
+  string: 光碟关
+- label: COVERART_ICO_ON
+  string: 光碟开
+- label: COVERARTMODE_PERF
+  string: 性能模式(仅支持PNG)
+- label: COVERARTMODE_COMPAT
+  string: 兼容模式(JPG & PNG)
+- label: ART_RANDOM_OFF
+  string: 随机取图关
+- label: ART_RANDOM_ON
+  string: 随机取图开
+- label: CF_COVER_COUNT_1
+  string: 同屏封面数1
+- label: CF_COVER_COUNT_3
+  string: 同屏封面数3
+- label: CF_COVER_COUNT_5
+  string: 同屏封面数5
+- label: CF_COVER_COUNT_7
+  string: 同屏封面数7
+- label: CF_COVER_COUNT_9
+  string: 同屏封面数9
+- label: GSM_VMODE_480I_NORMAL
+  string: 480i常规模式(CRT适用)
+- label: GSM_VMODE_480I_SHRINK
+  string: 480i收缩模式(现代电视可横向拉伸到4比3)
+- label: DMA_UDMA4_DEFAULT
+  string: UDMA 4 默认模式
+- label: DMA_UDMA5_HIGHEST
+  string: UDMA 5 当前硬盘最高模式
+- label: DMA_UDMA6_HIGHEST
+  string: UDMA 6 当前硬盘最高模式
+- label: DMA_UDMA7_HIGHEST
+  string: UDMA 7 当前硬盘最高模式
+- label: DMA_UDMA7_EXTREME
+  string: UDMA 7 极速模式
+- label: DMA_HDD_ONLY
+  string: <HDD才能开启>
 - label: CHEAT_TOGGLE_ALL
   string: 全选/全不选
 - label: CHEAT_SAVE_AND_RUN
   string: 保存并运行
+- label: THEME_COVERFLOW
+  string: 内置-封面流主题
+- label: THEME_LIST
+  string: 内置-列表主题
+- label: MSG_DEVICE_DETECT_TIMEOUT
+  string: "%s 检测超时，可使用“手动刷新”重试"
+- label: MSG_TXT_CREATED
+  string: txt文件已创建，可通过txt映射中文名！
+- label: MSG_TXT_REBUILT
+  string: txt文件已通过缓存重建！
+- label: MSG_HDD_EXFAT_HINT
+  string: 内置exFAT硬盘，应启用BDM模式的HDD(exFAT)功能
+- label: MSG_HDD_APA_HINT
+  string: 内置APA硬盘，应启用HDD(APA)启动模式
+- label: MSG_LIST_SEPARATOR
+  string: 、

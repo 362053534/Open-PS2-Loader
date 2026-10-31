@@ -383,8 +383,8 @@ void guiGameShowGSConfig(void)
     const char *settingsSource[] = {_l(_STR_GLOBAL_SETTINGS), _l(_STR_PERGAME_SETTINGS), NULL};
     // clang-format off
     const char *gsmvmodeNames[] = {
-        "480i常规模式(CRT适用)",
-        "480i收缩模式(现代电视可横向拉伸到4比3)",
+        _l(_STR_GSM_VMODE_480I_NORMAL),
+        _l(_STR_GSM_VMODE_480I_SHRINK),
         "PAL",
         "PAL Non Interlaced",
         "PAL @60Hz",
@@ -997,20 +997,20 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
         diaSetEnum(diaCompatConfig, COMPAT_DMASOURCE, settingsSource);
         int ataHighestUDMAMode = getHighestUdmaMode();
         if (ataHighestUDMAMode == 5) {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5 当前硬盘最高模式", "UDMA 6", "UDMA 7 极速模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", _l(_STR_DMA_UDMA4_DEFAULT), _l(_STR_DMA_UDMA5_HIGHEST), "UDMA 6", _l(_STR_DMA_UDMA7_EXTREME), NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         } else if (ataHighestUDMAMode == 6) {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5", "UDMA 6 当前硬盘最高模式", "UDMA 7 极速模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", _l(_STR_DMA_UDMA4_DEFAULT), "UDMA 5", _l(_STR_DMA_UDMA6_HIGHEST), _l(_STR_DMA_UDMA7_EXTREME), NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         } else if (ataHighestUDMAMode == 7) {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5", "UDMA 6", "UDMA 7 当前硬盘最高模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", _l(_STR_DMA_UDMA4_DEFAULT), "UDMA 5", "UDMA 6", _l(_STR_DMA_UDMA7_HIGHEST), NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         } else {
-            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", "UDMA 4 默认模式", "UDMA 5", "UDMA 6", "UDMA 7 极速模式", NULL};
+            const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", _l(_STR_DMA_UDMA4_DEFAULT), "UDMA 5", "UDMA 6", _l(_STR_DMA_UDMA7_EXTREME), NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
         }
     } else {
-        const char *dmaModes[] = {"<HDD才能开启>", NULL};
+        const char *dmaModes[] = {_l(_STR_DMA_HDD_ONLY), NULL};
         diaSetEnum(diaCompatConfig, COMPAT_DMASOURCE, dmaModes);
         diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);
     }
