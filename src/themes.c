@@ -1542,9 +1542,9 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
     int renderCount = coverCount;
     int renderCenterIndex = centerIndex;
     if (isAnimating) {
-        // 同屏只显示 1 张封面时没有相邻封面可供滑动，也不留过渡槽位：动画一触发就直接切到目标封面，
-        // 上一张封面当帧消失（与动画速度为 0 走同一分支）。
-        if (gCoverflowActiveAnimSpeed <= 0 || coverCount == 1) {
+        // 同屏只显示 1 张封面时也保留单步和翻页动画：isAnimating 要持续到动画时长结束，
+        // 快速切封面时才能打断动画、激活连按cd，否则每次切换都会重新加载 BG。
+        if (gCoverflowActiveAnimSpeed <= 0) {
             isAnimating = 0;
             animationStartItem = NULL;
             animationSteps = 1;
@@ -1577,11 +1577,14 @@ static void drawCoverFlow(struct menu_list *menu, struct submenu_list *item, con
         // prev(+1)：起点在目标右侧，因此额外槽位放在右侧。
         // 单步（steps 为 1）同样保留 1 个额外槽位，让被挤出窗口的尾部封面随整排滑出，
         // 到动画结束或被下一次动画截断时才消失，而不是动画一开始就消失。
-        renderCount = coverCount + steps;
-        if (renderCount > COVERFLOW_RENDER_MAX)
-            renderCount = COVERFLOW_RENDER_MAX;
-        if (animationDirection < 0)
-            renderCenterIndex = centerIndex + steps;
+        // 1 张封面时单步和翻页都不加备用槽：上一张封面在动画第一帧就消失，只有目标封面滑入。
+        if (coverCount > 1) {
+            renderCount = coverCount + steps;
+            if (renderCount > COVERFLOW_RENDER_MAX)
+                renderCount = COVERFLOW_RENDER_MAX;
+            if (animationDirection < 0)
+                renderCenterIndex = centerIndex + steps;
+        }
 
         animOffset = (float)animationDirection * (float)coverDistance * (float)steps * (eased - 1.0f);
     }
