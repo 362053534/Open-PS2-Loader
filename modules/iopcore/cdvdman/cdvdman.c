@@ -303,15 +303,15 @@ static int ProbeZSO(u8 *buffer)
 
 /* 模式1：按 8 扇区 闹钟→读→等（对齐官方），ticks 用 CAV。
  * 不做机芯预读：扣空闲会让流式视频每隔几秒抖一下。
- * seek 只加在第一块（时间目前为 0）。
+ * seek 只加在第一块（快寻道/满寻道毫秒见下方宏）。
  * 余数 1 扇区保底在 cdvdfsv（按游戏一笔 EE 读判断），不放这里：ncmd 会把 9 扇区拆成 8+1。
  * 下面这些宏是调试旋钮：改毫秒/扇区即可。 */
 #define ACCU_PSXCLK 36864000u
 #define ACCU_MS_TO_TICKS(ms) ((ACCU_PSXCLK * (ms)) / 1000u)
 
-/* Seek：对齐 PCSX2 分档，时间目前为 0（与官方模式1一样不寻道）。 */
-#define ACCU_FAST_SEEK_MS     0u
-#define ACCU_FULL_SEEK_MS     0u
+/* Seek：对齐 PCSX2 分档；实机试验填入快寻道/满寻道毫秒。 */
+#define ACCU_FAST_SEEK_MS     50u
+#define ACCU_FULL_SEEK_MS     100u
 #define ACCU_FAST_SEEK_TICKS  ACCU_MS_TO_TICKS(ACCU_FAST_SEEK_MS)
 #define ACCU_FULL_SEEK_TICKS  ACCU_MS_TO_TICKS(ACCU_FULL_SEEK_MS)
 #define ACCU_CONTIG_DELTA_CD  8u

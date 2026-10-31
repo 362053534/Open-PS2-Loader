@@ -1115,6 +1115,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         }
     }
 
+    /* deinit 会释放 game，藏网卡判断必须提前做完。 */
+    int hideDev9 = sbShouldHideDev9(game->startup);
+
     if (gAutoLaunchGame == NULL)
         deinit(NO_EXCEPTION, HDD_MODE); // CAREFUL: deinit will call hddCleanUp, so hddGames/game will be freed
     else {
@@ -1129,6 +1132,9 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
     settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
+    /* 与 SMB 相同：白名单游戏对游戏侧隐藏网卡（APA/HDD 也走这条）。 */
+    if (hideDev9)
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_HIDE_DEV9;
 
     // adjust ZSO cache
     settings->common.zso_cache = hddCacheSize;

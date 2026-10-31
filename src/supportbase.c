@@ -1942,6 +1942,41 @@ static int sbGetAutoCompatMask(config_set_t *configSet)
     return 0;
 }
 
+/* 对游戏隐藏 NIC/DEV9（Neutrino i_dev9_hidden 语义）。名单按启动 ID 匹配。 */
+int sbShouldHideDev9(const char *startup)
+{
+    static const char *const hideDev9List[] = {
+        /* Ratchet & Clank: Up Your Arsenal — SMB 本地联机时 OPL 占用网卡 */
+        "SCUS_973.53",
+        "SCES_524.56",
+        "SCPS_150.84",
+        /* Splinter Cell 系列 */
+        "SLUS_213.56",
+        "SLES_538.26",
+        "SLES_538.27",
+        "SLPM_666.72",
+        "SLUS_211.37",
+        "SLES_530.07",
+        "SLES_532.87",
+        "SLPM_661.30",
+        "SLUS_209.58",
+        "SLES_521.49",
+        "SLPM_658.15",
+        /* Jak and Daxter: The Precursor Legacy（美版）——实机验证：藏网卡 */
+        "SCUS_971.24",
+    };
+    unsigned int i;
+
+    if (startup == NULL || startup[0] == '\0')
+        return 0;
+
+    for (i = 0; i < sizeof(hideDev9List) / sizeof(hideDev9List[0]); i++) {
+        if (!strcmp(startup, hideDev9List[i]))
+            return 1;
+    }
+    return 0;
+}
+
 int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman, void **cdvdman_irx, int *patchindex, int defaultMode1)
 {
     int i;

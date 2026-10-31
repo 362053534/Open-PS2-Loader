@@ -798,27 +798,14 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
 
-    /* UYA local multiplayer on SMB needs DEV9 hidden: OPL owns the NIC. */
+    /* 白名单游戏隐藏网卡：OPL 占用 DEV9/NIC 时避免游戏再碰网卡。 */
     {
-        int uyaHideDev9 = !strcmp(game->startup, "SCUS_973.53") ||
-                          !strcmp(game->startup, "SCES_524.56") ||
-                          !strcmp(game->startup, "SCPS_150.84");
-        int splinterCellHideDev9 = !strcmp(game->startup, "SLUS_213.56") ||
-                          !strcmp(game->startup, "SLES_538.26") ||
-                          !strcmp(game->startup, "SLES_538.27") ||
-                          !strcmp(game->startup, "SLPM_666.72") ||
-                          !strcmp(game->startup, "SLUS_211.37") ||
-                          !strcmp(game->startup, "SLES_530.07") ||
-                          !strcmp(game->startup, "SLES_532.87") ||
-                          !strcmp(game->startup, "SLPM_661.30") ||
-                          !strcmp(game->startup, "SLUS_209.58") ||
-                          !strcmp(game->startup, "SLES_521.49") ||
-                          !strcmp(game->startup, "SLPM_658.15");
+        int hideDev9 = sbShouldHideDev9(game->startup);
         deinit(NO_EXCEPTION, ETH_MODE); // CAREFUL: deinit will call ethCleanUp, so ethGames/game will be freed
 
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
-        if (uyaHideDev9 || splinterCellHideDev9)
+        if (hideDev9)
             settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_HIDE_DEV9;
     }
 

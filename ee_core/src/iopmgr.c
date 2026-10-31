@@ -281,8 +281,7 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             LoadOPLModule(OPL_MODULE_ID_SMBINIT, 0, 0, NULL);
             break;
         case HDD_MODE:
-            LoadOPLModule(OPL_MODULE_ID_USBD, 0, 11, "thpri=2,3");
-            LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
+            /* 与上游一致：APA/HDD 不加载 USBD。 */
             break;
         case BDM_ILK_MODE:
             LoadOPLModule(OPL_MODULE_ID_ILINK, 0, 0, NULL);
@@ -292,8 +291,7 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             LoadOPLModule(OPL_MODULE_ID_MX4SIOBD, 0, sizeof("g"), "g");
             break;
         case BDM_HDD_MODE:
-            LoadOPLModule(OPL_MODULE_ID_USBD, 0, 11, "thpri=2,3");
-            LoadOPLModule(OPL_MODULE_ID_USBMASSBD, 0, 0, NULL);
+            /* 与上游一致：BDM ATA 不加载 USBD。 */
             break;
     };
 
