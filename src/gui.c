@@ -2565,7 +2565,6 @@ void guiManageCheats(config_set_t *configSet)
 
         guiEndFrame();
     }
-    fntRefreshCache(); // 刷新字模缓存
     cheatConfigSaveSelections(configSet);
     configWrite(configSet);
     sfxPlay(SFX_CONFIRM);
