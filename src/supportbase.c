@@ -1943,6 +1943,26 @@ static int sbGetAutoCompatMask(config_set_t *configSet)
     return 0;
 }
 
+/* HDD/APA 默认不带 USBD；仅白名单游戏需要（地狱犬挽歌日版黑屏 workaround）。 */
+int sbNeedHddUsbd(const char *startup)
+{
+    static const char *const games[] = {
+        "SLPM_662.71", /* 地狱犬挽歌日版 */
+        "SLPM_666.29", /* 地狱犬挽歌日版 Ultimate Hits */
+        "SCAJ_201.69", /* 地狱犬挽歌亚洲版（日区盘，内部同 SLPM-66271） */
+    };
+    unsigned int i;
+
+    if (startup == NULL || startup[0] == '\0')
+        return 0;
+
+    for (i = 0; i < sizeof(games) / sizeof(games[0]); i++) {
+        if (!strcmp(startup, games[i]))
+            return 1;
+    }
+    return 0;
+}
+
 /* 对游戏隐藏 NIC/DEV9（Neutrino i_dev9_hidden 语义）。名单按启动 ID 匹配。 */
 int sbShouldHideDev9(const char *startup)
 {
