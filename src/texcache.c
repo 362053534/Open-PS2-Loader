@@ -319,7 +319,8 @@ static void cacheLoadImage1(void *data)
         texCompactBackground(&entry->texture);
     // 随机 BG 的张数在选图时已数出，这里取走，发布时存进槽位，命中缓存时直接读；散图记成 CACHE_BG_COUNT_LOOSE
     int bgCount = !strncmp(ioReq->cache->suffix, "BG", 2) ? artPackTakeBgCount() : -1;
-    if (fromLoose && !strncmp(ioReq->cache->suffix, "BG", 2))
+    // APPS 的 itemGetImage 内部会自己回落到图包，返回成功不一定是散图：选图时已数出张数（>=0）就按图包算
+    if (fromLoose && bgCount < 0 && !strncmp(ioReq->cache->suffix, "BG", 2))
         bgCount = CACHE_BG_COUNT_LOOSE;
 
     // 光标变化会递增 artRequestGeneration；Coverflow 当前可见/预取路径再次
@@ -425,7 +426,8 @@ static void *cacheLoadImage(void *data)
             texCompactBackground(&ioReq->cache->content[ioReq->cacheId].texture);
         // 随机 BG 的张数在选图时已数出，这里取走存进槽位，命中缓存时直接读；散图记成 CACHE_BG_COUNT_LOOSE
         int bgCount = !strncmp(ioReq->cache->suffix, "BG", 2) ? artPackTakeBgCount() : -1;
-        if (fromLoose && !strncmp(ioReq->cache->suffix, "BG", 2))
+        // APPS 的 itemGetImage 内部会自己回落到图包，返回成功不一定是散图：选图时已数出张数（>=0）就按图包算
+        if (fromLoose && bgCount < 0 && !strncmp(ioReq->cache->suffix, "BG", 2))
             bgCount = CACHE_BG_COUNT_LOOSE;
 
         if (result < 0) {
