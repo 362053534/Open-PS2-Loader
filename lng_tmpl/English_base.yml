@@ -677,9 +677,9 @@ gui_strings:
 - label: BGM_VOLUME
   string: Background Music Volume
 - label: DEF_BGM_PATH
-  string: Default Theme Music
+  string: Custom background music
 - label: DEF_BGM_PATH_HINT
-  string: Set path to stream music for internal theme.
+  string: Custom ogg file path; leave empty to play theme's built-in BGM
 - label: HIGH
   string: High
 - label: LOW
@@ -744,7 +744,81 @@ gui_strings:
   string: OPL's delete function is not absolutely safe, please use it with caution
 - label: HINT_THEME
   string: Two built-in themes can be switched. Place third-party themes in the THM folder
+- label: HINT_LANGUAGE
+  string: Place FGOPL language packs in the LNG folder to support more languages
+- label: START_MODE_SETTINGS
+  string: Start Mode Settings
+- label: DEVICE_SWITCH
+  string: Device Switches (disable unused devices to speed up boot)
+- label: APAISO
+  string: HDD(APA) Direct ISO
+- label: AUTODETECT_PS1APPS
+  string: APPS & PS1 Auto Detect
+- label: AUTO_MODE1
+  string: Auto Enable Mode 1 (better compatibility)
+- label: COVERART_BG_OFF
+  string: BG Off
+- label: COVERART_BG_ON
+  string: BG On
+- label: COVERART_COV_OFF
+  string: Cover Off
+- label: COVERART_COV_ON
+  string: Cover On
+- label: COVERART_ICO_OFF
+  string: Disc Off
+- label: COVERART_ICO_ON
+  string: Disc On
+- label: COVERARTMODE_PERF
+  string: Performance (PNG only)
+- label: COVERARTMODE_COMPAT
+  string: Compatibility (JPG & PNG)
+- label: ART_RANDOM_OFF
+  string: Random Art Off
+- label: ART_RANDOM_ON
+  string: Random Art On
+- label: CF_COVER_COUNT_1
+  string: Covers on screen: 1
+- label: CF_COVER_COUNT_3
+  string: Covers on screen: 3
+- label: CF_COVER_COUNT_5
+  string: Covers on screen: 5
+- label: CF_COVER_COUNT_7
+  string: Covers on screen: 7
+- label: CF_COVER_COUNT_9
+  string: Covers on screen: 9
+- label: GSM_VMODE_480I_NORMAL
+  string: 480i Normal (for CRT)
+- label: GSM_VMODE_480I_SHRINK
+  string: 480i Shrink (stretch to 4:3 on modern TVs)
+- label: DMA_UDMA4_DEFAULT
+  string: UDMA 4 Default
+- label: DMA_UDMA5_HIGHEST
+  string: UDMA 5 Current HDD Max
+- label: DMA_UDMA6_HIGHEST
+  string: UDMA 6 Current HDD Max
+- label: DMA_UDMA7_HIGHEST
+  string: UDMA 7 Current HDD Max
+- label: DMA_UDMA7_EXTREME
+  string: UDMA 7 Extreme
+- label: DMA_HDD_ONLY
+  string: <HDD only>
 - label: CHEAT_TOGGLE_ALL
   string: Select/Deselect All
 - label: CHEAT_SAVE_AND_RUN
   string: Save and Run
+- label: THEME_COVERFLOW
+  string: Built-in Coverflow Theme
+- label: THEME_LIST
+  string: Built-in List Theme
+- label: MSG_DEVICE_DETECT_TIMEOUT
+  string: "%s detection timed out. Device compatibility issue."
+- label: MSG_TXT_CREATED
+  string: The txt file has been created!
+- label: MSG_TXT_REBUILT
+  string: The txt file has been rebuilt!
+- label: MSG_HDD_EXFAT_HINT
+  string: Internal HDD is exFAT. Enable HDD(exFAT) in BDM settings.
+- label: MSG_HDD_APA_HINT
+  string: Internal HDD is APA. Enable HDD(APA) start mode.
+- label: MSG_LIST_SEPARATOR
+  string: ", "

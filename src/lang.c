@@ -210,6 +210,7 @@ int lngSetGuiValue(int langID)
                 language_t *currLang = &languages[langID - 1];
                 if (lngLoadFromFile(currLang->filePath, currLang->name)) {
                     guiLangID = langID;
+                    thmRebuildGuiNames();
                     thmSetGuiValue(thmGetGuiValue(), 1);
                     bgmUnMute();
                     return 1;
@@ -220,6 +221,7 @@ int lngSetGuiValue(int langID)
             guiLangID = 0;
             // lang switched back to internalEnglish, reload default font
             fntLoadDefault(NULL);
+            thmRebuildGuiNames();
             thmSetGuiValue(thmGetGuiValue(), 1);
             bgmUnMute();
         }

@@ -137,7 +137,7 @@ struct UIItem diaNetConfig[] = {
 
 // Block Devices Settings Menu
 struct UIItem diaBlockDevicesConfig[] = {
-    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {"启动模式设置", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_START_MODE_SETTINGS}}},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_BDMMODE}}},
@@ -147,7 +147,7 @@ struct UIItem diaBlockDevicesConfig[] = {
     {UI_BREAK},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"设备开关 (未使用的设备应关闭，以提升启动速度)", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_DEVICE_SWITCH}}},
     {UI_SPLITTER},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"USB", -1}}},
@@ -167,7 +167,7 @@ struct UIItem diaBlockDevicesConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"HDD (exFAT)", -1}}},
     {UI_SPACER},
-    {UI_BOOL, CFG_ENABLEBDMHDD, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_BOOL, CFG_ENABLEBDMHDD, 1, 1, _STR_HDD_HINT, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     // buttons
@@ -231,17 +231,17 @@ struct UIItem diaConfig[] = {
     {UI_INT, CFG_HDDSPINDOWN, 1, 1, _STR_HINT_SPINDOWN, 0, 0, {.intvalue = {20, 20, 0, 20}}},
     {UI_SPLITTER},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"HDD(APA)直读ISO", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_APAISO}}},
     {UI_SPACER},
     {UI_BOOL, CFG_APAISO, 1, 1, _STR_HINT_APAISO, 0, 0, {.intvalue = {1, 1}}},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"APPS & PS1自动识别", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_AUTODETECT_PS1APPS}}},
     {UI_SPACER},
     {UI_BOOL, CFG_AUTODETECTPS1APPS, 1, 1, _STR_HINT_AUTODETECT_PS1APPS, 0, 0, {.intvalue = {1, 1}}},
     {UI_BREAK},
 
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {"自动开启模式1 (提高兼容性)", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_AUTO_MODE1}}},
     {UI_SPACER},
     {UI_BOOL, CFG_AUTO_MODE1, 1, 1, _STR_HINT_AUTO_MODE1, 0, 0, {.intvalue = {0, 0}}},
     {UI_SPLITTER},
@@ -258,7 +258,7 @@ struct UIItem diaConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_HDDMODE}}},
     {UI_SPACER},
-    {UI_ENUM, CFG_HDDMODE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_ENUM, CFG_HDDMODE, 1, 1, _STR_HDD_HINT, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_APPMODE}}},
@@ -308,7 +308,7 @@ struct UIItem diaUIConfig[] = {
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_LANGUAGE}}},
     {UI_SPACER},
-    {UI_ENUM, UICFG_LANG, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
+    {UI_ENUM, UICFG_LANG, 1, 1, _STR_HINT_LANGUAGE, 0, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
     {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_TXTRENAME}}},

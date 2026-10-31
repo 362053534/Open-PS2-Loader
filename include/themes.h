@@ -15,10 +15,9 @@
 #define THM_NUM_BUILTIN 2
 // 内置 Coverflow 主题在 GUI 主题列表中的索引
 #define THM_COVERFLOW_GUI_ID 0
-// 内置 Coverflow 主题在 GUI 列表中显示的名称（同时用于配置保存/匹配）
-#define THM_COVERFLOW_NAME "内置-封面流主题"
-// 原第一套主题（强化原生列表主题）在 GUI 列表中显示的名称
-#define THM_LIST_NAME "内置-列表主题"
+// 内置主题在配置 theme= 中保存/匹配用的稳定 ID（界面显示名走语言枚举 _STR_THEME_*）
+#define THM_COVERFLOW_NAME "coverflow"
+#define THM_LIST_NAME "list"
 
 typedef struct
 {
@@ -202,6 +201,7 @@ int thmSetGuiValue(int themeID, int reload);
 int thmGetGuiValue(void);
 int thmFindGuiID(const char *theme);
 const char **thmGetGuiList(void);
+void thmRebuildGuiNames(void);
 char *thmGetFilePath(int themeID);
 
 #endif

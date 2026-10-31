@@ -2664,7 +2664,7 @@ static void thmLoad(const char *themePath)
     thmCollectRetiredThemes();
 }
 
-static void thmRebuildGuiNames(void)
+void thmRebuildGuiNames(void)
 {
     if (guiThemesNames)
         free(guiThemesNames);
@@ -2674,8 +2674,9 @@ static void thmRebuildGuiNames(void)
     guiThemesNames = (const char **)malloc((nThemes + THM_NUM_BUILTIN + 1) * sizeof(char **));
 
     // 两套内置主题固定排在最前：Coverflow 现为默认(索引 0)，原列表主题顺移到其后(索引 1)
-    guiThemesNames[0] = THM_COVERFLOW_NAME;
-    guiThemesNames[1] = THM_LIST_NAME;
+    // 界面显示用语言枚举；配置 ID 由 thmGetValue / thmFindGuiID 单独处理
+    guiThemesNames[0] = _l(_STR_THEME_COVERFLOW);
+    guiThemesNames[1] = _l(_STR_THEME_LIST);
 
     // 用户主题接在内置主题之后
     int i = 0;
@@ -2750,6 +2751,11 @@ void thmReloadScreenExtents(void)
 
 const char *thmGetValue(void)
 {
+    // 配置保存只用稳定 ID，不用界面显示名
+    if (guiThemeID == 0)
+        return THM_COVERFLOW_NAME;
+    if (guiThemeID == 1)
+        return THM_LIST_NAME;
     return guiThemesNames[guiThemeID];
 }
 
@@ -2784,10 +2790,9 @@ int thmGetGuiValue(void)
 int thmFindGuiID(const char *theme)
 {
     if (theme) {
-        // 内置 Coverflow 主题现为默认（GUI 索引 0）
+        // 只按稳定 ID 匹配；旧中文 theme= 值不做迁移
         if (strcasecmp(theme, THM_COVERFLOW_NAME) == 0)
             return 0;
-        // 原列表主题顺移到 Coverflow 之后（GUI 索引 1）
         if (strcasecmp(theme, THM_LIST_NAME) == 0)
             return 1;
         // 再匹配用户主题（GUI 索引需加上内置主题数量偏移）
