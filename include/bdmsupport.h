@@ -41,6 +41,7 @@ typedef struct
     unsigned char LanguagesLoaded;
     unsigned char ForceRefresh;
     unsigned char DeviceRemoved;
+    unsigned char Art2Probed; // 本轮挂载是否已在目录能打开后探测过 ART2 与 zip
 } bdm_device_data_t;
 
 void bdmInit(item_list_t *itemList);

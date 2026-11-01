@@ -23,7 +23,8 @@
 #define ART_PACK_RANK_BDM_USB    5 // BDM USB
 #define ART_PACK_RANK_UNKNOWN    6 // 未知类型（最低优先级）
 
-// 设备就绪后调用（ART2 只在这里探测一次），prefix 为设备根前缀，sep 为路径分隔符（SMB 为 "\\"），rank 为 ART_PACK_RANK_*
+// 目录已经能打开时由各设备调用一次。BDM 放在游戏列表确认能打开之后，避免第一次打开根目录时的读失败被记成没有图包。
+// prefix 为设备根前缀，sep 为路径分隔符（SMB 为 "\\"），rank 为 ART_PACK_RANK_*
 // 只在 ART2 目录中查找图包，返回值为下面三态之一：
 // ART_PACK_INIT_ACTIVE：ART2 存在且图包已启用（调用方走 ART2 散文件，取不到时回退图包）
 // ART_PACK_INIT_NO_PACK：ART2 已确认存在但未启用图包（没有图包或图包初始化失败），调用方走 ART2 散文件
