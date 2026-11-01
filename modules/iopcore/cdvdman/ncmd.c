@@ -251,6 +251,10 @@ int sceCdStandby(void)
 //-------------------------------------------------------------------------
 int sceCdStop(void)
 {
+#ifdef SMB_DRIVER
+    /* ioops 在返回 0 之后仍会 sceCdSync，进行中的重连等待必须先被放弃。 */
+    DeviceAbortReadWait();
+#endif
     if (sync_flag)
         return 0;
 
@@ -267,6 +271,10 @@ int sceCdPause(void)
 {
     DPRINTF("sceCdPause\n");
 
+#ifdef SMB_DRIVER
+    /* ioops 在返回 0 之后仍会 sceCdSync，进行中的重连等待必须先被放弃。 */
+    DeviceAbortReadWait();
+#endif
     if (sync_flag)
         return 0;
 

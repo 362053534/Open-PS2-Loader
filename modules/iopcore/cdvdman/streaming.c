@@ -318,7 +318,14 @@ int sceCdStStop(void)
 
         CpuResumeIntr(OldState);
 
+#ifdef SMB_DRIVER
+        DeviceAbortReadWait();
+#endif
         sceCdSync(0);
+#ifdef SMB_DRIVER
+        /* 停流本身不是读错误。留下 SCECdErABRT 会让随后的 cdvdfsv 读直接结束。 */
+        cdvdman_stat.err = SCECdErNO;
+#endif
     }
 
     return 1;
@@ -341,7 +348,14 @@ int sceCdStPause(void)
         cdvdman_stat.StreamingData.StIsReading = 0;
         CpuResumeIntr(OldState);
 
+#ifdef SMB_DRIVER
+        DeviceAbortReadWait();
+#endif
         sceCdSync(0);
+#ifdef SMB_DRIVER
+        /* 暂停本身不是读错误。留下 SCECdErABRT 会让随后的读被当成已中止。 */
+        cdvdman_stat.err = SCECdErNO;
+#endif
 
         return 1;
     } else {
