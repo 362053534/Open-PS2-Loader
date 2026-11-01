@@ -50,7 +50,7 @@ static int bdmArtPackRank(int bdmDeviceType)
     }
 }
 
-// 各BDM类型的 ART2 标志位（ART2_FLAG_*，由 artPackDeviceInit 与 GAMES/APPS 目录探测结果决定）
+// 各BDM类型的 ART2 标志位（ART2_FLAG_*）。在游戏列表确认目录能打开后探测一次，不在首次打开根目录时探测
 static int artArt2Flags_USB;
 static int artArt2Flags_ILINK;
 static int artArt2Flags_SDC;
@@ -434,6 +434,34 @@ static int bdmProbeISODirectory(const char *path)
     return dir < 0 ? dir : 0;
 }
 
+// 游戏列表会因目录打不开把计数留在 -1 再重试。ART2 与 zip 若在第一次打开根目录时探测，
+// 读失败会被当成没有图包，而且前缀写上后不会再探。放到本次确认能打开之后，每个挂载只做一次。
+static void bdmProbeArt2(item_list_t *itemList, bdm_device_data_t *pDeviceData)
+{
+    int art2Flags = 0;
+
+    if (pDeviceData->Art2Probed || pDeviceData->bdmDeviceType == BDM_TYPE_UNKNOWN)
+        return;
+    pDeviceData->Art2Probed = 1;
+
+    if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/", bdmArtPackRank(pDeviceData->bdmDeviceType)) != ART_PACK_INIT_NO_ART2) {
+        art2Flags = ART2_FLAG_ON;
+        if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_GAMES))
+            art2Flags |= ART2_FLAG_GAMES;
+        if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_APPS))
+            art2Flags |= ART2_FLAG_APPS;
+    }
+
+    if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
+        artArt2Flags_USB = art2Flags;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
+        artArt2Flags_ILINK = art2Flags;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
+        artArt2Flags_SDC = art2Flags;
+    else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
+        artArt2Flags_ATA = art2Flags;
+}
+
 static int bdmUpdateGameList(item_list_t *itemList)
 {
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
@@ -454,6 +482,8 @@ static int bdmUpdateGameList(item_list_t *itemList)
             pDeviceData->ThemesLoaded = 0;
             pDeviceData->LanguagesLoaded = 0;
             pDeviceData->DeviceRemoved = 0;
+            // 拔出后前缀作废，下次挂上并真正扫到列表时再探测 ART2
+            pDeviceData->Art2Probed = 0;
             return 0;
         }
 
@@ -514,6 +544,9 @@ static int bdmUpdateGameList(item_list_t *itemList)
                 pDeviceData->bdmGameCount = -1;
                 return 0;
             }
+
+            // 根目录已打开，CD/DVD 要么打开要么确认不存在。这条路径不会再因打不开目录而重试。
+            bdmProbeArt2(itemList, pDeviceData);
 
             int result = sbReadList(&pDeviceData->bdmGames, pDeviceData->bdmPrefix, &pDeviceData->bdmULSizePrev, &pDeviceData->bdmGameCount);
 
@@ -1309,29 +1342,8 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             else
                 snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
 
-            // 设备就绪后探测 ART2 是否存在
-            if (pDeviceData->bdmDeviceType != BDM_TYPE_UNKNOWN) {
-                int art2Flags = 0;
-
-                // ART2 中有图包时启用图包，作为 ART2 散文件取不到时的回退（以 itemList->mode 区分设备，多设备时统一用最快设备的图包）
-                // 图包只在 ART2 中查找，返回 ACTIVE 也说明 ART2 存在，因此只要不是 NO_ART2 就走 ART2 散文件；ART2 只在 artPackDeviceInit 中探测一次
-                // ART2 存在时再探测 GAMES/APPS 目录：没有 GAMES 时游戏图直接走图包回退，没有 APPS 时 ELF 直接无图
-                if (artPackDeviceInit(itemList->mode, pDeviceData->bdmPrefix, "/", bdmArtPackRank(pDeviceData->bdmDeviceType)) != ART_PACK_INIT_NO_ART2) {
-                    art2Flags = ART2_FLAG_ON;
-                    if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_GAMES))
-                        art2Flags |= ART2_FLAG_GAMES;
-                    if (sbArtHasBucket(pDeviceData->bdmPrefix, "/", ART2_BUCKET_APPS))
-                        art2Flags |= ART2_FLAG_APPS;
-                }
-                if (pDeviceData->bdmDeviceType == BDM_TYPE_USB)
-                    artArt2Flags_USB = art2Flags;
-                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ILINK)
-                    artArt2Flags_ILINK = art2Flags;
-                else if (pDeviceData->bdmDeviceType == BDM_TYPE_SDC)
-                    artArt2Flags_SDC = art2Flags;
-                else if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA)
-                    artArt2Flags_ATA = art2Flags;
-            }
+            // ART2 与 zip 不在这里探测。此时只是第一次打开根目录，子目录仍可能读失败；
+            // 游戏列表会因此重试，探测放到 bdmUpdateGameList 确认目录能打开之后。
 
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.
             if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {

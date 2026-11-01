@@ -16,7 +16,7 @@
  * 图包加载器（第一阶段）：ART2 目录中任意命名的 .zip（扩展名不区分大小写，排除 "." 开头的隐藏文件），取 readdir 遇到的第一个；
  *
  * 线程模型：
- *  - artPackDeviceInit/End 在设备初始化/清理的线程中执行；
+ *  - artPackDeviceInit/End 在 IO 线程执行。BDM 在游戏列表确认目录能打开之后调用，不在第一次打开根目录时调用；
  *  - artPackLoadImage 在 IO 工作线程中执行；
  *  - 所有设备状态由 artPackMutex 保护。索引（含重建）在 artPackLoadBestEntries 中持锁完成，只在 IO 线程执行；
  *  - 只有全局最快设备的 art.zip 保持打开，其 art.idx 条目表也常驻内存；其它设备不占用 fd，
