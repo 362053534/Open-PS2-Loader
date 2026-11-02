@@ -22,7 +22,8 @@ endif
 ifeq ($(USE_SMB),1)
 IOP_BIN  = smb_cdvdman.irx
 IOP_OBJS_DIR = obj.smb/
-IOP_OBJS += device-smb.o smb.o
+# 重连只留 DES。MD4 仍在认证完就卸载的 smbinit 里。
+IOP_OBJS += device-smb.o smb.o smb_rehash.o ../../network/smbinit/des.o
 IOP_CFLAGS += -DSMB_DRIVER
 USE_DEV9 = 1
 IOP_INCS += -I../../network/common

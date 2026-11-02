@@ -47,6 +47,7 @@ static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static int smbOpenGame(void);
 static void smbReconnectThread(void *arg);
+void smb_HashPasswordCached(server_specs_t *ss);
 
 static void ps2ip_init(void)
 {
@@ -221,6 +222,9 @@ void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
         smb_Disconnect();
         DelayThread(SMB_RECONNECT_INTERVAL_US);
     }
+
+    /* 循环里的那次回调已经把 LM/NT 散列写好。改挂常驻 DES，smbinit 才能卸载。 */
+    smbHashCallback = smb_HashPasswordCached;
 }
 
 void DeviceInit(void)

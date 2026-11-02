@@ -93,7 +93,7 @@ static unsigned char *LM_Response(const unsigned char *LMpasswordhash, unsigned 
 /*
  * GenerateLMHashes: function used to generate LM/NTLM hashes
  */
-static void GenerateLMHashes(char *Password, int PasswordType, u8 *EncryptionKey, int *PasswordLen, char *Buffer)
+static void GenerateLMHashes(char *Password, int PasswordType, u8 *EncryptionKey, int *PasswordLen, char *Buffer, u8 *LMhash, u8 *NTLMhash)
 {
     u8 LMpasswordhash[16];
     u8 NTLMpasswordhash[16];
@@ -104,6 +104,9 @@ static void GenerateLMHashes(char *Password, int PasswordType, u8 *EncryptionKey
         /* Generate both LM & NTLM hashes */
         LM_Password_Hash(Password, LMpasswordhash);
         NTLM_Password_Hash(Password, NTLMpasswordhash);
+        /* 响应会盖掉明文。散列留在结构体末尾，重连时 cdvdman 只用 DES。 */
+        memcpy(LMhash, LMpasswordhash, 16);
+        memcpy(NTLMhash, NTLMpasswordhash, 16);
         *PasswordLen = 24;
         LM_Response(LMpasswordhash, EncryptionKey, LMresponse);
         LM_Response(NTLMpasswordhash, EncryptionKey, NTLMresponse);
@@ -125,7 +128,7 @@ void SmbInitHashPassword(server_specs_t *ss)
     if (ss->HashedFlag == 0) {
         /* generate the LM and NTLM hash then fill Password buffer with both hashes */
         if (strlen(ss->Password) > 0)
-            GenerateLMHashes(ss->Password, ss->PasswordType, ss->EncryptionKey, &ss->PasswordLen, ss->Password);
+            GenerateLMHashes(ss->Password, ss->PasswordType, ss->EncryptionKey, &ss->PasswordLen, ss->Password, ss->LMhash, ss->NTLMhash);
     }
 
     /* used to notify cdvdman that password are now hashed */
