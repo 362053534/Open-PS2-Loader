@@ -20,8 +20,6 @@
 
 IRX_ID("smap_driver", 2, 1);
 
-extern struct irx_export_table _exp_smaplink;
-
 #define IFNAME0 's'
 #define IFNAME1 'm'
 
@@ -202,10 +200,8 @@ int _start(int argc, char *argv[])
 
         // Something went wrong.
         result = MODULE_NO_RESIDENT_END;
-    } else {
-        RegisterLibraryEntries(&_exp_smaplink);
+    } else
         result = MODULE_RESIDENT_END; // Initialized ok.
-    }
 
     return result;
 }

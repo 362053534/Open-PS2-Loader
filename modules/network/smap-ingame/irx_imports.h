@@ -6,7 +6,6 @@
 /* Please keep these in alphabetical order!  */
 #include <dmacman.h>
 #include <dev9.h>
-#include <loadcore.h>
 #include "smstcpip.h"
 #include "smsutils.h"
 #include <stdio.h>
