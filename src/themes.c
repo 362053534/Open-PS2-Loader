@@ -1206,11 +1206,11 @@ static clock_t animationStartTime = 0;
 // 使用单独的低分辨率高度宏。宽度保持 140，其他布局计算仍使用选出的高度。
 #define COVERFLOW_LOGICAL_WIDTH 640 // 主题逻辑坐标系宽度（rmGetScreenExtents 固定为 640×480）
 #define COVERFLOW_COVER_W 140
-#define COVERFLOW_COVER_H 214
+#define COVERFLOW_COVER_H 200
 #define COVERFLOW_COVER_H_LOWRES 200
-#define COVERFLOW_ICO_W 128
-#define COVERFLOW_ICO_H 138
-#define COVERFLOW_ICO_H_LOWRES 128
+#define COVERFLOW_ICO_W 96 // ICO 光碟图暂定固定 96x96
+#define COVERFLOW_ICO_H 96
+#define COVERFLOW_ICO_H_LOWRES 96
 #define COVERFLOW_ICO_POPUP_GAP 4
 // 第三方主题的 case 素材右侧常带透明区，主题用 coverflow_cover_offset 补偿；
 // ICO 与封面的间距 = COVERFLOW_ICO_POPUP_GAP + offset × 此系数（四舍五入取整），让观感与内置主题一致（内置 offset 为 0）。
