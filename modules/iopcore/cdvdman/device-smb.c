@@ -21,6 +21,8 @@
 #define SMB_WAIT_READY            2
 #define SMB_WAIT_RETRY            3
 #define SMB_WAIT_KICK             4
+/* 第一次 SessionSetup 还在跑。只能等，不能踢读线程，也不能拆套接字。 */
+#define SMB_WAIT_OPEN             5
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -53,6 +55,10 @@ static volatile int smb_alarm_armed;
 static volatile int smb_link_service;
 static volatile int smb_in_read_thread;
 static volatile int smb_retry_link;
+/* DeviceFSInit 正在用 smbinit 留下的套接字。这段时间 link_once 必须让开。 */
+static volatile int smb_opening;
+/* 曾经连上过之后又断了。state 2 只有这时才表示要把旧套接字拆掉。 */
+static volatile int smb_link_dead;
 static volatile int smb_block_alarms;
 static volatile unsigned int smb_block_gen_seen;
 static volatile unsigned int smb_block_poked_gen;
@@ -123,15 +129,28 @@ static int smbOpenGame(void)
     return 1;
 }
 
-static int smb_read_wait_action(int abort_wait, int enabled, int state, int in_read_thread)
+static int smb_read_wait_action(int abort_wait, int opening, int enabled, int state, int in_read_thread)
 {
     if (abort_wait)
         return SMB_WAIT_ABORT;
+    /* 建会话的线程还握着 smbinit 的套接字。读线程去重连会把它拆掉。 */
+    if (opening)
+        return in_read_thread ? SMB_WAIT_RETRY : SMB_WAIT_OPEN;
     if (!enabled || state == 1)
         return SMB_WAIT_READY;
     if (in_read_thread)
         return SMB_WAIT_RETRY;
     return SMB_WAIT_KICK;
+}
+
+/* 返回 1 才叫醒读线程。链路正常且还没到 Echo 时，闹钟自己续上一拍。 */
+static int smb_alarm_should_service(int blocking, int state, int idle_ticks)
+{
+    if (blocking)
+        return 0;
+    if (state == 1 && idle_ticks < SMB_ECHO_IDLE_TICKS)
+        return 0;
+    return 1;
 }
 
 static int smb_alarm_should_wake(int blocking, int abort_wait, int alarms, int already_poked)
@@ -155,6 +174,10 @@ static void smb_link_once(void)
 {
     int result;
 
+    /* enabled 要等第一次 smbOpenGame 返回才置上。提前进来会关掉 smbinit 的套接字。 */
+    if (!smbReconnectEnabled || smb_opening)
+        return;
+
     if (smbReconnectEnabled && smbConnectionState == 1) {
         // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
         if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
@@ -166,6 +189,7 @@ static void smb_link_once(void)
                 smbIdleTicks = 0;
             } else if (result < 0) {
                 smbIdleTicks = 0;
+                smb_link_dead = 1;
                 smbConnectionState = 2;
             }
         }
@@ -173,7 +197,23 @@ static void smb_link_once(void)
         smbIdleTicks = 0;
     }
 
-    if (smbReconnectEnabled && smbConnectionState == 2) {
+    /* state 2 在第一次会话建立前只是“协议已谈好”。这时拆开会把唯一的套接字关掉。 */
+    if (smbReconnectEnabled && smbConnectionState == 2 && !smb_link_dead) {
+        if (smbOpenGame() > 0 && smbReconnectEnabled) {
+            smbConnectionState = 1;
+            smb_link_dead = 0;
+            smbIdleTicks = 0;
+            if (smbTrayOpen) {
+                sceCdTrayReq(SCECdTrayClose, NULL);
+                smbTrayOpen = 0;
+            }
+            return;
+        }
+
+        smb_link_dead = 1;
+    }
+
+    if (smbReconnectEnabled && smbConnectionState == 2 && smb_link_dead) {
         if (smb_io_sema < 0) {
             smb_Disconnect();
             smbConnectionState = 0;
@@ -190,6 +230,7 @@ static void smb_link_once(void)
         if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
             smbOpenGame() > 0 && smbReconnectEnabled) {
             smbConnectionState = 1;
+            smb_link_dead = 0;
             smbIdleTicks = 0;
             if (smbTrayOpen) {
                 sceCdTrayReq(SCECdTrayClose, NULL);
@@ -203,16 +244,30 @@ static void smb_link_once(void)
     }
 }
 
+/* 非 0 表示内核按这个系统时钟把同一只闹钟续上。再 iSetAlarm 会多挂一只。 */
+static unsigned int smb_alarm_interval(void)
+{
+    if (smb_alarm_clock.lo != 0)
+        return smb_alarm_clock.lo;
+    if (smb_alarm_clock.hi != 0)
+        return 1;
+    return 1;
+}
+
 static unsigned int smb_link_alarm_cb(void *arg)
 {
     unsigned int gen;
-    int r;
 
     (void)arg;
     smb_alarm_armed = 0;
 
     if (!smbReconnectEnabled)
         return 0;
+
+    if (smb_opening) {
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
+    }
 
     if (smb_read_is_blocking()) {
         gen = smb_read_block_gen();
@@ -225,18 +280,22 @@ static unsigned int smb_link_alarm_cb(void *arg)
             if (iReleaseWaitThread(cdvdman_read_thread_id()) == 0)
                 smb_block_poked_gen = gen;
         }
-        /* 读线程停在 recv，到不了 SetAlarm。回调返回 0，在这里续下一拍。 */
-        if (smb_alarm_clock.lo != 0 || smb_alarm_clock.hi != 0) {
-            r = iSetAlarm(&smb_alarm_clock, smb_link_alarm_cb, NULL);
-            if (r == 0)
-                smb_alarm_armed = 1;
-        }
-        return 0;
+        /* 读线程停在 recv，到不了 SetAlarm。把间隔交回去，由内核续上一拍。 */
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
     }
 
     smb_block_alarms = 0;
     smb_block_gen_seen = 0;
-    /* 没在收包时才让读线程去做 Echo 或重连，避免它还在 link_once 里又被叫进去。 */
+    if (smbConnectionState == 1 && smbIdleTicks < SMB_ECHO_IDLE_TICKS)
+        smbIdleTicks++;
+
+    /* 游戏正在读的时候不要把读线程叫去跑 link_once。空闲满 120 秒或已经断线才去。 */
+    if (!smb_alarm_should_service(0, smbConnectionState, smbIdleTicks)) {
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
+    }
+
     smb_link_service = 1;
     cdvdman_kick_rthread(1);
     /* 返回 0：这一拍已经从队列摘掉。下一拍由读线程 SetAlarm，不在这里再挂一只。 */
@@ -273,6 +332,12 @@ void smb_ensure_link_alarm(void)
 void smb_read_thread_maintenance(int read_pending)
 {
     int disconnected;
+
+    /* 第一次会话还没返回。不要在这里碰套接字，读本身会退出来等。 */
+    if (smb_opening) {
+        smb_link_service = 0;
+        return;
+    }
 
     if (smbReconnectEnabled && !smb_alarm_armed)
         smb_arm_link_alarm();
@@ -313,6 +378,16 @@ int smb_finish_read_attempt(void)
     /* 游戏还堵在 sceCdSync。重连期间保持读状态，内部退栈码不要露出去。 */
     cdvdman_stat.status = SCECdStatRead;
     cdvdman_stat.err = SCECdErNO;
+
+    /* 第一次会话还在另一条线程上建。这里重连会拆掉它正在用的套接字。 */
+    if (smb_opening) {
+        DelayThread(SMB_RECONNECT_POLL_US);
+        if (smb_abort_wait) {
+            cdvdman_stat.err = SCECdErABRT;
+            return 0;
+        }
+        return 1;
+    }
 
     smb_link_once();
 
@@ -378,16 +453,21 @@ int DeviceReady(void)
 
 void DeviceFSInit(void)
 {
-    smbReconnectEnabled = 1;
+    /* 重连先关着。smbinit 留下的套接字对应 state 2，这时跑 link_once 会把它拆掉。 */
+    smb_opening = 1;
     smbIdleTicks = 0;
     smb_abort_wait = 0;
     smb_retry_link = 0;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
+        smb_link_dead = 0;
     } else {
         smb_Disconnect();
         smbConnectionState = 0;
+        smb_link_dead = 1;
     }
+    smb_opening = 0;
+    smbReconnectEnabled = 1;
     smb_arm_link_alarm();
     if (smbConnectionState != 1) {
         smb_link_service = 1;
@@ -403,6 +483,8 @@ void DeviceLock(void)
 void DeviceUnmount(void)
 {
     smbReconnectEnabled = 0;
+    smb_opening = 0;
+    smb_link_dead = 1;
     smb_link_service = 0;
     smb_disarm_link_alarm();
     smbIdleTicks = 0;
@@ -457,9 +539,15 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 int action;
 
                 /* Break、停流、Stop、Pause 都在等这次读结束。继续空等的话 sceCdSync 不会返回。 */
-                action = smb_read_wait_action(smb_abort_wait, smbReconnectEnabled, smbConnectionState, smb_in_read_thread);
+                action = smb_read_wait_action(smb_abort_wait, smb_opening, smbReconnectEnabled, smbConnectionState, smb_in_read_thread);
                 if (action == SMB_WAIT_ABORT)
                     return SCECdErABRT;
+
+                /* 会话还在建。让出 CPU，不要 SignalSema 把自己或那条套接字堵死。 */
+                if (action == SMB_WAIT_OPEN) {
+                    DelayThread(SMB_RECONNECT_POLL_US);
+                    continue;
+                }
 
                 /* 人已经在读线程里。这里 DelayThread 或重连会把自己堵死，也会把 SMB 叠进深栈。 */
                 if (action == SMB_WAIT_RETRY) {
@@ -505,6 +593,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 }
 
                 // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
+                smb_link_dead = 1;
                 smbConnectionState = 2;
             }
 
