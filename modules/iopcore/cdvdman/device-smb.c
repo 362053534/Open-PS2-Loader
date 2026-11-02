@@ -9,6 +9,9 @@
 
 #include "device.h"
 
+#define SMB_RECONNECT_INTERVAL_US 2000000
+#define SMB_ECHO_IDLE_TICKS       60
+
 extern struct cdvdman_settings_smb cdvdman_settings;
 
 extern struct irx_export_table _exp_oplsmb;
@@ -33,13 +36,12 @@ static u32 ServerCapabilities;
 static OplSmbPwHashFunc_t smbHashCallback;
 static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
-static volatile int smbPhysicalLinkDown;
 static volatile int smbTrayOpen;
+static volatile unsigned int smbIdleTicks;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static int smbOpenGame(void);
 static void smbReconnectThread(void *arg);
-static void smbLinkMonitorThread(void *arg);
 
 static void ps2ip_init(void)
 {
@@ -102,24 +104,27 @@ static int smbOpenGame(void)
 
 static void smbReconnectThread(void *arg)
 {
-    int keepAliveCounter = 0;
     int result;
 
     (void)arg;
 
     while (1) {
-        if (smbReconnectEnabled && smbConnectionState == 1 && !smbPhysicalLinkDown) {
-            // 每30秒发送一次SMB保活请求，防止服务器回收长时间空闲的会话。
-            if (++keepAliveCounter >= 15) {
+        if (smbReconnectEnabled && smbConnectionState == 1) {
+            // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
+            if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
+                smbIdleTicks++;
+
+            if (smbIdleTicks >= SMB_ECHO_IDLE_TICKS) {
                 result = smb_Echo();
-                if (result) {
-                    keepAliveCounter = 0;
-                    if (result < 0)
-                        smbConnectionState = 2;
+                if (result > 0) {
+                    smbIdleTicks = 0;
+                } else if (result < 0) {
+                    smbIdleTicks = 0;
+                    smbConnectionState = 2;
                 }
             }
         } else {
-            keepAliveCounter = 0;
+            smbIdleTicks = 0;
         }
 
         if (smbReconnectEnabled && smbConnectionState == 2) {
@@ -133,14 +138,13 @@ static void smbReconnectThread(void *arg)
             }
         }
 
-        if (smbReconnectEnabled && smbConnectionState == 0 && !smbPhysicalLinkDown &&
-            (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
+        if (smbReconnectEnabled && smbConnectionState == 0) {
             smbConnectionState = 2;
 
             if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
-                smbOpenGame() > 0 && smbReconnectEnabled && !smbPhysicalLinkDown &&
-                (!pNetManGetGlobalNetIFLinkState || pNetManGetGlobalNetIFLinkState())) {
+                smbOpenGame() > 0 && smbReconnectEnabled) {
                 smbConnectionState = 1;
+                smbIdleTicks = 0;
                 if (smbTrayOpen) {
                     sceCdTrayReq(SCECdTrayClose, NULL);
                     smbTrayOpen = 0;
@@ -152,30 +156,7 @@ static void smbReconnectThread(void *arg)
             smbConnectionState = 0;
         }
 
-        DelayThread(2000000);
-    }
-}
-
-static void smbLinkMonitorThread(void *arg)
-{
-    (void)arg;
-
-    while (1) {
-        if (smbReconnectEnabled && pNetManGetGlobalNetIFLinkState) {
-            if (!pNetManGetGlobalNetIFLinkState()) {
-                if (!smbPhysicalLinkDown) {
-                    smbPhysicalLinkDown = 1;
-                    smbTrayOpen = 1;
-                    sceCdTrayReq(SCECdTrayOpen, NULL);
-                    if (smbConnectionState == 1)
-                        smbConnectionState = 2;
-                }
-            } else {
-                smbPhysicalLinkDown = 0;
-            }
-        }
-
-        DelayThread(500000);
+        DelayThread(SMB_RECONNECT_INTERVAL_US);
     }
 }
 
@@ -185,7 +166,7 @@ void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
     smbHashCallback = hash_callback;
     while (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback) <= 0) {
         smb_Disconnect();
-        DelayThread(2000000);
+        DelayThread(SMB_RECONNECT_INTERVAL_US);
     }
 }
 
@@ -202,9 +183,6 @@ void DeviceInit(void)
     thread.priority = 40;
 
     StartThread(CreateThread(&thread), NULL);
-
-    thread.thread = smbLinkMonitorThread;
-    StartThread(CreateThread(&thread), NULL);
 }
 
 void DeviceDeinit(void)
@@ -220,6 +198,7 @@ int DeviceReady(void)
 void DeviceFSInit(void)
 {
     smbReconnectEnabled = 1;
+    smbIdleTicks = 0;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
     } else {
@@ -236,6 +215,7 @@ void DeviceLock(void)
 void DeviceUnmount(void)
 {
     smbReconnectEnabled = 0;
+    smbIdleTicks = 0;
     if (smbConnectionState == 1)
         smb_CloseAll();
     smbConnectionState = 2;
@@ -271,17 +251,27 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
             bytes_to_read = sectors_to_read * 2048;
             for (;;) {
-                while (smbReconnectEnabled && !smbPhysicalLinkDown && smbConnectionState != 1)
+                while (smbReconnectEnabled && smbConnectionState != 1)
                     DelayThread(100000);
 
-                if (!smbReconnectEnabled || smbPhysicalLinkDown) {
+                if (!smbReconnectEnabled) {
                     result = -1;
                     break;
                 }
 
                 result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
-                if (result >= 0)
+                if (result >= 0) {
+                    smbIdleTicks = 0;
                     break;
+                }
+
+                smbIdleTicks = 0;
+
+                // 只在真实读失败后查询物理链路，避免后台轮询干扰正常流式读取。
+                if (pNetManGetGlobalNetIFLinkState && !pNetManGetGlobalNetIFLinkState() && !smbTrayOpen) {
+                    smbTrayOpen = 1;
+                    sceCdTrayReq(SCECdTrayOpen, NULL);
+                }
 
                 // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
                 smbConnectionState = 2;
