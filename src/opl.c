@@ -1294,8 +1294,13 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
     clearMenuGameList(mdl);
 
     const char *temp = NULL;
-    if (gRememberLastPlayed)
-        configGetStr(configGetByType(CONFIG_LAST), "last_played", &temp);
+    int byName = 0;
+    if (gRememberLastPlayed) {
+        // 优先读游戏名键，没有该键时回退到 ID 键
+        byName = configGetStr(configGetByType(CONFIG_LAST), "last_played_name", &temp);
+        if (!byName)
+            configGetStr(configGetByType(CONFIG_LAST), "last_played", &temp);
+    }
 
     // refresh device icon and text (for bdm)
     mdl->menuItem.icon_id = mdl->support->itemIconId(mdl->support);
@@ -1320,7 +1325,18 @@ static void updateMenuFromGameList(opl_io_module_t *mdl)
             gup->submenu.text_id = -1;
             gup->submenu.selected = 0;
 
-            if (gRememberLastPlayed && temp && strcmp(temp, mdl->support->itemGetStartup(mdl->support, i)) == 0) {
+            const char *key = byName ? mdl->support->itemGetName(mdl->support, i) : mdl->support->itemGetStartup(mdl->support, i);
+            // 与保存时一致：txt 映射开启时 HDD/BDM/ETH 用原名 indexName，APPS 用显示名；HDD 中 id >= hddGames.count 的是 ISO 游戏
+            if (byName && mdl->support->mode == HDD_MODE && i < (int)hddGames.count) {
+                hdl_game_info_t *g = mdl->support->itemGet(mdl->support, i);
+                if (gTxtRename && g->indexName[0])
+                    key = g->indexName;
+            } else if (byName && mdl->support->mode != APP_MODE) {
+                base_game_info_t *g = mdl->support->itemGet(mdl->support, i);
+                if (gTxtRename && g->indexName[0])
+                    key = g->indexName;
+            }
+            if (gRememberLastPlayed && temp && strcmp(temp, key) == 0) {
                 gup->submenu.selected = 1; // Select Last Played Game
             }
 

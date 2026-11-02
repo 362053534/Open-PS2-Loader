@@ -725,7 +725,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     }
 
     if (gRememberLastPlayed) {
-        configSetStr(configGetByType(CONFIG_LAST), "last_played", game->startup);
+        configSetStr(configGetByType(CONFIG_LAST), "last_played_name", gTxtRename && game->indexName[0] ? game->indexName : game->name); // txt 映射开启时保存原名，否则用显示名
         saveConfig(CONFIG_LAST, 0);
     }
 
