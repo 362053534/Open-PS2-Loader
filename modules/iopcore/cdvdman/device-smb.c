@@ -11,10 +11,16 @@
 
 #define SMB_RECONNECT_INTERVAL_US 2000000
 #define SMB_ECHO_IDLE_TICKS       60
-/* 套接字上的 SO_RCVTIMEO 仍是 30 秒。同一次收发再补叫醒：已放弃时 2 秒，否则 30 秒。 */
-#define SMB_READ_BLOCK_TIMEOUT_MS 30000
-/* 游戏已经放弃这次读时，不必再等满 30 秒。 */
-#define SMB_ABORT_RECV_GRACE_MS   2000
+/* 断线后退栈重试时拆成这么长再看一次放弃，总和仍是上面的 2 秒。 */
+#define SMB_RECONNECT_POLL_US     100000
+/* 套接字上的 SO_RCVTIMEO 仍是 30 秒。闹钟 2 秒一拍：已经放弃时第一拍叫醒，否则数满 15 拍。 */
+#define SMB_ABORT_ALARM_LIMIT     1
+#define SMB_BLOCK_ALARM_LIMIT     15
+/* 读路径跟主机测试共用，避免两套条件。 */
+#define SMB_WAIT_ABORT            1
+#define SMB_WAIT_READY            2
+#define SMB_WAIT_RETRY            3
+#define SMB_WAIT_KICK             4
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -43,10 +49,19 @@ static volatile int smbReconnectEnabled;
 static volatile int smbTrayOpen;
 static volatile unsigned int smbIdleTicks;
 static volatile int smb_abort_wait;
+static volatile int smb_alarm_armed;
+static volatile int smb_link_service;
+static volatile int smb_in_read_thread;
+static volatile int smb_retry_link;
+static volatile int smb_block_alarms;
+static volatile unsigned int smb_block_gen_seen;
+static volatile unsigned int smb_block_poked_gen;
+static iop_sys_clock_t smb_alarm_clock;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static int smbOpenGame(void);
-static void smbReconnectThread(void *arg);
+static void smb_link_once(void);
+static unsigned int smb_link_alarm_cb(void *arg);
 void smb_HashPasswordCached(server_specs_t *ss);
 
 static void ps2ip_init(void)
@@ -108,110 +123,228 @@ static int smbOpenGame(void)
     return 1;
 }
 
-static int smb_should_wake_blocked_read(int age_ms, int abort_wait, unsigned int gen, unsigned int poked_gen)
+static int smb_read_wait_action(int abort_wait, int enabled, int state, int in_read_thread)
 {
-    int limit;
-
-    if (age_ms < 0)
-        return 0;
-    limit = abort_wait ? SMB_ABORT_RECV_GRACE_MS : SMB_READ_BLOCK_TIMEOUT_MS;
-    if (age_ms < limit)
-        return 0;
-    if (gen == poked_gen)
-        return 0;
-    return 1;
+    if (abort_wait)
+        return SMB_WAIT_ABORT;
+    if (!enabled || state == 1)
+        return SMB_WAIT_READY;
+    if (in_read_thread)
+        return SMB_WAIT_RETRY;
+    return SMB_WAIT_KICK;
 }
 
-static unsigned int smb_read_poked_gen;
-
-static void smb_poke_blocked_read(void)
+static int smb_alarm_should_wake(int blocking, int abort_wait, int alarms, int already_poked)
 {
-    int age, tid, limit;
-    unsigned int gen;
-
-    gen = smb_read_block_gen();
-    age = smb_read_block_age_ms();
-    if (!smb_should_wake_blocked_read(age, smb_abort_wait, gen, smb_read_poked_gen))
-        return;
-
-    /* 没占着 IO 信号量就不是读线程里的这次收包。 */
-    if (smb_io_sema >= 0 && PollSema(smb_io_sema) == 0) {
-        SignalSema(smb_io_sema);
-        return;
-    }
-
-    tid = cdvdman_read_thread_id();
-    if (tid <= 0)
-        return;
-
-    /* 读线程优先级更高，网卡中断可能刚把它叫醒并换了一次新收包。 */
-    limit = smb_abort_wait ? SMB_ABORT_RECV_GRACE_MS : SMB_READ_BLOCK_TIMEOUT_MS;
-    if (smb_read_block_gen() != gen || smb_read_block_age_ms() < limit)
-        return;
-
-    /* 只叫醒 WaitSema。close 会在读线程还停在接收邮箱上时把邮箱释放掉。 */
-    if (ReleaseWaitThread(tid) == 0)
-        smb_read_poked_gen = gen;
+    if (!blocking || already_poked || alarms <= 0)
+        return 0;
+    if (abort_wait)
+        return alarms >= SMB_ABORT_ALARM_LIMIT;
+    return alarms >= SMB_BLOCK_ALARM_LIMIT;
 }
 
-static void smbReconnectThread(void *arg)
+static int smb_should_kick_link(int kicked, int alarm_armed, unsigned int kick_wait)
+{
+    /* 第一次立刻踢。闹钟还挂着就别再踢；丢了才隔满 2 秒补一次。 */
+    return !kicked || (!alarm_armed && kick_wait >= SMB_RECONNECT_INTERVAL_US);
+}
+
+/* 原来重连线程里的一轮。没有 DelayThread，调用方必须已经在浅栈上。
+   这里不置读盘阻塞标志：放弃只该打断真正的读，不该打断 Echo。 */
+static void smb_link_once(void)
 {
     int result;
 
-    (void)arg;
+    if (smbReconnectEnabled && smbConnectionState == 1) {
+        // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
+        if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
+            smbIdleTicks++;
 
-    while (1) {
-        smb_poke_blocked_read();
-
-        if (smbReconnectEnabled && smbConnectionState == 1) {
-            // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
-            if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
-                smbIdleTicks++;
-
-            if (smbIdleTicks >= SMB_ECHO_IDLE_TICKS) {
-                result = smb_Echo();
-                if (result > 0) {
-                    smbIdleTicks = 0;
-                } else if (result < 0) {
-                    smbIdleTicks = 0;
-                    smbConnectionState = 2;
-                }
-            }
-        } else {
-            smbIdleTicks = 0;
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == 2) {
-            if (smb_io_sema < 0) {
-                smb_Disconnect();
-                smbConnectionState = 0;
-            } else if (PollSema(smb_io_sema) == 0) {
-                smb_Disconnect();
-                SignalSema(smb_io_sema);
-                smbConnectionState = 0;
-            }
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == 0) {
-            smbConnectionState = 2;
-
-            if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
-                smbOpenGame() > 0 && smbReconnectEnabled) {
-                smbConnectionState = 1;
+        if (smbIdleTicks >= SMB_ECHO_IDLE_TICKS) {
+            result = smb_Echo();
+            if (result > 0) {
                 smbIdleTicks = 0;
-                if (smbTrayOpen) {
-                    sceCdTrayReq(SCECdTrayClose, NULL);
-                    smbTrayOpen = 0;
-                }
-                continue;
+            } else if (result < 0) {
+                smbIdleTicks = 0;
+                smbConnectionState = 2;
             }
+        }
+    } else {
+        smbIdleTicks = 0;
+    }
 
+    if (smbReconnectEnabled && smbConnectionState == 2) {
+        if (smb_io_sema < 0) {
             smb_Disconnect();
             smbConnectionState = 0;
+        } else if (PollSema(smb_io_sema) == 0) {
+            smb_Disconnect();
+            SignalSema(smb_io_sema);
+            smbConnectionState = 0;
+        }
+    }
+
+    if (smbReconnectEnabled && smbConnectionState == 0) {
+        smbConnectionState = 2;
+
+        if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
+            smbOpenGame() > 0 && smbReconnectEnabled) {
+            smbConnectionState = 1;
+            smbIdleTicks = 0;
+            if (smbTrayOpen) {
+                sceCdTrayReq(SCECdTrayClose, NULL);
+                smbTrayOpen = 0;
+            }
+            return;
         }
 
-        DelayThread(SMB_RECONNECT_INTERVAL_US);
+        smb_Disconnect();
+        smbConnectionState = 0;
     }
+}
+
+static unsigned int smb_link_alarm_cb(void *arg)
+{
+    unsigned int gen;
+    int r;
+
+    (void)arg;
+    smb_alarm_armed = 0;
+
+    if (!smbReconnectEnabled)
+        return 0;
+
+    if (smb_read_is_blocking()) {
+        gen = smb_read_block_gen();
+        if (gen != smb_block_gen_seen) {
+            smb_block_gen_seen = gen;
+            smb_block_alarms = 0;
+        }
+        smb_block_alarms++;
+        if (smb_alarm_should_wake(1, smb_abort_wait, smb_block_alarms, smb_block_poked_gen == gen)) {
+            if (iReleaseWaitThread(cdvdman_read_thread_id()) == 0)
+                smb_block_poked_gen = gen;
+        }
+        /* 读线程停在 recv，到不了 SetAlarm。回调返回 0，在这里续下一拍。 */
+        if (smb_alarm_clock.lo != 0 || smb_alarm_clock.hi != 0) {
+            r = iSetAlarm(&smb_alarm_clock, smb_link_alarm_cb, NULL);
+            if (r == 0)
+                smb_alarm_armed = 1;
+        }
+        return 0;
+    }
+
+    smb_block_alarms = 0;
+    smb_block_gen_seen = 0;
+    /* 没在收包时才让读线程去做 Echo 或重连，避免它还在 link_once 里又被叫进去。 */
+    smb_link_service = 1;
+    cdvdman_kick_rthread(1);
+    /* 返回 0：这一拍已经从队列摘掉。下一拍由读线程 SetAlarm，不在这里再挂一只。 */
+    return 0;
+}
+
+static void smb_arm_link_alarm(void)
+{
+    int r;
+
+    if (smb_alarm_armed || !smbReconnectEnabled)
+        return;
+
+    if (smb_alarm_clock.hi == 0 && smb_alarm_clock.lo == 0)
+        USec2SysClock(SMB_RECONNECT_INTERVAL_US, &smb_alarm_clock);
+
+    r = SetAlarm(&smb_alarm_clock, smb_link_alarm_cb, NULL);
+    /* -104 是 KE_FOUND_HANDLER：这一拍已经挂着。 */
+    if (r == 0 || r == -104)
+        smb_alarm_armed = 1;
+}
+
+static void smb_disarm_link_alarm(void)
+{
+    smb_alarm_armed = 0;
+    CancelAlarm(smb_link_alarm_cb, NULL);
+}
+
+void smb_ensure_link_alarm(void)
+{
+    smb_arm_link_alarm();
+}
+
+void smb_read_thread_maintenance(int read_pending)
+{
+    int disconnected;
+
+    if (smbReconnectEnabled && !smb_alarm_armed)
+        smb_arm_link_alarm();
+
+    disconnected = smbConnectionState != 1;
+    if (!smb_link_service && !disconnected)
+        return;
+
+    /* 这次醒来就要读，而且已经断线：等 cdvdman_read 退栈再重连，避免同一轮连两次。 */
+    if (read_pending && disconnected) {
+        smb_link_service = 0;
+        return;
+    }
+
+    smb_link_service = 0;
+    if (smbReconnectEnabled)
+        smb_link_once();
+}
+
+void smb_set_in_read_thread(int in_thread)
+{
+    smb_in_read_thread = in_thread ? 1 : 0;
+}
+
+int smb_finish_read_attempt(void)
+{
+    unsigned int waited;
+
+    if (!smb_retry_link)
+        return 0;
+    smb_retry_link = 0;
+
+    if (smb_abort_wait) {
+        cdvdman_stat.err = SCECdErABRT;
+        return 0;
+    }
+
+    /* 游戏还堵在 sceCdSync。重连期间保持读状态，内部退栈码不要露出去。 */
+    cdvdman_stat.status = SCECdStatRead;
+    cdvdman_stat.err = SCECdErNO;
+
+    smb_link_once();
+
+    if (smb_abort_wait) {
+        cdvdman_stat.err = SCECdErABRT;
+        return 0;
+    }
+
+    if (smbReconnectEnabled && smbConnectionState == 1)
+        return 1;
+
+    if (!smbReconnectEnabled) {
+        cdvdman_stat.err = SCECdErTRMOPN;
+        return 0;
+    }
+
+    waited = 0;
+    while (waited < SMB_RECONNECT_INTERVAL_US) {
+        if (smb_abort_wait) {
+            cdvdman_stat.err = SCECdErABRT;
+            return 0;
+        }
+        DelayThread(SMB_RECONNECT_POLL_US);
+        waited += SMB_RECONNECT_POLL_US;
+    }
+
+    if (smb_abort_wait) {
+        cdvdman_stat.err = SCECdErABRT;
+        return 0;
+    }
+
+    return 1;
 }
 
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
@@ -229,17 +362,8 @@ void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
 
 void DeviceInit(void)
 {
-    iop_thread_t thread;
-
+    /* 重连不再另开线程。CreateThread 的栈从堆顶划 4KB，存档加载 mcman 时就差这块。 */
     RegisterLibraryEntries(&_exp_oplsmb);
-
-    thread.attr = TH_C;
-    thread.option = 0;
-    thread.thread = smbReconnectThread;
-    thread.stacksize = 0x1000;
-    thread.priority = 40;
-
-    StartThread(CreateThread(&thread), NULL);
 }
 
 void DeviceDeinit(void)
@@ -257,11 +381,17 @@ void DeviceFSInit(void)
     smbReconnectEnabled = 1;
     smbIdleTicks = 0;
     smb_abort_wait = 0;
+    smb_retry_link = 0;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
     } else {
         smb_Disconnect();
         smbConnectionState = 0;
+    }
+    smb_arm_link_alarm();
+    if (smbConnectionState != 1) {
+        smb_link_service = 1;
+        cdvdman_kick_rthread(0);
     }
 }
 
@@ -273,6 +403,8 @@ void DeviceLock(void)
 void DeviceUnmount(void)
 {
     smbReconnectEnabled = 0;
+    smb_link_service = 0;
+    smb_disarm_link_alarm();
     smbIdleTicks = 0;
     if (smbConnectionState == 1)
         smb_CloseAll();
@@ -301,6 +433,8 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     register int i, esc_flag = 0, result, bytes_to_read;
     u8 *p = (u8 *)buffer;
     int rv = SCECdErNO;
+    int kicked = 0;
+    unsigned int kick_wait = 0;
 
     lbound = 0;
     ubound = (cdvdman_settings.common.NumParts > 1) ? 0x80000 : 0xFFFFFFFF;
@@ -320,18 +454,32 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
             bytes_to_read = sectors_to_read * 2048;
             for (;;) {
+                int action;
+
                 /* Break、停流、Stop、Pause 都在等这次读结束。继续空等的话 sceCdSync 不会返回。 */
-                if (smb_abort_wait)
+                action = smb_read_wait_action(smb_abort_wait, smbReconnectEnabled, smbConnectionState, smb_in_read_thread);
+                if (action == SMB_WAIT_ABORT)
                     return SCECdErABRT;
 
-                while (smbReconnectEnabled && smbConnectionState != 1) {
-                    if (smb_abort_wait)
-                        return SCECdErABRT;
+                /* 人已经在读线程里。这里 DelayThread 或重连会把自己堵死，也会把 SMB 叠进深栈。 */
+                if (action == SMB_WAIT_RETRY) {
+                    smb_retry_link = 1;
+                    /* ProbeZSO 不看返回值写 err，这里直接记下，未对齐的循环才能停。 */
+                    cdvdman_stat.err = SMB_READ_YIELD;
+                    return SMB_READ_YIELD;
+                }
 
-                    DelayThread(100000);
-
-                    if (smb_abort_wait)
-                        return SCECdErABRT;
+                if (action == SMB_WAIT_KICK) {
+                    /* 闹钟还在就只踢一次。闹钟丢了才按 2 秒再踢，避免 100ms 一轮把服务器打满。 */
+                    if (smb_should_kick_link(kicked, smb_alarm_armed, kick_wait)) {
+                        smb_link_service = 1;
+                        cdvdman_kick_rthread(0);
+                        kicked = 1;
+                        kick_wait = 0;
+                    }
+                    DelayThread(SMB_RECONNECT_POLL_US);
+                    kick_wait += SMB_RECONNECT_POLL_US;
+                    continue;
                 }
 
                 if (!smbReconnectEnabled) {

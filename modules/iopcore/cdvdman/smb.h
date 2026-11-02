@@ -520,6 +520,7 @@ int smb_Disconnect(void);
 int smb_AbortConnection(void);
 void smb_read_begin_blocking(void);
 void smb_read_end_blocking(void);
+int smb_read_is_blocking(void);
 int smb_read_block_age_ms(void);
 unsigned int smb_read_block_gen(void);
 

@@ -196,7 +196,7 @@ static int RecvData(int sock, char *buf, int size)
     return size;
 }
 
-/* 数据读卡在一次收包里时，由重连线程 ReleaseWaitThread 叫醒。
+/* 数据读卡在一次收包里时，由闹钟回调 iReleaseWaitThread 叫醒。
    套接字上的 SO_RCVTIMEO 仍留给普通超时；这里只标记“正在这一次收发”。 */
 static volatile int smb_read_blocking;
 static volatile unsigned int smb_read_block_gen_value;
@@ -222,6 +222,11 @@ void smb_read_begin_blocking(void)
 void smb_read_end_blocking(void)
 {
     smb_read_blocking = 0;
+}
+
+int smb_read_is_blocking(void)
+{
+    return smb_read_blocking;
 }
 
 int smb_read_block_age_ms(void)

@@ -70,8 +70,8 @@ I_SysClock2USec
 I_GetSystemTime
 I_SleepThread
 I_iWakeupThread
-/* 重连线程是普通线程，叫醒读卡要用 ReleaseWaitThread。iReleaseWaitThread 只给中断上下文。 */
-I_ReleaseWaitThread
+/* 闹钟在定时器中断里叫醒卡在 recv 的读线程，只能用 iReleaseWaitThread。 */
+I_iReleaseWaitThread
 thbase_IMPORTS_end
 
 thevent_IMPORTS_start

@@ -57,6 +57,10 @@ static int cdrom_rthread_sema;
 static int cdvdman_scmdsema;
 int cdvdman_searchfilesema;
 static int cdvdman_ReadingThreadID;
+#ifdef SMB_DRIVER
+/* 信号量最大是 1，维护叫醒和真正的读必须靠这个标志区分。 */
+static volatile int cdvdman_cdread_pending;
+#endif
 
 static StmCallback_t Stm0Callback = NULL;
 static iop_sys_clock_t gCallbackSysClock;
@@ -358,7 +362,11 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     }
 
     // If we had a read that went past the end of media, after reading what we can, set the end of media error.
-    if (endOfMedia && cdvdman_stat.err != SCECdErNO)
+    if (endOfMedia && cdvdman_stat.err != SCECdErNO
+#ifdef SMB_DRIVER
+        && cdvdman_stat.err != SMB_READ_YIELD
+#endif
+    )
         cdvdman_stat.err = endOfMedia == 2 ? SCECdErIPI : SCECdErEOM;
 
     return (cdvdman_stat.err == SCECdErNO ? 0 : 1);
@@ -394,8 +402,9 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
             cdvdman_read_sectors(rpos, nsectors, cdvdman_buf);
 #ifdef SMB_DRIVER
-            /* 中止后不再读后续块，避免后面的成功结果把 SCECdErABRT 盖掉。 */
-            if (cdvdman_stat.err == SCECdErABRT)
+            /* 中止后不再读后续块，避免后面的成功结果把 SCECdErABRT 盖掉。
+               断线退栈同样要停，否则会把没读到的缓冲拷出去。 */
+            if (cdvdman_stat.err == SCECdErABRT || cdvdman_stat.err == SMB_READ_YIELD)
                 break;
 #endif
 
@@ -479,6 +488,8 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 #ifdef SMB_DRIVER
     /* 新的读命令才清掉上一次的放弃。进行中的读看不到这次清零。 */
     DeviceClearAbortReadWait();
+    /* 必须在 SignalSema 之前置位。信号量计数到 1 后多出来的叫醒会被丢掉。 */
+    cdvdman_cdread_pending = 1;
 #endif
 
     cdvdman_stat.cdread_lba = lsn;
@@ -756,7 +767,23 @@ static void cdvdman_cdread_Thread(void *args)
     while (1) {
         WaitSema(cdrom_rthread_sema);
 
+#ifdef SMB_DRIVER
+        smb_read_thread_maintenance(cdvdman_cdread_pending);
+        if (!cdvdman_cdread_pending)
+            continue;
+        cdvdman_cdread_pending = 0;
+
+        do {
+            /* 重连只放在 cdvdman_read 返回之后，这时栈和原来那条 4KB 线程一样浅。 */
+            smb_set_in_read_thread(1);
+#endif
         cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+#ifdef SMB_DRIVER
+            smb_set_in_read_thread(0);
+        } while (smb_finish_read_attempt());
+        /* 读完时把闹钟接回去。收包期间如果没续上，空闲保活还会有下一拍。 */
+        smb_ensure_link_alarm();
+#endif
 
         /* This streaming callback is not compatible with the original SONY stream channel 0 (IOP) callback's design.
        The original is run from the interrupt handler, but we want it to run
@@ -795,6 +822,14 @@ static void cdvdman_startThreads(void)
 int cdvdman_read_thread_id(void)
 {
     return cdvdman_ReadingThreadID;
+}
+
+void cdvdman_kick_rthread(int from_intr)
+{
+    if (from_intr)
+        iSignalSema(cdrom_rthread_sema);
+    else
+        SignalSema(cdrom_rthread_sema);
 }
 #endif
 

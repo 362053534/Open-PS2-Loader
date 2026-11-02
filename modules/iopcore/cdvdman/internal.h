@@ -106,6 +106,13 @@ extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern void DeviceAbortReadWait(void);
 extern void DeviceClearAbortReadWait(void);
 extern int cdvdman_read_thread_id(void);
+/* 读线程里发现断线时先退栈。这个码只在线程内部用，完成回调之前会清掉。 */
+#define SMB_READ_YIELD 0x70
+extern void cdvdman_kick_rthread(int from_intr);
+extern void smb_read_thread_maintenance(int read_pending);
+extern void smb_set_in_read_thread(int in_thread);
+extern int smb_finish_read_attempt(void);
+extern void smb_ensure_link_alarm(void);
 #endif
 extern int cdvdman_sendSCmd(u8 cmd, const void *in, u16 in_size, void *out, u16 out_size);
 extern void cdvdman_cb_event(int reason);
