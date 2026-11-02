@@ -17,9 +17,6 @@ typedef struct
     int PasswordLen;
     int HashedFlag;
     void *IOPaddr;
-    /* 第一次认证留下的 LM/NT 散列。重连只拿它们和新挑战做 DES，MD4 不必常驻。 */
-    u8 LMhash[16];
-    u8 NTLMhash[16];
 } server_specs_t;
 
 typedef void (*OplSmbPwHashFunc_t)(server_specs_t *ss);

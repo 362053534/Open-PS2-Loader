@@ -362,11 +362,7 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
     }
 
     // If we had a read that went past the end of media, after reading what we can, set the end of media error.
-    if (endOfMedia && cdvdman_stat.err != SCECdErNO
-#ifdef SMB_DRIVER
-        && cdvdman_stat.err != SMB_READ_YIELD
-#endif
-    )
+    if (endOfMedia && cdvdman_stat.err != SCECdErNO)
         cdvdman_stat.err = endOfMedia == 2 ? SCECdErIPI : SCECdErEOM;
 
     return (cdvdman_stat.err == SCECdErNO ? 0 : 1);
@@ -401,12 +397,6 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
                 nsectors = 1;
 
             cdvdman_read_sectors(rpos, nsectors, cdvdman_buf);
-#ifdef SMB_DRIVER
-            /* 中止后不再读后续块，避免后面的成功结果把 SCECdErABRT 盖掉。
-               断线退栈同样要停，否则会把没读到的缓冲拷出去。 */
-            if (cdvdman_stat.err == SCECdErABRT || cdvdman_stat.err == SMB_READ_YIELD)
-                break;
-#endif
 
             rpos += nsectors;
             sectors -= nsectors;
@@ -486,8 +476,6 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
     }
 
 #ifdef SMB_DRIVER
-    /* 新的读命令才清掉上一次的放弃。进行中的读看不到这次清零。 */
-    DeviceClearAbortReadWait();
     /* 必须在 SignalSema 之前置位。信号量计数到 1 后多出来的叫醒会被丢掉。 */
     cdvdman_cdread_pending = 1;
 #endif
@@ -520,10 +508,6 @@ int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
         DPRINTF("cdvdman_SyncRead: exiting (sync_flag)...\n");
         return 0;
     }
-
-#ifdef SMB_DRIVER
-    DeviceClearAbortReadWait();
-#endif
 
     CpuResumeIntr(OldState);
 
@@ -772,15 +756,9 @@ static void cdvdman_cdread_Thread(void *args)
         if (!cdvdman_cdread_pending)
             continue;
         cdvdman_cdread_pending = 0;
-
-        do {
-            /* 重连只放在 cdvdman_read 返回之后，这时栈和原来那条 4KB 线程一样浅。 */
-            smb_set_in_read_thread(1);
 #endif
         cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 #ifdef SMB_DRIVER
-            smb_set_in_read_thread(0);
-        } while (smb_finish_read_attempt());
         /* 读完时把闹钟接回去。收包期间如果没续上，空闲保活还会有下一拍。 */
         smb_ensure_link_alarm();
 #endif
@@ -819,11 +797,6 @@ static void cdvdman_startThreads(void)
 }
 
 #ifdef SMB_DRIVER
-int cdvdman_read_thread_id(void)
-{
-    return cdvdman_ReadingThreadID;
-}
-
 void cdvdman_kick_rthread(int from_intr)
 {
     if (from_intr)
