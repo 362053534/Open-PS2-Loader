@@ -50,7 +50,7 @@ static int hddSupportErrorCode = ERROR_HDD_NOT_DETECTED;
 static int hddSupportErrorMessage = _STR_HDD_NOT_CONNECTED_ERROR;
 
 static char *hddPrefix = "pfs0:";
-static hdl_games_list_t hddGames;
+hdl_games_list_t hddGames; // 去掉 static，供 opl.c 区分 HDL 游戏与 HDD 上的 ISO 游戏
 static base_game_info_t *hddIsoGames;
 static int hddIsoGameCount;
 static int hddIsoFileSize;
@@ -997,7 +997,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         return;
 
     if (gRememberLastPlayed) {
-        configSetStr(configGetByType(CONFIG_LAST), "last_played", game->startup);
+        configSetStr(configGetByType(CONFIG_LAST), "last_played_name", gTxtRename && game->indexName[0] ? game->indexName : game->name); // txt 映射开启时保存原名，否则用显示名
         saveConfig(CONFIG_LAST, 0);
     }
 

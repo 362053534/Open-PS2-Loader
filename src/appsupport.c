@@ -2295,7 +2295,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             }
         }
         if (gRememberLastPlayed) {
-            configSetStr(configGetByType(CONFIG_LAST), "last_played", appGetItemStartup(itemList, id));
+            configSetStr(configGetByType(CONFIG_LAST), "last_played_name", appGetItemName(itemList, id)); // 保存列表显示的名称
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
@@ -2364,7 +2364,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             argc = 1;
         }
         if (gRememberLastPlayed) {
-            configSetStr(configGetByType(CONFIG_LAST), "last_played", appGetItemStartup(itemList, id));
+            configSetStr(configGetByType(CONFIG_LAST), "last_played_name", appGetItemName(itemList, id)); // 保存列表显示的名称
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
