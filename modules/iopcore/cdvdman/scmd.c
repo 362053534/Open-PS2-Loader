@@ -124,6 +124,11 @@ int sceCdBreak(void)
 {
     DPRINTF("sceCdBreak\n");
 
+#ifdef SMB_DRIVER
+    /* 读还在进行时也要置位。sync_flag 置位时这里会直接返回，游戏接着 sceCdSync。 */
+    DeviceAbortReadWait();
+#endif
+
     if (sync_flag)
         return 0;
 

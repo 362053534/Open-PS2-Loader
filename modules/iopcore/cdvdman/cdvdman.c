@@ -393,6 +393,11 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
                 nsectors = 1;
 
             cdvdman_read_sectors(rpos, nsectors, cdvdman_buf);
+#ifdef SMB_DRIVER
+            /* 中止后不再读后续块，避免后面的成功结果把 SCECdErABRT 盖掉。 */
+            if (cdvdman_stat.err == SCECdErABRT)
+                break;
+#endif
 
             rpos += nsectors;
             sectors -= nsectors;
@@ -471,6 +476,11 @@ int cdvdman_AsyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
         return 0;
     }
 
+#ifdef SMB_DRIVER
+    /* 新的读命令才清掉上一次的放弃。进行中的读看不到这次清零。 */
+    DeviceClearAbortReadWait();
+#endif
+
     cdvdman_stat.cdread_lba = lsn;
     cdvdman_stat.cdread_sectors = sectors;
     cdvdman_stat.sector_size = sector_size;
@@ -499,6 +509,10 @@ int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
         DPRINTF("cdvdman_SyncRead: exiting (sync_flag)...\n");
         return 0;
     }
+
+#ifdef SMB_DRIVER
+    DeviceClearAbortReadWait();
+#endif
 
     CpuResumeIntr(OldState);
 
@@ -776,6 +790,13 @@ static void cdvdman_startThreads(void)
     cdvdman_ReadingThreadID = CreateThread(&thread_param);
     StartThread(cdvdman_ReadingThreadID, NULL);
 }
+
+#ifdef SMB_DRIVER
+int cdvdman_read_thread_id(void)
+{
+    return cdvdman_ReadingThreadID;
+}
+#endif
 
 //-------------------------------------------------------------------------
 static void cdvdman_create_semaphores(void)

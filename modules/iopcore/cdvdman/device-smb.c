@@ -11,6 +11,10 @@
 
 #define SMB_RECONNECT_INTERVAL_US 2000000
 #define SMB_ECHO_IDLE_TICKS       60
+/* 套接字上的 SO_RCVTIMEO 仍是 30 秒。同一次收发再补叫醒：已放弃时 2 秒，否则 30 秒。 */
+#define SMB_READ_BLOCK_TIMEOUT_MS 30000
+/* 游戏已经放弃这次读时，不必再等满 30 秒。 */
+#define SMB_ABORT_RECV_GRACE_MS   2000
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -38,6 +42,7 @@ static volatile int smbConnectionState = 2;
 static volatile int smbReconnectEnabled;
 static volatile int smbTrayOpen;
 static volatile unsigned int smbIdleTicks;
+static volatile int smb_abort_wait;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 
 static int smbOpenGame(void);
@@ -102,6 +107,52 @@ static int smbOpenGame(void)
     return 1;
 }
 
+static int smb_should_wake_blocked_read(int age_ms, int abort_wait, unsigned int gen, unsigned int poked_gen)
+{
+    int limit;
+
+    if (age_ms < 0)
+        return 0;
+    limit = abort_wait ? SMB_ABORT_RECV_GRACE_MS : SMB_READ_BLOCK_TIMEOUT_MS;
+    if (age_ms < limit)
+        return 0;
+    if (gen == poked_gen)
+        return 0;
+    return 1;
+}
+
+static unsigned int smb_read_poked_gen;
+
+static void smb_poke_blocked_read(void)
+{
+    int age, tid, limit;
+    unsigned int gen;
+
+    gen = smb_read_block_gen();
+    age = smb_read_block_age_ms();
+    if (!smb_should_wake_blocked_read(age, smb_abort_wait, gen, smb_read_poked_gen))
+        return;
+
+    /* 没占着 IO 信号量就不是读线程里的这次收包。 */
+    if (smb_io_sema >= 0 && PollSema(smb_io_sema) == 0) {
+        SignalSema(smb_io_sema);
+        return;
+    }
+
+    tid = cdvdman_read_thread_id();
+    if (tid <= 0)
+        return;
+
+    /* 读线程优先级更高，网卡中断可能刚把它叫醒并换了一次新收包。 */
+    limit = smb_abort_wait ? SMB_ABORT_RECV_GRACE_MS : SMB_READ_BLOCK_TIMEOUT_MS;
+    if (smb_read_block_gen() != gen || smb_read_block_age_ms() < limit)
+        return;
+
+    /* 只叫醒 WaitSema。close 会在读线程还停在接收邮箱上时把邮箱释放掉。 */
+    if (ReleaseWaitThread(tid) == 0)
+        smb_read_poked_gen = gen;
+}
+
 static void smbReconnectThread(void *arg)
 {
     int result;
@@ -109,6 +160,8 @@ static void smbReconnectThread(void *arg)
     (void)arg;
 
     while (1) {
+        smb_poke_blocked_read();
+
         if (smbReconnectEnabled && smbConnectionState == 1) {
             // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
             if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
@@ -199,6 +252,7 @@ void DeviceFSInit(void)
 {
     smbReconnectEnabled = 1;
     smbIdleTicks = 0;
+    smb_abort_wait = 0;
     if (smbOpenGame() > 0) {
         smbConnectionState = 1;
     } else {
@@ -226,6 +280,17 @@ void DeviceStop(void)
 {
 }
 
+void DeviceAbortReadWait(void)
+{
+    /* 游戏已经不要这次读。不能在这里 close：lwip_close 会在 recv 仍停在 WaitSema 时释放邮箱。 */
+    smb_abort_wait = 1;
+}
+
+void DeviceClearAbortReadWait(void)
+{
+    smb_abort_wait = 0;
+}
+
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     register u32 r, sectors_to_read, lbound, ubound, nlsn, offslsn;
@@ -251,8 +316,19 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
             bytes_to_read = sectors_to_read * 2048;
             for (;;) {
-                while (smbReconnectEnabled && smbConnectionState != 1)
+                /* Break、停流、Stop、Pause 都在等这次读结束。继续空等的话 sceCdSync 不会返回。 */
+                if (smb_abort_wait)
+                    return SCECdErABRT;
+
+                while (smbReconnectEnabled && smbConnectionState != 1) {
+                    if (smb_abort_wait)
+                        return SCECdErABRT;
+
                     DelayThread(100000);
+
+                    if (smb_abort_wait)
+                        return SCECdErABRT;
+                }
 
                 if (!smbReconnectEnabled) {
                     result = -1;
@@ -264,6 +340,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                     smbIdleTicks = 0;
                     break;
                 }
+
+                if (smb_abort_wait)
+                    return SCECdErABRT;
 
                 smbIdleTicks = 0;
 

@@ -66,8 +66,12 @@ I_SetAlarm
 I_iSetAlarm
 I_CancelAlarm
 I_USec2SysClock
+I_SysClock2USec
+I_GetSystemTime
 I_SleepThread
 I_iWakeupThread
+/* 重连线程是普通线程，叫醒读卡要用 ReleaseWaitThread。iReleaseWaitThread 只给中断上下文。 */
+I_ReleaseWaitThread
 thbase_IMPORTS_end
 
 thevent_IMPORTS_start

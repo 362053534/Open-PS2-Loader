@@ -196,6 +196,71 @@ static int RecvData(int sock, char *buf, int size)
     return size;
 }
 
+/* 数据读卡在一次收包里时，由重连线程 ReleaseWaitThread 叫醒。
+   套接字上的 SO_RCVTIMEO 仍留给普通超时；这里只标记“正在这一次收发”。 */
+static volatile int smb_read_blocking;
+static volatile unsigned int smb_read_block_gen_value;
+static volatile u32 smb_read_block_since_ms;
+
+static u32 smb_now_ms(void)
+{
+    iop_sys_clock_t clock;
+    u32 sec, usec;
+
+    GetSystemTime(&clock);
+    SysClock2USec(&clock, &sec, &usec);
+    return sec * 1000u + usec / 1000u;
+}
+
+void smb_read_begin_blocking(void)
+{
+    smb_read_block_since_ms = smb_now_ms();
+    smb_read_block_gen_value++;
+    smb_read_blocking = 1;
+}
+
+void smb_read_end_blocking(void)
+{
+    smb_read_blocking = 0;
+}
+
+int smb_read_block_age_ms(void)
+{
+    u32 since;
+
+    if (!smb_read_blocking)
+        return -1;
+    since = smb_read_block_since_ms;
+    if (!smb_read_blocking)
+        return -1;
+    return (int)(smb_now_ms() - since);
+}
+
+unsigned int smb_read_block_gen(void)
+{
+    return smb_read_block_gen_value;
+}
+
+static int smb_read_send_blocking(int sock, char *buf, int size)
+{
+    int result;
+
+    smb_read_begin_blocking();
+    result = SendData(sock, buf, size);
+    smb_read_end_blocking();
+    return result;
+}
+
+static int smb_read_recv_blocking(void *header, int index, void *payload, int plen)
+{
+    int result;
+
+    smb_read_begin_blocking();
+    result = plwip_recvfrom(main_socket, header, index, payload, plen, 0, NULL, NULL);
+    smb_read_end_blocking();
+    return result;
+}
+
 //-------------------------------------------------------------------------
 static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 {
@@ -662,14 +727,14 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
 #ifdef USE_CUSTOM_RECV
     //Send the whole message, including the 4-byte direct transport packet header.
-    r = SendData(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4);
+    r = smb_read_send_blocking(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4);
     if (r <= 0)
         return -1;
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
     do {
-        rcv_size = plwip_recvfrom(main_socket, &SMB_buf, 49, readbuf, nbytes, 0, NULL, NULL);
+        rcv_size = smb_read_recv_blocking(&SMB_buf, 49, readbuf, nbytes);
         if (rcv_size <= 0)
             return -2;
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
@@ -679,13 +744,15 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
     // Handle fragmented packets
     while (rcv_size < expected_size) {
-        r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL); // - rcv_size
+        r = smb_read_recv_blocking(NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size);
         if (r <= 0)
             return -2;
         rcv_size += r;
     }
 #else
+    smb_read_begin_blocking();
     r = GetSMBServerReply(0, NULL, sizeof(ReadAndXResponse_t));
+    smb_read_end_blocking();
     if (r <= 0)
         return -EIO;
 
@@ -696,14 +763,18 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     //Skip any padding bytes.
     padding = RRsp->DataOffset - sizeof(ReadAndXResponse_t);
     if (padding > 0) {
+        smb_read_begin_blocking();
         r = RecvData(main_socket, (char *)(RRsp + 1), padding);
+        smb_read_end_blocking();
         if (r <= 0)
             return -2;
     }
 
     DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
     if (DataLength > 0) {
+        smb_read_begin_blocking();
         r = RecvData(main_socket, readbuf, DataLength);
+        smb_read_end_blocking();
         if (r <= 0)
             return -2;
     }
