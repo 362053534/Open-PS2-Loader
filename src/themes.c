@@ -2447,7 +2447,7 @@ static void thmLoad(const char *themePath)
     // Coverflow 整排的可选水平微调（每单位为 1/256 个封面宽度）。
     configGetInt(themeConfig, "coverflow_cover_offset", &newT->coverflowCoverOffset);
 
-    // Coverflow 参数先复位到内部基线；第三方主题只覆盖这里明确开放的 count/dim/preload。
+    // Coverflow 参数先复位到内部基线；第三方主题只覆盖这里明确开放的 count/dim/preload/center_scale。
     // 每次加载主题都先复位，避免切换到未定义这些键的主题时残留上一个主题的设置。本函数
     // 在元素定义解析（initCoverflow）之前运行，因此读到的 count/preload 在分配缓存时即可用。
     //   coverflow_count            —— 同屏封面数（规范化为 1/3/5/7/9；偶数向上取奇数）
@@ -2480,6 +2480,7 @@ static void thmLoad(const char *themePath)
     // 由主题引擎按元素通用解析。
     configGetInt(themeConfig, "coverflow_dim_covers", &gCoverflowDimCovers);
     configGetInt(themeConfig, "coverflow_preload", &gCoverflowPreload);
+    configGetInt(themeConfig, "coverflow_center_scale", &gCoverflowCenterScale); // 中心封面缩放，未写时保持默认 0
     // count 规范化到 1/3/5/7/9，防止 covers[]/drawOrder[] 越界；preload 只挡负值、不设上限
     //（主题填过大导致内存/崩溃属用户行为，不额外处理）。
     gCoverflowCount = normalizeCoverflowCount(gCoverflowCount);
