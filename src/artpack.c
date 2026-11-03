@@ -1653,7 +1653,7 @@ int artPackLoadImage(int mode, const char *folder, int isRelative, const char *v
     fd = artPackEnsureBestFd();
     if (fd != ART_PACK_FD_NONE) {
         size_t want = ZIP_LOCAL_HDR_SIZE + ART_PACK_LOCAL_SLACK + ART_ENTRY_SIZE(found);
-        buf = malloc(want);
+        buf = memalign(64, want); // 64 字节对齐，避免 fileXio 先零碎读头部导致 PFS 退回单扇区读取
         if (buf) {
             if (lseek64(fd, (off64_t)ART_ENTRY_OFF(found), SEEK_SET) != (off64_t)ART_ENTRY_OFF(found)) {
                 artPackCloseBestFd();
