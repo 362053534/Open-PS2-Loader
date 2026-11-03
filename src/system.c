@@ -252,7 +252,9 @@ void sysReset(int modload_mask)
     }
 
     LOG("[PADMAN]:\n");
-    sysLoadModuleBuffer(&padman_irx, size_padman_irx, 0, NULL);
+    // 低优先级线程设为 39，高于 fileXio 的 40，避免 PFS 读盘空转时饿住手柄线程导致丢键
+    static char padmanArgs[] = "thpri=20,39";
+    sysLoadModuleBuffer(&padman_irx, size_padman_irx, sizeof(padmanArgs), padmanArgs);
 
     LOG("[POWEROFF]:\n");
     sysLoadModuleBuffer(&poweroff_irx, size_poweroff_irx, 0, NULL);
