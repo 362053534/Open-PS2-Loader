@@ -69,10 +69,9 @@ I_SetAlarm
 I_iSetAlarm
 I_CancelAlarm
 I_USec2SysClock
+I_GetSystemTime
 I_SleepThread
 I_iWakeupThread
-/* 闹钟在定时器中断里叫醒卡在 recv 的读线程，只能用 iReleaseWaitThread。 */
-I_iReleaseWaitThread
 thbase_IMPORTS_end
 
 thevent_IMPORTS_start
