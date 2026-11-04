@@ -274,7 +274,6 @@ int DeviceFSInit(void)
     smb_echo_due = 0;
     smb_echo_busy = 0;
     smb_in_read = 0;
-    smb_abort_wait = 0;
     /* 先别开闹钟。smbinit 留下的套接字还要用来建会话。 */
     smb_echo_enabled = 0;
     if (smbOpenGame() > 0) {
@@ -289,15 +288,12 @@ int DeviceFSInit(void)
 
 void DeviceLock(void)
 {
-    // IGR/关机：让无限等待的收包轮询退出，再拿锁，避免拔线时卡在等锁上。
-    smb_abort_wait = 1;
+    // 只保证网络正常时 IGR/关机能拿到锁；拔线时进行中的读不会被打断
     WaitSema(smb_io_sema);
 }
 
 void DeviceUnmount(void)
 {
-    // DeviceLock 置的中止标记清掉，让下面的 Close 能等服务器回包（受 2 秒上限）
-    smb_abort_wait = 0;
     smb_echo_enabled = 0;
     smb_echo_due = 0;
     smb_echo_busy = 0;
@@ -309,17 +305,6 @@ void DeviceUnmount(void)
 
 void DeviceStop(void)
 {
-}
-
-void DeviceAbortReadWait(void)
-{
-    /* 游戏已经不要这次读。只置标记让收包轮询退出，不在这里 close 套接字。 */
-    smb_abort_wait = 1;
-}
-
-void DeviceClearAbortReadWait(void)
-{
-    smb_abort_wait = 0;
 }
 
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
@@ -355,10 +340,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             if (result >= 0) {
                 smbIdleTicks = 0;
                 smb_echo_due = 0;
-            }
-            if (smb_abort_wait) {
-                rv = SCECdErABRT;
-                break;
             }
             if (result == SMB_READ_LINK_DOWN) {
                 rv = SCECdErTRMOPN;

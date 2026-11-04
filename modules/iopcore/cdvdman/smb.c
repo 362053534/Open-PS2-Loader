@@ -48,8 +48,6 @@
 #define SMB_READ_LINK_CHECK_POLLS 1000
 
 int smb_io_sema = -1;
-// IGR 时置 1，让不设超时的收包轮询退出，避免拔线期间 IGR 卡在等锁上
-volatile int smb_abort_wait;
 
 #define WAITIOSEMA(x)   WaitSema(x)
 #define SIGNALIOSEMA(x) SignalSema(x)
@@ -174,14 +172,12 @@ static u8 smb_stale_hdr[4];
 static u8 smb_stale_buf[256];
 static int smb_in_data_read;
 
-/* 非阻塞收一段旧回包。>0 收到字节数，0 对端关闭，-1 被放弃，SMB_READ_LINK_DOWN 链路断开。 */
+/* 非阻塞收一段旧回包。>0 收到字节数，0 对端关闭，SMB_READ_LINK_DOWN 链路断开。 */
 static int smb_stale_recv(void *buf, int size)
 {
     int result, polls = 0;
 
     while ((result = plwip_recv(main_socket, buf, size, MSG_DONTWAIT)) < 0) {
-        if (smb_abort_wait)
-            return -1;
         // 只有数据读时才查链路模拟开仓，Echo/Close 不开仓
         if (smb_in_data_read && ++polls >= SMB_READ_LINK_CHECK_POLLS) {
             polls = 0;
@@ -288,7 +284,7 @@ static int RecvDataEx(int sock, char *buf, int size, unsigned int flags, int tim
         if (!(flags & MSG_DONTWAIT))
             return result; /* 阻塞模式下出错就是出错 */
 
-        if (smb_abort_wait || (timeout_ms >= 0 && waited >= timeout_ms))
+        if (timeout_ms >= 0 && waited >= timeout_ms)
             return 0; /* 轮询超时，不把半包当错误丢掉 */
 
         DelayThread(SMB_ECHO_POLL_MS * 1000);
@@ -780,8 +776,6 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
 
     while ((result = plwip_recvfrom(sock, header, index, payload, plen, MSG_DONTWAIT, NULL, NULL)) < 0) {
         // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上接着读
-        if (smb_abort_wait)
-            return -1;
         // 只有数据读真的卡住才查链路；断线时模拟开仓并放弃本次读。Echo 不走这里。
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
             polls = 0;

@@ -492,7 +492,9 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
 
 static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 {
-    cdvdman_stat.status = SCECdStatRead;
+    // 已模拟开仓时不改状态，否则游戏查不到开仓，不弹插盘提示
+    if (!(cdvdman_stat.status & SCECdStatShellOpen))
+        cdvdman_stat.status = SCECdStatRead;
 
     // OPL only has 2048 bytes no matter what. For other sizes we have to copy to the offset and prepoluate the sector header data (the extra bytes.)
     u32 offset = 0;
@@ -519,11 +521,6 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
                 nsectors = 1;
 
             cdvdman_read_sectors(rpos, nsectors, cdvdman_buf);
-#ifdef SMB_DRIVER
-            /* 中止后不再读后续块，避免后面的成功结果把 SCECdErABRT 盖掉。 */
-            if (cdvdman_stat.err == SCECdErABRT)
-                break;
-#endif
 
             rpos += nsectors;
             sectors -= nsectors;
@@ -559,7 +556,8 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
 
     ReadPos = 0; /* Reset the buffer offset indicator. */
 
-    cdvdman_stat.status = SCECdStatPause;
+    if (!(cdvdman_stat.status & SCECdStatShellOpen))
+        cdvdman_stat.status = SCECdStatPause;
 
     return 1;
 }
@@ -620,8 +618,6 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
         return 0;
     }
 
-    /* 这是新的一笔读。上一笔 Break 或停流留下的放弃标记不能再生效。 */
-    DeviceClearAbortReadWait();
     cdread_io_busy = 1;
     cdread_outstand = 1;
     cdread_owner = owner;
@@ -725,10 +721,6 @@ int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
         return 0;
     }
 
-#ifdef SMB_DRIVER
-    /* 调用方正在要这次同步读，不能沿用上一笔放弃标记。 */
-    DeviceClearAbortReadWait();
-#endif
     CpuResumeIntr(OldState);
 
     cdvdman_read(lsn, sectors, sector_size, buf);
