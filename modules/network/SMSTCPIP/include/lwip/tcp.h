@@ -80,11 +80,8 @@ void tcp_err(struct tcp_pcb *pcb,
 #define tcp_sndbuf(pcb) ((pcb)->snd_buf)
 
 void tcp_recved(struct tcp_pcb *pcb, u16_t len);
-err_t tcp_bind(struct tcp_pcb *pcb, struct ip_addr *ipaddr,
-               u16_t port);
 err_t tcp_connect(struct tcp_pcb *pcb, struct ip_addr *ipaddr,
                   u16_t port, err_t (*connected)(void *arg, struct tcp_pcb *tpcb, err_t err));
-struct tcp_pcb *tcp_listen(struct tcp_pcb *pcb);
 void tcp_abort(struct tcp_pcb *pcb);
 err_t tcp_close(struct tcp_pcb *pcb);
 err_t tcp_write(struct tcp_pcb *pcb, const void *dataptr, u16_t len,
@@ -154,16 +151,7 @@ void tcp_rexmit(struct tcp_pcb *pcb);
 /*
  * User-settable options (used with setsockopt, IPPROTO_TCP level).
  */
-#define TCP_NODELAY    0x01 /* don't delay send to coalesce packets */
-#define TCP_KEEPALIVE  0x02 /* send KEEPALIVE probes when idle for pcb->keepalive miliseconds */
-#define TCP_ACKNODELAY 0x04 /* send ack as soon as data is received [not standard] */
-#define TCP_EVENSEG    0x08 /* Boman666 patch: send an even number of segments [not standard] */
-
-/* Keepalive values */
-#define TCP_KEEPDEFAULT 7200000                    /* KEEPALIVE timer in miliseconds */
-#define TCP_KEEPINTVL   75000                      /* Time between KEEPALIVE probes in miliseconds */
-#define TCP_KEEPCNT     9                          /* Counter for KEEPALIVE probes */
-#define TCP_MAXIDLE     TCP_KEEPCNT *TCP_KEEPINTVL /* Maximum KEEPALIVE probe time */
+#define TCP_NODELAY 0x01 /* don't delay send to coalesce packets */
 
 
 #ifdef PACK_STRUCT_USE_INCLUDES
@@ -234,9 +222,8 @@ struct tcp_pcb
     u16_t local_port;
     u16_t remote_port;
 
-/* spooo : need more than 8 bits because of TF_ACKNODELAY and TF_EVENSEG
-  u8_t flags; */
-#define flags_t /*u8_t*/ u16_t
+/* 保持 u16。改回 u8 会改变后面 rcv_nxt 的对齐，PCB 布局不能跟着未使用的标志一起变。 */
+#define flags_t u16_t
     flags_t flags;
 #define TF_ACK_DELAY  (flags_t)0x01U  /* Delayed ACK. */
 #define TF_ACK_NOW    (flags_t)0x02U  /* Immediate ACK. */
@@ -244,9 +231,7 @@ struct tcp_pcb
 #define TF_RESET      (flags_t)0x08U  /* Connection was reset. */
 #define TF_CLOSED     (flags_t)0x10U  /* Connection was sucessfully closed. */
 #define TF_GOT_FIN    (flags_t)0x20U  /* Connection was closed by the remote end. */
-#define TF_NODELAY    (flags_t)0x40U  /* Disable Nagle algorithm */
-#define TF_ACKNODELAY (flags_t)0x80U  /* Force ACK at every receive [not standard] */
-#define TF_EVENSEG    (flags_t)0x100U /* Send an even number of segment [not standard] */
+#define TF_NODELAY (flags_t)0x40U /* Disable Nagle algorithm */
 
     /* receiver varables */
     u32_t rcv_nxt; /* next seqno expected */
@@ -317,12 +302,6 @@ struct tcp_pcb
     /* Function to be called whenever a fatal error occurs. */
     void (*errf)(void *arg, err_t err);
 #endif /* LWIP_CALLBACK_API */
-
-    /* idle time before KEEPALIVE is sent */
-    u32_t keepalive;
-
-    /* KEEPALIVE counter */
-    u8_t keep_cnt;
 };
 
 struct tcp_pcb_listen
@@ -448,7 +427,6 @@ void tcp_rst(u32_t seqno, u32_t ackno,
 
 u32_t tcp_next_iss(void);
 
-void tcp_keepalive(struct tcp_pcb *pcb);
 
 extern struct tcp_pcb *tcp_input_pcb;
 extern u32_t tcp_ticks;

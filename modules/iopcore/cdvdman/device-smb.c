@@ -9,17 +9,9 @@
 
 #include "device.h"
 
-#define SMB_RECONNECT_INTERVAL_US 2000000
-#define SMB_RECOVERY_WAIT_US      100000
-#define SMB_ECHO_IDLE_TICKS       60
-#define SMB_ECHO_RETRY_COUNT      2
-#define SMB_CONNECTION_WAIT_LINK  3
-#define SMB_CONNECTION_RETRY_WAIT 4
-
-#define SMB_RECONNECT_IDLE    0
-#define SMB_RECONNECT_PENDING 1
-#define SMB_RECONNECT_SUCCESS 2
-#define SMB_RECONNECT_FAILED  3
+/* 空闲 1 分钟发一次 Echo。拍长仍是 2 秒，重连的 DelayThread 不变。 */
+#define SMB_ECHO_INTERVAL_US 2000000
+#define SMB_ECHO_IDLE_TICKS  30
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -41,21 +33,19 @@ int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, sockl
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 static u32 ServerCapabilities;
-static OplSmbPwHashFunc_t smbHashCallback;
-static volatile int smbConnectionState = 2;
-static volatile int smbReconnectEnabled;
-static volatile int smbReconnectResult;
 static volatile int smbTrayOpen;
-static volatile int smbReconnectStopping;
-static volatile int smbReconnectStopped;
 static volatile unsigned int smbIdleTicks;
-static volatile unsigned int smbEchoRetryCount;
-static int smbReconnectThreadID = -1;
+static volatile int smb_echo_enabled;
+static volatile int smb_echo_due;
+static volatile int smb_echo_busy;
+static volatile int smb_in_read;
+static volatile int smb_alarm_armed;
+static iop_sys_clock_t smb_alarm_clock;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
 
 static int smbOpenGame(void);
-static void smbReconnectThread(void *arg);
+static unsigned int smb_echo_alarm_cb(void *arg);
 
 static void ps2ip_init(void)
 {
@@ -118,132 +108,145 @@ static int smbOpenGame(void)
     return 1;
 }
 
-static void smbReconnectThread(void *arg)
+/* 返回 1 表示链路正常。两个查询接口都拿不到时按正常处理，不模拟开仓。 */
+static int smb_link_up(void)
 {
-    int result;
+    if (pSmapGetLinkStatus)
+        return pSmapGetLinkStatus() ? 1 : 0;
+    if (pNetManGetGlobalNetIFLinkState)
+        return pNetManGetGlobalNetIFLinkState() ? 1 : 0;
+    return 1;
+}
 
-    (void)arg;
-
-    while (1) {
-        if (smbReconnectStopping) {
-            smbReconnectStopped = 1;
-            // 不永久休眠线程，避免下一次重新初始化时无法恢复重连线程。
-            DelayThread(SMB_RECONNECT_INTERVAL_US);
-            continue;
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == 1) {
-            // 只在SMB连续空闲120秒后保活，避免Echo插入正常游戏读取。
-            if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
-                smbIdleTicks++;
-
-            if (smbIdleTicks >= SMB_ECHO_IDLE_TICKS) {
-                result = smb_Echo();
-                if (result > 0) {
-                    smbIdleTicks = 0;
-                    smbEchoRetryCount = 0;
-                } else if (result < 0) {
-                    // 单次网络抖动不足以判定断线，连续补测两次仍失败才重连。
-                    if (smbEchoRetryCount < SMB_ECHO_RETRY_COUNT) {
-                        smbEchoRetryCount++;
-                    } else {
-                        smbIdleTicks = 0;
-                        smbEchoRetryCount = 0;
-                        smbReconnectResult = SMB_RECONNECT_PENDING;
-                        smbConnectionState = 2;
-                    }
-                }
-            }
-        } else {
-            smbIdleTicks = 0;
-            smbEchoRetryCount = 0;
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == 2) {
-            if (smb_io_sema < 0) {
-                smb_Disconnect();
-                smbConnectionState = 0;
-            } else if (PollSema(smb_io_sema) == 0) {
-                smb_Disconnect();
-                SignalSema(smb_io_sema);
-                smbConnectionState = 0;
-            }
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == SMB_CONNECTION_WAIT_LINK) {
-            result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
-                                         (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
-            if (result) {
-                smbReconnectResult = SMB_RECONNECT_PENDING;
-                smbConnectionState = 0;
-            }
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == SMB_CONNECTION_RETRY_WAIT) {
-            result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
-                                         (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
-            if (result) {
-                smbReconnectResult = SMB_RECONNECT_PENDING;
-                smbConnectionState = 0;
-            } else
-                smbConnectionState = SMB_CONNECTION_WAIT_LINK;
-        }
-
-        if (smbReconnectEnabled && smbConnectionState == 0) {
-            smbReconnectResult = SMB_RECONNECT_PENDING;
-            smbConnectionState = 2;
-
-            if (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, smbHashCallback) > 0 &&
-                smbOpenGame() > 0 && smbReconnectEnabled && smbConnectionState == 2) {
-                smbReconnectResult = SMB_RECONNECT_SUCCESS;
-                smbConnectionState = 1;
-                smbIdleTicks = 0;
-                smbEchoRetryCount = 0;
-                continue;
-            }
-
-            smb_Disconnect();
-            if (smbReconnectEnabled) {
-                smbReconnectResult = SMB_RECONNECT_FAILED;
-                if (smbConnectionState != SMB_CONNECTION_WAIT_LINK) {
-                    result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
-                                                 (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
-                    smbConnectionState = result ? SMB_CONNECTION_RETRY_WAIT : SMB_CONNECTION_WAIT_LINK;
-                }
-            }
-        }
-
-        DelayThread(SMB_RECONNECT_INTERVAL_US);
+/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。
+ * 返回 1 表示链路断开，调用方放弃本次读，让游戏拿到 SCECdErTRMOPN 去提示插盘。 */
+int smb_read_stall_check(void)
+{
+    if (smb_link_up())
+        return 0;
+    // 断线时开仓一次，游戏才会弹插盘提示；同时放弃本次读
+    if (!smbTrayOpen) {
+        smbTrayOpen = 1;
+        smb_echo_due = 0; // 开仓后不再发 Echo，已排队的也取消
+        sceCdTrayReq(SCECdTrayOpen, NULL);
     }
+    return 1;
+}
+
+/* 只由读线程在数据读重新收到数据时调用：之前开过仓就关回去。 */
+void smb_read_progress(void)
+{
+    if (smbTrayOpen) {
+        sceCdTrayReq(SCECdTrayClose, NULL);
+        smbTrayOpen = 0;
+    }
+}
+
+/* 非 0 表示内核按这个系统时钟把同一只闹钟续上。再 iSetAlarm 会多挂一只。 */
+static unsigned int smb_alarm_interval(void)
+{
+    if (smb_alarm_clock.lo != 0)
+        return smb_alarm_clock.lo;
+    return 1;
+}
+
+/* 闹钟只排队，不能在中断里收发网络包。 */
+static unsigned int smb_echo_alarm_cb(void *arg)
+{
+    (void)arg;
+    if (!smb_echo_enabled)
+        return 0;
+
+    /* 仓已经开着时不排 Echo。链路是否恢复只在读线程里看，避免闹钟里读 PHY。 */
+    if (smbTrayOpen) {
+        if (!smb_in_read && !smb_echo_busy)
+            cdvdman_kick_rthread(1);
+        return smb_alarm_interval();
+    }
+
+    /* 空闲期间只安排 Echo。开仓仍只由卡住的数据读触发。 */
+    if (smb_in_read || smb_echo_due)
+        return smb_alarm_interval();
+
+    if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
+        smbIdleTicks++;
+
+    if (smbIdleTicks == SMB_ECHO_IDLE_TICKS && !smb_echo_busy) {
+        smb_echo_due = 1;
+        cdvdman_kick_rthread(1);
+    }
+    /* 同一只周期闹钟由内核续上，避免读线程与回调重复挂载。 */
+    return smb_alarm_interval();
+}
+
+static void smb_arm_echo_alarm(void)
+{
+    int r;
+
+    if (smb_alarm_armed || !smb_echo_enabled)
+        return;
+
+    if (smb_alarm_clock.hi == 0 && smb_alarm_clock.lo == 0)
+        USec2SysClock(SMB_ECHO_INTERVAL_US, &smb_alarm_clock);
+
+    r = SetAlarm(&smb_alarm_clock, smb_echo_alarm_cb, NULL);
+    /* -104 是 KE_FOUND_HANDLER：这一拍已经挂着。 */
+    if (r == 0 || r == -104)
+        smb_alarm_armed = 1;
+}
+
+static void smb_disarm_echo_alarm(void)
+{
+    smb_alarm_armed = 0;
+    CancelAlarm(smb_echo_alarm_cb, NULL);
+}
+
+/* 返回 1 表示这次醒来没有排队的读，调用方不能再读上一笔 LBA。 */
+int smb_read_thread_on_wake(int read_busy)
+{
+    if (!smb_echo_enabled)
+        return read_busy ? 0 : 1;
+
+    if (read_busy) {
+        smb_echo_due = 0;
+        return 0;
+    }
+
+    /* 插回网线后关仓，游戏才会离开插盘画面再发读。这次不发 Echo，避免占住读线程。 */
+    if (smbTrayOpen) {
+        if (smb_link_up()) {
+            sceCdTrayReq(SCECdTrayClose, NULL);
+            smbTrayOpen = 0;
+        }
+        smb_echo_due = 0;
+        return 1;
+    }
+
+    if (!smb_echo_due)
+        return 1;
+
+    smb_echo_busy = 1;
+    smb_echo_due = 0;
+    /* 以发起时间计下一分钟。等待的 5 秒里闹钟照样计数，不把周期再往后推。 */
+    smbIdleTicks = 0;
+    /* Echo 与真实读盘共用读线程和 I/O 锁，收包结束或超时后才交回数据面。 */
+    smb_Echo();
+    smb_echo_busy = 0;
+    return 1;
 }
 
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
 {
     ps2ip_init();
-    smbHashCallback = hash_callback;
     while (smb_NegotiateProtocol(cdvdman_settings.smb_ip, cdvdman_settings.smb_port, cdvdman_settings.smb_user, cdvdman_settings.smb_password, &ServerCapabilities, hash_callback) <= 0) {
         smb_Disconnect();
-        DelayThread(SMB_RECONNECT_INTERVAL_US);
+        DelayThread(SMB_ECHO_INTERVAL_US);
     }
 }
 
 void DeviceInit(void)
 {
-    iop_thread_t thread;
-
     RegisterLibraryEntries(&_exp_oplsmb);
-
-    thread.attr = TH_C;
-    thread.option = 0;
-    thread.thread = smbReconnectThread;
-    thread.stacksize = 0x1000;
-    thread.priority = 40;
-
-    smbReconnectThreadID = CreateThread(&thread);
-    if (smbReconnectThreadID >= 0)
-        StartThread(smbReconnectThreadID, NULL);
-    else
-        smbReconnectStopped = 1;
 }
 
 void DeviceDeinit(void)
@@ -253,23 +256,23 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
-    return smbConnectionState == 1 ? SCECdComplete : SCECdNotReady;
+    // 数据读确认断线后才模拟开仓，空闲 Echo 不改变就绪状态。
+    return smbTrayOpen ? SCECdNotReady : SCECdComplete;
 }
 
 int DeviceFSInit(void)
 {
-    smbReconnectStopping = 0;
-    smbReconnectStopped = 0;
-    smbReconnectEnabled = 1;
-    smbReconnectResult = SMB_RECONNECT_IDLE;
     smbIdleTicks = 0;
-    smbEchoRetryCount = 0;
+    smb_echo_due = 0;
+    smb_echo_busy = 0;
+    smb_in_read = 0;
+    /* 先别开闹钟。smbinit 留下的套接字还要用来建会话。 */
+    smb_echo_enabled = 0;
     if (smbOpenGame() > 0) {
-        smbConnectionState = 1;
+        smb_echo_enabled = 1;
+        smb_arm_echo_alarm();
     } else {
         smb_Disconnect();
-        smbReconnectResult = SMB_RECONNECT_PENDING;
-        smbConnectionState = 0;
     }
 
     return 0;
@@ -277,27 +280,18 @@ int DeviceFSInit(void)
 
 void DeviceLock(void)
 {
-    // IGR必须先让后台重连进入静止状态，避免等待锁时又产生新的SMB操作。
-    smbReconnectStopping = 1;
-    smbReconnectEnabled = 0;
-    // 不在此处调用关闭网络的RPC，避免与后台线程正在等待的recv发生RPC互锁。
-    if (smbReconnectThreadID >= 0) {
-        while (!smbReconnectStopped)
-            DelayThread(1000);
-    }
-
+    // 只保证网络正常时 IGR/关机能拿到锁；拔线时进行中的读不会被打断
     WaitSema(smb_io_sema);
 }
 
 void DeviceUnmount(void)
 {
-    smbReconnectEnabled = 0;
-    smbReconnectResult = SMB_RECONNECT_IDLE;
+    smb_echo_enabled = 0;
+    smb_echo_due = 0;
+    smb_echo_busy = 0;
+    smb_disarm_echo_alarm();
     smbIdleTicks = 0;
-    smbEchoRetryCount = 0;
-    if (smbConnectionState == 1)
-        smb_CloseAll();
-    smbConnectionState = 2;
+    smb_CloseAll();
     smb_Disconnect();
 }
 
@@ -317,6 +311,11 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     offslsn = lsn;
     r = nlsn = 0;
     sectors_to_read = sectors;
+    /* 已开仓且链路仍断：像 BDM 拔盘一样立即报开仓，不去阻塞等待。 */
+    if (smbTrayOpen && !smb_link_up())
+        return SCECdErTRMOPN;
+    /* 读的整段都算有流量，期间不排 Echo。 */
+    smb_in_read = 1;
 
     for (i = 0; i < cdvdman_settings.common.NumParts; i++, lbound = ubound, ubound += 0x80000, offslsn -= 0x80000) {
 
@@ -329,53 +328,17 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                 esc_flag = 1;
 
             bytes_to_read = sectors_to_read * 2048;
-            for (;;) {
-                while (smbReconnectEnabled && smbConnectionState != 1) {
-                    DelayThread(SMB_RECOVERY_WAIT_US);
-
-                    if (!smbReconnectEnabled)
-                        break;
-
-                    if (smbReconnectResult == SMB_RECONNECT_FAILED || smbReconnectResult == SMB_RECONNECT_PENDING) {
-                        result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
-                                                     (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
-                        if (!result) {
-                            if (!smbTrayOpen) {
-                                smbTrayOpen = 1;
-                                sceCdTrayReq(SCECdTrayOpen, NULL);
-                            }
-                            smbConnectionState = SMB_CONNECTION_WAIT_LINK;
-                        }
-                    }
-                }
-
-                if (!smbReconnectEnabled) {
-                    result = -1;
-                    break;
-                }
-
-                result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
-                if (result >= 0) {
-                    smbReconnectResult = SMB_RECONNECT_IDLE;
-                    smbIdleTicks = 0;
-                    smbEchoRetryCount = 0;
-                    if (smbTrayOpen) {
-                        sceCdTrayReq(SCECdTrayClose, NULL);
-                        smbTrayOpen = 0;
-                    }
-                    break;
-                }
-
+            result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
+            if (result >= 0) {
                 smbIdleTicks = 0;
-                smbEchoRetryCount = 0;
-
-                // 逻辑断线只触发静默重连，当前读取等待连接恢复后再重试。
-                smbReconnectResult = SMB_RECONNECT_PENDING;
-                smbConnectionState = 2;
+                smb_echo_due = 0;
             }
-
-            if (result < 0) {
+            if (result == SMB_READ_LINK_DOWN) {
                 rv = SCECdErTRMOPN;
+                break;
+            }
+            if (result < 0) {
+                rv = SCECdErREAD;
                 break;
             }
             if (result < bytes_to_read)
@@ -391,5 +354,6 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             break;
     }
 
+    smb_in_read = 0;
     return rv;
 }

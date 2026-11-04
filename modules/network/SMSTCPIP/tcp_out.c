@@ -104,8 +104,6 @@ err_t tcp_enqueue(
     u16_t seglen;
     void *ptr;
     u8_t queuelen;
-    flags_t lPCBFlags = pcb->flags;
-    int iSegCNT = 0;
 
     left = len;
     ptr = arg;
@@ -124,14 +122,7 @@ err_t tcp_enqueue(
     seglen = 0;
 
     while (!queue || left > 0) {
-
-        if (lPCBFlags & TF_EVENSEG) {
-
-            ++iSegCNT;
-
-            seglen = left > pcb->mss ? pcb->mss : (((iSegCNT % 2) == 1) ? ((left + 1) / 2) : left);
-        } else
-            seglen = left > pcb->mss ? pcb->mss : left;
+        seglen = left > pcb->mss ? pcb->mss : left;
 
         seg = memp_malloc(MEMP_TCP_SEG);
 
@@ -518,6 +509,10 @@ void tcp_rexmit(struct tcp_pcb *pcb)
 
     pcb->snd_nxt = ntohl(pcb->unsent->tcphdr->seqno);
 
+#ifdef INGAME_DRIVER
+    // 游戏内不因重传次数放弃连接，nrtx 卡在上限，避免 tcp_backoff[] 越界
+    if (pcb->nrtx < TCP_MAXRTX)
+#endif
     ++pcb->nrtx;
 
     /* Don't take any rtt measurements after retransmitting. */
@@ -527,44 +522,5 @@ void tcp_rexmit(struct tcp_pcb *pcb)
     tcp_output(pcb);
 }
 
-void tcp_keepalive(struct tcp_pcb *pcb)
-{
-    struct pbuf *p;
-    struct tcp_hdr *tcphdr;
-
-    LWIP_DEBUGF(TCP_DEBUG, ("tcp_keepalive: sending KEEPALIVE probe to %u.%u.%u.%u\n",
-                            ip4_addr1(&pcb->remote_ip), ip4_addr2(&pcb->remote_ip),
-                            ip4_addr3(&pcb->remote_ip), ip4_addr4(&pcb->remote_ip)));
-
-    LWIP_DEBUGF(TCP_DEBUG, ("tcp_keepalive: tcp_ticks %ld   pcb->tmr %ld  pcb->keep_cnt %ld\n", tcp_ticks, pcb->tmr, pcb->keep_cnt));
-
-    p = pbuf_alloc(PBUF_IP, TCP_HLEN, PBUF_RAM);
-
-    if (p == NULL) {
-        LWIP_DEBUGF(TCP_DEBUG, ("tcp_keepalive: could not allocate memory for pbuf\n"));
-        return;
-    }
-
-    tcphdr = p->payload;
-    tcphdr->src = htons(pcb->local_port);
-    tcphdr->dest = htons(pcb->remote_port);
-    tcphdr->seqno = htonl(pcb->snd_nxt - 1);
-    tcphdr->ackno = htonl(pcb->rcv_nxt);
-    tcphdr->wnd = htons(pcb->rcv_wnd);
-    tcphdr->urgp = 0;
-    TCPH_HDRLEN_SET(tcphdr, 5);
-
-    tcphdr->chksum = 0;
-    tcphdr->chksum = inet_chksum_pseudo(p, &pcb->local_ip, &pcb->remote_ip, IP_PROTO_TCP, p->tot_len);
-
-    TCP_STATS_INC(tcp.xmit);
-
-    /* Send output to IP */
-    ip_output(p, &pcb->local_ip, &pcb->remote_ip, pcb->ttl, 0, IP_PROTO_TCP);
-
-    pbuf_free(p);
-
-    LWIP_DEBUGF(TCP_RST_DEBUG, ("tcp_keepalive: seqno %lu ackno %lu.\n", pcb->snd_nxt - 1, pcb->rcv_nxt));
-}
 
 #endif /* LWIP_TCP */

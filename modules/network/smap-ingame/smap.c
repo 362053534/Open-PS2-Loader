@@ -77,6 +77,9 @@ static void _smap_write_phy(volatile u8 *emac3_regbase, unsigned int address, u1
     // if(i>=100) printf("smap: %s: > %d ms\n", "_smap_write_phy", i);
 }
 
+// 最近一次 PHY 读是否超时（超时返回的 0 不是真实寄存器值）
+static int PhyReadTimedOut;
+
 static u16 _smap_read_phy(volatile u8 *emac3_regbase, unsigned int address)
 {
     unsigned int i;
@@ -101,9 +104,11 @@ static u16 _smap_read_phy(volatile u8 *emac3_regbase, unsigned int address)
 
         DelayThread(1000);
         i++;
-    } while (i < 100);
+        /* 读 PHY 最多约 1s（1000×1ms），减少误超时；正常仍会早退。 */
+    } while (i < 1000);
 
-    if (i >= 100)
+    PhyReadTimedOut = (i >= 1000);
+    if (i >= 1000)
         printf("smap: %s: > %u ms\n", "_smap_read_phy", i);
 
     return result;
@@ -338,26 +343,23 @@ static int InitPHY(struct SmapDriverData *SmapDrivPrivData)
     return 0;
 }
 
-// Checks the status of the Ethernet link
-static void CheckLinkStatus(struct SmapDriverData *SmapDrivPrivData)
-{
-    if (!(_smap_read_phy(SmapDrivPrivData->emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK)) {
-        // Link lost
-        SmapDrivPrivData->LinkStatus = 0;
-        InitPHY(SmapDrivPrivData);
-    }
-}
-
+/* 只由 SMB 读盘线程在读卡住时调用，不在中断里，PHY 读取里的 DelayThread 能正常工作。
+ * BMSR 链路位是锁存低：只锁住"断开"。读到 1 一定是通的，读一次即可；
+ * 读到 0 可能是锁住的旧状态，再读一次以第二次为准。
+ * 不再用 5 秒闹钟定时刷新，平时没有任何开销。 */
 int SMAPGetLinkStatus(void)
 {
-    return SmapDriverData.SmapIsInitialized && SmapDriverData.LinkStatus;
-}
-
-// This timer callback starts the Ethernet link check event.
-static unsigned int LinkCheckTimerCB(struct SmapDriverData *SmapDrivPrivData)
-{
-    CheckLinkStatus(SmapDrivPrivData);
-    return SmapDrivPrivData->LinkCheckTimer.lo;
+    if (!SmapDriverData.SmapIsInitialized)
+        return 0;
+    if (_smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK)
+        SmapDriverData.LinkStatus = 1;
+    else if (PhyReadTimedOut)
+        SmapDriverData.LinkStatus = 1; // PHY 读超时：状态未知，按连着处理，不算断线
+    else {
+        u16 bmsr = _smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR);
+        SmapDriverData.LinkStatus = (PhyReadTimedOut || (bmsr & SMAP_PHY_BMSR_LINK)) ? 1 : 0;
+    }
+    return SmapDriverData.LinkStatus;
 }
 
 static int Dev9IntrCb(int flag)
@@ -444,12 +446,7 @@ int SMAPStart(void)
             SMAP_EMAC3_SET32(SMAP_R_EMAC3_MODE0, SMAP_E3_TXMAC_ENABLE | SMAP_E3_RXMAC_ENABLE);
             DelayThread(10000);
             SmapDriverData.SmapIsInitialized = 1;
-
-            if (!SmapDriverData.EnableLinkCheckTimer) {
-                USec2SysClock(5000000, &SmapDriverData.LinkCheckTimer); // Since there isn't a thread that allows the link checking code to determine whether frames were received or not and to check the link status, just reduce the polling frequency.
-                SetAlarm(&SmapDriverData.LinkCheckTimer, (void *)&LinkCheckTimerCB, &SmapDriverData);
-                SmapDriverData.EnableLinkCheckTimer = 1;
-            }
+            // 不再启动 5 秒链路检查闹钟，链路状态改由 SMAPGetLinkStatus 按需读取
         } else
             SmapDriverData.NetDevStopFlag = 0;
     }

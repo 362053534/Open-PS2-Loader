@@ -166,7 +166,6 @@ void netif_set_ipaddr(struct netif *netif, struct ip_addr *ipaddr)
 /* See:  http://mail.gnu.org/archive/html/lwip-users/2003-03/msg00118.html */
 #if LWIP_TCP
     struct tcp_pcb *pcb;
-    struct tcp_pcb_listen *lpcb;
 
     /* address is actually being changed? */
     if ((ip_addr_cmp(ipaddr, &(netif->ip_addr))) == 0) {
@@ -183,14 +182,6 @@ void netif_set_ipaddr(struct netif *netif, struct ip_addr *ipaddr)
                 pcb = next;
             } else {
                 pcb = pcb->next;
-            }
-        }
-        for (lpcb = tcp_listen_pcbs; lpcb != NULL; lpcb = lpcb->next) {
-            /* PCB bound to current local interface address? */
-            if (ip_addr_cmp(&(lpcb->local_ip), &(netif->ip_addr))) {
-                /* The PCB is listening to the old ipaddr and
-                 * is set to listen to the new one instead */
-                ip_addr_set(&(lpcb->local_ip), ipaddr);
             }
         }
     }
