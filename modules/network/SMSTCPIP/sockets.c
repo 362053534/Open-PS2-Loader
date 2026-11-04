@@ -115,7 +115,7 @@ get_socket(int s)
 {
     struct lwip_socket *sock;
 
-    if ((s < 0) || (s > NUM_SOCKETS)) {
+    if ((s < 0) || (s >= NUM_SOCKETS)) {
         LWIP_DEBUGF(SOCKETS_DEBUG, ("get_socket(%d): invalid\n", s));
         set_errno(EBADF);
         return NULL;
@@ -159,93 +159,6 @@ alloc_socket(struct netconn *newconn)
     }
     sys_sem_signal(socksem);
     return -1;
-}
-
-int lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
-{
-    struct lwip_socket *sock;
-    struct netconn *newconn;
-    struct ip_addr naddr;
-    u16_t port;
-    int newsock;
-    struct sockaddr_in sin;
-
-    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_accept(%d)...\n", s));
-    sock = get_socket(s);
-    if (!sock) {
-        set_errno(EBADF);
-        return -1;
-    }
-
-    newconn = netconn_accept(sock->conn);
-
-    /* get the IP address and port of the remote host */
-    netconn_peer(newconn, &naddr, &port);
-
-    mips_memset(&sin, 0, sizeof(sin));
-    sin.sin_len = sizeof(sin);
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(port);
-    sin.sin_addr.s_addr = naddr.addr;
-
-    if (*addrlen > sizeof(sin))
-        *addrlen = sizeof(sin);
-
-    mips_memcpy(addr, &sin, *addrlen);
-
-    newsock = alloc_socket(newconn);
-    if (newsock == -1) {
-        netconn_delete(newconn);
-        sock_set_errno(sock, ENOBUFS);
-        return -1;
-    }
-    newconn->callback = event_callback;
-    sock = get_socket(newsock);
-
-    sys_sem_wait(socksem);
-    sock->rcvevent += -1 - newconn->socket;
-    newconn->socket = newsock;
-    sys_sem_signal(socksem);
-
-    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_accept(%d) returning new sock=%d addr=", s, newsock));
-    ip_addr_debug_print(SOCKETS_DEBUG, &naddr);
-    LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%u\n", port));
-
-    sock_set_errno(sock, 0);
-    return newsock;
-}
-
-int lwip_bind(int s, struct sockaddr *name, socklen_t namelen)
-{
-    struct lwip_socket *sock;
-    struct ip_addr local_addr;
-    u16_t local_port;
-    err_t err;
-
-    sock = get_socket(s);
-    if (!sock) {
-        set_errno(EBADF);
-        return -1;
-    }
-
-    local_addr.addr = ((struct sockaddr_in *)name)->sin_addr.s_addr;
-    local_port = ((struct sockaddr_in *)name)->sin_port;
-
-    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_bind(%d, addr=", s));
-    ip_addr_debug_print(SOCKETS_DEBUG, &local_addr);
-    LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%u)\n", ntohs(local_port)));
-
-    err = netconn_bind(sock->conn, &local_addr, ntohs(local_port));
-
-    if (err != ERR_OK) {
-        LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_bind(%d) failed, err=%d\n", s, err));
-        sock_set_errno(sock, err_to_errno(err));
-        return -1;
-    }
-
-    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_bind(%d) succeeded\n", s));
-    sock_set_errno(sock, 0);
-    return 0;
 }
 
 int lwip_close(int s)
@@ -317,30 +230,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
     return 0;
 }
 
-int lwip_listen(int s, int backlog)
-{
-    struct lwip_socket *sock;
-    err_t err;
-
-    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_listen(%d, backlog=%d)\n", s, backlog));
-    sock = get_socket(s);
-    if (!sock) {
-        set_errno(EBADF);
-        return -1;
-    }
-
-    err = netconn_listen(sock->conn);
-
-    if (err != ERR_OK) {
-        LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_listen(%d) failed, err=%d\n", s, err));
-        sock_set_errno(sock, err_to_errno(err));
-        return -1;
-    }
-
-    sock_set_errno(sock, 0);
-    return 0;
-}
-
 /* NBSS keepalive 只有 4 字节；ReadAndX 头（含 NBSS）至少 63 字节。 */
 #define LWIP_NBSS_HDR_LEN     4
 #define LWIP_NBSS_KEEPALIVE   0x85
@@ -392,6 +281,9 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
+    /* 负长度不能传给 netbuf_copy_partial（u16 截断后会变成大值），按 0 处理。 */
+    if (plen < 0)
+        plen = 0;
     sock = get_socket(s);
     if (!sock) {
         set_errno(EBADF);
@@ -435,7 +327,19 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
 
         netbuf_copy_partial(buf, header, LWIP_NBSS_HDR_LEN, sock->lastoffset);
 
-        if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
+        if (index < 0) {
+            /* 控制回包必须整包就绪才消耗；Echo 超时后半包仍由同一 socket 留给下一笔接收。 */
+            u32_t pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
+                                                 (((u32_t)((u8_t *)header)[2]) << 8) |
+                                                 ((u32_t)((u8_t *)header)[3]));
+            copylen = (u16_t)(pkt_len < (u32_t)plen ? pkt_len : (u32_t)plen);
+            accum = lwip_smb_accum(sock, buf, &avail_len, copylen, flags);
+            if (accum <= 0)
+                return accum;
+            netbuf_copy_partial(buf, header, copylen, sock->lastoffset);
+            avail_len -= copylen;
+            copy_payload = 0;
+        } else if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
             /* keepalive 可能和后续 SMB 粘在同一段里，只吃 4 字节，剩下留给下次。 */
             copylen = LWIP_NBSS_HDR_LEN;
             avail_len -= LWIP_NBSS_HDR_LEN;
@@ -1038,7 +942,6 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
                 /* UNIMPL case SO_DEBUG: */
                 /* UNIMPL case SO_DONTROUTE: */
                 case SO_ERROR:
-                case SO_KEEPALIVE:
                 case SO_SNDTIMEO:
                 case SO_RCVTIMEO:
 /* UNIMPL case SO_OOBINLINE: */
@@ -1095,9 +998,6 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
 
             switch (optname) {
                 case TCP_NODELAY:
-                case TCP_KEEPALIVE:
-                case TCP_ACKNODELAY:
-                case TCP_EVENSEG:
                     break;
 
                 default:
@@ -1133,7 +1033,6 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
                 case SO_BROADCAST:
                 /* UNIMPL case SO_DEBUG: */
                 /* UNIMPL case SO_DONTROUTE: */
-                case SO_KEEPALIVE:
 /* UNIMPL case SO_OOBINCLUDE: */
 #ifdef SO_REUSE
                 case SO_REUSEADDR:
@@ -1201,18 +1100,6 @@ int lwip_getsockopt(int s, int level, int optname, void *optval, socklen_t *optl
                     *(int *)optval = (sock->conn->pcb.tcp->flags & TF_NODELAY);
                     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_getsockopt(%d, IPPROTO_TCP, TCP_NODELAY) = %s\n", s, (*(int *)optval) ? "on" : "off"));
                     break;
-                case TCP_KEEPALIVE:
-                    *(int *)optval = sock->conn->pcb.tcp->keepalive;
-                    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_getsockopt(%d, IPPROTO_IP, TCP_KEEPALIVE) = %d\n", s, *(int *)optval));
-                    break;
-                case TCP_ACKNODELAY:
-                    *(int *)optval = sock->conn->pcb.tcp->flags & TF_ACKNODELAY;
-                    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_getsockopt(%d, IPPROTO_IP, TCP_ACKNODELAY) = %s\n", s, (*(int *)optval) ? "on" : "off"));
-                    break;
-                case TCP_EVENSEG:
-                    *(int *)optval = sock->conn->pcb.tcp->flags & TF_EVENSEG;
-                    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_getsockopt(%d, IPPROTO_IP, TCP_EVENSEG) = %s\n", s, (*(int *)optval) ? "on" : "off"));
-                    break;
             } /* switch */
             break;
     }
@@ -1249,7 +1136,6 @@ int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t
                 case SO_BROADCAST:
                 /* UNIMPL case SO_DEBUG: */
                 /* UNIMPL case SO_DONTROUTE: */
-                case SO_KEEPALIVE:
 /* UNIMPL case SO_OOBINLINE: */
 /* UNIMPL case SO_RCVBUF: */
 /* UNIMPL case SO_SNDBUF: */
@@ -1303,9 +1189,6 @@ int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t
 
             switch (optname) {
                 case TCP_NODELAY:
-                case TCP_KEEPALIVE:
-                case TCP_ACKNODELAY:
-                case TCP_EVENSEG:
                     break;
 
                 default:
@@ -1340,7 +1223,6 @@ int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t
                 case SO_BROADCAST:
                 /* UNIMPL case SO_DEBUG: */
                 /* UNIMPL case SO_DONTROUTE: */
-                case SO_KEEPALIVE:
 /* UNIMPL case SO_OOBINCLUDE: */
 #ifdef SO_REUSE
                 case SO_REUSEADDR:
@@ -1387,26 +1269,6 @@ int lwip_setsockopt(int s, int level, int optname, const void *optval, socklen_t
                         sock->conn->pcb.tcp->flags &= ~TF_NODELAY;
                     }
                     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_setsockopt(%d, IPPROTO_TCP, TCP_NODELAY) -> %s\n", s, (*(int *)optval) ? "on" : "off"));
-                    break;
-                case TCP_KEEPALIVE:
-                    sock->conn->pcb.tcp->keepalive = (u32_t)(*(int *)optval);
-                    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_setsockopt(%d, IPPROTO_TCP, TCP_KEEPALIVE) -> %u\n", s, sock->conn->pcb.tcp->keepalive));
-                    break;
-                case TCP_ACKNODELAY:
-                    if (*(int *)optval) {
-                        sock->conn->pcb.tcp->flags |= TF_ACKNODELAY;
-                    } else {
-                        sock->conn->pcb.tcp->flags &= ~TF_ACKNODELAY;
-                    }
-                    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_setsockopt(%d, IPPROTO_TCP, TCP_ACKNODELAY) -> %s\n", s, (*(int *)optval) ? "on" : "off"));
-                    break;
-                case TCP_EVENSEG:
-                    if (*(int *)optval) {
-                        sock->conn->pcb.tcp->flags |= TF_EVENSEG;
-                    } else {
-                        sock->conn->pcb.tcp->flags &= ~TF_EVENSEG;
-                    }
-                    LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_setsockopt(%d, IPPROTO_TCP, TCP_EVENSEG) -> %s\n", s, (*(int *)optval) ? "on" : "off"));
                     break;
             } /* switch */
             break;

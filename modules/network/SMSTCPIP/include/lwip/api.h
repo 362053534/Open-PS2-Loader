@@ -137,15 +137,10 @@ err_t netconn_peer(struct netconn *conn,
 err_t netconn_addr(struct netconn *conn,
                    struct ip_addr **addr,
                    u16_t *port);
-err_t netconn_bind(struct netconn *conn,
-                   struct ip_addr *addr,
-                   u16_t port);
 err_t netconn_connect(struct netconn *conn,
                       struct ip_addr *addr,
                       u16_t port);
 err_t netconn_disconnect(struct netconn *conn);
-err_t netconn_listen(struct netconn *conn);
-struct netconn *netconn_accept(struct netconn *conn);
 struct netbuf *netconn_recv(struct netconn *conn);
 err_t netconn_send(struct netconn *conn,
                    struct netbuf *buf);

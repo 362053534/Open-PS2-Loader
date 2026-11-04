@@ -34,6 +34,12 @@ int sceCdGetError(void)
 {
     DPRINTF("sceCdGetError %d\n", cdvdman_stat.err);
 
+#ifdef SMB_DRIVER
+    // 拔线模拟开仓期间（盘类型为无盘，关仓才恢复）一直报开仓，免得别的命令把错误清成无错，游戏不弹插盘提示
+    if (cdvdman_stat.disc_type_reg == SCECdNODISC)
+        return SCECdErTRMOPN;
+#endif
+
     return cdvdman_stat.err;
 }
 
@@ -76,7 +82,12 @@ int sceCdTrayReq(int mode, u32 *traycnt)
         return 1;
     } else if (mode == SCECdTrayClose) {
         // Tray is closed, do nothing.
+#ifdef SMB_DRIVER
+        // 开仓状态已被 sceCdStatus 改回暂停，但盘类型还是无盘，仍要走关仓恢复
+        if (!(cdvdman_stat.status & 1) && cdvdman_stat.disc_type_reg != SCECdNODISC) {
+#else
         if (!(cdvdman_stat.status & 1)) {
+#endif
             return 0;
         }
 
@@ -114,9 +125,11 @@ int sceCdApplySCmd(u8 cmd, const void *in, u16 in_size, void *out)
 //-------------------------------------------------------------------------
 int sceCdStatus(void)
 {
-    DPRINTF("sceCdStatus %d\n", (int)cdvdman_stat.status);
+    int status = (int)cdvdman_stat.status;
 
-    return (int)cdvdman_stat.status;
+    DPRINTF("sceCdStatus %d\n", status);
+
+    return status;
 }
 
 //-------------------------------------------------------------------------

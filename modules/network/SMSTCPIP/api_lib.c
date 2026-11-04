@@ -282,34 +282,6 @@ err_t netconn_addr(struct netconn *conn, struct ip_addr **addr,
     return (conn->err = ERR_OK);
 }
 
-err_t netconn_bind(struct netconn *conn, struct ip_addr *addr,
-                   u16_t port)
-{
-    struct api_msg *msg;
-
-    if (conn == NULL) {
-        return ERR_VAL;
-    }
-
-    if (conn->type != NETCONN_TCP &&
-        conn->recvmbox == SYS_MBOX_NULL) {
-        if ((conn->recvmbox = sys_mbox_new()) == SYS_MBOX_NULL) {
-            return ERR_MEM;
-        }
-    }
-
-    if ((msg = memp_malloc(MEMP_API_MSG)) == NULL) {
-        return (conn->err = ERR_MEM);
-    }
-    msg->type = API_MSG_BIND;
-    msg->msg.conn = conn;
-    msg->msg.msg.bc.ipaddr = addr;
-    msg->msg.msg.bc.port = port;
-    api_msg_post(msg);
-    memp_free(MEMP_API_MSG, msg);
-    return conn->err;
-}
-
 err_t netconn_connect(struct netconn *conn, struct ip_addr *addr,
                       u16_t port)
 {
@@ -354,48 +326,6 @@ err_t netconn_disconnect(struct netconn *conn)
     api_msg_post(msg);
     memp_free(MEMP_API_MSG, msg);
     return conn->err;
-}
-
-err_t netconn_listen(struct netconn *conn)
-{
-    struct api_msg *msg;
-
-    if (conn == NULL) {
-        return ERR_VAL;
-    }
-
-    if (conn->acceptmbox == SYS_MBOX_NULL) {
-        conn->acceptmbox = sys_mbox_new();
-        if (conn->acceptmbox == SYS_MBOX_NULL) {
-            return ERR_MEM;
-        }
-    }
-
-    if ((msg = memp_malloc(MEMP_API_MSG)) == NULL) {
-        return (conn->err = ERR_MEM);
-    }
-    msg->type = API_MSG_LISTEN;
-    msg->msg.conn = conn;
-    api_msg_post(msg);
-    memp_free(MEMP_API_MSG, msg);
-    return conn->err;
-}
-
-struct netconn *
-netconn_accept(struct netconn *conn)
-{
-    struct netconn *newconn;
-
-    if (conn == NULL) {
-        return NULL;
-    }
-
-    sys_mbox_fetch(conn->acceptmbox, (void **)&newconn);
-    /* Register event with callback */
-    if (conn->callback)
-        (*conn->callback)(conn, NETCONN_EVT_RCVMINUS, 0);
-
-    return newconn;
 }
 
 struct netbuf *
@@ -543,6 +473,7 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
         msg->msg.msg.w.copy = copy;
 
         if (conn->type == NETCONN_TCP) {
+#ifndef INGAME_DRIVER
             while ((sndbuf = tcp_sndbuf(conn->pcb.tcp)) == 0) {
                 if (sys_arch_sem_wait(conn->sem, conn->send_timeout) == SYS_ARCH_TIMEOUT) {
                     conn->err = ERR_ABRT;
@@ -552,6 +483,10 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
                     goto ret;
                 }
             }
+#else
+            /* 游戏内一次请求远小于发送缓冲，空信号量上等不到，这条 ERR_ABRT 不会执行。 */
+            sndbuf = tcp_sndbuf(conn->pcb.tcp);
+#endif
             if (size > sndbuf) {
                 /* We cannot send more than one send buffer's worth of data at a
      time. */
@@ -569,12 +504,14 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
         if (conn->err == ERR_OK) {
             dataptr = (void *)((u8_t *)dataptr + len);
             size -= len;
+#ifndef INGAME_DRIVER
         } else if (conn->err == ERR_MEM) {
             conn->err = ERR_OK;
             if (sys_arch_sem_wait(conn->sem, conn->send_timeout) == SYS_ARCH_TIMEOUT) {
                 conn->err = ERR_ABRT;
                 goto ret;
             }
+#endif
         } else {
             goto ret;
         }
