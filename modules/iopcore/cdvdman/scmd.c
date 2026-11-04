@@ -34,6 +34,12 @@ int sceCdGetError(void)
 {
     DPRINTF("sceCdGetError %d\n", cdvdman_stat.err);
 
+#ifdef SMB_DRIVER
+    // 拔线模拟开仓期间（盘类型为无盘，关仓才恢复）一直报开仓，免得别的命令把错误清成无错，游戏不弹插盘提示
+    if (cdvdman_stat.disc_type_reg == SCECdNODISC)
+        return SCECdErTRMOPN;
+#endif
+
     return cdvdman_stat.err;
 }
 
@@ -122,12 +128,6 @@ int sceCdStatus(void)
     int status = (int)cdvdman_stat.status;
 
     DPRINTF("sceCdStatus %d\n", status);
-
-#ifdef SMB_DRIVER
-    // 拔线模拟的开仓只让游戏查到一次，之后改回暂停，免得游戏走换盘流程、后台继续跑
-    if (status & SCECdStatShellOpen)
-        cdvdman_stat.status = SCECdStatPause;
-#endif
 
     return status;
 }

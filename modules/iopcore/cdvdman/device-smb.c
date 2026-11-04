@@ -264,8 +264,8 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
-    // 断线也报就绪：报未就绪游戏会一直等盘转好，画面冻结。插盘提示靠开仓
-    return SCECdComplete;
+    // 拔线开仓期间报未就绪，让游戏停在插盘提示里等，不去读盘；关仓后恢复就绪
+    return smbTrayOpen ? SCECdNotReady : SCECdComplete;
 }
 
 int DeviceFSInit(void)
