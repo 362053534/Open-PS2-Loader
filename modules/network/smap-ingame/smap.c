@@ -77,6 +77,9 @@ static void _smap_write_phy(volatile u8 *emac3_regbase, unsigned int address, u1
     // if(i>=100) printf("smap: %s: > %d ms\n", "_smap_write_phy", i);
 }
 
+// 最近一次 PHY 读是否超时（超时返回的 0 不是真实寄存器值）
+static int PhyReadTimedOut;
+
 static u16 _smap_read_phy(volatile u8 *emac3_regbase, unsigned int address)
 {
     unsigned int i;
@@ -103,6 +106,7 @@ static u16 _smap_read_phy(volatile u8 *emac3_regbase, unsigned int address)
         i++;
     } while (i < 100);
 
+    PhyReadTimedOut = (i >= 100);
     if (i >= 100)
         printf("smap: %s: > %u ms\n", "_smap_read_phy", i);
 
@@ -348,8 +352,12 @@ int SMAPGetLinkStatus(void)
         return 0;
     if (_smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK)
         SmapDriverData.LinkStatus = 1;
-    else
-        SmapDriverData.LinkStatus = (_smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK) ? 1 : 0;
+    else if (PhyReadTimedOut)
+        SmapDriverData.LinkStatus = 1; // PHY 读超时：状态未知，按连着处理，不算断线
+    else {
+        u16 bmsr = _smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR);
+        SmapDriverData.LinkStatus = (PhyReadTimedOut || (bmsr & SMAP_PHY_BMSR_LINK)) ? 1 : 0;
+    }
     return SmapDriverData.LinkStatus;
 }
 
