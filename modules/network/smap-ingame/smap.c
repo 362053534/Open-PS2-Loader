@@ -338,25 +338,19 @@ static int InitPHY(struct SmapDriverData *SmapDrivPrivData)
     return 0;
 }
 
-// Checks the status of the Ethernet link
-static void CheckLinkStatus(struct SmapDriverData *SmapDrivPrivData)
-{
-    /* 本函数由 SetAlarm 闹钟回调调用，处于中断上下文。InitPHY 里的 DelayThread 在中断里会直接失败返回，
-     * 断线时等链路/自动协商的循环就变成关中断空转，并且不停重启协商，插回网线也出不来，整颗 IOP 卡死。
-     * PHY 保持自动协商开启，插回网线后会自行重新协商，这里只同步链路状态，不在中断里重置 PHY。 */
-    SmapDrivPrivData->LinkStatus = (_smap_read_phy(SmapDrivPrivData->emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK) ? 1 : 0;
-}
-
+/* 只由 SMB 读盘线程在读卡住时调用，不在中断里，PHY 读取里的 DelayThread 能正常工作。
+ * BMSR 链路位是锁存低：只锁住"断开"。读到 1 一定是通的，读一次即可；
+ * 读到 0 可能是锁住的旧状态，再读一次以第二次为准。
+ * 不再用 5 秒闹钟定时刷新，平时没有任何开销。 */
 int SMAPGetLinkStatus(void)
 {
-    return SmapDriverData.SmapIsInitialized && SmapDriverData.LinkStatus;
-}
-
-// This timer callback starts the Ethernet link check event.
-static unsigned int LinkCheckTimerCB(struct SmapDriverData *SmapDrivPrivData)
-{
-    CheckLinkStatus(SmapDrivPrivData);
-    return SmapDrivPrivData->LinkCheckTimer.lo;
+    if (!SmapDriverData.SmapIsInitialized)
+        return 0;
+    if (_smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK)
+        SmapDriverData.LinkStatus = 1;
+    else
+        SmapDriverData.LinkStatus = (_smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK) ? 1 : 0;
+    return SmapDriverData.LinkStatus;
 }
 
 static int Dev9IntrCb(int flag)
@@ -443,12 +437,7 @@ int SMAPStart(void)
             SMAP_EMAC3_SET32(SMAP_R_EMAC3_MODE0, SMAP_E3_TXMAC_ENABLE | SMAP_E3_RXMAC_ENABLE);
             DelayThread(10000);
             SmapDriverData.SmapIsInitialized = 1;
-
-            if (!SmapDriverData.EnableLinkCheckTimer) {
-                USec2SysClock(5000000, &SmapDriverData.LinkCheckTimer); // Since there isn't a thread that allows the link checking code to determine whether frames were received or not and to check the link status, just reduce the polling frequency.
-                SetAlarm(&SmapDriverData.LinkCheckTimer, (void *)&LinkCheckTimerCB, &SmapDriverData);
-                SmapDriverData.EnableLinkCheckTimer = 1;
-            }
+            // 不再启动 5 秒链路检查闹钟，链路状态改由 SMAPGetLinkStatus 按需读取
         } else
             SmapDriverData.NetDevStopFlag = 0;
     }
