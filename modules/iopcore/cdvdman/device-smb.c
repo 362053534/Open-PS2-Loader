@@ -40,6 +40,7 @@ static volatile int smb_echo_due;
 static volatile int smb_echo_busy;
 static volatile int smb_in_read;
 static volatile int smb_alarm_armed;
+static volatile int smb_tray_check_due;
 static iop_sys_clock_t smb_alarm_clock;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
@@ -118,13 +119,17 @@ static int smb_link_up(void)
     return 1;
 }
 
-/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。 */
-void smb_read_stall_check(void)
+/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。
+ * 返回 1 表示链路断开，调用方放弃本次读，让游戏拿到 SCECdErTRMOPN 去提示插盘。 */
+int smb_read_stall_check(void)
 {
-    if (!smbTrayOpen && !smb_link_up()) {
+    if (smb_link_up())
+        return 0;
+    if (!smbTrayOpen) {
         smbTrayOpen = 1;
         sceCdTrayReq(SCECdTrayOpen, NULL);
     }
+    return 1;
 }
 
 /* 只由读线程在数据读重新收到数据时调用：之前开过仓就关回去。 */
@@ -152,6 +157,16 @@ static unsigned int smb_echo_alarm_cb(void *arg)
 
     if (!smb_echo_enabled)
         return 0;
+
+    /* 已模拟开仓：中断里不查链路，每拍叫醒读线程去查，链路恢复就关仓。闹钟保持续挂。 */
+    if (smbTrayOpen) {
+        if (!smb_in_read && !smb_echo_busy) {
+            smb_tray_check_due = 1;
+            cdvdman_kick_rthread(1);
+        }
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
+    }
 
     /* 读或 Echo 还没结束。不要把读线程叫去发 Echo，空闲也不记。 */
     if (smb_in_read || smb_echo_busy || smb_echo_due) {
@@ -204,6 +219,15 @@ int smb_read_thread_on_wake(int read_busy)
     if (read_busy) {
         smb_echo_due = 0;
         return 0;
+    }
+
+    /* 游戏停在插盘提示时链路恢复：在读线程里关仓（sceCdTrayReq 要 DelayThread）。 */
+    if (smb_tray_check_due) {
+        smb_tray_check_due = 0;
+        if (smbTrayOpen && smb_link_up()) {
+            sceCdTrayReq(SCECdTrayClose, NULL);
+            smbTrayOpen = 0;
+        }
     }
 
     if (!smb_echo_due)
@@ -308,6 +332,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     offslsn = lsn;
     r = nlsn = 0;
     sectors_to_read = sectors;
+    /* 已开仓且链路仍断：像 BDM 拔盘一样立即报开仓，不去阻塞等待。 */
+    if (smbTrayOpen && !smb_link_up())
+        return SCECdErTRMOPN;
     /* 读的整段都算有流量。闹钟不要在收包途中把读线程叫去发 Echo。 */
     smb_in_read = 1;
 
@@ -329,6 +356,10 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             }
             if (smb_abort_wait) {
                 rv = SCECdErABRT;
+                break;
+            }
+            if (result == SMB_READ_LINK_DOWN) {
+                rv = SCECdErTRMOPN;
                 break;
             }
             if (result < 0) {

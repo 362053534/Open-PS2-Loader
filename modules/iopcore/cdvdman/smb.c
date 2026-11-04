@@ -42,9 +42,10 @@
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_POLL_MS       20
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
-#define SMB_READ_POLL_US       1000
-/* 数据读每等满这么多次轮询（约 100ms）查一次链路，决定是否模拟开仓。 */
-#define SMB_READ_LINK_CHECK_POLLS 100
+// IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
+#define SMB_READ_POLL_US       100
+/* 数据读每等满这么多次轮询（1000 × 100us，约 100ms）查一次链路，决定是否模拟开仓。 */
+#define SMB_READ_LINK_CHECK_POLLS 1000
 
 int smb_io_sema = -1;
 // IGR 时置 1，让不设超时的收包轮询退出，避免拔线期间 IGR 卡在等锁上
@@ -162,11 +163,91 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
     return sock;
 }
 
+/* 被放弃的 ReadAndX 回包还可能经 TCP 重传到达，发下一个请求前必须先收掉丢弃。
+ * smb_stale_pending=1：整个回包（从 NBSS 头开始）都还没收；smb_stale_skip：还要丢的字节数。
+ * 放弃时 SMSTCPIP 的 lwip_smb_accum 只往 lastdata 里拼段、不推进 lastoffset，
+ * recv/recvfrom 共用同一个 lastdata/lastoffset，所以这里用 recv 从断点接着收即可。 */
+static int smb_stale_pending;
+static int smb_stale_skip;
+static int smb_stale_hdr_got;
+static u8 smb_stale_hdr[4];
+static u8 smb_stale_buf[256];
+static int smb_in_data_read;
+
+/* 非阻塞收一段旧回包。>0 收到字节数，0 对端关闭，-1 被放弃，SMB_READ_LINK_DOWN 链路断开。 */
+static int smb_stale_recv(void *buf, int size)
+{
+    int result, polls = 0;
+
+    while ((result = plwip_recv(main_socket, buf, size, MSG_DONTWAIT)) < 0) {
+        if (smb_abort_wait)
+            return -1;
+        // 只有数据读时才查链路模拟开仓，Echo/Close 不开仓
+        if (smb_in_data_read && ++polls >= SMB_READ_LINK_CHECK_POLLS) {
+            polls = 0;
+            if (smb_read_stall_check())
+                return SMB_READ_LINK_DOWN;
+        }
+        DelayThread(SMB_READ_POLL_US);
+    }
+
+    return result;
+}
+
+/* 返回 1 表示旧回包已丢干净；<=0 同 smb_stale_recv。中途放弃时进度保留，下次接着丢。 */
+static int smb_drain_stale(void)
+{
+    int result = 1, size;
+
+    while (smb_stale_pending || smb_stale_skip > 0) {
+        if (smb_stale_skip > 0) {
+            size = smb_stale_skip > (int)sizeof(smb_stale_buf) ? (int)sizeof(smb_stale_buf) : smb_stale_skip;
+            result = smb_stale_recv(smb_stale_buf, size);
+            if (result <= 0)
+                break;
+            smb_stale_skip -= result;
+            continue;
+        }
+
+        result = smb_stale_recv(&smb_stale_hdr[smb_stale_hdr_got], 4 - smb_stale_hdr_got);
+        if (result <= 0)
+            break;
+        smb_stale_hdr_got += result;
+        if (smb_stale_hdr_got < 4)
+            continue;
+
+        smb_stale_hdr_got = 0;
+        smb_stale_skip = (smb_stale_hdr[1] << 16) | (smb_stale_hdr[2] << 8) | smb_stale_hdr[3];
+        // keepalive(0x85) 不是要等的回包，丢掉后继续等真正的 Session Message
+        if (smb_stale_hdr[0] == 0)
+            smb_stale_pending = 0;
+    }
+
+    if (!smb_stale_pending && smb_stale_skip <= 0)
+        return 1;
+
+    // 对端已关闭，旧回包不会再来，清掉记录
+    if (result == 0) {
+        smb_stale_pending = 0;
+        smb_stale_skip = 0;
+        smb_stale_hdr_got = 0;
+    }
+
+    return result;
+}
+
 //-------------------------------------------------------------------------
 static int SendData(int sock, char *buf, int size)
 {
     int remaining, result;
     char *ptr;
+
+    // 所有请求都经过这里：先丢掉上次被放弃的读回包，再发新请求
+    if (sock == main_socket && (smb_stale_pending || smb_stale_skip > 0)) {
+        result = smb_drain_stale();
+        if (result <= 0)
+            return result;
+    }
 
     ptr = buf;
     remaining = size;
@@ -701,10 +782,11 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
         // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上接着读
         if (smb_abort_wait)
             return -1;
-        // 只有数据读真的卡住才查链路；断线时模拟开仓。Echo 不走这里。
+        // 只有数据读真的卡住才查链路；断线时模拟开仓并放弃本次读。Echo 不走这里。
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
             polls = 0;
-            smb_read_stall_check();
+            if (smb_read_stall_check())
+                return SMB_READ_LINK_DOWN;
         }
         DelayThread(SMB_READ_POLL_US);
     }
@@ -748,14 +830,18 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     //Send the whole message, including the 4-byte direct transport packet header.
     r = SendData(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4);
     if (r <= 0)
-        return -1;
+        return r == SMB_READ_LINK_DOWN ? r : -1;
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
     do {
         rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
-        if (rcv_size <= 0)
-            return -2;
+        if (rcv_size <= 0) {
+            // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
+            if (rcv_size < 0)
+                smb_stale_pending = 1;
+            return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
+        }
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
     expected_size = nb_GetSessionMessageLength() + 4;
@@ -764,8 +850,12 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     // Handle fragmented packets
     while (rcv_size < expected_size) {
         r = RecvFromTimed(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size); // - rcv_size
-        if (r <= 0)
-            return -2;
+        if (r <= 0) {
+            // 放弃等待：回包剩余部分以后可能还会到，记下待丢弃的字节数
+            if (r < 0)
+                smb_stale_skip = expected_size - rcv_size;
+            return r == SMB_READ_LINK_DOWN ? r : -2;
+        }
         rcv_size += r;
     }
 #else
@@ -805,6 +895,7 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
     ptr = readbuf;
 
     WAITIOSEMA(smb_io_sema);
+    smb_in_data_read = 1;
 
     while (remaining > 0) {
         toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
@@ -824,6 +915,7 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
         remaining -= result;
     }
 
+    smb_in_data_read = 0;
     SIGNALIOSEMA(smb_io_sema);
 
     return remaining > 0 ? result : nbytes;
@@ -953,6 +1045,10 @@ int smb_Disconnect(void)
         plwip_close(main_socket);
         main_socket = -1;
     }
+    // 套接字已换，旧回包记录作废
+    smb_stale_pending = 0;
+    smb_stale_skip = 0;
+    smb_stale_hdr_got = 0;
 
     return 1;
 }

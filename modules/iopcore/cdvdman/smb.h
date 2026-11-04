@@ -517,7 +517,9 @@ int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
 int smb_Echo(void);
 extern volatile int smb_abort_wait;
 /* device-smb.c 提供：数据读卡住时查链路并模拟开仓，读恢复后关仓。 */
-void smb_read_stall_check(void);
+/* 数据读因链路断开被放弃时 smb_ReadCD 返回此值，上层报 SCECdErTRMOPN。 */
+#define SMB_READ_LINK_DOWN (-3)
+int smb_read_stall_check(void);
 void smb_read_progress(void);
 void smb_CloseAll(void);
 int smb_Disconnect(void);
