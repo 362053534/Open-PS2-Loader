@@ -15,6 +15,8 @@
 #define SMB_ECHO_RETRY_COUNT      2
 #define SMB_CONNECTION_WAIT_LINK  3
 #define SMB_CONNECTION_RETRY_WAIT 4
+/* 链路仍在但连续重连失败达到此次数时也模拟开仓，覆盖路由器/服务器侧断开。 */
+#define SMB_TRAY_OPEN_FAIL_COUNT  3
 
 #define SMB_RECONNECT_IDLE    0
 #define SMB_RECONNECT_PENDING 1
@@ -50,6 +52,7 @@ static volatile int smbReconnectStopping;
 static volatile int smbReconnectStopped;
 static volatile unsigned int smbIdleTicks;
 static volatile unsigned int smbEchoRetryCount;
+static volatile unsigned int smbReconnectFailCount;
 static int smbReconnectThreadID = -1;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
@@ -199,12 +202,15 @@ static void smbReconnectThread(void *arg)
                 smbConnectionState = 1;
                 smbIdleTicks = 0;
                 smbEchoRetryCount = 0;
+                smbReconnectFailCount = 0;
                 continue;
             }
 
             smb_Disconnect();
             if (smbReconnectEnabled) {
                 smbReconnectResult = SMB_RECONNECT_FAILED;
+                if (smbReconnectFailCount < SMB_TRAY_OPEN_FAIL_COUNT)
+                    smbReconnectFailCount++;
                 if (smbConnectionState != SMB_CONNECTION_WAIT_LINK) {
                     result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
                                                  (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
@@ -339,13 +345,12 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
                     if (smbReconnectResult == SMB_RECONNECT_FAILED || smbReconnectResult == SMB_RECONNECT_PENDING) {
                         result = pSmapGetLinkStatus ? pSmapGetLinkStatus() :
                                                      (pNetManGetGlobalNetIFLinkState ? pNetManGetGlobalNetIFLinkState() : 1);
-                        if (!result) {
-                            if (!smbTrayOpen) {
-                                smbTrayOpen = 1;
-                                sceCdTrayReq(SCECdTrayOpen, NULL);
-                            }
-                            smbConnectionState = SMB_CONNECTION_WAIT_LINK;
+                        if ((!result || smbReconnectFailCount >= SMB_TRAY_OPEN_FAIL_COUNT) && !smbTrayOpen) {
+                            smbTrayOpen = 1;
+                            sceCdTrayReq(SCECdTrayOpen, NULL);
                         }
+                        if (!result)
+                            smbConnectionState = SMB_CONNECTION_WAIT_LINK;
                     }
                 }
 

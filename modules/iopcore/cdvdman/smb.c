@@ -43,6 +43,11 @@
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_TIMEOUT_MS    8000
 #define SMB_ECHO_POLL_MS       20
+/* 数据面 ReadAndX 单次收包无进展的超时上限：拔线或服务器侧断开时不再永久阻塞，
+ * 超时返回负值，交给 device-smb.c 的重连逻辑。同样不用 SO_RCVTIMEO，原因同上。 */
+#define SMB_READ_TIMEOUT_MS    8000
+/* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
+#define SMB_READ_POLL_US       1000
 
 int smb_io_sema = -1;
 
@@ -685,6 +690,26 @@ int smb_Close(int FID)
     return 0;
 }
 
+#ifdef USE_CUSTOM_RECV
+/* recvfrom() 的 MSG_DONTWAIT 轮询版。EWOULDBLOCK 时 SMSTCPIP 会把已收的半包留在
+ * sock->lastdata，用同样参数重调即可接着凑，不会丢数据也不重发请求。
+ * 超时返回 -1，对端关闭仍返回 0，调用方都按失败处理。 */
+static int RecvFromTimed(int sock, void *header, int index, void *payload, int plen)
+{
+    int result, waited = 0;
+
+    while ((result = plwip_recvfrom(sock, header, index, payload, plen, MSG_DONTWAIT, NULL, NULL)) < 0) {
+        if (waited >= SMB_READ_TIMEOUT_MS * 1000)
+            return -1;
+
+        DelayThread(SMB_READ_POLL_US);
+        waited += SMB_READ_POLL_US;
+    }
+
+    return result;
+}
+#endif
+
 //-------------------------------------------------------------------------
 static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
@@ -723,7 +748,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
     do {
-        rcv_size = plwip_recvfrom(main_socket, &SMB_buf, 49, readbuf, nbytes, 0, NULL, NULL);
+        rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
         if (rcv_size <= 0)
             return -2;
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
@@ -733,7 +758,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
     // Handle fragmented packets
     while (rcv_size < expected_size) {
-        r = plwip_recvfrom(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size, 0, NULL, NULL); // - rcv_size
+        r = RecvFromTimed(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size); // - rcv_size
         if (r <= 0)
             return -2;
         rcv_size += r;
