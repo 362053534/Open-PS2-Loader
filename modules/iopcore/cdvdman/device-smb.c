@@ -258,7 +258,8 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
-    return SCECdComplete;
+    // 照 BDM：读盘确认断线后报未就绪，让游戏弹插盘提示；链路恢复清标记后再报就绪
+    return smbTrayOpen ? SCECdNotReady : SCECdComplete;
 }
 
 int DeviceFSInit(void)
