@@ -125,20 +125,16 @@ int smb_read_stall_check(void)
 {
     if (smb_link_up())
         return 0;
-    if (!smbTrayOpen) {
-        smbTrayOpen = 1;
-        sceCdTrayReq(SCECdTrayOpen, NULL);
-    }
+    // 照 BDM：不调 sceCdTrayReq 开仓，只记下断线，靠 SCECdErTRMOPN 让游戏提示
+    smbTrayOpen = 1;
     return 1;
 }
 
 /* 只由读线程在数据读重新收到数据时调用：之前开过仓就关回去。 */
 void smb_read_progress(void)
 {
-    if (smbTrayOpen) {
-        sceCdTrayReq(SCECdTrayClose, NULL);
-        smbTrayOpen = 0;
-    }
+    // 只清断线标记，不调 sceCdTrayReq 关仓
+    smbTrayOpen = 0;
 }
 
 /* 非 0 表示内核按这个系统时钟把同一只闹钟续上。再 iSetAlarm 会多挂一只。 */
@@ -224,10 +220,9 @@ int smb_read_thread_on_wake(int read_busy)
     /* 游戏停在插盘提示时链路恢复：在读线程里关仓（sceCdTrayReq 要 DelayThread）。 */
     if (smb_tray_check_due) {
         smb_tray_check_due = 0;
-        if (smbTrayOpen && smb_link_up()) {
-            sceCdTrayReq(SCECdTrayClose, NULL);
+        // 链路恢复只清断线标记，不调 sceCdTrayReq 关仓
+        if (smbTrayOpen && smb_link_up())
             smbTrayOpen = 0;
-        }
     }
 
     if (!smb_echo_due)
