@@ -1216,7 +1216,7 @@ static clock_t animationStartTime = 0;
 // ICO 与封面的间距 = COVERFLOW_ICO_POPUP_GAP + offset × 此系数（四舍五入取整），让观感与内置主题一致（内置 offset 为 0）。
 #define COVERFLOW_ICO_OFFSET_GAP_SCALE 0.7f
 #define COVERFLOW_APPS_COVER_W 140
-#define COVERFLOW_APPS_COVER_H 150
+#define COVERFLOW_APPS_COVER_H 140
 #define COVERFLOW_APPS_COVER_H_LOWRES 140
 #define COVERFLOW_DEFAULT_CENTER_SCALE 0     // 中心封面相对 448 基线宽度140的增减（0=基准尺寸）
 #define COVERFLOW_DEFAULT_NONCENTER_SCALE -36 // 5张基线非中心尺寸：相对逻辑宽140的像素增减（-36=非中心宽104；0=与中心140等大；正值更大）；仅用于非中心封面底边对齐基线，3/5/7/9张的封面宽由间距宏反算
@@ -1242,9 +1242,9 @@ static clock_t animationStartTime = 0;
 #define COVERFLOW_DEFAULT_PRELOAD 1 // 每侧屏幕外预取封面数默认值（左右各 1 张，共 2 张）
 static int gCoverflowCount = COVERFLOW_DEFAULT_COUNT;       // 同屏显示的封面数（规范化到 1/3/5/7/9）
 static int gCoverflowCoverW = COVERFLOW_COVER_W;            // 游戏封面主图基准宽（内部基线）
-static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（448 基线逻辑值214）
+static int gCoverflowCoverH = COVERFLOW_COVER_H;            // 游戏封面主图基准高（448 基线逻辑值200）
 static int gCoverflowAppsCoverW = COVERFLOW_APPS_COVER_W;   // APPS 封面主图基准宽（内部基线）
-static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（448 基线逻辑值150）
+static int gCoverflowAppsCoverH = COVERFLOW_APPS_COVER_H;   // APPS 封面主图基准高（448 基线逻辑值140）
 static int gCoverflowCenterScale = COVERFLOW_DEFAULT_CENTER_SCALE;       // 中心封面相对基准的等比增减【像素】
 static int gCoverflowNonCenterScale = COVERFLOW_DEFAULT_NONCENTER_SCALE; // 5张基线非中心封面相对基准的等比增减【像素】
 static int gCoverflowAnimSpeed = COVERFLOW_DEFAULT_ANIM;    // 滑动时长（毫秒，<=0 关闭动画）
