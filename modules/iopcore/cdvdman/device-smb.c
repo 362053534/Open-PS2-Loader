@@ -270,6 +270,8 @@ void DeviceLock(void)
 
 void DeviceUnmount(void)
 {
+    // DeviceLock 置的中止标记清掉，让下面的 Close 能等服务器回包（受 2 秒上限）
+    smb_abort_wait = 0;
     smb_echo_enabled = 0;
     smb_echo_due = 0;
     smb_echo_busy = 0;

@@ -664,7 +664,8 @@ int smb_Close(int FID)
     CR->FID = (u16)FID;
 
     nb_SetSessionMessage(sizeof(CloseRequest_t));
-    r = GetSMBServerReply(0, NULL, 0);
+    // 只在 IGR/关机时调用：网络通时照常等回包，拔线时最多等 2 秒就放弃
+    r = GetSMBServerReplyTimed(2000);
     if (r <= 0) {
         //      SIGNALIOSEMA(smb_io_sema);
         return -EIO;
