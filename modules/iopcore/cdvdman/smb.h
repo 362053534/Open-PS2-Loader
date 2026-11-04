@@ -516,6 +516,9 @@ int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nb
 int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num);
 int smb_Echo(void);
 extern volatile int smb_abort_wait;
+/* device-smb.c 提供：数据读卡住时查链路并模拟开仓，读恢复后关仓。 */
+void smb_read_stall_check(void);
+void smb_read_progress(void);
 void smb_CloseAll(void);
 int smb_Disconnect(void);
 

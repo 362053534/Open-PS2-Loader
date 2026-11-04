@@ -43,6 +43,8 @@
 #define SMB_ECHO_POLL_MS       20
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 #define SMB_READ_POLL_US       1000
+/* 数据读每等满这么多次轮询（约 100ms）查一次链路，决定是否模拟开仓。 */
+#define SMB_READ_LINK_CHECK_POLLS 100
 
 int smb_io_sema = -1;
 // IGR 时置 1，让不设超时的收包轮询退出，避免拔线期间 IGR 卡在等锁上
@@ -692,14 +694,22 @@ int smb_Close(int FID)
 static int RecvFromTimed(int sock, void *header, int index, void *payload, int plen)
 {
     int result;
+    int polls = 0;
 
     while ((result = plwip_recvfrom(sock, header, index, payload, plen, MSG_DONTWAIT, NULL, NULL)) < 0) {
         // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上接着读
         if (smb_abort_wait)
             return -1;
+        // 只有数据读真的卡住才查链路；断线时模拟开仓。Echo 不走这里。
+        if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
+            polls = 0;
+            smb_read_stall_check();
+        }
         DelayThread(SMB_READ_POLL_US);
     }
 
+    // 读有进展了，之前模拟开过仓就关回去
+    smb_read_progress();
     return result;
 }
 #endif

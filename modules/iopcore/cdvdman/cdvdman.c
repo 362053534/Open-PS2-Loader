@@ -519,6 +519,11 @@ static int cdvdman_read(u32 lsn, u32 sectors, u16 sector_size, void *buf)
                 nsectors = 1;
 
             cdvdman_read_sectors(rpos, nsectors, cdvdman_buf);
+#ifdef SMB_DRIVER
+            /* 中止后不再读后续块，避免后面的成功结果把 SCECdErABRT 盖掉。 */
+            if (cdvdman_stat.err == SCECdErABRT)
+                break;
+#endif
 
             rpos += nsectors;
             sectors -= nsectors;
@@ -615,6 +620,8 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
         return 0;
     }
 
+    /* 这是新的一笔读。上一笔 Break 或停流留下的放弃标记不能再生效。 */
+    DeviceClearAbortReadWait();
     cdread_io_busy = 1;
     cdread_outstand = 1;
     cdread_owner = owner;
@@ -718,6 +725,10 @@ int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
         return 0;
     }
 
+#ifdef SMB_DRIVER
+    /* 调用方正在要这次同步读，不能沿用上一笔放弃标记。 */
+    DeviceClearAbortReadWait();
+#endif
     CpuResumeIntr(OldState);
 
     cdvdman_read(lsn, sectors, sector_size, buf);
@@ -992,6 +1003,10 @@ static void cdvdman_cdread_Thread(void *args)
     while (1) {
         WaitSema(cdrom_rthread_sema);
 
+        /* 没有排队的读。这次是空闲 Echo，不能把上一笔 LBA 再读一遍。 */
+        if (smb_read_thread_on_wake(cdread_io_busy || cdread_pending))
+            continue;
+
         do {
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
@@ -1073,6 +1088,16 @@ static void cdvdman_startThreads(void)
     cdvdman_ReadingThreadID = CreateThread(&thread_param);
     StartThread(cdvdman_ReadingThreadID, NULL);
 }
+
+#ifdef SMB_DRIVER
+void cdvdman_kick_rthread(int from_intr)
+{
+    if (from_intr)
+        iSignalSema(cdrom_rthread_sema);
+    else
+        SignalSema(cdrom_rthread_sema);
+}
+#endif
 
 //-------------------------------------------------------------------------
 static void cdvdman_create_semaphores(void)
