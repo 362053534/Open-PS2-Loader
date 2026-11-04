@@ -581,9 +581,11 @@ void tcp_slowtmr(void)
         if (pcb->state == SYN_SENT && pcb->nrtx == TCP_SYNMAXRTX) {
             ++pcb_remove;
             LWIP_DEBUGF(TCP_DEBUG, ("tcp_slowtmr: max SYN retries reached\n"));
+#ifndef INGAME_DRIVER
         } else if (pcb->nrtx == TCP_MAXRTX) {
             ++pcb_remove;
             LWIP_DEBUGF(TCP_DEBUG, ("tcp_slowtmr: max DATA retries reached\n"));
+#endif
         } else {
             ++pcb->rtime;
             if (pcb->unacked != NULL && pcb->rtime >= pcb->rto) {
@@ -596,6 +598,11 @@ void tcp_slowtmr(void)
                  * connect to somebody (i.e., we are in SYN_SENT). */
                 if (pcb->state != SYN_SENT) {
                     pcb->rto = ((pcb->sa >> 3) + pcb->sv) << tcp_backoff[pcb->nrtx];
+#ifdef INGAME_DRIVER
+                    // 游戏内重传间隔封顶约 2 秒，长时间拔线后插回也能很快接上
+                    if (pcb->rto > 2000 / TCP_SLOW_INTERVAL)
+                        pcb->rto = 2000 / TCP_SLOW_INTERVAL;
+#endif
                 }
                 tcp_rexmit(pcb);
                 /* Reduce congestion window and ssthresh. */

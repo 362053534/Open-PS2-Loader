@@ -187,15 +187,22 @@ int SMAPSendPacket(const void *data, unsigned int length)
     volatile u8 *emac3_regbase;
     volatile smap_bd_t *BD_ptr;
     u16 BD_data_ptr;
-    unsigned int SizeRounded;
+    unsigned int SizeRounded, i;
 
     if (SmapDriverData.SmapIsInitialized) {
         SizeRounded = (length + 3) & ~3;
         smap_regbase = SmapDriverData.smap_regbase;
         emac3_regbase = SmapDriverData.emac3_regbase;
 
-        while (SMAP_EMAC3_GET(SMAP_R_EMAC3_TxMODE0) & SMAP_E3_TX_GNP_0) {
-        };
+        /* 原来是无超时死等上一帧发完。长时间拔线时若 EMAC3 发送卡住，GNP 永不清零，
+         * 调用者持有 tcpip 内核锁（且 tcpip 线程优先级最高）在此空转，整颗 IOP 都动不了。
+         * 先短暂忙等保持正常性能，再让出 CPU 等约 100ms，仍未完成就丢弃本帧交给 TCP 重传。 */
+        for (i = 0; SMAP_EMAC3_GET(SMAP_R_EMAC3_TxMODE0) & SMAP_E3_TX_GNP_0; i++) {
+            if (i >= 1000 + 100)
+                return -1;
+            if (i >= 1000)
+                DelayThread(1000);
+        }
 
         BD_data_ptr = SMAP_REG16(SMAP_R_TXFIFO_WR_PTR);
         BD_ptr = &tx_bd[SmapDriverData.TxBDIndex % SMAP_BD_MAX_ENTRY];

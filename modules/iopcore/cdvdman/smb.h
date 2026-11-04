@@ -515,6 +515,7 @@ int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbyt
 int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nbytes);
 int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num);
 int smb_Echo(void);
+extern volatile int smb_abort_wait;
 void smb_CloseAll(void);
 int smb_Disconnect(void);
 

@@ -37,19 +37,16 @@
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
-#define SMB_KEEPALIVE_TIME     60000
 /* Echo 保活探测的超时上限：不能用 setsockopt(SO_RCVTIMEO) —— 那会让 lwip 的每一次
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
-#define SMB_ECHO_TIMEOUT_MS    8000
 #define SMB_ECHO_POLL_MS       20
-/* 数据面 ReadAndX 单次收包无进展的超时上限：拔线或服务器侧断开时不再永久阻塞，
- * 超时返回负值，交给 device-smb.c 的重连逻辑。同样不用 SO_RCVTIMEO，原因同上。 */
-#define SMB_READ_TIMEOUT_MS    8000
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 #define SMB_READ_POLL_US       1000
 
 int smb_io_sema = -1;
+// IGR 时置 1，让不设超时的收包轮询退出，避免拔线期间 IGR 卡在等锁上
+volatile int smb_abort_wait;
 
 #define WAITIOSEMA(x)   WaitSema(x)
 #define SIGNALIOSEMA(x) SignalSema(x)
@@ -146,10 +143,8 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-    plwip_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt));
-    opt = SMB_KEEPALIVE_TIME;
-    plwip_setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, (char *)&opt, sizeof(opt));
-    /* 注意：不要设 SO_SNDTIMEO / SO_RCVTIMEO。见 SMB_ECHO_TIMEOUT_MS 的注释。 */
+    // 不开 SO_KEEPALIVE：长时间拔线时保活超时会 tcp_abort 掉连接，插回后就接不上了
+    /* 注意：不要设 SO_SNDTIMEO / SO_RCVTIMEO。见 SMB_ECHO_POLL_MS 的注释。 */
 
     memset(&sock_addr, 0, sizeof(sock_addr));
     sock_addr.sin_addr = dst_IP;
@@ -210,7 +205,7 @@ static int RecvDataEx(int sock, char *buf, int size, unsigned int flags, int tim
         if (!(flags & MSG_DONTWAIT))
             return result; /* 阻塞模式下出错就是出错 */
 
-        if (waited >= timeout_ms)
+        if (smb_abort_wait || (timeout_ms >= 0 && waited >= timeout_ms))
             return 0; /* 轮询超时，不把半包当错误丢掉 */
 
         DelayThread(SMB_ECHO_POLL_MS * 1000);
@@ -269,7 +264,7 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 }
 
 /* GetSMBServerReply(0, NULL, 0) 的非阻塞轮询版：一次发完整包、收 NetBIOS 头、
- * 再收 SMB 回包，全程不设 SO_RCVTIMEO，超时上限由 timeout_ms 决定。
+ * 再收 SMB 回包，全程不设 SO_RCVTIMEO，timeout_ms < 0 表示不设超时。
  * 只给 smb_Echo() 用，数据面继续走原来的阻塞 GetSMBServerReply()。 */
 static int GetSMBServerReplyTimed(int timeout_ms)
 {
@@ -693,17 +688,16 @@ int smb_Close(int FID)
 #ifdef USE_CUSTOM_RECV
 /* recvfrom() 的 MSG_DONTWAIT 轮询版。EWOULDBLOCK 时 SMSTCPIP 会把已收的半包留在
  * sock->lastdata，用同样参数重调即可接着凑，不会丢数据也不重发请求。
- * 超时返回 -1，对端关闭仍返回 0，调用方都按失败处理。 */
+ * 不设超时，对端关闭仍返回 0，调用方按失败处理。 */
 static int RecvFromTimed(int sock, void *header, int index, void *payload, int plen)
 {
-    int result, waited = 0;
+    int result;
 
     while ((result = plwip_recvfrom(sock, header, index, payload, plen, MSG_DONTWAIT, NULL, NULL)) < 0) {
-        if (waited >= SMB_READ_TIMEOUT_MS * 1000)
+        // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上接着读
+        if (smb_abort_wait)
             return -1;
-
         DelayThread(SMB_READ_POLL_US);
-        waited += SMB_READ_POLL_US;
     }
 
     return result;
@@ -920,7 +914,8 @@ int smb_Echo(void)
     ER->ByteCount = 0;
 
     nb_SetSessionMessage(sizeof(EchoRequest_t));
-    result = GetSMBServerReplyTimed(SMB_ECHO_TIMEOUT_MS) > 0 ? 1 : -1;
+    // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上收到回包
+    result = GetSMBServerReplyTimed(-1) > 0 ? 1 : -1;
 
     SIGNALIOSEMA(smb_io_sema);
 

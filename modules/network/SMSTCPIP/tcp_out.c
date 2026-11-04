@@ -518,6 +518,10 @@ void tcp_rexmit(struct tcp_pcb *pcb)
 
     pcb->snd_nxt = ntohl(pcb->unsent->tcphdr->seqno);
 
+#ifdef INGAME_DRIVER
+    // 游戏内不因重传次数放弃连接，nrtx 卡在上限，避免 tcp_backoff[] 越界
+    if (pcb->nrtx < TCP_MAXRTX)
+#endif
     ++pcb->nrtx;
 
     /* Don't take any rtt measurements after retransmitting. */
