@@ -166,6 +166,7 @@ int HandleRxIntr(struct SmapDriverData *SmapDrivPrivData)
                     SMapLowLevelInput(pbuf);
 
                     NumPacketsReceived++;
+                    SmapRxFrames++;
                 }
             }
 

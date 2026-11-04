@@ -44,6 +44,7 @@ static volatile int smb_tray_check_due;
 static iop_sys_clock_t smb_alarm_clock;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
+static unsigned int (*pSmapGetRxCount)(void);
 
 static int smbOpenGame(void);
 static unsigned int smb_echo_alarm_cb(void *arg);
@@ -66,8 +67,10 @@ static void ps2ip_init(void)
     if (getModInfo("netman\0\0", &info))
         pNetManGetGlobalNetIFLinkState = info.exports[14];
 
-    if (getModInfo("smaplink", &info))
+    if (getModInfo("smaplink", &info)) {
         pSmapGetLinkStatus = info.exports[4];
+        pSmapGetRxCount = info.exports[5];
+    }
 }
 
 static int smbOpenGame(void)
@@ -119,18 +122,30 @@ static int smb_link_up(void)
     return 1;
 }
 
-/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。
- * 返回 1 表示链路断开，调用方放弃本次读，让游戏拿到 SCECdErTRMOPN 去提示插盘。 */
-int smb_read_stall_check(void)
+/* 网卡累计收包数，拿不到时恒为 0。 */
+unsigned int smb_rx_count(void)
 {
-    if (smb_link_up())
+    return pSmapGetRxCount ? pSmapGetRxCount() : 0;
+}
+
+/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。
+ * rx_start 是这轮等待开始时的收包数。
+ * 返回 SMB_READ_LINK_DOWN：链路断开，放弃本次读，游戏拿到 SCECdErTRMOPN 提示插盘。
+ * 返回 SMB_READ_STALLED：链路连着但这段时间一帧都没进，当网络波动，放弃本次读报读错。
+ * 返回 0：有包在进（如 Jak 存档时 IOP 忙）或拿不到收包数，继续等。 */
+int smb_read_stall_check(unsigned int rx_start)
+{
+    if (smb_link_up()) {
+        if (pSmapGetRxCount && pSmapGetRxCount() == rx_start)
+            return SMB_READ_STALLED;
         return 0;
+    }
     // 断线时开仓一次，游戏才会弹插盘提示；同时放弃本次读
     if (!smbTrayOpen) {
         smbTrayOpen = 1;
         sceCdTrayReq(SCECdTrayOpen, NULL);
     }
-    return 1;
+    return SMB_READ_LINK_DOWN;
 }
 
 /* 只由读线程在数据读重新收到数据时调用：之前开过仓就关回去。 */

@@ -520,7 +520,8 @@ int smb_Echo(void);
 #define SMB_READ_LINK_DOWN (-3)
 /* 链路没断但连续约 500ms 收不到数据（网络波动）时放弃本次读，上层报 SCECdErREAD，不开仓。 */
 #define SMB_READ_STALLED (-4)
-int smb_read_stall_check(void);
+int smb_read_stall_check(unsigned int rx_start);
+unsigned int smb_rx_count(void);
 void smb_read_progress(void);
 void smb_CloseAll(void);
 int smb_Disconnect(void);

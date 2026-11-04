@@ -177,14 +177,18 @@ static int smb_in_data_read;
 static int smb_stale_recv(void *buf, int size)
 {
     int result, polls = 0;
+    unsigned int rx_start = 0;
 
     while ((result = plwip_recv(main_socket, buf, size, MSG_DONTWAIT)) < 0) {
+        // 这轮等待开始时记下收包数
+        if (polls == 0)
+            rx_start = smb_rx_count();
         // 只有数据读时才查链路模拟开仓，Echo/Close 不开仓
         if (smb_in_data_read && ++polls >= SMB_READ_LINK_CHECK_POLLS) {
-            if (smb_read_stall_check())
-                return SMB_READ_LINK_DOWN;
-            // 链路没断但一直没数据：当网络波动，放弃这次读，进度保留下次接着丢
-            return SMB_READ_STALLED;
+            // 断线或网络波动就放弃，进度保留下次接着丢；有包在进就重新开始计这一轮
+            if ((result = smb_read_stall_check(rx_start)) != 0)
+                return result;
+            polls = 0;
         }
         DelayThread(SMB_READ_POLL_US);
     }
@@ -775,14 +779,18 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
 {
     int result;
     int polls = 0;
+    unsigned int rx_start = 0;
 
     while ((result = plwip_recvfrom(sock, header, index, payload, plen, MSG_DONTWAIT, NULL, NULL)) < 0) {
+        // 这轮等待开始时记下收包数
+        if (polls == 0)
+            rx_start = smb_rx_count();
         // 只有数据读真的卡住才查链路；断线时模拟开仓并放弃本次读。Echo 不走这里。
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
-            if (smb_read_stall_check())
-                return SMB_READ_LINK_DOWN;
-            // 链路没断：当网络波动，不开仓，放弃本次读让游戏按读错处理，免得一卡一卡
-            return SMB_READ_STALLED;
+            // 断线或网络波动（一帧没进）就放弃；有包在进（IOP 忙）就重新开始计这一轮，继续等
+            if ((result = smb_read_stall_check(rx_start)) != 0)
+                return result;
+            polls = 0;
         }
         DelayThread(SMB_READ_POLL_US);
     }
