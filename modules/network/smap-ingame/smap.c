@@ -341,11 +341,10 @@ static int InitPHY(struct SmapDriverData *SmapDrivPrivData)
 // Checks the status of the Ethernet link
 static void CheckLinkStatus(struct SmapDriverData *SmapDrivPrivData)
 {
-    if (!(_smap_read_phy(SmapDrivPrivData->emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK)) {
-        // Link lost
-        SmapDrivPrivData->LinkStatus = 0;
-        InitPHY(SmapDrivPrivData);
-    }
+    /* 本函数由 SetAlarm 闹钟回调调用，处于中断上下文。InitPHY 里的 DelayThread 在中断里会直接失败返回，
+     * 断线时等链路/自动协商的循环就变成关中断空转，并且不停重启协商，插回网线也出不来，整颗 IOP 卡死。
+     * PHY 保持自动协商开启，插回网线后会自行重新协商，这里只同步链路状态，不在中断里重置 PHY。 */
+    SmapDrivPrivData->LinkStatus = (_smap_read_phy(SmapDrivPrivData->emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK) ? 1 : 0;
 }
 
 int SMAPGetLinkStatus(void)
