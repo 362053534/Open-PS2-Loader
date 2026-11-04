@@ -348,6 +348,8 @@ static int InitPHY(struct SmapDriverData *SmapDrivPrivData)
  * 不再用 5 秒闹钟定时刷新，平时没有任何开销。 */
 int SMAPGetLinkStatus(void)
 {
+    // 临时测试：永远报连着，拔线只当网络波动，不模拟开仓。测完删掉这行
+    return 1;
     if (!SmapDriverData.SmapIsInitialized)
         return 0;
     if (_smap_read_phy(SmapDriverData.emac3_regbase, SMAP_DsPHYTER_BMSR) & SMAP_PHY_BMSR_LINK)
