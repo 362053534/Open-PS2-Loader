@@ -47,13 +47,6 @@ static inline int CopyFromFIFOWithDMA(volatile u8 *smap_regbase, void *buffer, i
     USE_SPD_REGS;
     u16 OldDMACtrl;
 
-#if 1 /* 临时：禁用 RX FIFO DMA，整帧走后面 PIO。验证中断里等 DMA/DMAEN 是否导致挂机冻死。测完改回 #if 0 */
-    (void)smap_regbase;
-    (void)buffer;
-    (void)length;
-    return 0;
-#endif
-
     // Attempt to steal the DMA channel from the DEV9 module.
     if ((result = length / 64) > 0) {
         OldDMACtrl = SPD_REG16(SPD_R_DMA_CTRL);
