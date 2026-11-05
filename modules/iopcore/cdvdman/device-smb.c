@@ -128,6 +128,7 @@ int smb_read_stall_check(void)
     // 断线时开仓一次，游戏才会弹插盘提示；同时放弃本次读
     if (!smbTrayOpen) {
         smbTrayOpen = 1;
+        smb_echo_due = 0; // 开仓后不再发 Echo，已排队的也取消
         sceCdTrayReq(SCECdTrayOpen, NULL);
     }
     return 1;
@@ -159,7 +160,7 @@ static unsigned int smb_echo_alarm_cb(void *arg)
     if (!smb_echo_enabled)
         return 0;
 
-    /* 已模拟开仓：中断里不查链路，每拍叫醒读线程去查，链路恢复就关仓。闹钟保持续挂。 */
+    /* 已模拟开仓：不排 Echo；中断里不查链路，每拍叫醒读线程去查，链路恢复就关仓。闹钟保持续挂。 */
     if (smbTrayOpen) {
         if (!smb_in_read && !smb_echo_busy) {
             smb_tray_check_due = 1;
@@ -233,6 +234,12 @@ int smb_read_thread_on_wake(int read_busy)
 
     if (!smb_echo_due)
         return 1;
+
+    /* 真断线开仓中：不发 Echo，只续命用不上，还可能和开仓提示抢锁。 */
+    if (smbTrayOpen) {
+        smb_echo_due = 0;
+        return 1;
+    }
 
     smb_echo_busy = 1;
     smb_echo_due = 0;

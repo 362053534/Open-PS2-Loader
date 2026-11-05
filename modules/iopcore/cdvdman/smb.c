@@ -41,7 +41,7 @@
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_POLL_MS       20
-/* Echo 回包最多等这么久；超时就放锁，晚到的回包靠 smb_stale_pending 下次发请求前丢掉 */
+/* Close 等路径的收包上限；Echo 已改为发完即放锁，不再用这个等回包。 */
 #define SMB_ECHO_TIMEOUT_MS    5000
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
@@ -1019,13 +1019,10 @@ int smb_Echo(void)
     ER->ByteCount = 0;
 
     nb_SetSessionMessage(sizeof(EchoRequest_t));
-    // 保活回包有上限：超时放锁，避免挂机断流；晚到的回包下次 SendData 前丢掉
-    result = GetSMBServerReplyTimed(SMB_ECHO_TIMEOUT_MS);
-    if (result == -2) {
-        // 已发出去但没收全：整包可能还会到
+    /* 只给路由器续命：发完立刻放锁，不等回包；整包回包下次 SendData 前当 stale 丢掉。 */
+    result = SendData(main_socket, (char *)&SMB_buf, nb_GetSessionMessageLength() + 4);
+    if (result > 0) {
         smb_stale_pending = 1;
-        result = -1;
-    } else if (result > 0) {
         result = 1;
     } else {
         result = -1;
