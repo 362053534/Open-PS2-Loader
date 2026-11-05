@@ -30,9 +30,6 @@ int SMAPStart(void);
 void SMAPStop(void);
 int SMAPGetMACAddress(unsigned char *buffer);
 int SMAPGetLinkStatus(void);
-// 累计收到的有效帧数，SMB 读卡住时用来区分网络波动（一帧没进）和 IOP 忙（包在进）
-extern volatile unsigned int SmapRxFrames;
-unsigned int SMAPGetRxCount(void);
 
 void SMapLowLevelInput(struct pbuf *pBuf);
 

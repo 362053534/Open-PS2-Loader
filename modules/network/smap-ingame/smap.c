@@ -361,13 +361,6 @@ int SMAPGetLinkStatus(void)
     return SmapDriverData.LinkStatus;
 }
 
-volatile unsigned int SmapRxFrames;
-
-unsigned int SMAPGetRxCount(void)
-{
-    return SmapRxFrames;
-}
-
 static int Dev9IntrCb(int flag)
 {
     unsigned int IntrReg;
