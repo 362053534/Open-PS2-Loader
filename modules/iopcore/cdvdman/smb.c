@@ -187,7 +187,7 @@ static int smb_stale_recv(void *buf, int size)
             rx_start = smb_rx_count();
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
             if (smb_in_data_read) {
-                // 数据读排水：断线/波动就放弃，进度保留；有包在进就重新计这一轮
+                // 数据读排水：仅断线才放弃；链路连着继续等（Jak 存档 IOP 忙时不能按收包数放弃）
                 if ((result = smb_read_stall_check(rx_start)) != 0)
                     return result;
             } else {
@@ -793,7 +793,7 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
             rx_start = smb_rx_count();
         // 只有数据读真的卡住才查链路；断线时模拟开仓并放弃本次读。Echo 不走这里。
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
-            // 断线或网络波动（一帧没进）就放弃；有包在进（IOP 忙）就重新开始计这一轮，继续等
+            // 断线才放弃；链路连着就重新计一轮继续等（不再用收包数判波动，避免 Jak 存档误杀）
             if ((result = smb_read_stall_check(rx_start)) != 0)
                 return result;
             polls = 0;

@@ -129,17 +129,15 @@ unsigned int smb_rx_count(void)
 }
 
 /* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。
- * rx_start 是这轮等待开始时的收包数。
+ * rx_start 保留参数，兼容调用方；不再用收包计数判波动——Jak 存档时 IOP 忙，
+ * 收包中断也会停，计数不动会被误判成 STALLED 导致存档死机。
  * 返回 SMB_READ_LINK_DOWN：链路断开，放弃本次读，游戏拿到 SCECdErTRMOPN 提示插盘。
- * 返回 SMB_READ_STALLED：链路连着但这段时间一帧都没进，当网络波动，放弃本次读报读错。
- * 返回 0：有包在进（如 Jak 存档时 IOP 忙）或拿不到收包数，继续等。 */
+ * 返回 0：链路仍连着，继续等（含 IOP 忙、短暂无包）。 */
 int smb_read_stall_check(unsigned int rx_start)
 {
-    if (smb_link_up()) {
-        if (pSmapGetRxCount && pSmapGetRxCount() == rx_start)
-            return SMB_READ_STALLED;
+    (void)rx_start;
+    if (smb_link_up())
         return 0;
-    }
     // 断线时开仓一次，游戏才会弹插盘提示；同时放弃本次读
     if (!smbTrayOpen) {
         smbTrayOpen = 1;
