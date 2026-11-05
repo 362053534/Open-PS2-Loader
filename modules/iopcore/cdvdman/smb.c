@@ -41,6 +41,8 @@
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_POLL_MS       20
+/* Echo 回包最多等这么久；超时就放锁，晚到的回包靠 smb_stale_pending 下次发请求前丢掉 */
+#define SMB_ECHO_TIMEOUT_MS    5000
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
@@ -183,11 +185,15 @@ static int smb_stale_recv(void *buf, int size)
         // 这轮等待开始时记下收包数
         if (polls == 0)
             rx_start = smb_rx_count();
-        // 只有数据读时才查链路模拟开仓，Echo/Close 不开仓
-        if (smb_in_data_read && ++polls >= SMB_READ_LINK_CHECK_POLLS) {
-            // 断线或网络波动就放弃，进度保留下次接着丢；有包在进就重新开始计这一轮
-            if ((result = smb_read_stall_check(rx_start)) != 0)
-                return result;
+        if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
+            if (smb_in_data_read) {
+                // 数据读排水：断线/波动就放弃，进度保留；有包在进就重新计这一轮
+                if ((result = smb_read_stall_check(rx_start)) != 0)
+                    return result;
+            } else {
+                // Echo/Close 路径不能无限等旧回包，超时保留进度，下次再丢
+                return SMB_READ_STALLED;
+            }
             polls = 0;
         }
         DelayThread(SMB_READ_POLL_US);
@@ -350,7 +356,7 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 
 /* GetSMBServerReply(0, NULL, 0) 的非阻塞轮询版：一次发完整包、收 NetBIOS 头、
  * 再收 SMB 回包，全程不设 SO_RCVTIMEO，timeout_ms < 0 表示不设超时。
- * 只给 smb_Echo() 用，数据面继续走原来的阻塞 GetSMBServerReply()。 */
+ * Echo/Close 用；数据面继续走原来的阻塞 GetSMBServerReply()。 */
 static int GetSMBServerReplyTimed(int timeout_ms)
 {
     int rcv_size, totalpkt_size;
@@ -1008,12 +1014,6 @@ int smb_Echo(void)
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
-#if 1 /* 临时：模拟 Echo 无限等回包并占死 smb_io_sema。测完改回 #if 0 */
-    // 进游戏后闲置约 2 分钟会发第一次 Echo；这里拿到锁就死等，验证是否画面冻、音乐卡、IGR 无效
-    while (1)
-        DelayThread(1000000);
-#endif
-
     ZERO_PKT_ALIGNED(ER, sizeof(EchoRequest_t));
 
     ER->smbH.Magic = SMB_MAGIC;
@@ -1027,8 +1027,17 @@ int smb_Echo(void)
     ER->ByteCount = 0;
 
     nb_SetSessionMessage(sizeof(EchoRequest_t));
-    // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上收到回包
-    result = GetSMBServerReplyTimed(-1) > 0 ? 1 : -1;
+    // 保活回包有上限：超时放锁，避免挂机断流；晚到的回包下次 SendData 前丢掉
+    result = GetSMBServerReplyTimed(SMB_ECHO_TIMEOUT_MS);
+    if (result == -2) {
+        // 已发出去但没收全：整包可能还会到
+        smb_stale_pending = 1;
+        result = -1;
+    } else if (result > 0) {
+        result = 1;
+    } else {
+        result = -1;
+    }
 
     SIGNALIOSEMA(smb_io_sema);
 
