@@ -104,10 +104,11 @@ static u16 _smap_read_phy(volatile u8 *emac3_regbase, unsigned int address)
 
         DelayThread(1000);
         i++;
-    } while (i < 100);
+        /* 读 PHY 最多约 1s（1000×1ms），减少误超时；正常仍会早退。 */
+    } while (i < 1000);
 
-    PhyReadTimedOut = (i >= 100);
-    if (i >= 100)
+    PhyReadTimedOut = (i >= 1000);
+    if (i >= 1000)
         printf("smap: %s: > %u ms\n", "_smap_read_phy", i);
 
     return result;
