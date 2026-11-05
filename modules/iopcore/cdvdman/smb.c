@@ -1008,6 +1008,12 @@ int smb_Echo(void)
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
+#if 1 /* 临时：模拟 Echo 无限等回包并占死 smb_io_sema。测完改回 #if 0 */
+    // 进游戏后闲置约 2 分钟会发第一次 Echo；这里拿到锁就死等，验证是否画面冻、音乐卡、IGR 无效
+    while (1)
+        DelayThread(1000000);
+#endif
+
     ZERO_PKT_ALIGNED(ER, sizeof(EchoRequest_t));
 
     ER->smbH.Magic = SMB_MAGIC;
