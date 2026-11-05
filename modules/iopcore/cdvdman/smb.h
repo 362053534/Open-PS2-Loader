@@ -521,7 +521,6 @@ int smb_Echo(void);
 /* Echo/Close 等旧回包超时用；数据面已回退 b88337d2，网络波动不再走划痕容错。 */
 #define SMB_READ_STALLED (-4)
 int smb_read_stall_check(void);
-void smb_read_progress(void);
 void smb_CloseAll(void);
 int smb_Disconnect(void);
 
