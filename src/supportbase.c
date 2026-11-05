@@ -1852,7 +1852,8 @@ int sbProbeISO9660(const char *path, base_game_info_t *game, u32 layer1_offset)
 
 static const struct cdvdman_settings_common cdvdman_settings_common_sample = CDVDMAN_SETTINGS_DEFAULT_COMMON;
 
-static int sbUseSmbBatchWait(const char *startup)
+/* SMB pending 链路白名单：这些游戏走「1 条 pending + 读完 5ms」双流路径，其余走 edf 式老调度。 */
+static int sbUseSmbPendingPath(const char *startup)
 {
     static const char *const games[] = {
         "SLUS_206.68", /* 变形金刚（美国版） */
@@ -2016,8 +2017,8 @@ int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman,
         settings->flags |= IOPCORE_ENABLE_POFF;
     }
 
-    if (game != NULL && sbUseSmbBatchWait(game->startup))
-        settings->flags |= IOPCORE_COMPAT_SMB_BATCH_WAIT;
+    if (game != NULL && sbUseSmbPendingPath(game->startup))
+        settings->flags |= IOPCORE_COMPAT_SMB_PENDING;
 
     settings->fakemodule_flags = 0;
     settings->fakemodule_flags |= FAKE_MODULE_FLAG_CDVDFSV;

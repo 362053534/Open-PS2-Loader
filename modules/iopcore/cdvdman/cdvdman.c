@@ -89,9 +89,9 @@ static u32 cdread_pending_sectors;
 static u16 cdread_pending_size;
 static void *cdread_pending_buf;
 
-/* 读取完成后短暂保持变形金刚的忙状态，让第二条数据流进入同一个
- * 活动加待处理批次，同时避免使用 32 扇区 ISO 预读。 */
-#define SMB_BATCH_WAIT_US 5000
+/* pending 链路（IOPCORE_COMPAT_SMB_PENDING）读完后再忙等一会儿，
+ * 让第二条数据流挤进同一批次；白名单游戏默认启用，不再单独开关。 */
+#define SMB_PENDING_BATCH_WAIT_US 5000
 #endif
 
 #ifdef __USE_DEV9
@@ -596,8 +596,9 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
     CpuSuspendIntr(&OldState);
 
     if (sync_flag) {
-        /* 普通读在设备 I/O 或完成回调窗口都可排一条，避免新流首笔请求丢失。 */
-        if (owner == SMB_READ_OWNER_NORMAL && !cdread_pending) {
+        /* 仅白名单 pending 链路：忙时再收 1 条普通读；其余游戏与 edf 一样直接失败。 */
+        if ((cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING) &&
+            owner == SMB_READ_OWNER_NORMAL && !cdread_pending) {
             cdread_pending_lba = lsn;
             cdread_pending_sectors = sectors;
             cdread_pending_size = sector_size;
@@ -619,7 +620,9 @@ static int cdvdman_smb_start_read(u32 lsn, u32 sectors, u16 sector_size, void *b
     }
 
     cdread_io_busy = 1;
-    cdread_outstand = 1;
+    /* outstand 只给 pending 链路的完成计数用；老调度不走这套。 */
+    if (cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING)
+        cdread_outstand = 1;
     cdread_owner = owner;
     if (owner == SMB_READ_OWNER_STREAM)
         cdread_stream_generation = stream_generation;
@@ -667,6 +670,10 @@ static int cdvdman_promote_pending(void)
 void cdvdman_cancel_pending_read(void)
 {
     int OldState;
+
+    /* 非白名单不会入 pending 槽，Break 时不必走这套。 */
+    if (!(cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING))
+        return;
 
     CpuSuspendIntr(&OldState);
     if (cdread_pending) {
@@ -952,6 +959,13 @@ static void cdvdman_signal_read_end(void)
     int OldState;
     int kick;
 
+    /* 非白名单：与 edf 一样，读完直接清 sync、置完成事件。 */
+    if (!(cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING)) {
+        sync_flag = 0;
+        SetEventFlag(cdvdman_stat.intr_ef, 9);
+        return;
+    }
+
     CpuSuspendIntr(&OldState);
     if (cdread_outstand > 0)
         cdread_outstand--;
@@ -972,6 +986,12 @@ static void cdvdman_signal_read_end_intr(void)
 {
     int kick;
 
+    if (!(cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING)) {
+        sync_flag = 0;
+        iSetEventFlag(cdvdman_stat.intr_ef, 9);
+        return;
+    }
+
     if (cdread_outstand > 0)
         cdread_outstand--;
     /* alarm 回调内使用中断版信号，保证 late pending 不会滞留。 */
@@ -991,6 +1011,7 @@ static void cdvdman_cdread_Thread(void *args)
     int kick;
     u8 completed_owner;
     u32 completed_generation;
+    int use_pending;
 
     while (1) {
         WaitSema(cdrom_rthread_sema);
@@ -999,20 +1020,22 @@ static void cdvdman_cdread_Thread(void *args)
         if (smb_read_thread_on_wake(cdread_io_busy || cdread_pending))
             continue;
 
+        use_pending = (cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING) != 0;
+
         do {
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
 
-            /* 不进行预读，仅复现旧缓存形成的批次窗口。 */
-            if (cdread_owner == SMB_READ_OWNER_NORMAL && !cdread_pending &&
-                (cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_BATCH_WAIT))
-                DelayThread(SMB_BATCH_WAIT_US);
+            /* pending 链路固定带 5ms 批次窗。 */
+            if (use_pending && cdread_owner == SMB_READ_OWNER_NORMAL && !cdread_pending)
+                DelayThread(SMB_PENDING_BATCH_WAIT_US);
 
             CpuSuspendIntr(&OldState);
             /* 提升待处理请求前先冻结完成项身份，否则新请求会偷走旧请求的完成通知。 */
             completed_owner = cdread_owner;
             completed_generation = cdread_stream_generation;
             cdread_io_busy = 0;
-            kick = cdvdman_promote_pending();
+            /* 非白名单不 promote，单笔读完即收尾。 */
+            kick = use_pending ? cdvdman_promote_pending() : 0;
             CpuResumeIntr(OldState);
 
             if (completed_owner == SMB_READ_OWNER_STREAM) {

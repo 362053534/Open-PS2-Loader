@@ -12,7 +12,7 @@
 #define IOPCORE_COMPAT_ACCU_READS    0x0008
 #define IOPCORE_ENABLE_POFF          0x0100
 #define IOPCORE_SMB_FORMAT_USBLD     0x0200
-#define IOPCORE_COMPAT_SMB_BATCH_WAIT 0x0400
+#define IOPCORE_COMPAT_SMB_PENDING   0x0400 /* 变形金刚等：pending 读 + 5ms 批次窗 */
 
 // fakemodule_flags
 #define FAKE_MODULE_FLAG_DEV9    (1 << 0) // not used, compiled in
