@@ -46,9 +46,8 @@
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
-/* 数据读连续等满这么多次轮询（5000 × 100us，约 500ms）还没数据就查一次链路：
- * 断了模拟开仓，没断当网络波动，放弃本次读，不让游戏一直卡着等。 */
-#define SMB_READ_LINK_CHECK_POLLS 5000
+/* 数据读每等满这么多次轮询（1000 × 100us，约 100ms）查一次链路，决定是否模拟开仓。 */
+#define SMB_READ_LINK_CHECK_POLLS 1000
 
 int smb_io_sema = -1;
 
@@ -175,7 +174,7 @@ static u8 smb_stale_hdr[4];
 static u8 smb_stale_buf[256];
 static int smb_in_data_read;
 
-/* 非阻塞收一段旧回包。>0 收到字节数，0 对端关闭，SMB_READ_LINK_DOWN 链路断开，SMB_READ_STALLED 网络波动。 */
+/* 非阻塞收一段旧回包。>0 收到字节数，0 对端关闭，SMB_READ_LINK_DOWN 链路断开。 */
 static int smb_stale_recv(void *buf, int size)
 {
     int result, polls = 0;
@@ -183,13 +182,14 @@ static int smb_stale_recv(void *buf, int size)
     while ((result = plwip_recv(main_socket, buf, size, MSG_DONTWAIT)) < 0) {
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
             if (smb_in_data_read) {
-                // 数据读排水：断线开仓放弃；链路连着当波动放弃，进度保留下次接着丢
+                // 回退 b88337d2：数据面只有断线才放弃并开仓；链路正常继续等
+                polls = 0;
                 if (smb_read_stall_check())
                     return SMB_READ_LINK_DOWN;
+            } else {
+                // Echo/Close 路径不能无限等旧回包，超时保留进度，下次再丢
                 return SMB_READ_STALLED;
             }
-            // Echo/Close 路径不能无限等旧回包，超时保留进度，下次再丢
-            return SMB_READ_STALLED;
         }
         DelayThread(SMB_READ_POLL_US);
     }
@@ -782,12 +782,13 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
     int polls = 0;
 
     while ((result = plwip_recvfrom(sock, header, index, payload, plen, MSG_DONTWAIT, NULL, NULL)) < 0) {
+        // 不设超时：拔线期间一直等，插回后靠 TCP 重传在原连接上接着读
         // 只有数据读真的卡住才查链路；断线时模拟开仓并放弃本次读。Echo 不走这里。
         if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
-            // 断线开仓放弃；链路没断当网络波动，放弃本次读让游戏按读错处理
+            // 回退 b88337d2：不设波动超时，只有断线才放弃；链路正常继续等
+            polls = 0;
             if (smb_read_stall_check())
                 return SMB_READ_LINK_DOWN;
-            return SMB_READ_STALLED;
         }
         DelayThread(SMB_READ_POLL_US);
     }
@@ -831,7 +832,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     //Send the whole message, including the 4-byte direct transport packet header.
     r = SendData(main_socket, (char *)&SMB_buf, sizeof(ReadAndXRequest_t) + 4);
     if (r <= 0)
-        return r <= SMB_READ_LINK_DOWN ? r : -1;
+        return r == SMB_READ_LINK_DOWN ? r : -1;
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
@@ -841,7 +842,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
             // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
             if (rcv_size < 0)
                 smb_stale_pending = 1;
-            return rcv_size <= SMB_READ_LINK_DOWN ? rcv_size : -2;
+            return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
         }
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
@@ -855,7 +856,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
             // 放弃等待：回包剩余部分以后可能还会到，记下待丢弃的字节数
             if (r < 0)
                 smb_stale_skip = expected_size - rcv_size;
-            return r <= SMB_READ_LINK_DOWN ? r : -2;
+            return r == SMB_READ_LINK_DOWN ? r : -2;
         }
         rcv_size += r;
     }

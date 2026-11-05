@@ -518,7 +518,7 @@ int smb_Echo(void);
 /* device-smb.c 提供：数据读卡住时查链路并模拟开仓，读恢复后关仓。 */
 /* 数据读因链路断开被放弃时 smb_ReadCD 返回此值，上层报 SCECdErTRMOPN。 */
 #define SMB_READ_LINK_DOWN (-3)
-/* 链路没断但连续约 500ms 收不到数据（网络波动）时放弃本次读，上层报 SCECdErREAD，不开仓。 */
+/* Echo/Close 等旧回包超时用；数据面已回退 b88337d2，网络波动不再走划痕容错。 */
 #define SMB_READ_STALLED (-4)
 int smb_read_stall_check(void);
 void smb_read_progress(void);
