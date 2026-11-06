@@ -157,7 +157,14 @@ static unsigned int smb_echo_alarm_cb(void *arg)
     if (!smb_echo_enabled)
         return 0;
 
-    /* 空闲期间只安排 Echo；PHY 和开关仓仅由真正卡住的数据读触发。 */
+    /* 仓已经开着时不排 Echo。链路是否恢复只在读线程里看，避免闹钟里读 PHY。 */
+    if (smbTrayOpen) {
+        if (!smb_in_read && !smb_echo_busy)
+            cdvdman_kick_rthread(1);
+        return smb_alarm_interval();
+    }
+
+    /* 空闲期间只安排 Echo。开仓仍只由卡住的数据读触发。 */
     if (smb_in_read || smb_echo_due)
         return smb_alarm_interval();
 
@@ -203,6 +210,16 @@ int smb_read_thread_on_wake(int read_busy)
     if (read_busy) {
         smb_echo_due = 0;
         return 0;
+    }
+
+    /* 插回网线后关仓，游戏才会离开插盘画面再发读。这次不发 Echo，避免占住读线程。 */
+    if (smbTrayOpen) {
+        if (smb_link_up()) {
+            sceCdTrayReq(SCECdTrayClose, NULL);
+            smbTrayOpen = 0;
+        }
+        smb_echo_due = 0;
+        return 1;
     }
 
     if (!smb_echo_due)
