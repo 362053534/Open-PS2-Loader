@@ -633,9 +633,6 @@ void tcp_slowtmr(void)
                                         ip4_addr3(&pcb->remote_ip), ip4_addr4(&pcb->remote_ip)));
 
                 tcp_abort(pcb);
-            } else if ((u32_t)(tcp_ticks - pcb->tmr) > (pcb->keepalive + pcb->keep_cnt * TCP_KEEPINTVL) / TCP_SLOW_INTERVAL) {
-                tcp_keepalive(pcb);
-                pcb->keep_cnt++;
             }
         }
 

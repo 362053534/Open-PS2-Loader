@@ -9,9 +9,9 @@
 
 #include "device.h"
 
-/* 空闲保活的拍长。60 拍就是 120 秒，只在没有真实读盘时累加。 */
+/* 空闲保活的拍长。30 拍就是 60 秒，只在没有真实读盘时累加。 */
 #define SMB_ECHO_INTERVAL_US 2000000
-#define SMB_ECHO_IDLE_TICKS  60
+#define SMB_ECHO_IDLE_TICKS  30
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -31,6 +31,7 @@ int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);          
 int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
+int (*plwip_tcp_send_keepalive)(int s);                                                                                                     // #42，随 ps2ip
 
 static u32 ServerCapabilities;
 static volatile int smbTrayOpen;
@@ -62,6 +63,7 @@ static void ps2ip_init(void)
     plwip_socket = info.exports[13];
     plwip_setsockopt = info.exports[19];
     pinet_addr = info.exports[24];
+    plwip_tcp_send_keepalive = info.exports[42];
 
     if (getModInfo("netman\0\0", &info))
         pNetManGetGlobalNetIFLinkState = info.exports[14];

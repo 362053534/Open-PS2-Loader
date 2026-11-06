@@ -62,6 +62,7 @@ extern int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen
 extern int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 extern int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
+extern int (*plwip_tcp_send_keepalive)(int s);
 extern u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -146,7 +147,7 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-    // 不开 SO_KEEPALIVE：长时间拔线时保活超时会 tcp_abort 掉连接，插回后就接不上了
+    // TCP ACK 由 Echo 到期时同步发送，不开启 slowtmr 自动保活及失败计数。
     /* 注意：不要设 SO_SNDTIMEO / SO_RCVTIMEO。见 SMB_ECHO_POLL_MS 的注释。 */
 
     memset(&sock_addr, 0, sizeof(sock_addr));
@@ -1005,6 +1006,9 @@ int smb_Echo(void)
 
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
+
+    /* 同一个 Echo 到期点：先排一个纯 ACK，再排 Echo；都不等回包或据此拆会话。 */
+    plwip_tcp_send_keepalive(main_socket);
 
     ZERO_PKT_ALIGNED(ER, sizeof(EchoRequest_t));
 

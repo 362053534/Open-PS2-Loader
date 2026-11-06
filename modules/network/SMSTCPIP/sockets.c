@@ -529,6 +529,27 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
     return lwip_recvfrom(s, NULL, 0, mem, len, flags, NULL, NULL);
 }
 
+/* SMB 私有一次性探测：沿用 lwIP 自己的 ACK 构造函数，不累计失败计数。
+ * 调用点只负责在 Echo 到期时触发；返回值仅表示本次是否发出，不关闭连接。 */
+int lwip_tcp_send_keepalive(int s)
+{
+    struct lwip_socket *sock = get_socket(s);
+    struct tcp_pcb *pcb;
+
+    if (!sock)
+        return -1;
+
+    pcb = sock->conn->pcb.tcp;
+    if ((netconn_type(sock->conn) == NETCONN_TCP) && pcb &&
+        ((pcb->state == ESTABLISHED) || (pcb->state == CLOSE_WAIT)) &&
+        (sock->conn->err == ERR_OK)) {
+        tcp_keepalive(pcb);
+        return 0;
+    }
+
+    return -1;
+}
+
 int lwip_send(int s, void *data, int size, unsigned int flags)
 {
     struct lwip_socket *sock;
