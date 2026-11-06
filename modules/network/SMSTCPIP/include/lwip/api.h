@@ -153,7 +153,7 @@ err_t netconn_write(struct netconn *conn,
                     void *dataptr, u16_t size,
                     u8_t copy);
 err_t netconn_close(struct netconn *conn);
-/* SMB 私有：经 api_msg 交给 tcpip 线程发一次 TCP 保活探测。 */
+/* SMB 私有：经 api_msg 在 lwIP 核心锁内发一次 TCP 保活探测。 */
 err_t netconn_keepalive(struct netconn *conn);
 
 err_t netconn_err(struct netconn *conn);

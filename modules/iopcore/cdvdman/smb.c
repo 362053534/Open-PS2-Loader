@@ -343,6 +343,12 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 
     //If rhdrlen is not specified, retrieve the whole packet. Otherwise, retrieve only the headers (caller will retrieve the payload separately).
     size = (rhdrlen == 0) ? totalpkt_size : rhdrlen;
+    /* 回包或要收的头超出 SMB_buf.smb，或 rhdrlen 非法/超过本包：不写全局缓冲区，
+     * 整包记为待丢弃，下次 SendData 前由 stale 机制丢掉，保持字节流对齐。 */
+    if (rhdrlen < 0 || size > totalpkt_size || size > (int)sizeof(SMB_buf.smb)) {
+        smb_stale_skip = totalpkt_size;
+        return -2;
+    }
     rcv_size = RecvData(main_socket, (char *)&SMB_buf.smb, size);
     if (rcv_size <= 0)
         return -2;
@@ -371,6 +377,12 @@ static int GetSMBServerReplyTimed(int timeout_ms)
     } while (nb_GetPacketType() != 0);
 
     totalpkt_size = nb_GetSessionMessageLength();
+
+    /* 超长回包不写进 SMB_buf.smb，记为待丢弃后报错。 */
+    if (totalpkt_size > (int)sizeof(SMB_buf.smb)) {
+        smb_stale_skip = totalpkt_size;
+        return -2;
+    }
 
     rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.smb, totalpkt_size,
                           MSG_DONTWAIT, timeout_ms);
@@ -848,9 +860,38 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
     expected_size = nb_GetSessionMessageLength() + 4;
-    DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
 
-    // Handle fragmented packets
+    /* 回包校验。lwip_recvfrom 保证 rcv_size 不越过本包；首段载荷最多 nbytes，已落在 readbuf 内。
+     * 短包（<63 字节，如错误回包）已整包收完；其他情况本包剩余字节记为待丢弃，下一请求不会错位。 */
+    {
+        int data_start, valid;
+
+        DataLength = 0;
+        data_start = 0;
+        valid = (rcv_size >= (int)sizeof(ReadAndXResponse_t) + 4) &&
+                RRsp->smbH.Magic == SMB_MAGIC &&
+                RRsp->smbH.Cmd == SMB_COM_READ_ANDX &&
+                (RRsp->smbH.Eclass | (RRsp->smbH.Ecode << 16)) == STATUS_SUCCESS;
+        if (valid) {
+            /* 保持原字段解释；跨大文件请求时也由下方 nbytes 边界阻止越界。 */
+            DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
+            data_start = RRsp->DataOffset + 4;
+            /* recvfrom 只按 DataOffset 低字节消耗头部，因此 DataOffset 必须 <256，且首段确实消耗到 data_start。 */
+            valid = RRsp->DataOffset >= sizeof(ReadAndXResponse_t) &&
+                    RRsp->DataOffset < 256 &&
+                    rcv_size >= data_start &&
+                    DataLength >= 0 && DataLength <= nbytes &&
+                    expected_size >= data_start + DataLength &&
+                    expected_size <= data_start + nbytes;
+        }
+        if (!valid) {
+            if (rcv_size < expected_size)
+                smb_stale_skip = expected_size - rcv_size;
+            return -2;
+        }
+    }
+
+    // Handle fragmented packets：写入范围是 readbuf[rcv_size-data_start, expected_size-data_start)，已校验不超过 nbytes
     while (rcv_size < expected_size) {
         r = RecvFromTimed(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size); // - rcv_size
         if (r <= 0) {
