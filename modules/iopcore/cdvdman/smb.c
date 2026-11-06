@@ -793,6 +793,8 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
         DelayThread(SMB_READ_POLL_US);
     }
 
+    // 读有进展了，之前模拟开过仓就关回去
+    smb_read_progress();
     return result;
 }
 #endif

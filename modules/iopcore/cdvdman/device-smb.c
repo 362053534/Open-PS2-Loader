@@ -9,7 +9,7 @@
 
 #include "device.h"
 
-/* 空闲保活：轻线程每 2 秒一拍，60 拍就是 120 秒，只在没有真实读盘时累加。 */
+/* 空闲保活的拍长。60 拍就是 120 秒，只在没有真实读盘时累加。 */
 #define SMB_ECHO_INTERVAL_US 2000000
 #define SMB_ECHO_IDLE_TICKS  60
 
@@ -36,17 +36,17 @@ static u32 ServerCapabilities;
 static volatile int smbTrayOpen;
 static volatile unsigned int smbIdleTicks;
 static volatile int smb_echo_enabled;
+static volatile int smb_echo_due;
+static volatile int smb_echo_busy;
 static volatile int smb_in_read;
-static volatile int smbKeepaliveStopping;
-static volatile int smbKeepaliveStopped;
-static int smbKeepaliveThreadID = -1;
+static volatile int smb_alarm_armed;
+static volatile int smb_tray_check_due;
+static iop_sys_clock_t smb_alarm_clock;
 static int (*pNetManGetGlobalNetIFLinkState)(void);
 static int (*pSmapGetLinkStatus)(void);
 
 static int smbOpenGame(void);
-static void smbKeepaliveThread(void *arg);
-static int smb_start_keepalive_thread(void);
-static void smb_stop_keepalive_thread(void);
+static unsigned int smb_echo_alarm_cb(void *arg);
 
 static void ps2ip_init(void)
 {
@@ -119,124 +119,135 @@ static int smb_link_up(void)
     return 1;
 }
 
-/* 开/关仓只走这里：已是目标状态就直接返回，避免轻线程和 stall_check 重复调 TrayReq。 */
-static void smb_set_tray_open(int open)
-{
-    if (open) {
-        if (smbTrayOpen)
-            return;
-        smbTrayOpen = 1;
-        sceCdTrayReq(SCECdTrayOpen, NULL);
-    } else {
-        if (!smbTrayOpen)
-            return;
-        sceCdTrayReq(SCECdTrayClose, NULL);
-        smbTrayOpen = 0;
-    }
-}
-
-/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。
+/* 只由读线程在数据读卡住的轮询里调用：链路断了才模拟开仓。开机和空闲时不会走到这里。
  * 返回 1 表示链路断开，调用方放弃本次读，让游戏拿到 SCECdErTRMOPN 去提示插盘。 */
 int smb_read_stall_check(void)
 {
     if (smb_link_up())
         return 0;
-    smb_set_tray_open(1);
+    // 断线时开仓一次，游戏才会弹插盘提示；同时放弃本次读
+    if (!smbTrayOpen) {
+        smbTrayOpen = 1;
+        smb_echo_due = 0; // 开仓后不再发 Echo，已排队的也取消
+        sceCdTrayReq(SCECdTrayOpen, NULL);
+    }
     return 1;
 }
 
-/* 轻线程：每 2 秒查一次链路并做空闲 Echo，不叫醒读线程。
- * 200ms 切片方便卸载时尽快退出；10 片凑满原先闹钟的一拍。 */
-#define SMB_KEEPALIVE_SLICE_US       200000
-#define SMB_KEEPALIVE_SLICES_PER_TICK 10
-
-static void smbKeepaliveThread(void *arg)
+/* 只由读线程在数据读重新收到数据时调用：之前开过仓就关回去。 */
+void smb_read_progress(void)
 {
-    unsigned int slice = 0;
-
-    (void)arg;
-    while (!smbKeepaliveStopping) {
-        DelayThread(SMB_KEEPALIVE_SLICE_US);
-        if (smbKeepaliveStopping)
-            break;
-        if (!smb_echo_enabled)
-            continue;
-
-        slice++;
-        if (slice < SMB_KEEPALIVE_SLICES_PER_TICK)
-            continue;
-        slice = 0;
-
-        /* 读进行中：链路由 stall_check 盯，这里不读 PHY，少抢 IOP。 */
-        if (smb_in_read)
-            continue;
-
-        if (smb_link_up())
-            smb_set_tray_open(0);
-        else
-            smb_set_tray_open(1);
-
-        /* 开仓中不算空闲，也不发 Echo。 */
-        if (smbTrayOpen)
-            continue;
-
-        if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
-            smbIdleTicks++;
-        if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
-            continue;
-
-        /* smb_Echo 内部 PollSema：拿不到锁就保持满拍，下个 2s 再试。 */
-        if (smb_Echo() > 0)
-            smbIdleTicks = 0;
+    if (smbTrayOpen) {
+        sceCdTrayReq(SCECdTrayClose, NULL);
+        smbTrayOpen = 0;
     }
-
-    smbKeepaliveStopped = 1;
 }
 
-static int smb_start_keepalive_thread(void)
+/* 非 0 表示内核按这个系统时钟把同一只闹钟续上。再 iSetAlarm 会多挂一只。 */
+static unsigned int smb_alarm_interval(void)
 {
-    iop_thread_t thread;
+    if (smb_alarm_clock.lo != 0)
+        return smb_alarm_clock.lo;
+    return 1;
+}
 
-    if (smbKeepaliveThreadID >= 0)
+/* 闹钟在定时器中断里，只数空闲拍并用 iSignalSema 叫醒读线程，Echo 由读线程发。 */
+static unsigned int smb_echo_alarm_cb(void *arg)
+{
+    (void)arg;
+    smb_alarm_armed = 0;
+
+    if (!smb_echo_enabled)
         return 0;
 
-    smbKeepaliveStopping = 0;
-    smbKeepaliveStopped = 0;
-
-    thread.attr = TH_C;
-    thread.option = 0;
-    thread.thread = &smbKeepaliveThread;
-    thread.stacksize = 0x800;
-    thread.priority = 40;
-
-    smbKeepaliveThreadID = CreateThread(&thread);
-    if (smbKeepaliveThreadID < 0) {
-        smbKeepaliveStopped = 1;
-        return -1;
+    /* 已模拟开仓：不排 Echo；中断里不查链路，每拍叫醒读线程去查，链路恢复就关仓。闹钟保持续挂。 */
+    if (smbTrayOpen) {
+        if (!smb_in_read && !smb_echo_busy) {
+            smb_tray_check_due = 1;
+            cdvdman_kick_rthread(1);
+        }
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
     }
-    StartThread(smbKeepaliveThreadID, NULL);
+
+    /* 读或 Echo 还没结束。不要把读线程叫去发 Echo，空闲也不记。 */
+    if (smb_in_read || smb_echo_busy || smb_echo_due) {
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
+    }
+
+    if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
+        smbIdleTicks++;
+
+    if (smbIdleTicks < SMB_ECHO_IDLE_TICKS) {
+        smb_alarm_armed = 1;
+        return smb_alarm_interval();
+    }
+
+    smb_echo_due = 1;
+    cdvdman_kick_rthread(1);
+    /* 返回 0：这一拍已经从队列摘掉。下一拍由读线程 SetAlarm。 */
     return 0;
 }
 
-static void smb_stop_keepalive_thread(void)
+static void smb_arm_echo_alarm(void)
 {
-    smb_echo_enabled = 0;
-    smbKeepaliveStopping = 1;
-    if (smbKeepaliveThreadID < 0) {
-        smbKeepaliveStopped = 1;
+    int r;
+
+    if (smb_alarm_armed || !smb_echo_enabled)
         return;
-    }
-    while (!smbKeepaliveStopped)
-        DelayThread(100000);
-    /* 线程已自行退出，只回收控制块。 */
-    DeleteThread(smbKeepaliveThreadID);
-    smbKeepaliveThreadID = -1;
+
+    if (smb_alarm_clock.hi == 0 && smb_alarm_clock.lo == 0)
+        USec2SysClock(SMB_ECHO_INTERVAL_US, &smb_alarm_clock);
+
+    r = SetAlarm(&smb_alarm_clock, smb_echo_alarm_cb, NULL);
+    /* -104 是 KE_FOUND_HANDLER：这一拍已经挂着。 */
+    if (r == 0 || r == -104)
+        smb_alarm_armed = 1;
 }
 
-/* 轻线程已接手 Echo/开关仓；这里只告诉读循环：没排队的读就别重读上一笔。 */
+static void smb_disarm_echo_alarm(void)
+{
+    smb_alarm_armed = 0;
+    CancelAlarm(smb_echo_alarm_cb, NULL);
+}
+
+/* 返回 1 表示这次醒来没有排队的读，调用方不能再读上一笔 LBA。 */
 int smb_read_thread_on_wake(int read_busy)
 {
-    return !read_busy;
+    if (smb_echo_enabled && !smb_alarm_armed)
+        smb_arm_echo_alarm();
+
+    if (read_busy) {
+        smb_echo_due = 0;
+        return 0;
+    }
+
+    /* 游戏停在插盘提示时链路恢复：在读线程里关仓（sceCdTrayReq 要 DelayThread）。 */
+    if (smb_tray_check_due) {
+        smb_tray_check_due = 0;
+        if (smbTrayOpen && smb_link_up()) {
+            sceCdTrayReq(SCECdTrayClose, NULL);
+            smbTrayOpen = 0;
+        }
+    }
+
+    if (!smb_echo_due)
+        return 1;
+
+    /* 真断线开仓中：不发 Echo，只续命用不上，还可能和开仓提示抢锁。 */
+    if (smbTrayOpen) {
+        smb_echo_due = 0;
+        return 1;
+    }
+
+    smb_echo_busy = 1;
+    smb_echo_due = 0;
+    /* 失败也不拆套接字、不再协商。下一轮空闲满了再试一次。 */
+    smb_Echo();
+    smbIdleTicks = 0;
+    smb_echo_busy = 0;
+    return 1;
 }
 
 void smb_NegotiateProt(OplSmbPwHashFunc_t hash_callback)
@@ -267,13 +278,14 @@ int DeviceReady(void)
 int DeviceFSInit(void)
 {
     smbIdleTicks = 0;
+    smb_echo_due = 0;
+    smb_echo_busy = 0;
     smb_in_read = 0;
-    /* 先别启轻线程。smbinit 留下的套接字还要用来建会话。 */
+    /* 先别开闹钟。smbinit 留下的套接字还要用来建会话。 */
     smb_echo_enabled = 0;
     if (smbOpenGame() > 0) {
         smb_echo_enabled = 1;
-        if (smb_start_keepalive_thread() < 0)
-            smb_echo_enabled = 0;
+        smb_arm_echo_alarm();
     } else {
         smb_Disconnect();
     }
@@ -289,7 +301,10 @@ void DeviceLock(void)
 
 void DeviceUnmount(void)
 {
-    smb_stop_keepalive_thread();
+    smb_echo_enabled = 0;
+    smb_echo_due = 0;
+    smb_echo_busy = 0;
+    smb_disarm_echo_alarm();
     smbIdleTicks = 0;
     smb_CloseAll();
     smb_Disconnect();
@@ -314,7 +329,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     /* 已开仓且链路仍断：像 BDM 拔盘一样立即报开仓，不去阻塞等待。 */
     if (smbTrayOpen && !smb_link_up())
         return SCECdErTRMOPN;
-    /* 读的整段都算有流量。轻线程见 smb_in_read 就不发 Echo。 */
+    /* 读的整段都算有流量。闹钟不要在收包途中把读线程叫去发 Echo。 */
     smb_in_read = 1;
 
     for (i = 0; i < cdvdman_settings.common.NumParts; i++, lbound = ubound, ubound += 0x80000, offslsn -= 0x80000) {
@@ -329,8 +344,10 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
             bytes_to_read = sectors_to_read * 2048;
             result = smb_ReadCD(offslsn, sectors_to_read, &p[r], i);
-            if (result >= 0)
+            if (result >= 0) {
                 smbIdleTicks = 0;
+                smb_echo_due = 0;
+            }
             if (result == SMB_READ_LINK_DOWN) {
                 rv = SCECdErTRMOPN;
                 break;
