@@ -515,7 +515,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
         return -1;
 
     // check there's no error
-    if (NPRsp->smbH.Eclass != STATUS_SUCCESS)
+    if (NPRsp->smbH.Eclass != 0 || NPRsp->smbH.Ecode != 0)
         return -1;
 
     if (NPRsp->smbWordcount != 17)
@@ -551,6 +551,7 @@ int smb_SessionSetupAndX(u32 capabilities)
     SessionSetupAndXRequest_t *SSR = &SMB_buf.smb.sessionSetupAndXRequest;
     SessionSetupAndXResponse_t *SSRsp = &SMB_buf.smb.sessionSetupAndXResponse;
     register int offset, useUnicode;
+    u32 status;
     int AuthType = NTLM_AUTH;
     int password_len = 0;
 
@@ -626,13 +627,15 @@ lbl_session_setup:
         return -1;
 
     // check there's no auth failure
-    if ((server_specs.SecurityMode == SERVER_USER_SECURITY_LEVEL) && ((SSRsp->smbH.Eclass | (SSRsp->smbH.Ecode << 16)) == STATUS_LOGON_FAILURE) && (AuthType == NTLM_AUTH)) {
+    /* 两个状态字段按无符号半字拼接，避免符号扩展和有符号左移。 */
+    status = (u32)(u16)SSRsp->smbH.Eclass | ((u32)(u16)SSRsp->smbH.Ecode << 16);
+    if ((server_specs.SecurityMode == SERVER_USER_SECURITY_LEVEL) && (status == STATUS_LOGON_FAILURE) && (AuthType == NTLM_AUTH)) {
         AuthType = LM_AUTH;
         goto lbl_session_setup;
     }
 
     // check there's no error (NT STATUS error type!)
-    if ((SSRsp->smbH.Eclass | SSRsp->smbH.Ecode) != STATUS_SUCCESS)
+    if (status != STATUS_SUCCESS)
         return -1000;
 
     // keep UID
@@ -696,7 +699,7 @@ int smb_TreeConnectAndX(char *ShareName)
         return -1;
 
     // check there's no error (NT STATUS error type!)
-    if ((TCRsp->smbH.Eclass | TCRsp->smbH.Ecode) != STATUS_SUCCESS)
+    if (TCRsp->smbH.Eclass != 0 || TCRsp->smbH.Ecode != 0)
         return -1000;
 
     // keep TID
@@ -753,7 +756,7 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write)
     }
 
     // check there's no error
-    if (ORsp->smbH.Eclass != STATUS_SUCCESS) {
+    if (ORsp->smbH.Eclass != 0 || ORsp->smbH.Ecode != 0) {
         SIGNALIOSEMA(smb_io_sema);
         return -1000;
     }
@@ -801,7 +804,7 @@ int smb_Close(int FID)
     }
 
     // check there's no error
-    if ((CRsp->smbH.Eclass | (CRsp->smbH.Ecode << 16)) != STATUS_SUCCESS) {
+    if (CRsp->smbH.Eclass != 0 || CRsp->smbH.Ecode != 0) {
         //      SIGNALIOSEMA(smb_io_sema);
         return -EIO;
     }
@@ -908,7 +911,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
         valid = (rcv_size >= (int)sizeof(ReadAndXResponse_t) + 4) &&
                 RRsp->smbH.Magic == SMB_MAGIC &&
                 RRsp->smbH.Cmd == SMB_COM_READ_ANDX &&
-                (RRsp->smbH.Eclass | (RRsp->smbH.Ecode << 16)) == STATUS_SUCCESS;
+                RRsp->smbH.Eclass == 0 && RRsp->smbH.Ecode == 0;
         if (valid) {
             /* 保持原字段解释；跨大文件请求时也由下方 nbytes 边界阻止越界。 */
             DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
@@ -945,7 +948,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
         return -EIO;
 
     // check there's no error
-    if ((RRsp->smbH.Eclass | (RRsp->smbH.Ecode << 16)) != STATUS_SUCCESS)
+    if (RRsp->smbH.Eclass != 0 || RRsp->smbH.Ecode != 0)
         return -EIO;
 
     //Skip any padding bytes.
@@ -1035,7 +1038,7 @@ static int smb_WriteAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf,
         return -EIO;
 
     // check there's no error
-    if ((WRsp->smbH.Eclass | (WRsp->smbH.Ecode << 16)) != STATUS_SUCCESS)
+    if (WRsp->smbH.Eclass != 0 || WRsp->smbH.Ecode != 0)
         return -EIO;
 
     return nbytes;
