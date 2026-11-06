@@ -41,6 +41,7 @@
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_POLL_MS       20
+#define SMB_ECHO_TIMEOUT_MS    6000
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
@@ -60,7 +61,6 @@ extern int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen
 extern int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 extern int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
-extern int (*plwip_tcp_send_keepalive)(int s);
 extern u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -1080,17 +1080,65 @@ int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
     return smb_ReadFile(cdvdman_settings.FIDs[part_num], lsn * 2048, lsn >> 21, buf, (int)(nsectors * 2048));
 }
 
-/* 本次试验只发自定义 TCP 探测；不等待回包、不统计失败，也不关闭或重连。 */
-int smb_TcpKeepalive(void)
+int smb_Echo(void)
 {
+    static u16 mid;
+    static unsigned int missed;
+    EchoRequest_t *echo = &SMB_buf.smb.echoRequest;
+    int result;
+
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
-    if (plwip_tcp_send_keepalive != NULL)
-        plwip_tcp_send_keepalive(main_socket);
-
+    if ((smb_stale_pending || smb_stale_skip > 0) && smb_drain_stale() <= 0) {
+        SIGNALIOSEMA(smb_io_sema);
+        return 0;
+    }
+    if (++mid == 0)
+        mid++;
+    ZERO_PKT_ALIGNED(echo, sizeof(*echo) + 1);
+    echo->smbH.Magic = SMB_MAGIC;
+    echo->smbH.Cmd = SMB_COM_ECHO;
+    echo->smbH.Flags2 = SMB_FLAGS2_32BIT_STATUS;
+    echo->smbH.UID = UID;
+    echo->smbH.TID = TID;
+    echo->smbH.MID = mid;
+    echo->smbWordcount = 1;
+    echo->EchoCount = 1;
+    echo->ByteCount = 1;
+    ((u8 *)(echo + 1))[0] = 0x45;
+    nb_SetSessionMessage(sizeof(*echo) + 1);
+    result = plwip_send(main_socket, &SMB_buf, sizeof(*echo) + 5, MSG_DONTWAIT);
+    if (result == (int)sizeof(*echo) + 5) {
+#ifdef __IOPCORE_DEBUG
+        printf("[SMBECHO] sent mid=%u\n", mid);
+#endif
+        result = ReceiveSMBReply(SMB_ECHO_TIMEOUT_MS, mid);
+    } else {
+        result = -1;
+    }
+    if (result == (int)sizeof(*echo) + 1 && echo->smbH.Magic == SMB_MAGIC &&
+        echo->smbH.Cmd == SMB_COM_ECHO && echo->smbH.MID == mid &&
+        (echo->smbH.Flags & SMB_FLAGS_SERVER_TO_REDIR) &&
+        echo->smbH.Eclass == 0 && echo->smbH.Ecode == 0 &&
+        echo->smbWordcount == 1 && echo->EchoCount == 1 && echo->ByteCount == 1 &&
+        ((u8 *)(echo + 1))[0] == 0x45)
+        result = 1;
+    else if (result != SMB_ECHO_TIMEOUT)
+        result = -1;
+    if (result == SMB_ECHO_TIMEOUT) {
+        missed++;
+#ifdef __IOPCORE_DEBUG
+        printf("[SMBECHO] timeout mid=%u missed=%u\n", mid, missed);
+#endif
+    }
+#ifdef __IOPCORE_DEBUG
+    else {
+        printf("[SMBECHO] result mid=%u status=%d\n", mid, result);
+    }
+#endif
     SIGNALIOSEMA(smb_io_sema);
-    return 1;
+    return result;
 }
 
 void smb_CloseAll(void)

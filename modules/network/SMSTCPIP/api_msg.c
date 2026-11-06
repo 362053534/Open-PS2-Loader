@@ -815,25 +815,6 @@ do_trywrite(struct api_msg_msg *msg)
     TCPIP_APIMSG_ACK(msg->conn->mbox);
 }
 
-/* 私有保活只尝试发包，不修改连接错误，也不计失败或关闭连接。 */
-static void
-do_keepalive(struct api_msg_msg *msg)
-{
-    msg->msg.len = 0;
-#if LWIP_TCP
-    {
-        struct tcp_pcb *pcb = msg->conn->pcb.tcp;
-
-        if (msg->conn->type == NETCONN_TCP && pcb != NULL &&
-            (pcb->state == ESTABLISHED || pcb->state == CLOSE_WAIT)) {
-            tcp_keepalive(pcb);
-            msg->msg.len = 1;
-        }
-    }
-#endif
-    TCPIP_APIMSG_ACK(msg->conn->mbox);
-}
-
 api_msg_decode __decode__[API_MSG_MAX] = {
     do_newconn,
     do_delconn,
@@ -846,5 +827,4 @@ api_msg_decode __decode__[API_MSG_MAX] = {
     do_recv,
     do_write,
     do_close,
-    do_trywrite,
-    do_keepalive};
+    do_trywrite};

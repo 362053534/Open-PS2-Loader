@@ -63,9 +63,6 @@ enum api_msg_type {
     /* 保留既有消息编号，非阻塞发送仍在核心锁内执行。 */
     API_MSG_TRYWRITE,
 
-    /* 追加私有保活消息，保持现有消息编号不变。 */
-    API_MSG_KEEPALIVE,
-
     API_MSG_MAX
 };
 

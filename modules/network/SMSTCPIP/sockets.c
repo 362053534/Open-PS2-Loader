@@ -569,24 +569,6 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
     return lwip_recvfrom(s, NULL, 0, mem, len, flags, NULL, NULL);
 }
 
-/* 经核心锁发送一次 TCP 探测；调用方忽略结果，不据此重连。 */
-int lwip_tcp_send_keepalive(int s)
-{
-    struct lwip_socket *sock = get_socket(s);
-
-    if (!sock)
-        return -1;
-
-    if (netconn_type(sock->conn) != NETCONN_TCP || sock->conn->err != ERR_OK)
-        return -1;
-
-    /* netconn_keepalive 不改 conn->err，失败只返回 -1。 */
-    if (netconn_keepalive(sock->conn) != ERR_OK)
-        return -1;
-
-    return 0;
-}
-
 int lwip_send(int s, void *data, int size, unsigned int flags)
 {
     struct lwip_socket *sock;
