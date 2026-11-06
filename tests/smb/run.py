@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix="opl-smb-test-") as tmp:
     subprocess.run(cmd, check=True)
     for case in ("echo", "timeout", "late_partial", "idle", "send_nonblocking", "timeout_cadence",
                  "lock_busy", "send_blocked", "wrong_mid", "bad_echo", "closed", "shutdown",
-                 "read_priority", "read_after_missing", "clock_wrap", "delayed_success", "server_error"):
+                 "read_priority", "read_after_missing", "slow_poll", "ignored_replies", "delayed_success", "server_error"):
         result = subprocess.run([str(build / "test_smb"), case], capture_output=True, text=True)
         print(result.stdout, end="")
         print(result.stderr, end="", file=sys.stderr)
@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix="opl-smb-test-") as tmp:
         if DEBUG:
             timeouts = result.stdout.count("[SMBECHO] timeout ")
             expected = 2 if case == "timeout_cadence" else 1 if case in (
-                "timeout", "late_partial", "read_after_missing", "clock_wrap") else 0
+                "timeout", "late_partial", "read_after_missing", "slow_poll", "ignored_replies") else 0
             assert timeouts == expected, (case, result.stdout)
             if expected:
                 assert f"missed={expected}" in result.stdout

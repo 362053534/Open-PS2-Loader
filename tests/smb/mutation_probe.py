@@ -11,11 +11,12 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MUTANTS = [
     ("超时缩短为五秒", "modules/iopcore/cdvdman/smb.c", "SMB_ECHO_TIMEOUT_MS    6000", "SMB_ECHO_TIMEOUT_MS    5000"),
-    ("六秒边界多等一拍", "modules/iopcore/cdvdman/smb.c", ">= timeout.lo", "> timeout.lo"),
+    ("六秒边界多等一拍", "modules/iopcore/cdvdman/smb.c", "waited_ms >= timeout_ms", "waited_ms > timeout_ms"),
+    ("跳过旧包不计轮询预算", "modules/iopcore/cdvdman/smb.c", "waited_ms += SMB_ECHO_POLL_MS;", "if (result < 0) waited_ms += SMB_ECHO_POLL_MS;"),
     ("提前发送分钟 Echo", "modules/iopcore/cdvdman/device-smb.c", "SMB_ECHO_IDLE_TICKS  30", "SMB_ECHO_IDLE_TICKS  29"),
     ("恢复空闲 PHY 查询", "modules/iopcore/cdvdman/device-smb.c", "(void)arg;\n    if (!smb_echo_enabled)", "(void)arg;\n    smb_link_up();\n    if (!smb_echo_enabled)"),
     ("不跳过迟到 Echo", "modules/iopcore/cdvdman/smb.c", "if (!smb_is_echo_reply(rcv_size))", "if (1)"),
-    ("不核对 Echo MID", "modules/iopcore/cdvdman/smb.c", "if (!echo_mid || SMB_buf.smb.echoRequest.smbH.MID != echo_mid)", "if (!echo_mid)"),
+    ("不核对 Echo MID", "modules/iopcore/cdvdman/smb.c", "if (echo_mid && SMB_buf.smb.echoRequest.smbH.MID == echo_mid)", "if (echo_mid)"),
     ("Echo 等待 IGR 锁", "modules/iopcore/cdvdman/smb.c", "PollSema(smb_io_sema)", "WaitSema(smb_io_sema)"),
     ("Echo 走阻塞发送", "modules/iopcore/cdvdman/smb.c", "sizeof(*echo) + 5, MSG_DONTWAIT", "sizeof(*echo) + 5, 0"),
     ("拒绝恰好够用的发送空间", "modules/network/SMSTCPIP/api_msg.c", "msg->msg.w.len > tcp_sndbuf(pcb)", "msg->msg.w.len >= tcp_sndbuf(pcb)"),

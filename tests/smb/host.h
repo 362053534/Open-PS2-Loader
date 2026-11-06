@@ -38,7 +38,6 @@ int WaitSema(int s);
 int PollSema(int s);
 int SignalSema(int s);
 int DelayThread(unsigned int usec);
-int GetSystemTime(iop_sys_clock_t *clock);
 int USec2SysClock(u32 usec, iop_sys_clock_t *clock);
 int SetAlarm(iop_sys_clock_t *clock, unsigned int (*callback)(void *), void *arg);
 int CancelAlarm(unsigned int (*callback)(void *), void *arg);

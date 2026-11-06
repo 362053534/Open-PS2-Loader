@@ -22,6 +22,7 @@ static int response_size, response_pos;
 static int rx_prefix = 32768;
 static u64 rx_release_us;
 static int drop_echo;
+static unsigned int poll_overhead_us;
 static int require_nonblocking;
 static int send_blocked, socket_closed, corrupt_echo, wrong_mid_first, echo_error;
 static int link_up = 1;
@@ -123,14 +124,18 @@ static int fake_send(int s, void *data, int size, unsigned int flags)
             if (send_blocked)
                 return -1;
             echo_sent_at[echo_requests++] = now_us;
-            if (drop_echo)
-                break;
             memcpy(body + sizeof(SMBHeader_t), (u8 *)data + 4 + sizeof(SMBHeader_t), size - 4 - sizeof(SMBHeader_t));
-            if (wrong_mid_first) {
+            for (int i = 0; i < wrong_mid_first; i++) {
+                if (wrong_mid_first > 1) {
+                    respond(body, 0);
+                    response[response_size - 4] = 0x85;
+                }
                 reply->MID--;
                 respond(body, size - 4);
                 reply->MID++;
             }
+            if (drop_echo)
+                break;
             if (corrupt_echo)
                 ((EchoRequest_t *)body)->EchoCount = 2;
             if (echo_error)
@@ -214,7 +219,7 @@ int PollSema(int s) { (void)s; if (!sema_value) return -1; sema_value--; return 
 int SignalSema(int s) { (void)s; assert(!sema_value); sema_value++; return 0; }
 int DelayThread(unsigned int usec)
 {
-    u64 until = now_us + usec;
+    u64 until = now_us + usec + poll_overhead_us;
     while (alarm_callback && alarm_at <= until) {
         unsigned int next;
         now_us = alarm_at;
@@ -228,7 +233,6 @@ int DelayThread(unsigned int usec)
     assert(now_us < 1000000000);
     return 0;
 }
-int GetSystemTime(iop_sys_clock_t *c) { u64 ticks = now_us * 36864 / 1000; c->lo = ticks; c->hi = ticks >> 32; return 0; }
 int USec2SysClock(u32 usec, iop_sys_clock_t *c) { u64 ticks = (u64)usec * 36864 / 1000; c->lo = ticks; c->hi = ticks >> 32; return 0; }
 int SetAlarm(iop_sys_clock_t *c, unsigned int (*cb)(void *), void *arg)
 {
@@ -357,17 +361,20 @@ int main(int argc, char **argv)
         puts("PASS: idle sends one Echo each minute without PHY checks or TCP probes");
         return 0;
     }
-    if (!strcmp(argv[1], "timeout") || !strcmp(argv[1], "clock_wrap")) {
-        if (!strcmp(argv[1], "clock_wrap")) {
-            now_us = 116000000;
-            alarm_at = now_us + alarm_period;
-        }
+    if (!strcmp(argv[1], "timeout") || !strcmp(argv[1], "slow_poll") ||
+        !strcmp(argv[1], "ignored_replies")) {
+        if (!strcmp(argv[1], "slow_poll"))
+            poll_overhead_us = 1000;
+        if (!strcmp(argv[1], "ignored_replies"))
+            wrong_mid_first = 200;
         drop_echo = 1;
         start = now_us;
         assert(smb_Echo() == SMB_ECHO_TIMEOUT);
-        assert(now_us - start == 6000000);
+        assert(now_us - start == (poll_overhead_us ? 6300000 : 6000000));
+        if (!strcmp(argv[1], "ignored_replies"))
+            assert(test_socket.lastdata);
         assert(sema_value == 1 && tray_changes == 0);
-        puts("PASS: no Echo reply releases I/O lock after 6 seconds without opening tray");
+        puts("PASS: missing Echo releases I/O lock after about 6 seconds without opening tray");
         return 0;
     }
     if (!strcmp(argv[1], "late_partial")) {
