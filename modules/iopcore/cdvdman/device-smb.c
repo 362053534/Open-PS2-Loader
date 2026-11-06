@@ -145,8 +145,8 @@ int smb_read_stall_check(void)
     return 1;
 }
 
-/* 轻线程：暂只做空闲 Echo（二分 Jak；链路开/关仓先关掉）。
- * 200ms 切片方便卸载时尽快退出；10 片凑满一拍约 2s。 */
+/* 轻线程：每 2 秒查一次链路并做空闲 Echo，不叫醒读线程。
+ * 200ms 切片方便卸载时尽快退出；10 片凑满原先闹钟的一拍。 */
 #define SMB_KEEPALIVE_SLICE_US       200000
 #define SMB_KEEPALIVE_SLICES_PER_TICK 10
 
@@ -167,8 +167,17 @@ static void smbKeepaliveThread(void *arg)
             continue;
         slice = 0;
 
-        /* 二分用：轻线程暂不查链路/开关仓，只发 Echo；开仓仍靠 stall_check。 */
-        if (smb_in_read || smbTrayOpen)
+        /* 读进行中：链路由 stall_check 盯，这里不读 PHY，少抢 IOP。 */
+        if (smb_in_read)
+            continue;
+
+        if (smb_link_up())
+            smb_set_tray_open(0);
+        else
+            smb_set_tray_open(1);
+
+        /* 开仓中不算空闲，也不发 Echo。 */
+        if (smbTrayOpen)
             continue;
 
         if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)

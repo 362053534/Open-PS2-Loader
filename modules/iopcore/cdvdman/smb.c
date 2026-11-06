@@ -47,7 +47,7 @@
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
 /* 数据读每等满这么多次轮询（5000 × 100us，约 500ms）查一次链路，断了才模拟开仓；链路正常则继续等。 */
-#define SMB_READ_LINK_CHECK_POLLS 1000  /* ~100ms：100µs×1000 */
+#define SMB_READ_LINK_CHECK_POLLS 5000
 
 int smb_io_sema = -1;
 
