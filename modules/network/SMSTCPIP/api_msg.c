@@ -786,20 +786,29 @@ do_close(struct api_msg_msg *msg)
     TCPIP_APIMSG_ACK(msg->conn->mbox);
 }
 
-/* SMB 私有：持 lwIP 核心锁（CORE_LOCKING=1 时在调用方线程内）发一次保活 ACK，不累计失败、不关闭连接。
- * 结果写回 msg->msg.len（1=已发），不改 conn->err，避免覆盖 tcpip 线程报告的真实连接错误。 */
+/* 整包入队或立即失败；Echo 不允许在持有 SMB 锁时等待 TCP 发送空间。 */
 static void
-do_keepalive(struct api_msg_msg *msg)
+do_trywrite(struct api_msg_msg *msg)
 {
-    msg->msg.len = 0;
+    msg->msg.w.result = ERR_CONN;
 #if LWIP_TCP
     {
         struct tcp_pcb *pcb = msg->conn->pcb.tcp;
 
-        if (msg->conn->type == NETCONN_TCP && pcb != NULL &&
-            (pcb->state == ESTABLISHED || pcb->state == CLOSE_WAIT)) {
-            tcp_keepalive(pcb);
-            msg->msg.len = 1;
+        if (msg->conn->err != ERR_OK) {
+            msg->msg.w.result = msg->conn->err;
+        } else if (msg->conn->type == NETCONN_TCP && pcb != NULL &&
+                   (pcb->state == ESTABLISHED || pcb->state == CLOSE_WAIT)) {
+            if (msg->msg.w.len > tcp_sndbuf(pcb)) {
+                msg->msg.w.result = ERR_MEM;
+            } else {
+                msg->msg.w.result = tcp_write(pcb, msg->msg.w.dataptr, msg->msg.w.len, NETCONN_COPY);
+                if (msg->msg.w.result == ERR_OK) {
+                    tcp_output(pcb);
+                    if (msg->conn->callback && tcp_sndbuf(pcb) <= TCP_SNDLOWAT)
+                        (*msg->conn->callback)(msg->conn, NETCONN_EVT_SENDMINUS, msg->msg.w.len);
+                }
+            }
         }
     }
 #endif
@@ -818,4 +827,4 @@ api_msg_decode __decode__[API_MSG_MAX] = {
     do_recv,
     do_write,
     do_close,
-    do_keepalive};
+    do_trywrite};

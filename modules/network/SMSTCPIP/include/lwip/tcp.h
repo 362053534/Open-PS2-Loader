@@ -448,7 +448,6 @@ void tcp_rst(u32_t seqno, u32_t ackno,
 
 u32_t tcp_next_iss(void);
 
-void tcp_keepalive(struct tcp_pcb *pcb);
 
 extern struct tcp_pcb *tcp_input_pcb;
 extern u32_t tcp_ticks;

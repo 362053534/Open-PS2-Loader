@@ -41,8 +41,7 @@
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_POLL_MS       20
-/* Close 等路径的收包上限；Echo 已改为发完即放锁，不再用这个等回包。 */
-#define SMB_ECHO_TIMEOUT_MS    5000
+#define SMB_ECHO_TIMEOUT_MS    6000
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
@@ -62,7 +61,6 @@ extern int (*plwip_recvfrom)(int s, void *mem, int hlen, void *payload, int plen
 extern int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);                                                                     // #11
 extern int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 extern int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
-extern int (*plwip_tcp_send_keepalive)(int s);
 extern u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
 
 extern struct cdvdman_settings_smb cdvdman_settings;
@@ -147,7 +145,6 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
     opt = 1;
     plwip_setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt));
-    // TCP ACK 由 Echo 到期时同步发送，不开启 slowtmr 自动保活及失败计数。
     /* 注意：不要设 SO_SNDTIMEO / SO_RCVTIMEO。见 SMB_ECHO_POLL_MS 的注释。 */
 
     memset(&sock_addr, 0, sizeof(sock_addr));
@@ -307,6 +304,61 @@ static int RecvData(int sock, char *buf, int size)
     return RecvDataEx(sock, buf, size, 0, 0);
 }
 
+static u32 smb_clock_ticks(void)
+{
+    iop_sys_clock_t clock;
+
+    GetSystemTime(&clock);
+    return clock.lo;
+}
+
+static int smb_is_echo_reply(int size)
+{
+    return size >= (int)sizeof(SMBHeader_t) + 4 &&
+           SMB_buf.smb.echoRequest.smbH.Magic == SMB_MAGIC &&
+           SMB_buf.smb.echoRequest.smbH.Cmd == SMB_COM_ECHO;
+}
+
+/* 控制回包与数据回包共用 TCP 字节流；超时只放弃等待，不丢弃尚未完整到达的包。 */
+static int ReceiveSMBReply(int timeout_ms, u32 started, u16 echo_mid)
+{
+    iop_sys_clock_t timeout;
+    int result, size;
+    unsigned int flags = timeout_ms < 0 ? 0 : MSG_DONTWAIT;
+
+    USec2SysClock(timeout_ms < 0 ? 0 : timeout_ms * 1000, &timeout);
+    while (1) {
+        if (timeout_ms >= 0 && (u32)(smb_clock_ticks() - started) >= timeout.lo)
+            return SMB_ECHO_TIMEOUT;
+
+        result = plwip_recvfrom(main_socket, &SMB_buf, -1, NULL, sizeof(SMB_buf), flags, NULL, NULL);
+        if (result < 0) {
+            if (timeout_ms < 0)
+                return -2;
+            DelayThread(SMB_ECHO_POLL_MS * 1000);
+            continue;
+        }
+        if (result == 0)
+            return -2;
+        size = nb_GetSessionMessageLength();
+        if (result != size + 4) {
+            /* 超长回包只接收缓冲区能容纳的前缀，剩余部分仍须在下次请求前清理。 */
+            if (result < size + 4)
+                smb_stale_skip = size + 4 - result;
+            return -2;
+        }
+        if (nb_GetPacketType() != 0)
+            continue;
+        if (smb_is_echo_reply(result)) {
+            if (!echo_mid || SMB_buf.smb.echoRequest.smbH.MID != echo_mid)
+                continue;
+        } else if (echo_mid) {
+            return -2;
+        }
+        return size;
+    }
+}
+
 //-------------------------------------------------------------------------
 static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 {
@@ -332,6 +384,9 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
             return -1;
     }
 
+    if (rhdrlen == 0)
+        return ReceiveSMBReply(-1, 0, 0);
+
     //Read NetBIOS session message header. Drop NBSS Session Keep alive messages (type == 0x85, with no body), but process session messages (type == 0x00).
     do {
         rcv_size = RecvData(main_socket, (char *)&SMB_buf.sessionHeader, sizeof(SMB_buf.sessionHeader));
@@ -356,12 +411,11 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
     return totalpkt_size;
 }
 
-/* GetSMBServerReply(0, NULL, 0) 的非阻塞轮询版：一次发完整包、收 NetBIOS 头、
- * 再收 SMB 回包，全程不设 SO_RCVTIMEO，timeout_ms < 0 表示不设超时。
- * Echo/Close 用；数据面继续走原来的阻塞 GetSMBServerReply()。 */
+/* Close 的等待同样覆盖整包，不能让半个 NBSS 头的超时破坏后续字节流。 */
 static int GetSMBServerReplyTimed(int timeout_ms)
 {
     int rcv_size, totalpkt_size;
+    u32 started = smb_clock_ticks();
 
     totalpkt_size = nb_GetSessionMessageLength() + 4;
 
@@ -369,27 +423,7 @@ static int GetSMBServerReplyTimed(int timeout_ms)
     if (rcv_size <= 0)
         return -1;
 
-    do {
-        rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.sessionHeader,
-                              sizeof(SMB_buf.sessionHeader), MSG_DONTWAIT, timeout_ms);
-        if (rcv_size <= 0)
-            return -2;
-    } while (nb_GetPacketType() != 0);
-
-    totalpkt_size = nb_GetSessionMessageLength();
-
-    /* 超长回包不写进 SMB_buf.smb，记为待丢弃后报错。 */
-    if (totalpkt_size > (int)sizeof(SMB_buf.smb)) {
-        smb_stale_skip = totalpkt_size;
-        return -2;
-    }
-
-    rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.smb, totalpkt_size,
-                          MSG_DONTWAIT, timeout_ms);
-    if (rcv_size <= 0)
-        return -2;
-
-    return totalpkt_size;
+    return ReceiveSMBReply(timeout_ms, started, 0);
 }
 
 //-------------------------------------------------------------------------
@@ -849,7 +883,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
-    do {
+    while (1) {
         rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
         if (rcv_size <= 0) {
             // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
@@ -857,7 +891,18 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
                 smb_stale_pending = 1;
             return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
         }
-    } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
+        if (nb_GetPacketType() != 0)
+            continue;
+        if (!smb_is_echo_reply(rcv_size))
+            break;
+        /* 超时的 Echo 可以晚于新读请求到达；丢弃它本身，不能错配为 ReadAndX。 */
+        smb_stale_skip = nb_GetSessionMessageLength() + 4 - rcv_size;
+        if (smb_stale_skip > 0) {
+            r = smb_drain_stale();
+            if (r <= 0)
+                return r == SMB_READ_LINK_DOWN ? r : -2;
+        }
+    }
 
     expected_size = nb_GetSessionMessageLength() + 4;
 
@@ -1040,18 +1085,67 @@ int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
     return smb_ReadFile(cdvdman_settings.FIDs[part_num], lsn * 2048, lsn >> 21, buf, (int)(nsectors * 2048));
 }
 
-/* 测试期只发纯 TCP ACK，不发 Echo，避免等待不存在 Echo 回包的 stale 清理。
- * 接收端照常处理可能残留的 Echo 回包；SMB_buf 与主 socket 也仍受同一锁保护。 */
 int smb_Echo(void)
 {
+    static u16 mid;
+    static unsigned int missed;
+    EchoRequest_t *echo = &SMB_buf.smb.echoRequest;
+    int result;
+    u32 started;
+
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
-    /* 导出缺失（旧 ps2ip）时不调用，避免跳到空指针。 */
-    if (plwip_tcp_send_keepalive != NULL)
-        plwip_tcp_send_keepalive(main_socket);
+    if ((smb_stale_pending || smb_stale_skip > 0) && smb_drain_stale() <= 0) {
+        SIGNALIOSEMA(smb_io_sema);
+        return 0;
+    }
+    if (++mid == 0)
+        mid++;
+    ZERO_PKT_ALIGNED(echo, sizeof(*echo) + 1);
+    echo->smbH.Magic = SMB_MAGIC;
+    echo->smbH.Cmd = SMB_COM_ECHO;
+    echo->smbH.Flags2 = SMB_FLAGS2_32BIT_STATUS;
+    echo->smbH.UID = UID;
+    echo->smbH.TID = TID;
+    echo->smbH.MID = mid;
+    echo->smbWordcount = 1;
+    echo->EchoCount = 1;
+    echo->ByteCount = 1;
+    ((u8 *)(echo + 1))[0] = 0x45;
+    nb_SetSessionMessage(sizeof(*echo) + 1);
+    started = smb_clock_ticks();
+    result = plwip_send(main_socket, &SMB_buf, sizeof(*echo) + 5, MSG_DONTWAIT);
+    if (result == (int)sizeof(*echo) + 5) {
+#ifdef __IOPCORE_DEBUG
+        printf("[SMBECHO] sent mid=%u\n", mid);
+#endif
+        result = ReceiveSMBReply(SMB_ECHO_TIMEOUT_MS, started, mid);
+    } else {
+        result = -1;
+    }
+    if (result == (int)sizeof(*echo) + 1 && echo->smbH.Magic == SMB_MAGIC &&
+        echo->smbH.Cmd == SMB_COM_ECHO && echo->smbH.MID == mid &&
+        (echo->smbH.Flags & SMB_FLAGS_SERVER_TO_REDIR) &&
+        echo->smbH.Eclass == 0 && echo->smbH.Ecode == 0 &&
+        echo->smbWordcount == 1 && echo->EchoCount == 1 && echo->ByteCount == 1 &&
+        ((u8 *)(echo + 1))[0] == 0x45)
+        result = 1;
+    else if (result != SMB_ECHO_TIMEOUT)
+        result = -1;
+    if (result == SMB_ECHO_TIMEOUT) {
+        missed++;
+#ifdef __IOPCORE_DEBUG
+        printf("[SMBECHO] timeout mid=%u missed=%u\n", mid, missed);
+#endif
+    }
+#ifdef __IOPCORE_DEBUG
+    else {
+        printf("[SMBECHO] result mid=%u status=%d\n", mid, result);
+    }
+#endif
     SIGNALIOSEMA(smb_io_sema);
-    return 1;
+    return result;
 }
 
 void smb_CloseAll(void)
