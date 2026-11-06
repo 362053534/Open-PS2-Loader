@@ -439,7 +439,19 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
 
         netbuf_copy_partial(buf, header, LWIP_NBSS_HDR_LEN, sock->lastoffset);
 
-        if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
+        if (index < 0) {
+            /* 控制回包必须整包就绪才消耗；Echo 超时后半包仍由同一 socket 留给下一笔接收。 */
+            pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
+                                           (((u32_t)((u8_t *)header)[2]) << 8) |
+                                           ((u32_t)((u8_t *)header)[3]));
+            copylen = (u16_t)(pkt_len < (u32_t)plen ? pkt_len : (u32_t)plen);
+            accum = lwip_smb_accum(sock, buf, &avail_len, copylen, flags);
+            if (accum <= 0)
+                return accum;
+            netbuf_copy_partial(buf, header, copylen, sock->lastoffset);
+            avail_len -= copylen;
+            copy_payload = 0;
+        } else if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
             /* keepalive 可能和后续 SMB 粘在同一段里，只吃 4 字节，剩下留给下次。 */
             copylen = LWIP_NBSS_HDR_LEN;
             avail_len -= LWIP_NBSS_HDR_LEN;
@@ -557,25 +569,6 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
     return lwip_recvfrom(s, NULL, 0, mem, len, flags, NULL, NULL);
 }
 
-/* SMB 私有一次性探测：不在核心锁外碰 pcb，经 netconn_keepalive 在 lwIP 核心锁内执行。
- * 不累计失败、不关闭连接；返回 0 表示已发出，-1 表示未发。调用方须已持有该 socket 的 I/O 锁。 */
-int lwip_tcp_send_keepalive(int s)
-{
-    struct lwip_socket *sock = get_socket(s);
-
-    if (!sock)
-        return -1;
-
-    if (netconn_type(sock->conn) != NETCONN_TCP || sock->conn->err != ERR_OK)
-        return -1;
-
-    /* netconn_keepalive 不改 conn->err，失败只返回 -1。 */
-    if (netconn_keepalive(sock->conn) != ERR_OK)
-        return -1;
-
-    return 0;
-}
-
 int lwip_send(int s, void *data, int size, unsigned int flags)
 {
     struct lwip_socket *sock;
@@ -615,7 +608,12 @@ int lwip_send(int s, void *data, int size, unsigned int flags)
             netbuf_delete(buf);
             break;
         case NETCONN_TCP:
-            err = netconn_write(sock->conn, data, size, NETCONN_COPY);
+            if (flags & MSG_DONTWAIT) {
+                /* 非阻塞发送承诺整包成功，不能让 u16 截断长度后误报全部已发送。 */
+                err = size < 0 || size > 0xffff ? ERR_ARG : netconn_trywrite(sock->conn, data, size);
+            } else {
+                err = netconn_write(sock->conn, data, size, NETCONN_COPY);
+            }
             break;
         default:
             err = ERR_ARG;

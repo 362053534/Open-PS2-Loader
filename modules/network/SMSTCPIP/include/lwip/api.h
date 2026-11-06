@@ -153,8 +153,8 @@ err_t netconn_write(struct netconn *conn,
                     void *dataptr, u16_t size,
                     u8_t copy);
 err_t netconn_close(struct netconn *conn);
-/* SMB 私有：经 api_msg 在 lwIP 核心锁内发一次 TCP 保活探测。 */
-err_t netconn_keepalive(struct netconn *conn);
+/* 非阻塞发送必须在核心锁内检查容量并入队，不能先检查后落回阻塞写入。 */
+err_t netconn_trywrite(struct netconn *conn, void *data, u16_t size);
 
 err_t netconn_err(struct netconn *conn);
 

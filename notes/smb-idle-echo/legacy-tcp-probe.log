@@ -1,0 +1,5 @@
+$ python3 tests/smb/probe_legacy_tcp.py
+payload fill=0x00 -> TCP flags=0x00 (ACK absent)
+payload fill=0xff -> TCP flags=0x3f (FIN|SYN|RST|PSH|ACK|URG)
+
+exit=0; seconds=0.378

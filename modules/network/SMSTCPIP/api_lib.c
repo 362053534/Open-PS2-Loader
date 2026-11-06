@@ -612,10 +612,8 @@ again:
     return conn->err;
 }
 
-/* SMB 私有：tcp_keepalive 必须在 lwIP 核心锁保护下执行。这里走与 netconn_close 相同的
- * api_msg 路径；本模块 LWIP_TCPIP_CORE_LOCKING=1，tcpip_apimsg 在调用方线程持
- * lock_tcpip_core 直接执行 do_keepalive，返回时已执行完。不改 conn->state，不重试。 */
-err_t netconn_keepalive(struct netconn *conn)
+/* 不修改 conn->state/err；发送队列满只影响本次尝试，不能污染后续读盘。 */
+err_t netconn_trywrite(struct netconn *conn, void *data, u16_t size)
 {
     struct api_msg *msg;
     err_t err;
@@ -627,12 +625,13 @@ err_t netconn_keepalive(struct netconn *conn)
         return ERR_MEM;
     }
 
-    /* len 先清 0；do_keepalive 在核心锁内同步执行并写回 len，返回后直接读取即可。 */
-    msg->type = API_MSG_KEEPALIVE;
+    msg->type = API_MSG_TRYWRITE;
     msg->msg.conn = conn;
-    msg->msg.msg.len = 0;
+    msg->msg.msg.w.dataptr = data;
+    msg->msg.msg.w.len = size;
+    msg->msg.msg.w.result = ERR_CONN;
     api_msg_post(msg);
-    err = (msg->msg.msg.len != 0) ? ERR_OK : ERR_CONN;
+    err = msg->msg.msg.w.result;
     memp_free(MEMP_API_MSG, msg);
     return err;
 }

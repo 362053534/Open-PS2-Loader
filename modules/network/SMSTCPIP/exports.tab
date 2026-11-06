@@ -42,5 +42,4 @@ DECLARE_EXPORT_TABLE(ps2ip,1,3)
 	DECLARE_EXPORT(pbuf_clen)
 	DECLARE_EXPORT(pbuf_chain)			//40
 	DECLARE_EXPORT(pbuf_take)
-	DECLARE_EXPORT(lwip_tcp_send_keepalive)	//42 - SMB 私有 TCP 保活探测
 END_EXPORT_TABLE
