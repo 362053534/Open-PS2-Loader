@@ -46,8 +46,8 @@
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
-/* 数据读每等满这么多次轮询（5000 × 100us，约 500ms）查一次链路，断了才模拟开仓；链路正常则继续等。 */
-#define SMB_READ_LINK_CHECK_POLLS 5000
+/* 数据读每等满这么多次轮询（2000 × 100us，约 200ms）查一次链路，断了才模拟开仓；链路正常则继续等。 */
+#define SMB_READ_LINK_CHECK_POLLS 2000
 
 int smb_io_sema = -1;
 

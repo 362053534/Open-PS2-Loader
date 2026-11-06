@@ -12,6 +12,8 @@
 /* 空闲保活的拍长。30 拍就是 60 秒，只在没有真实读盘时累加。 */
 #define SMB_ECHO_INTERVAL_US 2000000
 #define SMB_ECHO_IDLE_TICKS  30
+/* 读结束后连续 3 个空闲拍（约 6 秒）才恢复空闲链路检查。 */
+#define SMB_IDLE_GRACE_TICKS 3
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -40,6 +42,7 @@ static volatile int smb_echo_enabled;
 static volatile int smb_echo_due;
 static volatile int smb_echo_busy;
 static volatile int smb_in_read;
+static volatile unsigned int smb_idle_grace=0;
 static volatile int smb_alarm_armed;
 static volatile int smb_tray_check_due;
 static iop_sys_clock_t smb_alarm_clock;
@@ -153,7 +156,7 @@ static unsigned int smb_alarm_interval(void)
     return 1;
 }
 
-/* 闹钟在定时器中断里，只数空闲拍并用 iSignalSema 叫醒读线程，Echo 由读线程发。 */
+/* 闹钟只做标记，所有 PHY 访问和开/关仓都在读线程执行。 */
 static unsigned int smb_echo_alarm_cb(void *arg)
 {
     (void)arg;
@@ -162,7 +165,7 @@ static unsigned int smb_echo_alarm_cb(void *arg)
     if (!smb_echo_enabled)
         return 0;
 
-    /* 已模拟开仓：不排 Echo；中断里不查链路，每拍叫醒读线程去查，链路恢复就关仓。闹钟保持续挂。 */
+    /* 已模拟开仓：不排 Echo；空闲时每拍检查链路，恢复后关仓。 */
     if (smbTrayOpen) {
         if (!smb_in_read && !smb_echo_busy) {
             smb_tray_check_due = 1;
@@ -177,6 +180,15 @@ static unsigned int smb_echo_alarm_cb(void *arg)
         smb_alarm_armed = 1;
         return smb_alarm_interval();
     }
+
+    /* 空闲每 2 秒也查一次 PHY；断线后由读线程模拟开仓。 */
+    if (!smb_in_read && smb_idle_grace >= SMB_IDLE_GRACE_TICKS) {
+        smb_tray_check_due = 1;
+        cdvdman_kick_rthread(1);
+    }
+
+    if (smb_idle_grace < SMB_IDLE_GRACE_TICKS)
+        smb_idle_grace++;
 
     if (smbIdleTicks < SMB_ECHO_IDLE_TICKS)
         smbIdleTicks++;
@@ -225,12 +237,21 @@ int smb_read_thread_on_wake(int read_busy)
         return 0;
     }
 
-    /* 游戏停在插盘提示时链路恢复：在读线程里关仓（sceCdTrayReq 要 DelayThread）。 */
+    /* 空闲每拍查 PHY：断线开仓，恢复关仓；实际访问与 I/O 留在这里。 */
     if (smb_tray_check_due) {
         smb_tray_check_due = 0;
-        if (smbTrayOpen && smb_link_up()) {
-            sceCdTrayReq(SCECdTrayClose, NULL);
-            smbTrayOpen = 0;
+        if (smb_in_read)
+            return 1;
+        if (smb_link_up()) {
+            if (smbTrayOpen) {
+                sceCdTrayReq(SCECdTrayClose, NULL);
+                smbTrayOpen = 0;
+            }
+        } else if (!smbTrayOpen) {
+            smbTrayOpen = 1;
+            smb_echo_due = 0;
+            sceCdTrayReq(SCECdTrayOpen, NULL);
+            return 1;
         }
     }
 
@@ -283,6 +304,7 @@ int DeviceFSInit(void)
     smb_echo_due = 0;
     smb_echo_busy = 0;
     smb_in_read = 0;
+    smb_idle_grace = SMB_IDLE_GRACE_TICKS;
     /* 先别开闹钟。smbinit 留下的套接字还要用来建会话。 */
     smb_echo_enabled = 0;
     if (smbOpenGame() > 0) {
@@ -331,8 +353,10 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     /* 已开仓且链路仍断：像 BDM 拔盘一样立即报开仓，不去阻塞等待。 */
     if (smbTrayOpen && !smb_link_up())
         return SCECdErTRMOPN;
-    /* 读的整段都算有流量。闹钟不要在收包途中把读线程叫去发 Echo。 */
+    /* 读的整段都算有流量。不能等 6 秒才标忙，否则读线程可能先做空闲检查。 */
     smb_in_read = 1;
+    smb_idle_grace = 0;
+    smb_tray_check_due = 0;
 
     for (i = 0; i < cdvdman_settings.common.NumParts; i++, lbound = ubound, ubound += 0x80000, offslsn -= 0x80000) {
 
@@ -372,5 +396,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     }
 
     smb_in_read = 0;
+    /* 不延长读中标志；从这里连续 3 个无读盘拍后才进入空闲检查。 */
+    smb_idle_grace = 0;
     return rv;
 }
