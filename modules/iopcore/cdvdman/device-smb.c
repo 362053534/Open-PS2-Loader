@@ -9,7 +9,7 @@
 
 #include "device.h"
 
-/* 空闲保活的拍长。30 拍就是 60 秒，只在没有真实读盘时累加。 */
+/* 空闲探测的拍长。30 拍就是 60 秒，只在没有真实读盘时累加。 */
 #define SMB_ECHO_INTERVAL_US 2000000
 #define SMB_ECHO_IDLE_TICKS  30
 /* 读结束后连续 3 个空闲拍（约 6 秒）才恢复空闲链路检查。 */
@@ -42,7 +42,7 @@ static volatile int smb_echo_enabled;
 static volatile int smb_echo_due;
 static volatile int smb_echo_busy;
 static volatile int smb_in_read;
-static volatile unsigned int smb_idle_grace=0;
+static volatile unsigned int smb_idle_grace = 0;
 static volatile int smb_alarm_armed;
 static volatile int smb_tray_check_due;
 static iop_sys_clock_t smb_alarm_clock;
@@ -266,7 +266,7 @@ int smb_read_thread_on_wake(int read_busy)
 
     smb_echo_busy = 1;
     smb_echo_due = 0;
-    /* 失败也不拆套接字、不再协商。下一轮空闲满了再试一次。 */
+    /* 当前 smb_Echo() 只发 TCP ACK，不发 SMB Echo，也绝不重连。 */
     smb_Echo();
     smbIdleTicks = 0;
     smb_echo_busy = 0;

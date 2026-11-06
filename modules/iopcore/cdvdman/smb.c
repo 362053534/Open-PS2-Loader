@@ -999,42 +999,16 @@ int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num)
     return smb_ReadFile(cdvdman_settings.FIDs[part_num], lsn * 2048, lsn >> 21, buf, (int)(nsectors * 2048));
 }
 
+/* 测试期只发纯 TCP ACK，不发 Echo，避免等待不存在 Echo 回包的 stale 清理。
+ * 接收端照常处理可能残留的 Echo 回包；SMB_buf 与主 socket 也仍受同一锁保护。 */
 int smb_Echo(void)
 {
-    EchoRequest_t *ER = &SMB_buf.smb.echoRequest;
-    int result;
-
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
-    /* 同一个 Echo 到期点：先排一个纯 ACK，再排 Echo；都不等回包或据此拆会话。 */
     plwip_tcp_send_keepalive(main_socket);
-
-    ZERO_PKT_ALIGNED(ER, sizeof(EchoRequest_t));
-
-    ER->smbH.Magic = SMB_MAGIC;
-    ER->smbH.Cmd = SMB_COM_ECHO;
-    ER->smbH.Flags = SMB_FLAGS_CANONICAL_PATHNAMES;
-    ER->smbH.Flags2 = SMB_FLAGS2_KNOWS_LONG_NAMES | SMB_FLAGS2_32BIT_STATUS;
-    ER->smbH.UID = (u16)UID;
-    ER->smbH.TID = (u16)TID;
-    ER->smbWordcount = 1;
-    ER->EchoCount = 1;
-    ER->ByteCount = 0;
-
-    nb_SetSessionMessage(sizeof(EchoRequest_t));
-    /* 只给路由器续命：发完立刻放锁，不等回包；整包回包下次 SendData 前当 stale 丢掉。 */
-    result = SendData(main_socket, (char *)&SMB_buf, nb_GetSessionMessageLength() + 4);
-    if (result > 0) {
-        smb_stale_pending = 1;
-        result = 1;
-    } else {
-        result = -1;
-    }
-
     SIGNALIOSEMA(smb_io_sema);
-
-    return result;
+    return 1;
 }
 
 void smb_CloseAll(void)
