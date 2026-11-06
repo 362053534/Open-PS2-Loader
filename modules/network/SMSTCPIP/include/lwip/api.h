@@ -153,6 +153,8 @@ err_t netconn_write(struct netconn *conn,
                     void *dataptr, u16_t size,
                     u8_t copy);
 err_t netconn_close(struct netconn *conn);
+/* 私有保活经核心锁执行，不修改连接错误。 */
+err_t netconn_keepalive(struct netconn *conn);
 /* 非阻塞发送必须在核心锁内检查容量并入队，不能先检查后落回阻塞写入。 */
 err_t netconn_trywrite(struct netconn *conn, void *data, u16_t size);
 

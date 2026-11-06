@@ -31,6 +31,7 @@ int (*plwip_send)(int s, void *dataptr, int size, unsigned int flags);          
 int (*plwip_socket)(int domain, int type, int protocol);                                                                                   // #13
 int (*plwip_setsockopt)(int s, int level, int optname, const void *optval, socklen_t optlen);                                              // #19
 u32 (*pinet_addr)(const char *cp);                                                                                                         // #24
+int (*plwip_tcp_send_keepalive)(int s);                                                                                                     // #42
 
 static u32 ServerCapabilities;
 static volatile int smbTrayOpen;
@@ -61,6 +62,7 @@ static void ps2ip_init(void)
     plwip_socket = info.exports[13];
     plwip_setsockopt = info.exports[19];
     pinet_addr = info.exports[24];
+    plwip_tcp_send_keepalive = info.exports[42];
 
     if (getModInfo("netman\0\0", &info))
         pNetManGetGlobalNetIFLinkState = info.exports[14];
@@ -127,7 +129,7 @@ int smb_read_stall_check(void)
     // 断线时开仓一次，游戏才会弹插盘提示；同时放弃本次读
     if (!smbTrayOpen) {
         smbTrayOpen = 1;
-        smb_echo_due = 0; // 开仓后不再发 Echo，已排队的也取消
+        smb_echo_due = 0; // 开仓后不再发 TCP 保活，已排队的也取消
         sceCdTrayReq(SCECdTrayOpen, NULL);
     }
     return 1;
@@ -157,7 +159,7 @@ static unsigned int smb_echo_alarm_cb(void *arg)
     if (!smb_echo_enabled)
         return 0;
 
-    /* 空闲期间只安排 Echo；PHY 和开关仓仅由真正卡住的数据读触发。 */
+    /* 空闲期间只安排 TCP 保活；PHY 和开关仓仅由真正卡住的数据读触发。 */
     if (smb_in_read || smb_echo_due)
         return smb_alarm_interval();
 
@@ -210,10 +212,9 @@ int smb_read_thread_on_wake(int read_busy)
 
     smb_echo_busy = 1;
     smb_echo_due = 0;
-    /* 以发起时间计下一分钟，六秒等待不能把周期拉长到六十六秒。 */
+    /* 每分钟只尝试一次 TCP 保活，发包失败也不立即重试。 */
     smbIdleTicks = 0;
-    /* Echo 与真实读盘共用读线程和 I/O 锁，收包结束或超时后才交回数据面。 */
-    smb_Echo();
+    smb_TcpKeepalive();
     smb_echo_busy = 0;
     return 1;
 }
@@ -239,7 +240,7 @@ void DeviceDeinit(void)
 
 int DeviceReady(void)
 {
-    // 数据读确认断线后才模拟开仓，空闲 Echo 不改变就绪状态。
+    // 数据读确认断线后才模拟开仓，空闲 TCP 保活不改变就绪状态。
     return smbTrayOpen ? SCECdNotReady : SCECdComplete;
 }
 
@@ -297,7 +298,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     /* 已开仓且链路仍断：像 BDM 拔盘一样立即报开仓，不去阻塞等待。 */
     if (smbTrayOpen && !smb_link_up())
         return SCECdErTRMOPN;
-    /* 读的整段都算有流量，期间不排 Echo。 */
+    /* 读的整段都算有流量，期间不排 TCP 保活。 */
     smb_in_read = 1;
 
     for (i = 0; i < cdvdman_settings.common.NumParts; i++, lbound = ubound, ubound += 0x80000, offslsn -= 0x80000) {

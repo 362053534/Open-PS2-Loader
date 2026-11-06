@@ -635,3 +635,26 @@ err_t netconn_trywrite(struct netconn *conn, void *data, u16_t size)
     memp_free(MEMP_API_MSG, msg);
     return err;
 }
+
+/* 沿用核心锁内同步调用，不重试，也不覆盖连接原有的错误状态。 */
+err_t netconn_keepalive(struct netconn *conn)
+{
+    struct api_msg *msg;
+    err_t err;
+
+    if (conn == NULL) {
+        return ERR_VAL;
+    }
+    if ((msg = memp_malloc(MEMP_API_MSG)) == NULL) {
+        return ERR_MEM;
+    }
+
+    /* len 先清 0；do_keepalive 在核心锁内同步执行并写回 len，返回后直接读取即可。 */
+    msg->type = API_MSG_KEEPALIVE;
+    msg->msg.conn = conn;
+    msg->msg.msg.len = 0;
+    api_msg_post(msg);
+    err = (msg->msg.msg.len != 0) ? ERR_OK : ERR_CONN;
+    memp_free(MEMP_API_MSG, msg);
+    return err;
+}

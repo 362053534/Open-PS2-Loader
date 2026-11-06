@@ -514,8 +514,8 @@ int smb_Close(int FID);
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
 int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nbytes);
 int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num);
-int smb_Echo(void);
-/* 只有完整等待六秒后才累计未回包；忙、发送失败和协议错误分别处理。 */
+int smb_TcpKeepalive(void);
+/* 控制收包的轮询预算耗尽，不据此处理 TCP 保活结果。 */
 #define SMB_ECHO_TIMEOUT (-5)
 /* device-smb.c 提供：数据读卡住时查链路并模拟开仓，读恢复后关仓。 */
 /* 数据读因链路断开被放弃时 smb_ReadCD 返回此值，上层报 SCECdErTRMOPN。 */
