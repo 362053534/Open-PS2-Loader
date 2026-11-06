@@ -786,6 +786,26 @@ do_close(struct api_msg_msg *msg)
     TCPIP_APIMSG_ACK(msg->conn->mbox);
 }
 
+/* SMB 私有：只在 tcpip 线程内发一次保活 ACK，不累计失败、不关闭连接。
+ * 结果写回 msg->msg.len（1=已发），不改 conn->err，避免覆盖 tcpip 线程报告的真实连接错误。 */
+static void
+do_keepalive(struct api_msg_msg *msg)
+{
+    msg->msg.len = 0;
+#if LWIP_TCP
+    {
+        struct tcp_pcb *pcb = msg->conn->pcb.tcp;
+
+        if (msg->conn->type == NETCONN_TCP && pcb != NULL &&
+            (pcb->state == ESTABLISHED || pcb->state == CLOSE_WAIT)) {
+            tcp_keepalive(pcb);
+            msg->msg.len = 1;
+        }
+    }
+#endif
+    TCPIP_APIMSG_ACK(msg->conn->mbox);
+}
+
 api_msg_decode __decode__[API_MSG_MAX] = {
     do_newconn,
     do_delconn,
@@ -797,4 +817,5 @@ api_msg_decode __decode__[API_MSG_MAX] = {
     do_send,
     do_recv,
     do_write,
-    do_close};
+    do_close,
+    do_keepalive};

@@ -611,3 +611,28 @@ again:
     memp_free(MEMP_API_MSG, msg);
     return conn->err;
 }
+
+/* SMB 私有：tcp_keepalive 只能在 tcpip 线程执行，这里走与 netconn_close 相同的
+ * api_msg 同步路径，等 tcpip 线程回 ACK 后才返回。不改 conn->state，不重试。 */
+err_t netconn_keepalive(struct netconn *conn)
+{
+    struct api_msg *msg;
+    err_t err;
+
+    if (conn == NULL) {
+        return ERR_VAL;
+    }
+    if ((msg = memp_malloc(MEMP_API_MSG)) == NULL) {
+        return ERR_MEM;
+    }
+
+    /* tcpip_apimsg 申请不到 TCPIP_MSG 时不投递也不等待，len 保持 0，按未发处理。
+     * 成功时 tcpip 线程先写 len 再经 conn->mbox 回 ACK，本线程取到 ACK 后再读，顺序由 mbox 保证。 */
+    msg->type = API_MSG_KEEPALIVE;
+    msg->msg.conn = conn;
+    msg->msg.msg.len = 0;
+    api_msg_post(msg);
+    err = (msg->msg.msg.len != 0) ? ERR_OK : ERR_CONN;
+    memp_free(MEMP_API_MSG, msg);
+    return err;
+}

@@ -529,25 +529,23 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
     return lwip_recvfrom(s, NULL, 0, mem, len, flags, NULL, NULL);
 }
 
-/* SMB 私有一次性探测：沿用 lwIP 自己的 ACK 构造函数，不累计失败计数。
- * 调用点只负责在 Echo 到期时触发；返回值仅表示本次是否发出，不关闭连接。 */
+/* SMB 私有一次性探测：不在调用线程里碰 pcb，经 netconn_keepalive 交给 tcpip 线程执行。
+ * 不累计失败、不关闭连接；返回 0 表示已发出，-1 表示未发。调用方须已持有该 socket 的 I/O 锁。 */
 int lwip_tcp_send_keepalive(int s)
 {
     struct lwip_socket *sock = get_socket(s);
-    struct tcp_pcb *pcb;
 
     if (!sock)
         return -1;
 
-    pcb = sock->conn->pcb.tcp;
-    if ((netconn_type(sock->conn) == NETCONN_TCP) && pcb &&
-        ((pcb->state == ESTABLISHED) || (pcb->state == CLOSE_WAIT)) &&
-        (sock->conn->err == ERR_OK)) {
-        tcp_keepalive(pcb);
-        return 0;
-    }
+    if (netconn_type(sock->conn) != NETCONN_TCP || sock->conn->err != ERR_OK)
+        return -1;
 
-    return -1;
+    /* netconn_keepalive 不改 conn->err，失败只返回 -1。 */
+    if (netconn_keepalive(sock->conn) != ERR_OK)
+        return -1;
+
+    return 0;
 }
 
 int lwip_send(int s, void *data, int size, unsigned int flags)

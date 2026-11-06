@@ -14,6 +14,8 @@
 #define SMB_ECHO_IDLE_TICKS  30
 /* 读结束后连续 3 个空闲拍（约 6 秒）才恢复空闲链路检查。 */
 #define SMB_IDLE_GRACE_TICKS 3
+/* 启动保护：会话建立后满 10 拍（约 20 秒）且至少成功读过一次盘，才允许空闲链路检查。 */
+#define SMB_BOOT_GUARD_TICKS 10
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -43,6 +45,8 @@ static volatile int smb_echo_due;
 static volatile int smb_echo_busy;
 static volatile int smb_in_read;
 static volatile unsigned int smb_idle_grace = 0;
+static volatile unsigned int smb_boot_ticks;
+static volatile int smb_read_ok_once;
 static volatile int smb_alarm_armed;
 static volatile int smb_tray_check_due;
 static iop_sys_clock_t smb_alarm_clock;
@@ -165,6 +169,10 @@ static unsigned int smb_echo_alarm_cb(void *arg)
     if (!smb_echo_enabled)
         return 0;
 
+    /* 启动保护计时：读盘中也照常计，满了就停。 */
+    if (smb_boot_ticks < SMB_BOOT_GUARD_TICKS)
+        smb_boot_ticks++;
+
     /* 已模拟开仓：不排 Echo；空闲时每拍检查链路，恢复后关仓。 */
     if (smbTrayOpen) {
         if (!smb_in_read && !smb_echo_busy) {
@@ -182,7 +190,8 @@ static unsigned int smb_echo_alarm_cb(void *arg)
     }
 
     /* 空闲每 2 秒也查一次 PHY；断线后由读线程模拟开仓。 */
-    if (!smb_in_read && smb_idle_grace >= SMB_IDLE_GRACE_TICKS) {
+    if (!smb_in_read && smb_idle_grace >= SMB_IDLE_GRACE_TICKS &&
+        smb_boot_ticks >= SMB_BOOT_GUARD_TICKS && smb_read_ok_once) {
         smb_tray_check_due = 1;
         cdvdman_kick_rthread(1);
     }
@@ -243,7 +252,8 @@ int smb_read_thread_on_wake(int read_busy)
         if (smb_in_read)
             return 1;
         if (smb_link_up()) {
-            if (smbTrayOpen) {
+            /* 链路正常：断线确认计数立即清零。 */
+                    if (smbTrayOpen) {
                 sceCdTrayReq(SCECdTrayClose, NULL);
                 smbTrayOpen = 0;
             }
@@ -304,7 +314,10 @@ int DeviceFSInit(void)
     smb_echo_due = 0;
     smb_echo_busy = 0;
     smb_in_read = 0;
-    smb_idle_grace = SMB_IDLE_GRACE_TICKS;
+    /* 启动时宽限期从 0 开始，并重新计启动保护；首次成功读之前不做空闲链路检查。 */
+    smb_idle_grace = 0;
+    smb_boot_ticks = 0;
+    smb_read_ok_once = 0;
     /* 先别开闹钟。smbinit 留下的套接字还要用来建会话。 */
     smb_echo_enabled = 0;
     if (smbOpenGame() > 0) {
@@ -373,6 +386,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
             if (result >= 0) {
                 smbIdleTicks = 0;
                 smb_echo_due = 0;
+                smb_read_ok_once = 1;
             }
             if (result == SMB_READ_LINK_DOWN) {
                 rv = SCECdErTRMOPN;

@@ -46,8 +46,8 @@
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100
-/* 数据读每等满这么多次轮询（2000 × 100us，约 200ms）查一次链路，断了才模拟开仓；链路正常则继续等。 */
-#define SMB_READ_LINK_CHECK_POLLS 2000
+/* 数据读每等满这么多次轮询（1000 × 100us，约 100ms）查一次链路，断了才模拟开仓；链路正常则继续等。 */
+#define SMB_READ_LINK_CHECK_POLLS 1000
 
 int smb_io_sema = -1;
 
@@ -1006,7 +1006,9 @@ int smb_Echo(void)
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
-    plwip_tcp_send_keepalive(main_socket);
+    /* 导出缺失（旧 ps2ip）时不调用，避免跳到空指针。 */
+    if (plwip_tcp_send_keepalive != NULL)
+        plwip_tcp_send_keepalive(main_socket);
     SIGNALIOSEMA(smb_io_sema);
     return 1;
 }
