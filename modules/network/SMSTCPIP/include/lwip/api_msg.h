@@ -60,9 +60,6 @@ enum api_msg_type {
 
     API_MSG_CLOSE,
 
-    /* 保留既有消息编号，非阻塞发送仍在核心锁内执行。 */
-    API_MSG_TRYWRITE,
-
     API_MSG_MAX
 };
 
@@ -83,7 +80,6 @@ struct api_msg_msg
             void *dataptr;
             u16_t len;
             unsigned char copy;
-            err_t result;
         } w;
         u16_t len;
     } msg;

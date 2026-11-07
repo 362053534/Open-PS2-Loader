@@ -1068,7 +1068,8 @@ int smb_Echo(void)
     echo->ByteCount = 1;
     ((u8 *)(echo + 1))[0] = 0x45;
     nb_SetSessionMessage(sizeof(*echo) + 1);
-    result = plwip_send(main_socket, &SMB_buf, sizeof(*echo) + 5, MSG_DONTWAIT);
+    /* 发送改回阻塞写。缓冲满时会在这把锁上等 TCP 空间，SMSTCPIP 不再为 Echo 留非阻塞发送。 */
+    result = SendData(main_socket, (char *)&SMB_buf, sizeof(*echo) + 5);
     if (result == (int)sizeof(*echo) + 5) {
 #ifdef __IOPCORE_DEBUG
         printf("[SMBECHO] sent mid=%u\n", mid);

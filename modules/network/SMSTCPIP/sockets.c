@@ -583,12 +583,7 @@ int lwip_send(int s, void *data, int size, unsigned int flags)
             netbuf_delete(buf);
             break;
         case NETCONN_TCP:
-            if (flags & MSG_DONTWAIT) {
-                /* 非阻塞发送承诺整包成功，不能让 u16 截断长度后误报全部已发送。 */
-                err = size < 0 || size > 0xffff ? ERR_ARG : netconn_trywrite(sock->conn, data, size);
-            } else {
-                err = netconn_write(sock->conn, data, size, NETCONN_COPY);
-            }
+            err = netconn_write(sock->conn, data, size, NETCONN_COPY);
             break;
         default:
             err = ERR_ARG;

@@ -611,27 +611,3 @@ again:
     memp_free(MEMP_API_MSG, msg);
     return conn->err;
 }
-
-/* 不修改 conn->state/err；发送队列满只影响本次尝试，不能污染后续读盘。 */
-err_t netconn_trywrite(struct netconn *conn, void *data, u16_t size)
-{
-    struct api_msg *msg;
-    err_t err;
-
-    if (conn == NULL) {
-        return ERR_VAL;
-    }
-    if ((msg = memp_malloc(MEMP_API_MSG)) == NULL) {
-        return ERR_MEM;
-    }
-
-    msg->type = API_MSG_TRYWRITE;
-    msg->msg.conn = conn;
-    msg->msg.msg.w.dataptr = data;
-    msg->msg.msg.w.len = size;
-    msg->msg.msg.w.result = ERR_CONN;
-    api_msg_post(msg);
-    err = msg->msg.msg.w.result;
-    memp_free(MEMP_API_MSG, msg);
-    return err;
-}
