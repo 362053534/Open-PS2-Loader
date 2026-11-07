@@ -786,7 +786,7 @@ do_close(struct api_msg_msg *msg)
     TCPIP_APIMSG_ACK(msg->conn->mbox);
 }
 
-/* SMB 私有：持 lwIP 核心锁（CORE_LOCKING=1 时在调用方线程内）发一次保活 ACK，不累计失败、不关闭连接。
+/* SMB 私有：只在 tcpip 线程内发一次保活 ACK，不累计失败、不关闭连接。
  * 结果写回 msg->msg.len（1=已发），不改 conn->err，避免覆盖 tcpip 线程报告的真实连接错误。 */
 static void
 do_keepalive(struct api_msg_msg *msg)

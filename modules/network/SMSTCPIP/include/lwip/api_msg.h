@@ -60,7 +60,7 @@ enum api_msg_type {
 
     API_MSG_CLOSE,
 
-    /* SMB 私有：在 lwIP 核心锁内发一次 TCP 保活探测，必须排在末尾，保持既有编号不变。 */
+    /* SMB 私有：在 tcpip 线程内发一次 TCP 保活探测，必须排在末尾，保持既有编号不变。 */
     API_MSG_KEEPALIVE,
 
     API_MSG_MAX
