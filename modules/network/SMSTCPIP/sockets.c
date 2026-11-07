@@ -539,11 +539,10 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
  * 不累计失败、不关闭连接；返回 0 表示已发出，-1 表示未发。调用方须已持有该 socket 的 I/O 锁。 */
 int lwip_tcp_send_keepalive(int s)
 {
-    /* 只多一个栈槽。不访问全局探针，用来区分帧变大和那次访存。 */
-    volatile u32_t slot;
     struct lwip_socket *sock = get_socket(s);
 
-    slot = 0;
+    /* 只把 0 写入全局探针，不从它读。用来区分读和写。 */
+    lwip_smb_pkt_len_probe = 0;
 
     if (!sock)
         return -1;
