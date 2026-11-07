@@ -1480,3 +1480,8 @@ int lwip_ioctl(int s, long cmd, void *argp)
     }
 }
 #endif
+
+/* 没有调用者，函数体也是空的。用来区分是多了这个函数，还是里面的写入。 */
+void lwip_smb_pkt_len_touch(void)
+{
+}
