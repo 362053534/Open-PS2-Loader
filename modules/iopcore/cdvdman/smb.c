@@ -812,9 +812,8 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
 }
 #endif
 
-/* 校验单独成函数且禁止内联。这些局部量留在 smb_ReadAndX 时，100ms 读 PHY 仍占着
- * 读线程 0x1000 的栈，Jak 存档会因此死机。成功返回数据长度（可为 0）；失败返回 -2，
- * 回包未收完时记下 smb_stale_skip。 */
+/* 禁止内联，避免校验局部量留在等回包的函数里。成功返回数据长度（可为 0）；
+ * 失败返回 -2。本包还没收完时才记 smb_stale_skip；读完再校验则不会记。 */
 static int __attribute__((noinline, noclone)) smb_readandx_check(int rcv_size, int expected_size, int nbytes)
 {
     ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
@@ -846,18 +845,14 @@ static int __attribute__((noinline, noclone)) smb_readandx_check(int rcv_size, i
     return length;
 }
 
-/* 片段补齐放在校验之后。读 PHY 时这一帧不和组包叠在一起。 */
+/* 先按改校验之前的节奏把本包读完，存档时后面的等待和读 PHY 不会被提前截断。
+ * 读完再决定交不交长度。 */
 static int __attribute__((noinline, noclone)) smb_readandx_finish(int rcv_size, void *readbuf, int nbytes)
 {
     ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
     int expected_size, r, DataLength;
 
     expected_size = nb_GetSessionMessageLength() + 4;
-    DataLength = smb_readandx_check(rcv_size, expected_size, nbytes);
-    if (DataLength < 0)
-        return -2;
-
-    /* 写入范围是 readbuf[rcv_size - DataOffset - 4, expected_size - DataOffset - 4)，已校验不超过 nbytes。 */
     while (rcv_size < expected_size) {
         r = RecvFromTimed(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size);
         if (r <= 0) {
@@ -867,6 +862,10 @@ static int __attribute__((noinline, noclone)) smb_readandx_finish(int rcv_size, 
         }
         rcv_size += r;
     }
+
+    DataLength = smb_readandx_check(rcv_size, expected_size, nbytes);
+    if (DataLength < 0)
+        return -2;
     return DataLength;
 }
 
