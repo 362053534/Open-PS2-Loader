@@ -9,9 +9,9 @@
 
 #include "device.h"
 
-/* 空闲探测的拍长。30 拍就是 60 秒，只在没有真实读盘时累加。 */
+/* 临时拉到约 1 小时一次，这次 Jak 存档测试才不会撞上 Echo。拍长仍是 2 秒，重连等待不变。 */
 #define SMB_ECHO_INTERVAL_US 2000000
-#define SMB_ECHO_IDLE_TICKS  30
+#define SMB_ECHO_IDLE_TICKS  1800
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -227,7 +227,7 @@ int smb_read_thread_on_wake(int read_busy)
 
     smb_echo_busy = 1;
     smb_echo_due = 0;
-    /* 以发起时间计下一分钟，六秒等待不能把周期拉长到六十六秒。 */
+    /* 以发起时间计下一小时，六秒等待不能把周期再往后拖。 */
     smbIdleTicks = 0;
     /* Echo 与真实读盘共用读线程和 I/O 锁，收包结束或超时后才交回数据面。 */
     smb_Echo();
