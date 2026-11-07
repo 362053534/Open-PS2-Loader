@@ -1481,7 +1481,11 @@ int lwip_ioctl(int s, long cmd, void *argp)
 }
 #endif
 
-/* 没有调用者，函数体也是空的。用来区分是多了这个函数，还是里面的写入。 */
+/* 没有调用者。四条空指令比那条全局写入更长，用来区分代码体积和重定位。 */
 void lwip_smb_pkt_len_touch(void)
 {
+    __asm__ volatile("nop");
+    __asm__ volatile("nop");
+    __asm__ volatile("nop");
+    __asm__ volatile("nop");
 }
