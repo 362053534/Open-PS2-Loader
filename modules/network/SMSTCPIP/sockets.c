@@ -389,7 +389,6 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     u16_t port;
     int copy_payload = 1;
     int accum;
-    u32_t pkt_len;
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
@@ -445,46 +444,22 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* 本包总长（含 4 字节 NBSS 头）。之后无论如何都不越过本包，避免吃掉下一个回包。 */
-            pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
-                                           (((u32_t)((u8_t *)header)[2]) << 8) |
-                                           ((u32_t)((u8_t *)header)[3]));
+            /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
+            accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
+            if (accum <= 0)
+                return accum;
 
-            if (pkt_len < LWIP_SMB_READX_HDRLEN) {
-                /* 短包（如错误回包）不足 63 字节：只凑满本包、整包拷进 header 后返回，
-                 * 不再死等 63 字节。header 指向 SMB_buf，容量远大于 63，不会越界；由上层校验判失败。 */
-                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)pkt_len, flags);
+            netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
+            index = ((u8_t *)header)[index] + 4;
+
+            if ((u16_t)index > avail_len) {
+                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
                 if (accum <= 0)
                     return accum;
-
-                netbuf_copy_partial(buf, header, (u16_t)pkt_len, sock->lastoffset);
-                copylen = (u16_t)pkt_len;
-                avail_len -= (u16_t)pkt_len;
-                copy_payload = 0;
-            } else {
-                /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
-                accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
-                if (accum <= 0)
-                    return accum;
-
-                netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
-                index = ((u8_t *)header)[index] + 4;
-                /* 畸形 DataOffset 超出本包时只消耗到包尾，上层校验会判失败。 */
-                if ((u32_t)index > pkt_len)
-                    index = (int)pkt_len;
-
-                if ((u16_t)index > avail_len) {
-                    accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
-                    if (accum <= 0)
-                        return accum;
-                }
-
-                copylen = (u16_t)index;
-                avail_len -= (u16_t)index;
-                /* 首段载荷最多拷到本包结尾。 */
-                if ((u32_t)plen > pkt_len - (u32_t)index)
-                    plen = (int)(pkt_len - (u32_t)index);
             }
+
+            copylen = (u16_t)index;
+            avail_len -= (u16_t)index;
         }
     }
 
