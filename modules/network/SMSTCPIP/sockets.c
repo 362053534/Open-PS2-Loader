@@ -346,6 +346,9 @@ int lwip_listen(int s, int backlog)
 #define LWIP_NBSS_KEEPALIVE   0x85
 #define LWIP_SMB_READX_HDRLEN 63
 
+/* 放静态区，避免加大 lwip_recvfrom 的栈帧。读线程只有 0x1000。 */
+static volatile u32_t lwip_smb_pkt_len_probe;
+
 /* 把后续 TCP 段接到当前 netbuf，直到剩余可读长度 >= need。
  * 短段绝不能丢，否则 SMB 字节流会错位；失败时把已收到的数据留在 lastdata。
  * 返回 1 成功，0 超时/对端关闭，-1 非阻塞且暂无数据。 */
@@ -389,8 +392,6 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     u16_t port;
     int copy_payload = 1;
     int accum;
-    /* volatile：包长必须真的写进栈，避免被优化掉。本函数不拿它决定怎么收。 */
-    volatile u32_t pkt_len;
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
@@ -446,11 +447,11 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* 第 5、6 步都会先算这个长度，正常回包上后面的封顶和短包返回并不一定走到。
-             * 这里只把长度写进栈，收包仍凑满 63 字节，用来区分是计算本身还是后面的分支。 */
-            pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
-                                           (((u32_t)((u8_t *)header)[2]) << 8) |
-                                           ((u32_t)((u8_t *)header)[3]));
+            /* 长度只写入静态区，不占用本函数栈帧。收包仍凑满 63 字节。
+             * 若存档恢复，死机来自帧变大；若仍死，就是这段计算。 */
+            lwip_smb_pkt_len_probe = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
+                                                         (((u32_t)((u8_t *)header)[2]) << 8) |
+                                                         ((u32_t)((u8_t *)header)[3]));
 
             /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
             accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
