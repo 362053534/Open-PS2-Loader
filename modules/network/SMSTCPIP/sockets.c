@@ -346,7 +346,7 @@ int lwip_listen(int s, int backlog)
 #define LWIP_NBSS_KEEPALIVE   0x85
 #define LWIP_SMB_READX_HDRLEN 63
 
-/* 32 字节，超过 -G 的小数据阈值，写它时不用 $gp。 */
+/* 32 字节，没有任何函数引用。用来区分是数据变大，还是那段写入代码。 */
 volatile u32_t lwip_smb_pkt_len_probe[8];
 
 /* 把后续 TCP 段接到当前 netbuf，直到剩余可读长度 >= need。
@@ -1480,9 +1480,3 @@ int lwip_ioctl(int s, long cmd, void *argp)
     }
 }
 #endif
-
-/* 没有调用者。写全局量的代码还在模块里，但不在保活函数里执行。 */
-void lwip_smb_pkt_len_touch(void)
-{
-    lwip_smb_pkt_len_probe[0] = 0;
-}
