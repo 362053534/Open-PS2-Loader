@@ -812,93 +812,17 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
 }
 #endif
 
-/* 禁止内联，避免校验局部量留在等回包的函数里。成功返回数据长度（可为 0）；
- * 失败返回 -2。本包还没收完时才记 smb_stale_skip；读完再校验则不会记。 */
-static int __attribute__((noinline, noclone)) smb_readandx_check(int rcv_size, int expected_size, int nbytes)
-{
-    ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
-    int data_start, valid, length;
-
-    length = 0;
-    data_start = 0;
-    valid = (rcv_size >= (int)sizeof(ReadAndXResponse_t) + 4) &&
-            RRsp->smbH.Magic == SMB_MAGIC &&
-            RRsp->smbH.Cmd == SMB_COM_READ_ANDX &&
-            (RRsp->smbH.Eclass | (RRsp->smbH.Ecode << 16)) == STATUS_SUCCESS;
-    if (valid) {
-        /* 保持原字段解释；跨大文件请求时也由下方 nbytes 边界阻止越界。 */
-        length = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
-        data_start = RRsp->DataOffset + 4;
-        /* recvfrom 只按 DataOffset 低字节消耗头部，因此 DataOffset 必须 <256，且首段确实消耗到 data_start。 */
-        valid = RRsp->DataOffset >= sizeof(ReadAndXResponse_t) &&
-                RRsp->DataOffset < 256 &&
-                rcv_size >= data_start &&
-                length >= 0 && length <= nbytes &&
-                expected_size >= data_start + length &&
-                expected_size <= data_start + nbytes;
-    }
-    if (!valid) {
-        if (rcv_size < expected_size)
-            smb_stale_skip = expected_size - rcv_size;
-        return -2;
-    }
-    return length;
-}
-
-/* 先按改校验之前的节奏把本包读完，存档时后面的等待和读 PHY 不会被提前截断。
- * 读完再决定交不交长度。 */
-static int __attribute__((noinline, noclone)) smb_readandx_finish(int rcv_size, void *readbuf, int nbytes)
-{
-    ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
-    int expected_size, r, DataLength;
-
-    expected_size = nb_GetSessionMessageLength() + 4;
-    while (rcv_size < expected_size) {
-        r = RecvFromTimed(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size);
-        if (r <= 0) {
-            if (r < 0)
-                smb_stale_skip = expected_size - rcv_size;
-            return r == SMB_READ_LINK_DOWN ? r : -2;
-        }
-        rcv_size += r;
-    }
-
-    DataLength = smb_readandx_check(rcv_size, expected_size, nbytes);
-    if (DataLength < 0)
-        return -2;
-    return DataLength;
-}
-
-/* 只负责等第一段回包。禁止内联，避免和组包、校验叠在 0x1000 的读线程栈上。
- * 末尾直接返回下一函数，等 PHY 时上一帧可以丢掉。 */
-static int __attribute__((noinline, noclone)) smb_readandx_wait(void *readbuf, int nbytes)
-{
-    int rcv_size;
-
-    //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
-    do {
-        rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
-        if (rcv_size <= 0) {
-            // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
-            if (rcv_size < 0)
-                smb_stale_pending = 1;
-            return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
-        }
-    } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
-
-    return smb_readandx_finish(rcv_size, readbuf, nbytes);
-}
-
 //-------------------------------------------------------------------------
 static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
     ReadAndXRequest_t *RR = &SMB_buf.smb.readAndXRequest;
-#ifndef USE_CUSTOM_RECV
     ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
-    register int DataLength;
+    register int r, DataLength;
+#ifdef USE_CUSTOM_RECV
+    int rcv_size, expected_size;
+#else
     int padding;
 #endif
-    register int r;
 
     ZERO_PKT_ALIGNED(RR, sizeof(ReadAndXRequest_t));
 
@@ -923,7 +847,33 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     if (r <= 0)
         return r == SMB_READ_LINK_DOWN ? r : -1;
 
-    return smb_readandx_wait(readbuf, nbytes);
+    //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
+    //recvfrom() is a custom function that will receive the reply.
+    do {
+        rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
+        if (rcv_size <= 0) {
+            // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
+            if (rcv_size < 0)
+                smb_stale_pending = 1;
+            return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
+        }
+    } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
+
+    expected_size = nb_GetSessionMessageLength() + 4;
+    /* 存档对这段等待的时序敏感。这里不校验回包，长度直接用报头字段。 */
+    DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
+
+    // Handle fragmented packets
+    while (rcv_size < expected_size) {
+        r = RecvFromTimed(main_socket, NULL, 0, &((u8 *)readbuf)[rcv_size - RRsp->DataOffset - 4], expected_size - rcv_size); // - rcv_size
+        if (r <= 0) {
+            // 放弃等待：回包剩余部分以后可能还会到，记下待丢弃的字节数
+            if (r < 0)
+                smb_stale_skip = expected_size - rcv_size;
+            return r == SMB_READ_LINK_DOWN ? r : -2;
+        }
+        rcv_size += r;
+    }
 #else
     r = GetSMBServerReply(0, NULL, sizeof(ReadAndXResponse_t));
     if (r <= 0)
@@ -947,8 +897,9 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
         if (r <= 0)
             return -2;
     }
-    return DataLength;
 #endif
+
+    return DataLength;
 }
 
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
