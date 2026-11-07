@@ -438,7 +438,19 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
 
         netbuf_copy_partial(buf, header, LWIP_NBSS_HDR_LEN, sock->lastoffset);
 
-        if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
+        if (index < 0) {
+            /* 控制回包必须整包就绪才消耗；Echo 超时后半包仍由同一 socket 留给下一笔接收。 */
+            u32_t pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
+                                                 (((u32_t)((u8_t *)header)[2]) << 8) |
+                                                 ((u32_t)((u8_t *)header)[3]));
+            copylen = (u16_t)(pkt_len < (u32_t)plen ? pkt_len : (u32_t)plen);
+            accum = lwip_smb_accum(sock, buf, &avail_len, copylen, flags);
+            if (accum <= 0)
+                return accum;
+            netbuf_copy_partial(buf, header, copylen, sock->lastoffset);
+            avail_len -= copylen;
+            copy_payload = 0;
+        } else if (((u8_t *)header)[0] == LWIP_NBSS_KEEPALIVE) {
             /* keepalive 可能和后续 SMB 粘在同一段里，只吃 4 字节，剩下留给下次。 */
             copylen = LWIP_NBSS_HDR_LEN;
             avail_len -= LWIP_NBSS_HDR_LEN;
