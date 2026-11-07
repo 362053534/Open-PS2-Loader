@@ -389,6 +389,7 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     u16_t port;
     int copy_payload = 1;
     int accum;
+    u32_t pkt_len;
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
@@ -444,13 +445,21 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
+            /* 本包总长（含 4 字节 NBSS 头）。首段不越过本包，避免吃掉下一个回包。
+             * 不足 63 字节仍先凑满，等待时仍会读 PHY。短包立即返回先不加。 */
+            pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
+                                           (((u32_t)((u8_t *)header)[2]) << 8) |
+                                           ((u32_t)((u8_t *)header)[3]));
+
             accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
             if (accum <= 0)
                 return accum;
 
             netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
             index = ((u8_t *)header)[index] + 4;
+            /* 畸形 DataOffset 超出本包时只消耗到包尾，避免把下一包算进本包。 */
+            if ((u32_t)index > pkt_len)
+                index = (int)pkt_len;
 
             if ((u16_t)index > avail_len) {
                 accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
@@ -460,6 +469,9 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
 
             copylen = (u16_t)index;
             avail_len -= (u16_t)index;
+            /* 首段载荷最多拷到本包结尾。 */
+            if ((u32_t)plen > pkt_len - (u32_t)index)
+                plen = (int)(pkt_len - (u32_t)index);
         }
     }
 
