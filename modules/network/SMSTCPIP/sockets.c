@@ -392,6 +392,9 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
+    /* 负长度不能传给 netbuf_copy_partial（u16 截断后会变成大值），按 0 处理。 */
+    if (plen < 0)
+        plen = 0;
     sock = get_socket(s);
     if (!sock) {
         set_errno(EBADF);
