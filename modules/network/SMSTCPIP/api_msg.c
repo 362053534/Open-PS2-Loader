@@ -600,6 +600,35 @@ do_close(struct api_msg_msg *msg)
     TCPIP_APIMSG_ACK(msg->conn->mbox);
 }
 
+/* 整包入队或立即失败；Echo 不允许在持有 SMB 锁时等待 TCP 发送空间。 */
+static void
+do_trywrite(struct api_msg_msg *msg)
+{
+    msg->msg.w.result = ERR_CONN;
+#if LWIP_TCP
+    {
+        struct tcp_pcb *pcb = msg->conn->pcb.tcp;
+
+        if (msg->conn->err != ERR_OK) {
+            msg->msg.w.result = msg->conn->err;
+        } else if (msg->conn->type == NETCONN_TCP && pcb != NULL &&
+                   (pcb->state == ESTABLISHED || pcb->state == CLOSE_WAIT)) {
+            if (msg->msg.w.len > tcp_sndbuf(pcb)) {
+                msg->msg.w.result = ERR_MEM;
+            } else {
+                msg->msg.w.result = tcp_write(pcb, msg->msg.w.dataptr, msg->msg.w.len, NETCONN_COPY);
+                if (msg->msg.w.result == ERR_OK) {
+                    tcp_output(pcb);
+                    if (msg->conn->callback && tcp_sndbuf(pcb) <= TCP_SNDLOWAT)
+                        (*msg->conn->callback)(msg->conn, NETCONN_EVT_SENDMINUS, msg->msg.w.len);
+                }
+            }
+        }
+    }
+#endif
+    TCPIP_APIMSG_ACK(msg->conn->mbox);
+}
+
 api_msg_decode __decode__[API_MSG_MAX] = {
     do_newconn,
     do_delconn,
@@ -608,4 +637,5 @@ api_msg_decode __decode__[API_MSG_MAX] = {
     do_send,
     do_recv,
     do_write,
-    do_close};
+    do_close,
+    do_trywrite};
