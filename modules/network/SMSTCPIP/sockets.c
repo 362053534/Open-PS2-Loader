@@ -447,11 +447,9 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* 长度只写入静态区，不占用本函数栈帧。收包仍凑满 63 字节。
-             * 若存档恢复，死机来自帧变大；若仍死，就是这段计算。 */
-            lwip_smb_pkt_len_probe = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
-                                                         (((u32_t)((u8_t *)header)[2]) << 8) |
-                                                         ((u32_t)((u8_t *)header)[3]));
+            /* 不读报头、不算长度，只写一个常量。静态变量还在，收包仍凑满 63 字节。
+             * 若仍死，这个位置多写一次就够；若恢复，问题在那几条移位。 */
+            lwip_smb_pkt_len_probe = 0;
 
             /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
             accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
