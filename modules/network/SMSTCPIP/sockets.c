@@ -541,6 +541,10 @@ int lwip_tcp_send_keepalive(int s)
 {
     struct lwip_socket *sock = get_socket(s);
 
+    /* 只加一条空指令，不访问探针，也不增加局部量。
+     * 用来区分是这里多了指令，还是上次那次访存把栈帧撑大。 */
+    __asm__ volatile("nop");
+
     if (!sock)
         return -1;
 
