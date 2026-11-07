@@ -389,7 +389,8 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     u16_t port;
     int copy_payload = 1;
     int accum;
-    u32_t pkt_len;
+    /* volatile：包长必须真的写进栈，避免被优化掉。本函数不拿它决定怎么收。 */
+    volatile u32_t pkt_len;
 
 
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d, %p, %d, 0x%x, ..)\n", s, payload, plen, flags));
@@ -445,39 +446,28 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* 本包总长（含 4 字节 NBSS 头）。不足 63 字节就凑满本包后返回，
-             * 不再死等 63 字节。够 63 字节的仍按原来的 DataOffset 收，不做封顶。 */
+            /* 第 5、6 步都会先算这个长度，正常回包上后面的封顶和短包返回并不一定走到。
+             * 这里只把长度写进栈，收包仍凑满 63 字节，用来区分是计算本身还是后面的分支。 */
             pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
                                            (((u32_t)((u8_t *)header)[2]) << 8) |
                                            ((u32_t)((u8_t *)header)[3]));
 
-            if (pkt_len < LWIP_SMB_READX_HDRLEN) {
-                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)pkt_len, flags);
+            /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
+            accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
+            if (accum <= 0)
+                return accum;
+
+            netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
+            index = ((u8_t *)header)[index] + 4;
+
+            if ((u16_t)index > avail_len) {
+                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
                 if (accum <= 0)
                     return accum;
-
-                netbuf_copy_partial(buf, header, (u16_t)pkt_len, sock->lastoffset);
-                copylen = (u16_t)pkt_len;
-                avail_len -= (u16_t)pkt_len;
-                copy_payload = 0;
-            } else {
-                /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
-                accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
-                if (accum <= 0)
-                    return accum;
-
-                netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
-                index = ((u8_t *)header)[index] + 4;
-
-                if ((u16_t)index > avail_len) {
-                    accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
-                    if (accum <= 0)
-                        return accum;
-                }
-
-                copylen = (u16_t)index;
-                avail_len -= (u16_t)index;
             }
+
+            copylen = (u16_t)index;
+            avail_len -= (u16_t)index;
         }
     }
 
