@@ -346,7 +346,7 @@ int lwip_listen(int s, int backlog)
 #define LWIP_NBSS_KEEPALIVE   0x85
 #define LWIP_SMB_READX_HDRLEN 63
 
-/* 放静态区，避免加大 lwip_recvfrom 的栈帧。读线程只有 0x1000。 */
+/* 只占 BSS。读包路径不写它，用来区分是多出来的数据，还是读包时那一次写入。 */
 static volatile u32_t lwip_smb_pkt_len_probe;
 
 /* 把后续 TCP 段接到当前 netbuf，直到剩余可读长度 >= need。
@@ -447,10 +447,6 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* 不读报头、不算长度，只写一个常量。静态变量还在，收包仍凑满 63 字节。
-             * 若仍死，这个位置多写一次就够；若恢复，问题在那几条移位。 */
-            lwip_smb_pkt_len_probe = 0;
-
             /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
             accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
             if (accum <= 0)
@@ -544,6 +540,9 @@ int lwip_recv(int s, void *mem, int len, unsigned int flags)
 int lwip_tcp_send_keepalive(int s)
 {
     struct lwip_socket *sock = get_socket(s);
+
+    /* 读盘拿着 smb_io_sema，存档不会进这里。引用只为把静态变量留在模块里。 */
+    lwip_smb_pkt_len_probe = lwip_smb_pkt_len_probe;
 
     if (!sock)
         return -1;
