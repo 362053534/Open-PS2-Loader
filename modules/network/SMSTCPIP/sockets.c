@@ -541,9 +541,6 @@ int lwip_tcp_send_keepalive(int s)
 {
     struct lwip_socket *sock = get_socket(s);
 
-    /* 只写第 0 项。变量已经大到不会进 .sbss。 */
-    lwip_smb_pkt_len_probe[0] = 0;
-
     if (!sock)
         return -1;
 
@@ -1483,3 +1480,9 @@ int lwip_ioctl(int s, long cmd, void *argp)
     }
 }
 #endif
+
+/* 没有调用者。写全局量的代码还在模块里，但不在保活函数里执行。 */
+void lwip_smb_pkt_len_touch(void)
+{
+    lwip_smb_pkt_len_probe[0] = 0;
+}
