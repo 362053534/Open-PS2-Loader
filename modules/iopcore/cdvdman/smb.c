@@ -343,6 +343,12 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 
     //If rhdrlen is not specified, retrieve the whole packet. Otherwise, retrieve only the headers (caller will retrieve the payload separately).
     size = (rhdrlen == 0) ? totalpkt_size : rhdrlen;
+    /* 回包或要收的头超出 SMB_buf.smb，或 rhdrlen 非法/超过本包：不写全局缓冲区，
+     * 整包记为待丢弃，下次 SendData 前由 stale 机制丢掉，保持字节流对齐。 */
+    if (rhdrlen < 0 || size > totalpkt_size || size > (int)sizeof(SMB_buf.smb)) {
+        smb_stale_skip = totalpkt_size;
+        return -2;
+    }
     rcv_size = RecvData(main_socket, (char *)&SMB_buf.smb, size);
     if (rcv_size <= 0)
         return -2;
@@ -371,6 +377,12 @@ static int GetSMBServerReplyTimed(int timeout_ms)
     } while (nb_GetPacketType() != 0);
 
     totalpkt_size = nb_GetSessionMessageLength();
+
+    /* 超长回包不写进 SMB_buf.smb，记为待丢弃后报错。 */
+    if (totalpkt_size > (int)sizeof(SMB_buf.smb)) {
+        smb_stale_skip = totalpkt_size;
+        return -2;
+    }
 
     rcv_size = RecvDataEx(main_socket, (char *)&SMB_buf.smb, totalpkt_size,
                           MSG_DONTWAIT, timeout_ms);
