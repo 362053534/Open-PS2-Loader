@@ -104,8 +104,6 @@ err_t tcp_enqueue(
     u16_t seglen;
     void *ptr;
     u8_t queuelen;
-    flags_t lPCBFlags = pcb->flags;
-    int iSegCNT = 0;
 
     left = len;
     ptr = arg;
@@ -124,14 +122,7 @@ err_t tcp_enqueue(
     seglen = 0;
 
     while (!queue || left > 0) {
-
-        if (lPCBFlags & TF_EVENSEG) {
-
-            ++iSegCNT;
-
-            seglen = left > pcb->mss ? pcb->mss : (((iSegCNT % 2) == 1) ? ((left + 1) / 2) : left);
-        } else
-            seglen = left > pcb->mss ? pcb->mss : left;
+        seglen = left > pcb->mss ? pcb->mss : left;
 
         seg = memp_malloc(MEMP_TCP_SEG);
 

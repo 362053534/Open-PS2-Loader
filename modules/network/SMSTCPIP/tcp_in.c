@@ -81,7 +81,7 @@ static err_t tcp_process(struct tcp_pcb *pcb);
 static void tcp_receive(struct tcp_pcb *pcb);
 static void tcp_parseopt(struct tcp_pcb *pcb);
 
-static err_t tcp_listen_input(struct tcp_pcb_listen *pcb);
+
 static err_t tcp_timewait_input(struct tcp_pcb *pcb);
 
 
@@ -97,7 +97,6 @@ static err_t tcp_timewait_input(struct tcp_pcb *pcb);
 void tcp_input(struct pbuf *p, struct netif *inp)
 {
     struct tcp_pcb *pcb, *prev;
-    struct tcp_pcb_listen *lpcb;
     u8_t hdrlen;
     err_t err;
 
@@ -249,32 +248,6 @@ again_1:
                 return;
             }
         }
-
-        /* Finally, if we still did not get a match, we check all PCBs that
-     are LISTENing for incoming connections. */
-        prev = NULL;
-        for (lpcb = tcp_listen_pcbs; lpcb != NULL; lpcb = lpcb->next) {
-            if ((ip_addr_isany(&(lpcb->local_ip)) ||
-                 ip_addr_cmp(&(lpcb->local_ip), &(iphdr->dest))) &&
-                lpcb->local_port == tcphdr->dest) {
-                /* Move this PCB to the front of the list so that subsequent
-     lookups will be faster (we exploit locality in TCP segment
-     arrivals). */
-                if (prev != NULL) {
-                    ((struct tcp_pcb_listen *)prev)->next = lpcb->next;
-                    /* our successor is the remainder of the listening list */
-                    lpcb->next = tcp_listen_pcbs;
-                    /* put this listening pcb at the head of the listening list */
-                    tcp_listen_pcbs = lpcb;
-                }
-
-                LWIP_DEBUGF(TCP_INPUT_DEBUG, ("tcp_input: packed for LISTENing connection.\n"));
-                tcp_listen_input(lpcb);
-                pbuf_free(p);
-                return;
-            }
-            prev = (struct tcp_pcb *)lpcb;
-        }
     }
 
     if (pcb != NULL) {
@@ -383,73 +356,6 @@ end:
     LWIP_ASSERT("tcp_input: tcp_pcbs_sane()", tcp_pcbs_sane());
 }
 
-/* tcp_listen_input():
- *
- * Called by tcp_input() when a segment arrives for a listening
- * connection.
- */
-
-static err_t
-tcp_listen_input(struct tcp_pcb_listen *pcb)
-{
-    struct tcp_pcb *npcb;
-    u32_t optdata;
-
-    /* In the LISTEN state, we check for incoming SYN segments,
-     creates a new PCB, and responds with a SYN|ACK. */
-    if (flags & TCP_ACK) {
-        /* For incoming segments with the ACK flag set, respond with a
-       RST. */
-        LWIP_DEBUGF(TCP_RST_DEBUG, ("tcp_listen_input: ACK in LISTEN, sending reset\n"));
-        tcp_rst(ackno + 1, seqno + tcplen,
-                &(iphdr->dest), &(iphdr->src),
-                tcphdr->dest, tcphdr->src);
-    } else if (flags & TCP_SYN) {
-        LWIP_DEBUGF(TCP_DEBUG, ("TCP connection request %u -> %u.\n", tcphdr->src, tcphdr->dest));
-        npcb = tcp_alloc(pcb->prio);
-        /* If a new PCB could not be created (probably due to lack of memory),
-       we don't do anything, but rely on the sender will retransmit the
-       SYN at a time when we have more memory available. */
-        if (npcb == NULL) {
-            LWIP_DEBUGF(TCP_DEBUG, ("tcp_listen_input: could not allocate PCB\n"));
-            TCP_STATS_INC(tcp.memerr);
-            return ERR_MEM;
-        }
-        /* Set up the new PCB. */
-        ip_addr_set(&(npcb->local_ip), &(iphdr->dest));
-        npcb->local_port = pcb->local_port;
-        ip_addr_set(&(npcb->remote_ip), &(iphdr->src));
-        npcb->remote_port = tcphdr->src;
-        npcb->state = SYN_RCVD;
-        npcb->rcv_nxt = seqno + 1;
-        npcb->snd_wnd = tcphdr->wnd;
-        npcb->ssthresh = npcb->snd_wnd;
-        npcb->snd_wl1 = seqno - 1; /* initialise to seqno-1 to force window update */
-        npcb->callback_arg = pcb->callback_arg;
-#if LWIP_CALLBACK_API
-        npcb->accept = pcb->accept;
-#endif /* LWIP_CALLBACK_API */
-        /* inherit socket options */
-        npcb->so_options = pcb->so_options & (SOF_DEBUG | SOF_DONTROUTE | SOF_KEEPALIVE | SOF_OOBINLINE | SOF_LINGER);
-        /* Register the new PCB so that we can begin receiving segments
-       for it. */
-        TCP_REG(&tcp_active_pcbs, npcb);
-
-        /* Parse any options in the SYN. */
-        tcp_parseopt(npcb);
-
-        /* Build an MSS option. */
-        optdata = htonl(((u32_t)2 << 24) |
-                        ((u32_t)4 << 16) |
-                        (((u32_t)npcb->mss / 256) << 8) |
-                        (npcb->mss & 255));
-        /* Send a SYN|ACK together with the MSS option. */
-        tcp_enqueue(npcb, NULL, 0, TCP_SYN | TCP_ACK, 0, (u8_t *)&optdata, 4);
-        return tcp_output(npcb);
-    }
-    return ERR_OK;
-}
-
 /* tcp_timewait_input():
  *
  * Called by tcp_input() when a segment arrives for a connection in
@@ -516,7 +422,6 @@ tcp_process(struct tcp_pcb *pcb)
 
     /* Update the PCB (in)activity timer. */
     pcb->tmr = tcp_ticks;
-    pcb->keep_cnt = 0;
 
     /* Do different things depending on the TCP state. */
     switch (pcb->state) {

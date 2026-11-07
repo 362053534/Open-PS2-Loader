@@ -221,60 +221,6 @@ setup_tcp(struct netconn *conn)
     tcp_poll(pcb, poll_tcp, 4);
     tcp_err(pcb, err_tcp);
 }
-
-static err_t
-accept_function(void *arg, struct tcp_pcb *newpcb, err_t err)
-{
-    sys_mbox_t mbox;
-    struct netconn *newconn;
-    struct netconn *conn;
-
-#if API_MSG_DEBUG
-#if TCP_DEBUG
-    tcp_debug_print_state(newpcb->state);
-#endif /* TCP_DEBUG */
-#endif /* API_MSG_DEBUG */
-    conn = (struct netconn *)arg;
-    mbox = conn->acceptmbox;
-    newconn = memp_malloc(MEMP_NETCONN);
-    if (newconn == NULL) {
-        return ERR_MEM;
-    }
-    newconn->type = NETCONN_TCP;
-    newconn->pcb.tcp = newpcb;
-    setup_tcp(newconn);
-    newconn->recvmbox = sys_mbox_new();
-    if (newconn->recvmbox == SYS_MBOX_NULL) {
-        memp_free(MEMP_NETCONN, newconn);
-        return ERR_MEM;
-    }
-    newconn->mbox = sys_mbox_new();
-    if (newconn->mbox == SYS_MBOX_NULL) {
-        sys_mbox_free(newconn->recvmbox);
-        memp_free(MEMP_NETCONN, newconn);
-        return ERR_MEM;
-    }
-    newconn->sem = sys_sem_new(0);
-    if (newconn->sem == SYS_SEM_NULL) {
-        sys_mbox_free(newconn->recvmbox);
-        sys_mbox_free(newconn->mbox);
-        memp_free(MEMP_NETCONN, newconn);
-        return ERR_MEM;
-    }
-    newconn->acceptmbox = SYS_MBOX_NULL;
-    newconn->err = err;
-    /* Register event with callback */
-    if (conn->callback) {
-        (*conn->callback)(conn, NETCONN_EVT_RCVPLUS, 0);
-        /* We have to set the callback here even though
-         * the new socket is unknown. Mark the socket as -1. */
-        newconn->callback = conn->callback;
-        newconn->socket = -1;
-    }
-
-    sys_mbox_post(mbox, newconn);
-    return ERR_OK;
-}
 #endif /* LWIP_TCP */
 
 static void
@@ -397,67 +343,6 @@ do_delconn(struct api_msg_msg *msg)
     }
 }
 
-static void
-do_bind(struct api_msg_msg *msg)
-{
-    if (msg->conn->pcb.tcp == NULL) {
-        switch (msg->conn->type) {
-#if LWIP_RAW
-            case NETCONN_RAW:
-                msg->conn->pcb.raw = raw_new(msg->msg.bc.port); /* misusing the port field as protocol */
-                raw_recv(msg->conn->pcb.raw, recv_raw, msg->conn);
-                break;
-#endif
-#if LWIP_UDP
-            case NETCONN_UDPLITE:
-                msg->conn->pcb.udp = udp_new();
-                udp_setflags(msg->conn->pcb.udp, UDP_FLAGS_UDPLITE);
-                udp_recv(msg->conn->pcb.udp, recv_udp, msg->conn);
-                break;
-            case NETCONN_UDPNOCHKSUM:
-                msg->conn->pcb.udp = udp_new();
-                udp_setflags(msg->conn->pcb.udp, UDP_FLAGS_NOCHKSUM);
-                udp_recv(msg->conn->pcb.udp, recv_udp, msg->conn);
-                break;
-            case NETCONN_UDP:
-                msg->conn->pcb.udp = udp_new();
-                udp_recv(msg->conn->pcb.udp, recv_udp, msg->conn);
-                break;
-#endif /* LWIP_UDP */
-#if LWIP_TCP
-            case NETCONN_TCP:
-                msg->conn->pcb.tcp = tcp_new();
-                setup_tcp(msg->conn);
-#endif /* LWIP_TCP */
-            default:
-                break;
-        }
-    }
-    switch (msg->conn->type) {
-#if LWIP_RAW
-        case NETCONN_RAW:
-            msg->conn->err = raw_bind(msg->conn->pcb.raw, msg->msg.bc.ipaddr);
-            break;
-#endif
-#if LWIP_UDP
-        case NETCONN_UDPLITE:
-        /* FALLTHROUGH */
-        case NETCONN_UDPNOCHKSUM:
-        /* FALLTHROUGH */
-        case NETCONN_UDP:
-            msg->conn->err = udp_bind(msg->conn->pcb.udp, msg->msg.bc.ipaddr, msg->msg.bc.port);
-            break;
-#endif /* LWIP_UDP */
-#if LWIP_TCP
-        case NETCONN_TCP:
-            msg->conn->err = tcp_bind(msg->conn->pcb.tcp,
-                                      msg->msg.bc.ipaddr, msg->msg.bc.port);
-#endif /* LWIP_TCP */
-        default:
-            break;
-    }
-    TCPIP_APIMSG_ACK(msg->conn->mbox);
-}
 #if LWIP_TCP
 
 static err_t
@@ -593,77 +478,6 @@ do_disconnect(struct api_msg_msg *msg)
     TCPIP_APIMSG_ACK(msg->conn->mbox);
 }
 
-
-static void
-do_listen(struct api_msg_msg *msg)
-{
-    if (msg->conn->pcb.tcp != NULL) {
-        switch (msg->conn->type) {
-#if LWIP_RAW
-            case NETCONN_RAW:
-                LWIP_DEBUGF(API_MSG_DEBUG, ("api_msg: listen RAW: cannot listen for RAW.\n"));
-                break;
-#endif
-#if LWIP_UDP
-            case NETCONN_UDPLITE:
-            /* FALLTHROUGH */
-            case NETCONN_UDPNOCHKSUM:
-            /* FALLTHROUGH */
-            case NETCONN_UDP:
-                LWIP_DEBUGF(API_MSG_DEBUG, ("api_msg: listen UDP: cannot listen for UDP.\n"));
-                break;
-#endif /* LWIP_UDP */
-#if LWIP_TCP
-            case NETCONN_TCP:
-                msg->conn->pcb.tcp = tcp_listen(msg->conn->pcb.tcp);
-                if (msg->conn->pcb.tcp == NULL) {
-                    msg->conn->err = ERR_MEM;
-                } else {
-                    if (msg->conn->acceptmbox == SYS_MBOX_NULL) {
-                        msg->conn->acceptmbox = sys_mbox_new();
-                        if (msg->conn->acceptmbox == SYS_MBOX_NULL) {
-                            msg->conn->err = ERR_MEM;
-                            break;
-                        }
-                    }
-                    tcp_arg(msg->conn->pcb.tcp, msg->conn);
-                    tcp_accept(msg->conn->pcb.tcp, accept_function);
-                }
-#endif
-            default:
-                break;
-        }
-    }
-    TCPIP_APIMSG_ACK(msg->conn->mbox);
-}
-
-static void
-do_accept(struct api_msg_msg *msg)
-{
-    if (msg->conn->pcb.tcp != NULL) {
-        switch (msg->conn->type) {
-#if LWIP_RAW
-            case NETCONN_RAW:
-                LWIP_DEBUGF(API_MSG_DEBUG, ("api_msg: accept RAW: cannot accept for RAW.\n"));
-                break;
-#endif
-#if LWIP_UDP
-            case NETCONN_UDPLITE:
-            /* FALLTHROUGH */
-            case NETCONN_UDPNOCHKSUM:
-            /* FALLTHROUGH */
-            case NETCONN_UDP:
-                LWIP_DEBUGF(API_MSG_DEBUG, ("api_msg: accept UDP: cannot accept for UDP.\n"));
-                break;
-#endif /* LWIP_UDP */
-            case NETCONN_TCP:
-                break;
-            default:
-                break;
-        }
-    }
-}
-
 static void
 do_send(struct api_msg_msg *msg)
 {
@@ -789,11 +603,8 @@ do_close(struct api_msg_msg *msg)
 api_msg_decode __decode__[API_MSG_MAX] = {
     do_newconn,
     do_delconn,
-    do_bind,
     do_connect,
     do_disconnect,
-    do_listen,
-    do_accept,
     do_send,
     do_recv,
     do_write,

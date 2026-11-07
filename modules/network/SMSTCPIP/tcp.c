@@ -232,194 +232,6 @@ void tcp_abort(struct tcp_pcb *pcb)
 }
 
 /*
- * tcp_bind():
- *
- * Binds the connection to a local portnumber and IP address. If the
- * IP address is not given (i.e., ipaddr == NULL), the IP address of
- * the outgoing network interface is used instead.
- *
- */
-
-err_t tcp_bind(struct tcp_pcb *pcb, struct ip_addr *ipaddr, u16_t port)
-{
-    struct tcp_pcb *cpcb;
-#ifdef SO_REUSE
-    int reuse_port_all_set = 1;
-#endif /* SO_REUSE */
-
-    if (port == 0) {
-        port = tcp_new_port();
-    }
-#ifndef SO_REUSE
-    /* Check if the address already is in use. */
-    for (cpcb = (struct tcp_pcb *)tcp_listen_pcbs;
-         cpcb != NULL; cpcb = cpcb->next) {
-        if (cpcb->local_port == port) {
-            if (ip_addr_isany(&(cpcb->local_ip)) ||
-                ip_addr_isany(ipaddr) ||
-                ip_addr_cmp(&(cpcb->local_ip), ipaddr)) {
-                return ERR_USE;
-            }
-        }
-    }
-    for (cpcb = tcp_active_pcbs;
-         cpcb != NULL; cpcb = cpcb->next) {
-        if (cpcb->local_port == port) {
-            if (ip_addr_isany(&(cpcb->local_ip)) ||
-                ip_addr_isany(ipaddr) ||
-                ip_addr_cmp(&(cpcb->local_ip), ipaddr)) {
-                return ERR_USE;
-            }
-        }
-    }
-#else  /* SO_REUSE */
-    /* Search through list of PCB's in LISTEN state.
-
-  If there is a PCB bound to specified port and IP_ADDR_ANY another PCB can be bound to the interface IP
-  or to the loopback address on the same port if SOF_REUSEADDR is set. Any combination of PCB's bound to
-  the same local port, but to one address out of {IP_ADDR_ANY, 127.0.0.1, interface IP} at a time is valid.
-  But no two PCB's bound to same local port and same local address is valid.
-
-  If SOF_REUSEPORT is set several PCB's can be bound to same local port and same local address also. But then
-  all PCB's must have the SOF_REUSEPORT option set.
-
-  When the two options aren't set and specified port is already bound, ERR_USE is returned saying that
-  address is already in use. */
-    for (cpcb = (struct tcp_pcb *)tcp_listen_pcbs; cpcb != NULL; cpcb = cpcb->next) {
-        if (cpcb->local_port == port) {
-            if (ip_addr_cmp(&(cpcb->local_ip), ipaddr)) {
-                if (pcb->so_options & SOF_REUSEPORT) {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in listening PCB's: SO_REUSEPORT set and same address.\n"));
-                    reuse_port_all_set = (reuse_port_all_set && (cpcb->so_options & SOF_REUSEPORT));
-                } else {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in listening PCB's: SO_REUSEPORT not set and same address.\n"));
-                    return ERR_USE;
-                }
-            } else if ((ip_addr_isany(ipaddr) && !ip_addr_isany(&(cpcb->local_ip))) ||
-                       (!ip_addr_isany(ipaddr) && ip_addr_isany(&(cpcb->local_ip)))) {
-                if (!(pcb->so_options & SOF_REUSEADDR) && !(pcb->so_options & SOF_REUSEPORT)) {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in listening PCB's SO_REUSEPORT or SO_REUSEADDR not set and not the same address.\n"));
-                    return ERR_USE;
-                } else {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in listening PCB's SO_REUSEPORT or SO_REUSEADDR set and not the same address.\n"));
-                }
-            }
-        }
-    }
-
-    /* Search through list of PCB's in a state in which they can accept or send data. Same decription as for
-     PCB's in state LISTEN applies to this PCB's regarding the options SOF_REUSEADDR and SOF_REUSEPORT. */
-    for (cpcb = tcp_active_pcbs; cpcb != NULL; cpcb = cpcb->next) {
-        if (cpcb->local_port == port) {
-            if (ip_addr_cmp(&(cpcb->local_ip), ipaddr)) {
-                if (pcb->so_options & SOF_REUSEPORT) {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in active PCB's SO_REUSEPORT set and same address.\n"));
-                    reuse_port_all_set = (reuse_port_all_set && (cpcb->so_options & SOF_REUSEPORT));
-                } else {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in active PCB's SO_REUSEPORT not set and same address.\n"));
-                    return ERR_USE;
-                }
-            } else if ((ip_addr_isany(ipaddr) && !ip_addr_isany(&(cpcb->local_ip))) ||
-                       (!ip_addr_isany(ipaddr) && ip_addr_isany(&(cpcb->local_ip)))) {
-                if (!(pcb->so_options & SOF_REUSEADDR) && !(pcb->so_options & SOF_REUSEPORT)) {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in active PCB's SO_REUSEPORT or SO_REUSEADDR not set and not the same address.\n"));
-                    return ERR_USE;
-                } else {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in active PCB's SO_REUSEPORT or SO_REUSEADDR set and not the same address.\n"));
-                }
-            }
-        }
-    }
-
-    /* Search through list of PCB's in TIME_WAIT state. If SO_REUSEADDR is set a bound combination [IP, port}
-     can be rebound. The same applies when SOF_REUSEPORT is set.
-
-     If SOF_REUSEPORT is set several PCB's can be bound to same local port and same local address also. But then
-     all PCB's must have the SOF_REUSEPORT option set.
-
-     When the two options aren't set and specified port is already bound, ERR_USE is returned saying that
-     address is already in use. */
-    for (cpcb = tcp_tw_pcbs; cpcb != NULL; cpcb = cpcb->next) {
-        if (cpcb->local_port == port) {
-            if (ip_addr_cmp(&(cpcb->local_ip), ipaddr)) {
-                if (!(pcb->so_options & SOF_REUSEADDR) && !(pcb->so_options & SOF_REUSEPORT)) {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in TIME_WAIT PCB's SO_REUSEPORT or SO_REUSEADDR not set and same address.\n"));
-                    return ERR_USE;
-                } else if (pcb->so_options & SOF_REUSEPORT) {
-                    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: in TIME_WAIT PCB's SO_REUSEPORT set and same address.\n"));
-                    reuse_port_all_set = (reuse_port_all_set && (cpcb->so_options & SOF_REUSEPORT));
-                }
-            }
-        }
-    }
-
-    /* If SOF_REUSEPORT isn't set in all PCB's bound to specified port and local address specified then
-     {IP, port} can't be reused. */
-    if (!reuse_port_all_set) {
-        LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: not all sockets have SO_REUSEPORT set.\n"));
-        return ERR_USE;
-    }
-#endif /* SO_REUSE */
-
-    if (!ip_addr_isany(ipaddr)) {
-        pcb->local_ip = *ipaddr;
-    }
-    pcb->local_port = port;
-    LWIP_DEBUGF(TCP_DEBUG, ("tcp_bind: bind to port %u\n", port));
-    return ERR_OK;
-}
-#if LWIP_CALLBACK_API
-static err_t
-tcp_accept_null(void *arg, struct tcp_pcb *pcb, err_t err)
-{
-    (void)arg;
-    (void)pcb;
-    (void)err;
-
-    return ERR_ABRT;
-}
-#endif /* LWIP_CALLBACK_API */
-
-/*
- * tcp_listen():
- *
- * Set the state of the connection to be LISTEN, which means that it
- * is able to accept incoming connections. The protocol control block
- * is reallocated in order to consume less memory. Setting the
- * connection to LISTEN is an irreversible process.
- *
- */
-
-struct tcp_pcb *
-tcp_listen(struct tcp_pcb *pcb)
-{
-    struct tcp_pcb_listen *lpcb;
-
-    /* already listening? */
-    if (pcb->state == LISTEN) {
-        return pcb;
-    }
-    lpcb = memp_malloc(MEMP_TCP_PCB_LISTEN);
-    if (lpcb == NULL) {
-        return NULL;
-    }
-    lpcb->callback_arg = pcb->callback_arg;
-    lpcb->local_port = pcb->local_port;
-    lpcb->state = LISTEN;
-    lpcb->so_options = pcb->so_options;
-    lpcb->so_options |= SOF_ACCEPTCONN;
-    lpcb->ttl = pcb->ttl;
-    lpcb->tos = pcb->tos;
-    ip_addr_set(&lpcb->local_ip, &pcb->local_ip);
-    memp_free(MEMP_TCP_PCB, pcb);
-#if LWIP_CALLBACK_API
-    lpcb->accept = tcp_accept_null;
-#endif /* LWIP_CALLBACK_API */
-    TCP_REG(&tcp_listen_pcbs, lpcb);
-    return (struct tcp_pcb *)lpcb;
-}
-
-/*
  * tcp_recved():
  *
  * This function should be called by the application when it has
@@ -435,11 +247,8 @@ void tcp_recved(struct tcp_pcb *pcb, u16_t len)
     } else {
         pcb->rcv_wnd += len;
     }
-    if (pcb->flags & TF_ACKNODELAY) {
-        tcp_ack_now(pcb);
-        pcb->flags &= ~(TF_ACK_DELAY | TF_ACK_NOW);
-    } else if (!(pcb->flags & TF_ACK_DELAY) &&
-               !(pcb->flags & TF_ACK_NOW)) {
+    if (!(pcb->flags & TF_ACK_DELAY) &&
+        !(pcb->flags & TF_ACK_NOW)) {
         tcp_ack(pcb);
     }
 
@@ -622,17 +431,6 @@ void tcp_slowtmr(void)
                 TCP_FIN_WAIT_TIMEOUT / TCP_SLOW_INTERVAL) {
                 ++pcb_remove;
                 LWIP_DEBUGF(TCP_DEBUG, ("tcp_slowtmr: removing pcb stuck in FIN-WAIT-2\n"));
-            }
-        }
-
-        /* Check if KEEPALIVE should be sent */
-        if ((pcb->so_options & SOF_KEEPALIVE) && ((pcb->state == ESTABLISHED) || (pcb->state == CLOSE_WAIT))) {
-            if ((u32_t)(tcp_ticks - pcb->tmr) > (pcb->keepalive + TCP_MAXIDLE) / TCP_SLOW_INTERVAL) {
-                LWIP_DEBUGF(TCP_DEBUG, ("tcp_slowtmr: KEEPALIVE timeout. Aborting connection to %u.%u.%u.%u.\n",
-                                        ip4_addr1(&pcb->remote_ip), ip4_addr2(&pcb->remote_ip),
-                                        ip4_addr3(&pcb->remote_ip), ip4_addr4(&pcb->remote_ip)));
-
-                tcp_abort(pcb);
             }
         }
 
@@ -927,10 +725,6 @@ tcp_alloc(u8_t prio)
 #if LWIP_CALLBACK_API
         pcb->recv = tcp_recv_null;
 #endif /* LWIP_CALLBACK_API */
-
-        /* Init KEEPALIVE timer */
-        pcb->keepalive = TCP_KEEPDEFAULT;
-        pcb->keep_cnt = 0;
     }
     return pcb;
 }
