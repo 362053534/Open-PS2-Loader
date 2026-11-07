@@ -1481,9 +1481,8 @@ int lwip_ioctl(int s, long cmd, void *argp)
 }
 #endif
 
-/* 没有调用者。空函数不死，四条 nop 会死。这里留两条，对半看代码长度。 */
+/* 没有调用者。空函数不死，两条 nop 会死。这里只留一条。 */
 void lwip_smb_pkt_len_touch(void)
 {
-    __asm__ volatile("nop");
     __asm__ volatile("nop");
 }
