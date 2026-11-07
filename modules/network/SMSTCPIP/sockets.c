@@ -445,33 +445,39 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
             avail_len -= LWIP_NBSS_HDR_LEN;
             copy_payload = 0;
         } else {
-            /* 本包总长（含 4 字节 NBSS 头）。首段不越过本包，避免吃掉下一个回包。
-             * 不足 63 字节仍先凑满，等待时仍会读 PHY。短包立即返回先不加。 */
+            /* 本包总长（含 4 字节 NBSS 头）。不足 63 字节就凑满本包后返回，
+             * 不再死等 63 字节。够 63 字节的仍按原来的 DataOffset 收，不做封顶。 */
             pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
                                            (((u32_t)((u8_t *)header)[2]) << 8) |
                                            ((u32_t)((u8_t *)header)[3]));
 
-            accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
-            if (accum <= 0)
-                return accum;
-
-            netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
-            index = ((u8_t *)header)[index] + 4;
-            /* 畸形 DataOffset 超出本包时只消耗到包尾，避免把下一包算进本包。 */
-            if ((u32_t)index > pkt_len)
-                index = (int)pkt_len;
-
-            if ((u16_t)index > avail_len) {
-                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
+            if (pkt_len < LWIP_SMB_READX_HDRLEN) {
+                accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)pkt_len, flags);
                 if (accum <= 0)
                     return accum;
-            }
 
-            copylen = (u16_t)index;
-            avail_len -= (u16_t)index;
-            /* 首段载荷最多拷到本包结尾。 */
-            if ((u32_t)plen > pkt_len - (u32_t)index)
-                plen = (int)(pkt_len - (u32_t)index);
+                netbuf_copy_partial(buf, header, (u16_t)pkt_len, sock->lastoffset);
+                copylen = (u16_t)pkt_len;
+                avail_len -= (u16_t)pkt_len;
+                copy_payload = 0;
+            } else {
+                /* ReadAndX 头 63 字节；DataOffset 在 header[index]，实际消耗是 DataOffset+4。 */
+                accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_SMB_READX_HDRLEN, flags);
+                if (accum <= 0)
+                    return accum;
+
+                netbuf_copy_partial(buf, header, LWIP_SMB_READX_HDRLEN, sock->lastoffset);
+                index = ((u8_t *)header)[index] + 4;
+
+                if ((u16_t)index > avail_len) {
+                    accum = lwip_smb_accum(sock, buf, &avail_len, (u16_t)index, flags);
+                    if (accum <= 0)
+                        return accum;
+                }
+
+                copylen = (u16_t)index;
+                avail_len -= (u16_t)index;
+            }
         }
     }
 
