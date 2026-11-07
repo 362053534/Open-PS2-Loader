@@ -346,8 +346,8 @@ int lwip_listen(int s, int backlog)
 #define LWIP_NBSS_KEEPALIVE   0x85
 #define LWIP_SMB_READX_HDRLEN 63
 
-/* 不加 static，否则没人引用时旧编译器会删掉。读包和保活都不碰它，只多 4 字节 BSS。 */
-volatile u32_t lwip_smb_pkt_len_probe;
+/* 32 字节，超过 -G 的小数据阈值，写它时不用 $gp。 */
+volatile u32_t lwip_smb_pkt_len_probe[8];
 
 /* 把后续 TCP 段接到当前 netbuf，直到剩余可读长度 >= need。
  * 短段绝不能丢，否则 SMB 字节流会错位；失败时把已收到的数据留在 lastdata。
@@ -541,8 +541,8 @@ int lwip_tcp_send_keepalive(int s)
 {
     struct lwip_socket *sock = get_socket(s);
 
-    /* 只把 0 写入全局探针，不从它读。用来区分读和写。 */
-    lwip_smb_pkt_len_probe = 0;
+    /* 只写第 0 项。变量已经大到不会进 .sbss。 */
+    lwip_smb_pkt_len_probe[0] = 0;
 
     if (!sock)
         return -1;
