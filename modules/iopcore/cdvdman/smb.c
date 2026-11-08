@@ -163,12 +163,10 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 
 /* 被放弃的 ReadAndX 回包还可能经 TCP 重传到达，发下一个请求前必须先收掉丢弃。
  * smb_stale_pending=1：整个回包（从 NBSS 头开始）都还没收；smb_stale_skip：还要丢的字节数。
- * smb_echo_owed：已发出并超时、应答还没从字节流拿走的 Echo 条数。读盘会把它当成读回包。
  * 放弃时 SMSTCPIP 的 lwip_smb_accum 只往 lastdata 里拼段、不推进 lastoffset，
  * recv/recvfrom 共用同一个 lastdata/lastoffset，所以这里用 recv 从断点接着收即可。 */
 static int smb_stale_pending;
 static int smb_stale_skip;
-static int smb_echo_owed;
 static int smb_stale_hdr_got;
 static u8 smb_stale_hdr[4];
 static u8 smb_stale_buf[256];
@@ -202,7 +200,7 @@ static int smb_drain_stale(void)
 {
     int result = 1, size;
 
-    while (smb_stale_pending || smb_stale_skip > 0 || smb_echo_owed > 0) {
+    while (smb_stale_pending || smb_stale_skip > 0) {
         if (smb_stale_skip > 0) {
             size = smb_stale_skip > (int)sizeof(smb_stale_buf) ? (int)sizeof(smb_stale_buf) : smb_stale_skip;
             result = smb_stale_recv(smb_stale_buf, size);
@@ -222,15 +220,11 @@ static int smb_drain_stale(void)
         smb_stale_hdr_got = 0;
         smb_stale_skip = (smb_stale_hdr[1] << 16) | (smb_stale_hdr[2] << 8) | smb_stale_hdr[3];
         // keepalive(0x85) 不是要等的回包，丢掉后继续等真正的 Session Message
-        if (smb_stale_hdr[0] == 0) {
-            if (smb_stale_pending)
-                smb_stale_pending = 0; /* 这条是放弃的读回包，不能拿来抵 Echo */
-            else if (smb_echo_owed > 0)
-                smb_echo_owed--;
-        }
+        if (smb_stale_hdr[0] == 0)
+            smb_stale_pending = 0;
     }
 
-    if (!smb_stale_pending && smb_stale_skip <= 0 && smb_echo_owed <= 0)
+    if (!smb_stale_pending && smb_stale_skip <= 0)
         return 1;
 
     // 对端已关闭，旧回包不会再来，清掉记录
@@ -238,7 +232,6 @@ static int smb_drain_stale(void)
         smb_stale_pending = 0;
         smb_stale_skip = 0;
         smb_stale_hdr_got = 0;
-        smb_echo_owed = 0;
     }
 
     return result;
@@ -250,8 +243,8 @@ static int SendData(int sock, char *buf, int size)
     int remaining, result;
     char *ptr;
 
-    // 所有请求都经过这里：先丢掉上次被放弃的读回包和超时未收回的 Echo，再发新请求
-    if (sock == main_socket && (smb_stale_pending || smb_stale_skip > 0 || smb_echo_owed > 0)) {
+    // 所有请求都经过这里：先丢掉上次被放弃的读回包，再发新请求
+    if (sock == main_socket && (smb_stale_pending || smb_stale_skip > 0)) {
         result = smb_drain_stale();
         if (result <= 0)
             return result;
@@ -306,9 +299,6 @@ static int ReceiveSMBReply(int timeout_ms, u16 echo_mid)
                 if (smb_is_echo_reply(result)) {
                     if (echo_mid && SMB_buf.smb.echoRequest.smbH.MID == echo_mid)
                         return size;
-                    /* 这条是更早超时的 Echo，已经从字节流拿走，不能再留在待丢条数里。 */
-                    if (smb_echo_owed > 0)
-                        smb_echo_owed--;
                 } else {
                     return echo_mid ? -2 : size;
                 }
@@ -976,7 +966,7 @@ int smb_Echo(void)
     if (smb_io_sema < 0 || PollSema(smb_io_sema) != 0)
         return 0;
 
-    if ((smb_stale_pending || smb_stale_skip > 0 || smb_echo_owed > 0) && smb_drain_stale() <= 0) {
+    if ((smb_stale_pending || smb_stale_skip > 0) && smb_drain_stale() <= 0) {
         SIGNALIOSEMA(smb_io_sema);
         return 0;
     }
@@ -1014,8 +1004,7 @@ int smb_Echo(void)
     else if (result != SMB_ECHO_TIMEOUT)
         result = -1;
     if (result == SMB_ECHO_TIMEOUT) {
-        /* 请求已在发送队列里，恢复后服务器会补应答。下一次发送前按条丢掉。 */
-        smb_echo_owed++;
+        smb_stale_pending = 1;
         missed++;
 #ifdef __IOPCORE_DEBUG
         printf("[SMBECHO] timeout mid=%u missed=%u\n", mid, missed);
@@ -1054,7 +1043,6 @@ int smb_Disconnect(void)
     smb_stale_pending = 0;
     smb_stale_skip = 0;
     smb_stale_hdr_got = 0;
-    smb_echo_owed = 0;
 
     return 1;
 }

@@ -476,7 +476,6 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
         if (conn->type == NETCONN_TCP) {
             while ((sndbuf = tcp_sndbuf(conn->pcb.tcp)) == 0) {
                 if (sys_arch_sem_wait(conn->sem, conn->send_timeout) == SYS_ARCH_TIMEOUT) {
-                    /* sem 未创建，等待会立刻失败。这不是拆连接，不能写进 conn->err。 */
                     result = ERR_MEM;
                     goto ret;
                 }
@@ -504,7 +503,6 @@ err_t netconn_write(struct netconn *conn, void *dataptr, u16_t size, u8_t copy)
         } else if (conn->err == ERR_MEM) {
             conn->err = ERR_OK;
             if (sys_arch_sem_wait(conn->sem, conn->send_timeout) == SYS_ARCH_TIMEOUT) {
-                /* sem 未创建，等待会立刻失败。这不是拆连接，不能写进 conn->err。 */
                 result = ERR_MEM;
                 goto ret;
             }
@@ -516,7 +514,6 @@ ret:
     memp_free(MEMP_API_MSG, msg);
     conn->state = NETCONN_NONE;
 
-    /* result 只表示这次没放进发送队列。连接上的错误仍走 conn->err。 */
     return result != ERR_OK ? result : conn->err;
 }
 
