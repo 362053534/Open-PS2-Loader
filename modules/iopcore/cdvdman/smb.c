@@ -41,7 +41,7 @@
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
 #define SMB_ECHO_POLL_MS       20
-#define SMB_ECHO_TIMEOUT_MS    6000
+#define SMB_ECHO_TIMEOUT_MS    2000 /* 与发送间隔同为 2 秒，且是 20ms 轮询的整数倍 */
 /* 数据面轮询间隔取 1ms：间隔越大，每个 8KB 分块的往返延迟越大，读盘越慢。 */
 // IOP 的 DelayThread 最短就是 100 微秒，填更小也会被抬到 100
 #define SMB_READ_POLL_US       100

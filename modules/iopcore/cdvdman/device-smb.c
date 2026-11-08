@@ -9,9 +9,9 @@
 
 #include "device.h"
 
-/* 空闲 2 分钟发一次 Echo。拍长仍是 2 秒，重连的 DelayThread 不变。 */
+/* 空闲 2 秒发一次 Echo。拍长仍是 2 秒，重连的 DelayThread 不变。 */
 #define SMB_ECHO_INTERVAL_US 2000000
-#define SMB_ECHO_IDLE_TICKS  60
+#define SMB_ECHO_IDLE_TICKS  1
 
 extern struct cdvdman_settings_smb cdvdman_settings;
 
@@ -227,7 +227,7 @@ int smb_read_thread_on_wake(int read_busy)
 
     smb_echo_busy = 1;
     smb_echo_due = 0;
-    /* 以发起时间计下一个两分钟，六秒等待不能把周期再往后拖。 */
+    /* 以发起时间把计数清零。这次若等满 2 秒，下一次要等闹钟再响。 */
     smbIdleTicks = 0;
     /* Echo 与真实读盘共用读线程和 I/O 锁，收包结束或超时后才交回数据面。 */
     smb_Echo();
