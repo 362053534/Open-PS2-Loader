@@ -878,7 +878,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
     //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
     //recvfrom() is a custom function that will receive the reply.
-    while (1) {
+    do {
         rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
         if (rcv_size <= 0) {
             // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
@@ -886,18 +886,7 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
                 smb_stale_pending = 1;
             return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
         }
-        if (nb_GetPacketType() != 0)
-            continue;
-        if (!smb_is_echo_reply(rcv_size))
-            break;
-        /* 超时的 Echo 可以晚于新读请求到达；丢弃它本身，不能错配为 ReadAndX。 */
-        smb_stale_skip = nb_GetSessionMessageLength() + 4 - rcv_size;
-        if (smb_stale_skip > 0) {
-            r = smb_drain_stale();
-            if (r <= 0)
-                return r == SMB_READ_LINK_DOWN ? r : -2;
-        }
-    }
+    } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
     expected_size = nb_GetSessionMessageLength() + 4;
     DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
