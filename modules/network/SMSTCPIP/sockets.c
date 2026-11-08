@@ -234,9 +234,6 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen)
 #define LWIP_NBSS_HDR_LEN     4
 #define LWIP_NBSS_KEEPALIVE   0x85
 #define LWIP_SMB_READX_HDRLEN 63
-/* 和 cdvdman/smb.c 约定：index 为 -2 时只探测下一包。返回 -3 表示不短于 63 字节，偏移不推进。 */
-#define LWIP_LATE_PROBE_INDEX (-2)
-#define LWIP_LATE_PROBE_LONG  (-3)
 
 /* 把后续 TCP 段接到当前 netbuf，直到剩余可读长度 >= need。
  * 短段绝不能丢，否则 SMB 字节流会错位；失败时把已收到的数据留在 lastdata。
@@ -268,48 +265,6 @@ static int lwip_smb_accum(struct lwip_socket *sock, struct netbuf *buf, u16_t *a
     }
 
     return 1;
-}
-
-/* Echo 超时后的旁路。短包按 NBSS 长度整包消耗，避免 63 字节等待把下一包吃进来。
- * 不短于 63 字节则不推进 lastoffset，调用方仍走原来的 ReadAndX 接收。 */
-static int lwip_recv_late_probe(struct lwip_socket *sock, struct netbuf *buf, u16_t avail_len,
-                                void *header, unsigned int flags)
-{
-    int accum;
-    u32_t pkt_len;
-    u16_t copylen;
-
-    accum = lwip_smb_accum(sock, buf, &avail_len, LWIP_NBSS_HDR_LEN, flags);
-    if (accum <= 0)
-        return accum;
-
-    netbuf_copy_partial(buf, header, LWIP_NBSS_HDR_LEN, sock->lastoffset);
-    pkt_len = LWIP_NBSS_HDR_LEN + ((((u32_t)((u8_t *)header)[1]) << 16) |
-                                   (((u32_t)((u8_t *)header)[2]) << 8) |
-                                   ((u32_t)((u8_t *)header)[3]));
-    if (pkt_len >= LWIP_SMB_READX_HDRLEN) {
-        sock_set_errno(sock, 0);
-        return LWIP_LATE_PROBE_LONG;
-    }
-
-    copylen = (u16_t)pkt_len;
-    accum = lwip_smb_accum(sock, buf, &avail_len, copylen, flags);
-    if (accum <= 0)
-        return accum;
-
-    netbuf_copy_partial(buf, header, copylen, sock->lastoffset);
-    avail_len -= copylen;
-
-    if (netconn_type(sock->conn) == NETCONN_TCP && avail_len > 0) {
-        sock->lastdata = buf;
-        sock->lastoffset += copylen;
-    } else {
-        sock->lastdata = NULL;
-        sock->lastoffset = 0;
-        netbuf_delete(buf);
-    }
-    sock_set_errno(sock, 0);
-    return (int)copylen;
 }
 
 // Note: This function was modified so that the SMB header can be retrieved directly and the payload stored separately from it.
@@ -361,10 +316,6 @@ int lwip_recvfrom(int s, void *header, int index, void *payload, int plen, unsig
     avail_len = netbuf_len(buf);
 
     avail_len -= sock->lastoffset;
-
-    /* Echo 超时旁路。-2 也小于 0，必须先于下面的整包接收返回，否则长的 ReadAndX 会被截成短包。 */
-    if (index == LWIP_LATE_PROBE_INDEX)
-        return lwip_recv_late_probe(sock, buf, avail_len, header, flags);
 
     /* copy the contents of the received buffer into
      the supplied memory pointer mem */

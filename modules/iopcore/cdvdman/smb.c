@@ -168,8 +168,6 @@ int OpenTCPSession(struct in_addr dst_IP, u16 dst_port)
 static int smb_stale_pending;
 static int smb_stale_skip;
 static int smb_stale_hdr_got;
-/* Echo 超时后晚到的回包还在字节流里。下一笔 ReadAndX 先探测，避免 63 字节等待吃进下一包。 */
-static int smb_echo_late;
 static u8 smb_stale_hdr[4];
 static u8 smb_stale_buf[256];
 static int smb_in_data_read;
@@ -841,47 +839,6 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
     smb_read_progress();
     return result;
 }
-
-/* 与 sockets.c 的 LWIP_LATE_PROBE_INDEX / LWIP_LATE_PROBE_LONG 数值相同。
- * 探测返回的 -3 只表示长包已退回，和 SMB_READ_LINK_DOWN 数值相同，必须先区分。 */
-#define SMB_LATE_PROBE_INDEX (-2)
-#define SMB_LATE_PROBE_LONG  (-3)
-
-/* 只在 Echo 超时之后调用。短的晚到 Echo 整包丢掉；长包不消耗，交回原来的接收。
- * 标志没清掉之前，后面的读仍要探测：丢了的 Echo 可能夹在两次读之间。 */
-static int smb_take_late_echo(void)
-{
-    int result, polls = 0;
-
-    for (;;) {
-        result = plwip_recvfrom(main_socket, &SMB_buf, SMB_LATE_PROBE_INDEX, NULL, sizeof(SMB_buf), MSG_DONTWAIT, NULL, NULL);
-        if (result == SMB_LATE_PROBE_LONG) {
-            smb_read_progress();
-            return 0;
-        }
-        if (result < 0) {
-            if (++polls >= SMB_READ_LINK_CHECK_POLLS) {
-                polls = 0;
-                if (smb_read_stall_check())
-                    return SMB_READ_LINK_DOWN;
-            }
-            DelayThread(SMB_READ_POLL_US);
-            continue;
-        }
-        smb_read_progress();
-        if (result == 0)
-            return -2;
-        /* keepalive 的长度是 0，上面已经按本包长度吃掉，接着等真正的回包。 */
-        if (nb_GetPacketType() != 0)
-            continue;
-        if (smb_is_echo_reply(result)) {
-            smb_echo_late = 0;
-            return 0;
-        }
-        /* 短的非 Echo 已经在 SMB_buf 里。再走 index 49 会把下一包当成这一包。 */
-        return result;
-    }
-}
 #endif
 
 //-------------------------------------------------------------------------
@@ -919,27 +876,17 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
     if (r <= 0)
         return r == SMB_READ_LINK_DOWN ? r : -1;
 
-    /* 正常存档标志为 0，不调用探测。Echo 超时后才先按 NBSS 长度把短包分开。 */
-    r = smb_echo_late ? smb_take_late_echo() : 0;
-    if (r < 0) {
-        smb_stale_pending = 1;
-        return r == SMB_READ_LINK_DOWN ? r : -2;
-    }
-    if (r > 0)
-        rcv_size = r;
-    else {
-        //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
-        //recvfrom() is a custom function that will receive the reply.
-        do {
-            rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
-            if (rcv_size <= 0) {
-                // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
-                if (rcv_size < 0)
-                    smb_stale_pending = 1;
-                return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
-            }
-        } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
-    }
+    //offset 49 is the offset of the DataOffset field within the ReadAndXResponse structure.
+    //recvfrom() is a custom function that will receive the reply.
+    do {
+        rcv_size = RecvFromTimed(main_socket, &SMB_buf, 49, readbuf, nbytes);
+        if (rcv_size <= 0) {
+            // 放弃等待（非对端关闭）：整个回包以后可能还会到，记下待丢弃
+            if (rcv_size < 0)
+                smb_stale_pending = 1;
+            return rcv_size == SMB_READ_LINK_DOWN ? rcv_size : -2;
+        }
+    } while (nb_GetPacketType() != 0); // dropping NBSS Session Keep alive
 
     expected_size = nb_GetSessionMessageLength() + 4;
     DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
@@ -1141,20 +1088,16 @@ int smb_Echo(void)
     else if (result != SMB_ECHO_TIMEOUT)
         result = -1;
     if (result == SMB_ECHO_TIMEOUT) {
-        /* 回包还可能晚到。下一笔读先按 NBSS 长度处理短包。 */
-        smb_echo_late = 1;
         missed++;
 #ifdef __IOPCORE_DEBUG
         printf("[SMBECHO] timeout mid=%u missed=%u\n", mid, missed);
 #endif
-    } else {
-        /* 匹配 MID 之前，收包循环已经吃掉更早的 Echo，超时标志可以清。发送失败则保留。 */
-        if (result == 1)
-            smb_echo_late = 0;
-#ifdef __IOPCORE_DEBUG
-        printf("[SMBECHO] result mid=%u status=%d\n", mid, result);
-#endif
     }
+#ifdef __IOPCORE_DEBUG
+    else {
+        printf("[SMBECHO] result mid=%u status=%d\n", mid, result);
+    }
+#endif
     SIGNALIOSEMA(smb_io_sema);
     return result;
 }
@@ -1183,7 +1126,6 @@ int smb_Disconnect(void)
     smb_stale_pending = 0;
     smb_stale_skip = 0;
     smb_stale_hdr_got = 0;
-    smb_echo_late = 0;
 
     return 1;
 }
