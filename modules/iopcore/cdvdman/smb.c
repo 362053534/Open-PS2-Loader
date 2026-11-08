@@ -264,46 +264,6 @@ static int SendData(int sock, char *buf, int size)
     return size;
 }
 
-/* flags == 0 时是原来的阻塞收包；flags == MSG_DONTWAIT 时自己轮询，
- * 超时上限 timeout_ms —— 这样就不必去 setsockopt(SO_RCVTIMEO)，
- * 那会让 lwip 走 sys_arch_sem_wait() 的 alarm 分支。 */
-static int RecvDataEx(int sock, char *buf, int size, unsigned int flags, int timeout_ms)
-{
-    int remaining, result, waited;
-    char *ptr;
-
-    ptr = buf;
-    remaining = size;
-    waited = 0;
-    while (remaining > 0) {
-        result = plwip_recv(sock, ptr, remaining, flags);
-        if (result > 0) {
-            ptr += result;
-            remaining -= result;
-            continue;
-        }
-
-        if (result == 0) /* 对端关闭 */
-            return 0;
-
-        if (!(flags & MSG_DONTWAIT))
-            return result; /* 阻塞模式下出错就是出错 */
-
-        if (timeout_ms >= 0 && waited >= timeout_ms)
-            return 0; /* 轮询超时，不把半包当错误丢掉 */
-
-        DelayThread(SMB_ECHO_POLL_MS * 1000);
-        waited += SMB_ECHO_POLL_MS;
-    }
-
-    return size;
-}
-
-static int RecvData(int sock, char *buf, int size)
-{
-    return RecvDataEx(sock, buf, size, 0, 0);
-}
-
 static int smb_is_echo_reply(int size)
 {
     return size >= (int)sizeof(SMBHeader_t) + 4 &&
@@ -353,7 +313,7 @@ static int ReceiveSMBReply(int timeout_ms, u16 echo_mid)
 }
 
 //-------------------------------------------------------------------------
-static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
+static int GetSMBServerReply(int shdrlen, void *spayload)
 {
     int rcv_size, totalpkt_size, size;
 
@@ -377,31 +337,8 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
             return -1;
     }
 
-    if (rhdrlen == 0)
-        return ReceiveSMBReply(-1, 0);
-
-    //Read NetBIOS session message header. Drop NBSS Session Keep alive messages (type == 0x85, with no body), but process session messages (type == 0x00).
-    do {
-        rcv_size = RecvData(main_socket, (char *)&SMB_buf.sessionHeader, sizeof(SMB_buf.sessionHeader));
-        if (rcv_size <= 0)
-            return -2;
-    } while (nb_GetPacketType() != 0);
-
-    totalpkt_size = nb_GetSessionMessageLength();
-
-    //If rhdrlen is not specified, retrieve the whole packet. Otherwise, retrieve only the headers (caller will retrieve the payload separately).
-    size = (rhdrlen == 0) ? totalpkt_size : rhdrlen;
-    /* 回包或要收的头超出 SMB_buf.smb，或 rhdrlen 非法/超过本包：不写全局缓冲区，
-     * 整包记为待丢弃，下次 SendData 前由 stale 机制丢掉，保持字节流对齐。 */
-    if (rhdrlen < 0 || size > totalpkt_size || size > (int)sizeof(SMB_buf.smb)) {
-        smb_stale_skip = totalpkt_size;
-        return -2;
-    }
-    rcv_size = RecvData(main_socket, (char *)&SMB_buf.smb, size);
-    if (rcv_size <= 0)
-        return -2;
-
-    return totalpkt_size;
+    /* 控制回包与 Echo 共用一条字节流，必须整包接收，迟到 Echo 才能被跳过。 */
+    return ReceiveSMBReply(-1, 0);
 }
 
 /* Close 的等待同样覆盖整包，不能让半个 NBSS 头的超时破坏后续字节流。 */
@@ -506,7 +443,7 @@ int smb_NegotiateProtocol(char *SMBServerIP, int SMBServerPort, char *Username, 
     strcpy(NPR->DialectName, dialect);
 
     nb_SetSessionMessage(sizeof(NegotiateProtocolRequest_t) + length + 1);
-    length = GetSMBServerReply(0, NULL, 0);
+    length = GetSMBServerReply(0, NULL);
     if (length <= 0)
         return length;
 
@@ -619,7 +556,7 @@ lbl_session_setup:
     SSR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(SessionSetupAndXRequest_t) + offset);
-    if (GetSMBServerReply(0, NULL, 0) <= 0)
+    if (GetSMBServerReply(0, NULL) <= 0)
         return -1;
 
     // check sanity of SMB header
@@ -691,7 +628,7 @@ int smb_TreeConnectAndX(char *ShareName)
     TCR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(TreeConnectAndXRequest_t) + offset);
-    if (GetSMBServerReply(0, NULL, 0) <= 0)
+    if (GetSMBServerReply(0, NULL) <= 0)
         return -1;
 
     // check sanity of SMB header
@@ -744,7 +681,7 @@ int smb_OpenAndX(char *filename, u8 *FID, int Write)
     OR->ByteCount = offset;
 
     nb_SetSessionMessage(sizeof(OpenAndXRequest_t) + offset + 1);
-    if (GetSMBServerReply(0, NULL, 0) <= 0) {
+    if (GetSMBServerReply(0, NULL) <= 0) {
         SIGNALIOSEMA(smb_io_sema);
         return -1;
     }
@@ -845,12 +782,10 @@ static int RecvFromTimed(int sock, void *header, int index, void *payload, int p
 static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
     ReadAndXRequest_t *RR = &SMB_buf.smb.readAndXRequest;
+#ifdef USE_CUSTOM_RECV
     ReadAndXResponse_t *RRsp = &SMB_buf.smb.readAndXResponse;
     register int r, DataLength;
-#ifdef USE_CUSTOM_RECV
     int rcv_size, expected_size;
-#else
-    int padding;
 #endif
 
     ZERO_PKT_ALIGNED(RR, sizeof(ReadAndXRequest_t));
@@ -902,32 +837,13 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
         }
         rcv_size += r;
     }
-#else
-    r = GetSMBServerReply(0, NULL, sizeof(ReadAndXResponse_t));
-    if (r <= 0)
-        return -EIO;
-
-    // check there's no error
-    if (RRsp->smbH.Eclass != 0 || RRsp->smbH.Ecode != 0)
-        return -EIO;
-
-    //Skip any padding bytes.
-    padding = RRsp->DataOffset - sizeof(ReadAndXResponse_t);
-    if (padding > 0) {
-        r = RecvData(main_socket, (char *)(RRsp + 1), padding);
-        if (r <= 0)
-            return -2;
-    }
-
-    DataLength = (int)(((u32)RRsp->DataLengthHigh << 16) | RRsp->DataLengthLow);
-    if (DataLength > 0) {
-        r = RecvData(main_socket, readbuf, DataLength);
-        if (r <= 0)
-            return -2;
-    }
-#endif
 
     return DataLength;
+#else
+    /* 读盘回包比 SMB_buf 大，不能走整包接收。分段只收头的实现已经删掉。 */
+    (void)readbuf;
+    return -EIO;
+#endif
 }
 
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
@@ -993,7 +909,7 @@ static int smb_WriteAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf,
     WR->ByteCount = (u16)nbytes + padding;
 
     nb_SetSessionMessage(sizeof(WriteAndXRequest_t) + padding + nbytes);
-    r = GetSMBServerReply(sizeof(WriteAndXRequest_t) + padding, writebuf, 0);
+    r = GetSMBServerReply(sizeof(WriteAndXRequest_t) + padding, writebuf);
     if (r <= 0)
         return -EIO;
 
