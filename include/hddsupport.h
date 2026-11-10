@@ -69,6 +69,7 @@ void hddLoadModules(void);
 void hddResetModuleFlags(void);
 void hddLoadModulesBDM(void);
 void hddReleaseModulesBDM(void);
+// 返回 0：APA；1：MBR/GPT；2：APA 与 exFAT 混合分区；-1：读取失败或认不出。
 int hddDetectNonSonyFileSystem(void);
 int hddLoadSupportModules(void);
 void hddReportSupportError(void);

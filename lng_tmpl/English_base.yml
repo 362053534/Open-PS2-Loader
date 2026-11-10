@@ -820,5 +820,7 @@ gui_strings:
   string: Internal HDD is exFAT. Enable HDD(exFAT) in BDM settings.
 - label: MSG_HDD_APA_HINT
   string: Internal HDD is APA. Enable HDD(APA) start mode.
+- label: MSG_HDD_MIXED_CONFIRM
+  string: Your HDD has mixed partitions. Enable this mode anyway?
 - label: MSG_LIST_SEPARATOR
   string: ", "

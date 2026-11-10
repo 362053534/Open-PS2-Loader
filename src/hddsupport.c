@@ -363,8 +363,17 @@ int hddDetectNonSonyFileSystem()
         return -1;
     }
 
-    // APA 魔数优先，避免扇区填充碰巧出现 55AA 时被当成 MBR。
-    if (strncmp((const char *)&pSectorData[4], "APA", 3) == 0) {
+    // 真 APA 头：偏移 4 是 "APA\0"，偏移 0x100 是 Sony 标记（与 libapa 认 APA 头的规则一致），纯 MBR 引导代码不会同时满足。
+    int isApa = memcmp(&pSectorData[4], "APA", 4) == 0 &&
+                memcmp(&pSectorData[0x100], "Sony Computer Entertainment Inc.", 32) == 0;
+    int hasMbrSig = pSectorData[0x1FE] == 0x55 && pSectorData[0x1FF] == 0xAA;
+
+    if (isApa && hasMbrSig && pSectorData[0x1C2] != 0xEE) {
+        // APA 头里带真实 MBR 分区（不是 0xEE 保护性分区）：APA 与 exFAT 混合分区，交给设置页弹窗让用户选择。
+        LOG("hddDetectNonSonyFileSystem: found APA + MBR mixed partition data\n");
+        result = 2;
+    } else if (isApa) {
+        // 纯 APA；SDK 格式化时可能写入 0xEE 保护性 MBR，同样带 55AA，仍按纯 APA 处理。
         LOG("hddDetectNonSonyFileSystem: found APA partition data\n");
         result = 0;
     } else if (pSectorData[0x1FE] == 0x55 && pSectorData[0x1FF] == 0xAA) {
@@ -412,7 +421,9 @@ int hddLoadSupportModules(void)
 
     // Check if the drive contains MBR/GPT partition data before we load the APA/PFS modules. If the drive is not
     // APA then loading the APA irx modules can corrupt the drive as it will try to write APA partition data.
-    if (hddDetectNonSonyFileSystem() != 0) {
+    // 混合分区（返回 2）有真实 APA 头，允许装 APA 模块。
+    int hddFsType = hddDetectNonSonyFileSystem();
+    if (hddFsType != 0 && hddFsType != 2) {
         // Drive is MBR/GPT style, or unknown, bail out or risk corrupting the drive.
         LOG("HDDSUPPORT LoadSupportModules bailing out early...\n");
         return -1;

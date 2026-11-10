@@ -820,5 +820,7 @@ gui_strings:
   string: 内置exFAT硬盘，应启用BDM模式的HDD(exFAT)功能
 - label: MSG_HDD_APA_HINT
   string: 内置APA硬盘，应启用HDD(APA)启动模式
+- label: MSG_HDD_MIXED_CONFIRM
+  string: 你的硬盘是混合分区，确定要启用当前模式吗？
 - label: MSG_LIST_SEPARATOR
   string: 、

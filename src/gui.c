@@ -496,6 +496,14 @@ void guiShowNetCompatUpdateSingle(int id, item_list_t *support, config_set_t *co
     }
 }
 
+// 混合分区盘上新开启 APA 或 HDD(exFAT) 时弹窗确认。返回 0 表示用户取消。
+static int guiConfirmHddMixedEnable(void)
+{
+    if (hddDetectNonSonyFileSystem() != 2)
+        return 1;
+    return guiMsgBox(_l(_STR_MSG_HDD_MIXED_CONFIRM), 1, NULL);
+}
+
 static void guiShowBlockDeviceConfig(void)
 {
     int ret;
@@ -517,8 +525,12 @@ static void guiShowBlockDeviceConfig(void)
         diaGetInt(diaBlockDevicesConfig, CFG_BDMMODE, &gBDMStartMode);
 
         // BDMHDD开启时，自动关闭APA
+        int prevEnableBdmHDD = gEnableBdmHDD;
         diaGetInt(diaBlockDevicesConfig, CFG_ENABLEBDMHDD, &gEnableBdmHDD);
         if (ret == UIID_BTN_OK) {
+            // 混合分区盘上新开 HDD(exFAT)，用户取消就恢复关闭
+            if (!prevEnableBdmHDD && gEnableBdmHDD && !guiConfirmHddMixedEnable())
+                gEnableBdmHDD = 0;
             if (gHDDStartMode && gEnableBdmHDD) {
                 gHDDStartMode = 0;
                 // guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
@@ -642,6 +654,7 @@ reConfig:
         diaGetInt(diaConfig, CFG_AUTO_MODE1, &gAutoMode1);
 
         // 两边都开时，后面确认会关掉 APA，避免和 BDMHDD 并存
+        int prevHDDStartMode = gHDDStartMode;
         diaGetInt(diaConfig, CFG_HDDMODE, &gHDDStartMode);
         diaGetInt(diaConfig, CFG_ETHMODE, &gETHStartMode);
         diaGetInt(diaConfig, CFG_APPMODE, &gAPPStartMode);
@@ -658,6 +671,9 @@ reConfig:
             UiId = CFG_BDMMODE; // 块设备的uiid
             goto reConfig;
         } else if (ret == UIID_BTN_OK) {
+            // 混合分区盘上新开 APA，用户取消就恢复关闭
+            if (!prevHDDStartMode && gHDDStartMode && !guiConfirmHddMixedEnable())
+                gHDDStartMode = prevHDDStartMode;
             if (gHDDStartMode && gEnableBdmHDD) {
                 gHDDStartMode = 0;
                 // guiMsgBox("检测到冲突！已自动关闭APA模式！", 0, NULL);
