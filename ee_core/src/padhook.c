@@ -305,7 +305,7 @@ static int IGR_Intc_Handler(int cause)
 #endif
                 ) {
                     // 按住组合键一定时间，会重启（长按 2 秒 = 120 帧，彻底取消双击）
-                    if (IGRResetComboFrameCount++ >= 120)
+                    if (IGRResetComboFrameCount++ >= 90)
                         Pad_Data.combo_type = pad_pos_combo2;
                 } else {
                     if (IGRResetComboFrameCount)
