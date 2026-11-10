@@ -32,16 +32,19 @@ printf "$(ls lang_*.lng | cut -c 6- | rev | cut -c 5- | rev)" > "${LANG_LIST}"
 cd "${CURRENT_DIR}"
 
 # Copy format
-while IFS= read -r CURRENT_FILE
+# 输出文件名统一加 FGOPL- 前缀，OPL 语言列表显示为 FGOPL-语言名，字体需同名才能被加载
+LNG_PREFIX="FGOPL-"
+# 语言列表末行没有换行，补判 CURRENT_FILE 非空，避免漏掉最后一个语言
+while IFS= read -r CURRENT_FILE || [ -n "${CURRENT_FILE}" ]
 do
 	mkdir -p "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/"
-	cp "${CURRENT_DIR}/lng/lang_${CURRENT_FILE}.lng" "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/lang_${CURRENT_FILE}.lng"
+	cp "${CURRENT_DIR}/lng/lang_${CURRENT_FILE}.lng" "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/lang_${LNG_PREFIX}${CURRENT_FILE}.lng"
 	if [ -e "lng_src/thirdparty/font_${CURRENT_FILE}.ttf" ]
 	then
-		cp "${CURRENT_DIR}/lng_src/thirdparty/font_${CURRENT_FILE}.ttf" "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/font_${CURRENT_FILE}.ttf"
+		cp "${CURRENT_DIR}/lng_src/thirdparty/font_${CURRENT_FILE}.ttf" "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/font_${LNG_PREFIX}${CURRENT_FILE}.ttf"
 	elif [ -e "lng_src/thirdparty/font_${CURRENT_FILE}.otf" ]
 	then
-		cp "${CURRENT_DIR}/lng_src/thirdparty/font_${CURRENT_FILE}.otf" "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/font_${CURRENT_FILE}.otf"
+		cp "${CURRENT_DIR}/lng_src/thirdparty/font_${CURRENT_FILE}.otf" "${BUILD_DIR}/${CURRENT_FILE}-${OPL_VERSION}/font_${LNG_PREFIX}${CURRENT_FILE}.otf"
 	fi
 done < ${LANG_LIST}
 
@@ -54,10 +57,10 @@ done < ${LANG_LIST}
 
 -----------------------------------------------------------------------------
 
-Open PS2 Loader Official Translations (${DATE})
+FGOPL (FG Open PS2 Loader) Translations (${DATE})
 
 HOW TO INSTALL:
-1. make sure you are running latest OPL
+1. make sure you are running latest FGOPL
 2. transfer both the the LANGUAGE FILE (.lng) and the FONT FILE (.ttf/.otf) into your OPL directory of your memory card
  a. IMPORTANT: Do not rename the files
  b. NOTE: Some languages don't require a FONT file, so it won't be included
@@ -81,4 +84,4 @@ fi
 # Cleanup
 cd "${CURRENT_DIR}"
 rm -rf ${BUILD_DIR}/ ${LANG_LIST}
-unset CURRENT_DIR BUILD_DIR LANG_LIST OPL_VERSION CURRENT_FILE
+unset CURRENT_DIR BUILD_DIR LANG_LIST OPL_VERSION CURRENT_FILE LNG_PREFIX

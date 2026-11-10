@@ -113,9 +113,9 @@ MISC_OBJS =	icon_sys_A.o icon_sys_J.o icon_sys_C.o conf_theme_OPL.o conf_theme_c
 		popstarter_smb_poweroff.o popstarter_smb_ps2dev9.o popstarter_smb_ps2ip.o \
 		popstarter_smb_ps2smap.o popstarter_smb_smbman.o popstarter_smb_smsutils.o
 
-TRANSLATIONS = Albanian Arabic Bulgarian Cebuano Croatian Czech Danish Dutch Filipino French \
-	German Greek Hungarian Indonesian Italian Japanese Korean Laotian Persian Polish Portuguese \
-	Portuguese_BR Romana Russian Ryukyuan SChinese Spanish Swedish TChinese Turkish Vietnamese
+TRANSLATIONS = Albanian Arabic Bulgarian Cebuano Croatian Czech Danish Dutch English Filipino French \
+	Galician German Greek Hungarian Indonesian Italian Japanese Korean Laotian Persian Polish Portuguese \
+	Portuguese_BR Romana Russian Ryukyuan SChinese Serbian Spanish Swedish TChinese Turkish Vietnamese
 
 EE_BIN = opl.elf
 EE_BIN_STRIPPED = opl_stripped.elf
@@ -836,14 +836,12 @@ endif
 
 TRANSLATIONS_LNG = $(TRANSLATIONS:%=$(LNG_DIR)lang_%.lng)
 TRANSLATIONS_YML = $(TRANSLATIONS:%=$(LNG_SRC_DIR)%.yml)
-ENGLISH_TEMPLATE_YML = $(LNG_SRC_DIR)English.yml
-ENGLISH_LNG = $(LNG_SRC_DIR)lang_English.lng
 BASE_LANGUAGE = $(LNG_TMPL_DIR)_base.yml
 INTERNAL_LANGUAGE_C = src/lang_internal.c
 INTERNAL_LANGUAGE_H = include/lang_autogen.h
 LANG_COMPILER = lang_compiler.py
 
-languages: $(ENGLISH_TEMPLATE_YML) $(TRANSLATIONS_YML) $(ENGLISH_LNG) $(TRANSLATIONS_LNG) $(INTERNAL_LANGUAGE_C) $(INTERNAL_LANGUAGE_H)
+languages: $(TRANSLATIONS_YML) $(TRANSLATIONS_LNG) $(INTERNAL_LANGUAGE_C) $(INTERNAL_LANGUAGE_H)
 
 download_lng:
 	./download_lng.sh
@@ -859,12 +857,6 @@ $(TRANSLATIONS_LNG): $(LNG_DIR)lang_%.lng: $(LNG_SRC_DIR)%.yml $(BASE_LANGUAGE) 
 
 $(TRANSLATIONS_YML): %.yml: $(BASE_LANGUAGE) $(LANG_COMPILER)
 	python3 $(LANG_COMPILER) --update_translation_yml --base $(BASE_LANGUAGE) --translation $@
-
-$(ENGLISH_TEMPLATE_YML): $(BASE_LANGUAGE) $(LANG_COMPILER)
-	python3 $(LANG_COMPILER) --make_template_yml --base $< $@
-
-$(ENGLISH_LNG): $(ENGLISH_TEMPLATE_YML) $(BASE_LANGUAGE) $(LANG_COMPILER)
-	python3 $(LANG_COMPILER) --make_lng --base $(BASE_LANGUAGE) --translation $< $@
 
 $(INTERNAL_LANGUAGE_C): $(BASE_LANGUAGE) $(LANG_COMPILER)
 	python3 $(LANG_COMPILER) --make_source --base $< $@
