@@ -17,7 +17,6 @@
 #include "modules/iopcore/common/cdvd_config.h"
 
 #include <string.h>
-#include "include/hdd_sector_kind.h"
 
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h> // fileXioFormat, fileXioMount, fileXioUmount, fileXioDevctl
@@ -364,18 +363,21 @@ int hddDetectNonSonyFileSystem()
         return -1;
     }
 
-    // 与 ata_bd_device_is_apa 使用同一条规则，两个标记都在才是 APA。
-    result = hddClassifyBootSectors(pSectorData);
-    if (result == 0) {
+    // APA 魔数优先，避免扇区填充碰巧出现 55AA 时被当成 MBR。
+    if (strncmp((const char *)&pSectorData[4], "APA", 3) == 0) {
         LOG("hddDetectNonSonyFileSystem: found APA partition data\n");
-    } else if (result == 1 && pSectorData[0x1FE] == 0x55 && pSectorData[0x1FF] == 0xAA) {
+        result = 0;
+    } else if (pSectorData[0x1FE] == 0x55 && pSectorData[0x1FF] == 0xAA) {
         LOG("hddDetectNonSonyFileSystem: found MBR partition data\n");
-    } else if (result == 1) {
+        result = 1;
+    } else if (strncmp((const char *)&pSectorData[0x200], "EFI PART", 8) == 0) {
         LOG("hddDetectNonSonyFileSystem: found GPT partition data\n");
+        result = 1;
     } else {
         // Even though we didn't find evidence of non-APA partition data, if we load the APA irx module
         // it will write to the drive and potentially corrupt any data that might be there.
         LOG("hddDetectNonSonyFileSystem: partition data not recognized\n");
+        result = -1;
     }
 
     // Cleanup and return.
