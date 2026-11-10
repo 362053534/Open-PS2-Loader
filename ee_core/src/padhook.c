@@ -18,7 +18,6 @@
 
 #include <ee_regs.h>
 #include <iopcontrol.h>
-#include <sifrpc.h>
 #include "asm.h"
 #include "ee_core.h"
 #include "iopmgr.h"
@@ -36,57 +35,28 @@
 #include "cheat_api.h"
 #include "cd_igr_rpc.h"
 #include "coreconfig.h"
-#define NEWLIB_PORT_AWARE
-#include <fileXio.h>
-#include <io_common.h>
 
 /* scePadPortOpen & scePad2CreateSocket prototypes */
-static int (*scePadPortOpen)(int port, int slot, void *addr) __attribute__((unused));
-static int (*scePad2CreateSocket)(pad2socketparam_t *SocketParam, void *addr) __attribute__((unused));
+static int (*scePadPortOpen)(int port, int slot, void *addr);
+static int (*scePad2CreateSocket)(pad2socketparam_t *SocketParam, void *addr);
 
 /* Monitored pad data */
-static paddata_t Pad_Data __attribute__((unused));
+static paddata_t Pad_Data;
 
 /* Monitored power button data */
-static powerbuttondata_t Power_Button __attribute__((unused));
+static powerbuttondata_t Power_Button;
 
 /* IGR Thread ID and interrupt handler */
-static int IGR_Thread_ID __attribute__((unused)) = -1;
-static int IGR_Intc_ID __attribute__((unused)) = -1;
+static int IGR_Thread_ID = -1;
+static int IGR_Intc_ID = -1;
 
 /* IGR thread stack & stack size */
 #define IGR_STACK_SIZE (4 * 1024)
-static u8 IGR_Stack[IGR_STACK_SIZE] __attribute__((aligned(16))) __attribute__((unused));
+static u8 IGR_Stack[IGR_STACK_SIZE] __attribute__((aligned(16)));
 
 /* Extern symbol */
 extern void *_gp;
 extern void *_end;
-
-static SifRpcClientData_t fileXioClient __attribute__((section(".ramD0"))) __attribute__((unused));
-static u32 fileXioBuffer[(sizeof(struct fxio_mount_packet) + 3) / 4] __attribute__((section(".ramD0"), aligned(64))) __attribute__((unused));
-
-static int mountPfs(const char *partition) __attribute__((unused));
-static int mountPfs(const char *partition)
-{
-    struct fxio_mount_packet *packet = (struct fxio_mount_packet *)fileXioBuffer;
-    int ret, result;
-
-    memset(&fileXioClient, 0, sizeof(fileXioClient));
-    while ((ret = SifBindRpc(&fileXioClient, FILEXIO_IRX, 0)) >= 0 && !fileXioClient.server)
-        nopdelay();
-    if (ret < 0)
-        return ret;
-
-    memset(packet, 0, sizeof(*packet));
-    strncpy(packet->blockdevice, partition, sizeof(packet->blockdevice) - 1);
-    memcpy(packet->mountpoint, "pfs0:", sizeof("pfs0:"));
-    packet->flags = FIO_MT_RDONLY;
-
-    ret = SifCallRpc(&fileXioClient, FILEXIO_MOUNT, 0, packet, sizeof(*packet), &result, sizeof(result), NULL, NULL);
-    return ret < 0 ? ret : result;
-}
-
-static void IGR_CleanReboot(void) __attribute__((unused));
 
 // Load home ELF
 static void t_loadElf(void)
@@ -95,9 +65,6 @@ static void t_loadElf(void)
     int ret;
     char *argv[2];
     t_ExecData elf;
-    const char *loadPath = config->ExitPath;
-    char pfsPath[CORE_EXIT_PATH_MAX_LEN];
-    char partition[CORE_EXIT_PATH_MAX_LEN];
 
     if (EnableDebug)
         DBGCOL(0x80FF00, LOADELF, "t_loadElf() begins");
@@ -117,7 +84,6 @@ static void t_loadElf(void)
     // Load basic modules
     LoadModule("rom0:SIO2MAN", 0, NULL);
     LoadModule("rom0:MCMAN", 0, NULL);
-    delay(1);
 
     if (config->ExitPath[1] == 'a') { // ie mass:
         ret = LoadModule("mc0:SYS-CONF/USBD.IRX", 0, NULL);
@@ -128,77 +94,10 @@ static void t_loadElf(void)
             LoadModule("mc1:SYS-CONF/USBHDFSD.IRX", 0, NULL);
         }
         delay(5); // Wait for device to be detected.
-    } else if ((_toupper(config->ExitPath[0]) == 'H' && _toupper(config->ExitPath[1]) == 'D' &&
-                _toupper(config->ExitPath[2]) == 'D' && config->ExitPath[3] == '0' && config->ExitPath[4] == ':') ||
-               (_toupper(config->ExitPath[0]) == 'P' && _toupper(config->ExitPath[1]) == 'F' &&
-                _toupper(config->ExitPath[2]) == 'S' && config->ExitPath[3] == '0' && config->ExitPath[4] == ':')) {
-        LoadModule("rom0:ATAD", 0, NULL);
-        LoadModule("rom0:PS2HDD", 0, NULL);
-        LoadModule("rom0:PFS", 0, NULL);
-
-        if (_toupper(config->ExitPath[0]) == 'H' && _toupper(config->ExitPath[1]) == 'D' &&
-            _toupper(config->ExitPath[2]) == 'D' && config->ExitPath[3] == '0' && config->ExitPath[4] == ':') {
-            const char *path = config->ExitPath + 5;
-            const char *separator;
-            const char *filePath;
-            int pfsLength;
-
-            while (*path == '/' || *path == '\\')
-                path++;
-            separator = path;
-            while (*separator && *separator != '/' && *separator != '\\' && *separator != ':')
-                separator++;
-            if (*separator) {
-                int partitionLength = separator - path;
-
-                memcpy(partition, "hdd0:", 5);
-                memcpy(partition + 5, path, partitionLength);
-                partition[5 + partitionLength] = '\0';
-                memcpy(pfsPath, "pfs0:/", 6);
-                pfsLength = 6;
-                filePath = separator;
-                if (*filePath == ':')
-                    filePath++;
-                while (*filePath == '/' || *filePath == '\\')
-                    filePath++;
-                while (*filePath && pfsLength < (int)sizeof(pfsPath) - 1) {
-                    char c = *filePath++;
-                    if (c == '\\')
-                        c = '/';
-                    if (c == '/' && pfsLength > 6 && pfsPath[pfsLength - 1] == '/')
-                        continue;
-                    pfsPath[pfsLength++] = c;
-                }
-                pfsPath[pfsLength] = '\0';
-
-                if (mountPfs(partition) == 0)
-                    loadPath = pfsPath;
-            }
-        } else {
-            const char *path = config->ExitPath + 5;
-            int pfsLength;
-
-            while (*path == '/' || *path == '\\')
-                path++;
-            memcpy(pfsPath, "pfs0:/", 6);
-            pfsLength = 6;
-            while (*path && pfsLength < (int)sizeof(pfsPath) - 1) {
-                char c = *path++;
-                if (c == '\\')
-                    c = '/';
-                if (c == '/' && pfsLength > 6 && pfsPath[pfsLength - 1] == '/')
-                    continue;
-                pfsPath[pfsLength++] = c;
-            }
-            pfsPath[pfsLength] = '\0';
-
-            if (mountPfs("hdd0:+OPL") == 0)
-                loadPath = pfsPath;
-        }
     }
 
     // Load exit ELF
-    argv[0] = (char *)loadPath;
+    argv[0] = config->ExitPath;
     argv[1] = NULL;
 
     // Wipe everything, even the module storage.
@@ -207,18 +106,9 @@ static void t_loadElf(void)
     FlushCache(0);
 
     ret = LoadElf(argv[0], &elf);
-    {
-        int retries = 20;
-        while (ret && retries-- > 0) {
-            LoadFileExit();
-            SifExitRpc();
-            SifInitRpc(0);
-            delay(2);
-            ret = LoadElf(argv[0], &elf);
-        }
-    }
 
     if (!ret) {
+
         // Exit services
         LoadFileExit();
         SifExitIopHeap();
@@ -239,11 +129,11 @@ static void t_loadElf(void)
         delay(5);
     }
 
-    IGR_CleanReboot();
+    // Return to PS2 Browser
+    Exit(0);
 }
 
 // In Game Reset Thread
-static void IGR_Thread(void *arg) __attribute__((unused));
 static void IGR_Thread(void *arg)
 {
     USE_LOCAL_EECORE_CONFIG;
@@ -261,7 +151,7 @@ static void IGR_Thread(void *arg)
     // Re-Init RPC & CMD
     SifInitRpc(0);
 
-    // If Pad Combo is R3 + L3 then Return to Home, else if Pad Combo is UP then take IGS
+    // If Pad Combo is Start + Select then Return to Home, else if Pad Combo is UP then take IGS
     if ((Pad_Data.combo_type == IGR_COMBO_R3_L3)
 #ifdef IGS
         || ((Pad_Data.combo_type == IGR_COMBO_UP) && (config->EnableGSMOp))
@@ -284,10 +174,14 @@ static void IGR_Thread(void *arg)
         // Remove kernel hooks
         Remove_Kernel_Hooks();
 
-        // Initialize Translation Look-Aside Buffer
+        // Initialize Translation Look-Aside Buffer, like the updated ExecPS2() library function does.
+        // Some game (GT4, GTA) modify memory map
+        // A re-init is needed to properly access memory
         InitializeTLB();
 
         // Check Performance Counter
+        // Some game (GT4) start performance counter
+        // When counter overflow, an exception occur, so stop them
         Cop0_Perf = GetCop0(25);
 
         // Stop Performance Counter
@@ -308,7 +202,7 @@ static void IGR_Thread(void *arg)
             DisableGSM();
         }
 
-        if (config->gCheatList || HasBuiltInCheats()) {
+        if (config->gCheatList) {
             if (EnableDebug)
                 DBGCOL(0xFF0000, IGR, "Stopping CheatEngine");
             DPRINTF("Stopping PS2RD Cheat Engine...\n");
@@ -334,7 +228,7 @@ static void IGR_Thread(void *arg)
         if (EnableDebug)
             DBGCOL(0x800000, IGR, "Execute RESETSPU.IRX");
 
-        // Reset SPU
+        // Reset SPU - do it after the IOP reboot, so nothing will compete with the EE for it.
         LoadOPLModule(OPL_MODULE_ID_RESETSPU, 0, 0, NULL);
 
 #ifdef IGS
@@ -355,42 +249,27 @@ static void IGR_Thread(void *arg)
         if (EnableDebug)
             DBGCOL(0x0000FF, IGR, "oplIGRShutdown(1)");
 
-        // If combo is Start + Select, Poweroff PS2
+        // If combo is R3 + L3, Poweroff PS2
         oplIGRShutdown(1);
     }
-}
-
-static void IGR_CleanReboot(void)
-{
-    Remove_Kernel_Hooks();
-
-    FlushCache(0);
-    FlushCache(2);
-
-    LoadExecPS2("rom0:OSDSYS", 0, NULL);
-
-    Exit(0);
 }
 
 void IGR_Exit(s32 exit_code)
 {
     USE_LOCAL_EECORE_CONFIG;
+    // Execute home loader
     if (config->ExitPath[0] != '\0')
         ExecPS2(t_loadElf, &_gp, 0, NULL);
 
-    IGR_CleanReboot();
-
+    // Return to PS2 Browser
     Exit(exit_code);
 }
 
-int IGRResetComboFrameCount = 0;
+int IGRResetComboFrameCount = 0; // IGR按住重启的变量
 // IGR VBLANK_END interrupt handler install to monitor combo trick in pad data aera
-static int IGR_Intc_Handler(int cause) __attribute__((unused));
 static int IGR_Intc_Handler(int cause)
 {
-#ifdef IGS
     USE_LOCAL_EECORE_CONFIG;
-#endif
     int i;
     u8 pad_pos_state, pad_pos_frame, pad_pos_combo1, pad_pos_combo2;
 
@@ -405,6 +284,7 @@ static int IGR_Intc_Handler(int cause)
         if (((Pad_Data.libpad == IGR_LIBPAD) && (pad_pos_state == IGR_PAD_STABLE_V1)) ||
             ((Pad_Data.libpad == IGR_LIBPAD2) && (pad_pos_state == IGR_PAD_STABLE_V2))) {
             // Check if pad buffer is still alive with pad data frame counter
+            // If pad frame change save it, otherwise tell to syshook to re-install padOpen hook
             if (Pad_Data.vb_count++ >= 10) {
                 if (pad_pos_frame != Pad_Data.prev_frame) {
                     padOpen_hooked = 1;
@@ -415,19 +295,26 @@ static int IGR_Intc_Handler(int cause)
                 Pad_Data.vb_count = 0;
             }
 
-            // Combo R3 + L3 (reset) or R1+L1+R2+L2 + Start+Select (poweroff)
-            if ((pad_pos_combo2 == IGR_COMBO_R3_L3) ||
-                ((pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) && (pad_pos_combo2 == IGR_COMBO_START_SELECT))
+            // Combo R1 + L1 + R2 + L2
+            //if (pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) {
+                // Combo Start + Select, R3 + L3 or UP
+                if ((pad_pos_combo2 == IGR_COMBO_R3_L3) || // R3 + L3 combo, so reset
+                ((pad_pos_combo1 == IGR_COMBO_R1_L1_R2_L2) && (pad_pos_combo2 == IGR_COMBO_START_SELECT)) // 6 keys combo, so poweroff
 #ifdef IGS
-                || ((pad_pos_combo2 == IGR_COMBO_UP) && (config->EnableGSMOp))
+                    || ((pad_pos_combo2 == IGR_COMBO_UP) && (config->EnableGSMOp)) // UP combo, so take IGS
 #endif
-            ) {
-                if (IGRResetComboFrameCount++ >= 90)
-                    Pad_Data.combo_type = pad_pos_combo2;
-            } else {
-                if (IGRResetComboFrameCount)
-                    IGRResetComboFrameCount = 0;
-            }
+                ) {
+                    // 按住组合键一定时间，会重启（长按 2 秒 = 120 帧，彻底取消双击）
+                    if (IGRResetComboFrameCount++ >= 120)
+                        Pad_Data.combo_type = pad_pos_combo2;
+                } else {
+                    if (IGRResetComboFrameCount)
+                        IGRResetComboFrameCount = 0;
+                }
+            //} else {
+            //    if (IGRResetComboFrameCount)
+            //        IGRResetComboFrameCount = 0;
+            //}
         }
     } else {
         if (IGRResetComboFrameCount)
@@ -459,9 +346,19 @@ static int IGR_Intc_Handler(int cause)
 
     ee_kmode_exit();
 
+    // If power button or combo is press
+    // Disable all interrupts & reset some peripherals.
+    // Suspend and Change priority of all threads other then our IGR thread
+    // Wakeup and Change priority of our IGR thread
     if (Pad_Data.combo_type != 0x00) {
+        // While ExecPS2() would also do some of these (also calls ResetEE),
+        // initialization seems to sometimes get stuck at "Initializing GS", perhaps when waiting for the V-Sync start interrupt.
+        // That happens before ResetEE is called, so ResetEE has to be called earlier.
+
+        // Wait for preceding loads & stores to complete.
         asm volatile("sync.l\n");
 
+        // Stop all ongoing transfers (except for SIF0, SIF1 & SIF2 - DMA CH 5, 6 & 7).
         u32 dmaEnableR = *R_EE_D_ENABLER;
         *R_EE_D_ENABLEW = dmaEnableR | 0x10000;
         *R_EE_D_CTRL;
@@ -475,6 +372,7 @@ static int IGR_Intc_Handler(int cause)
         *R_EE_D9_CHCR = 0;
         *R_EE_D_ENABLEW = dmaEnableR;
 
+        // Wait for preceding loads & stores to complete.
         asm volatile("sync.l\n");
 
         *R_EE_GS_CSR = 0x100; // Reset GS
@@ -482,16 +380,21 @@ static int IGR_Intc_Handler(int cause)
         while (*R_EE_GS_CSR & 0x100) {
         };
 
+        // Disable interrupts & reset some peripherals, back to a standard state.
+        // Call ResetEE(0x7F) from an interrupt handler.
         iResetEE(0x7F);
 
+        // Loop for each threads, skipping the idle & IGR threads.
         for (i = 1; i < 256; i++) {
             if (i != IGR_Thread_ID) {
+                // Suspend all threads
                 iSuspendThread(i);
             }
         }
 
         DPRINTF("IGR: trying to wake IGR thread...\n");
         iChangeThreadPriority(IGR_Thread_ID, 0);
+        // WakeUp IGR thread
         iWakeupThread(IGR_Thread_ID);
     }
 
@@ -501,7 +404,6 @@ static int IGR_Intc_Handler(int cause)
 }
 
 // Install_IGR() must be run first.
-static void Set_libpad_Params(void *addr) __attribute__((unused));
 static void Set_libpad_Params(void *addr)
 {
     DI();
@@ -573,7 +475,6 @@ void Reset_Padhook(void)
 }
 
 // Hook function for libpad scePadPortOpen
-static int Hook_scePadPortOpen(int port, int slot, void *addr) __attribute__((unused));
 static int Hook_scePadPortOpen(int port, int slot, void *addr)
 {
     int ret;
@@ -598,7 +499,6 @@ static int Hook_scePadPortOpen(int port, int slot, void *addr)
 }
 
 // Hook function for libpad2 scePad2CreateSocket
-static int Hook_scePad2CreateSocket(pad2socketparam_t *SocketParam, void *addr) __attribute__((unused));
 static int Hook_scePad2CreateSocket(pad2socketparam_t *SocketParam, void *addr)
 {
     int ret;
@@ -646,4 +546,134 @@ int Install_PadOpen_Hook(u32 mem_start, u32 mem_end, int mode)
         while (ptr) {
             // Purple while PadOpen pattern search
             if (EnableDebug)
-                DBGCOL(0x800080, PADHOOK, "Searching Pad
+                DBGCOL(0x800080, PADHOOK, "Searching PadOpen() pattern");
+
+            mem_size = mem_end - (u32)ptr;
+
+            // First try to locate the orginal libpad's PadOpen function
+            ptr = find_pattern_with_mask(ptr, mem_size, padopen_patterns[i].pattern, padopen_patterns[i].mask, padopen_patterns[i].size);
+            if (ptr) {
+                DPRINTF("IGR: found padopen pattern%d at 0x%08x mode=%d\n", i, (int)ptr, mode);
+                found = 1;
+
+                // Green while PadOpen patches
+                if (EnableDebug)
+                    DBGCOL(0x008000, PADHOOK, "Patching PadOpen()");
+
+                // Save original PadOpen function
+                if (padopen_patterns[i].type == IGR_LIBPAD)
+                    scePadPortOpen = (void *)ptr;
+                else
+                    scePad2CreateSocket = (void *)ptr;
+
+                if (mode == PADOPEN_HOOK) {
+                    // Generate generic instruction pattern & mask for a J/JAL to PadOpen()
+                    // Use 000010 as the operation, to match both J & JAL.
+                    inst = 0x08000000 | (0x03ffffff & ((u32)ptr >> 2));
+
+                    // Ignore bit 26 for the mask because the jump type can be either J (000010) or JAL (000011)
+                    pattern[0] = inst;
+                    mask[0] = 0xfbffffff;
+
+                    DPRINTF("IGR: searching opcode %08x witk mask %08x\n", (int)pattern[0], (int)mask[0]);
+
+                    // Search & patch for calls to PadOpen
+                    ptr2 = (u32 *)mem_start;
+                    while (ptr2) {
+                        mem_size2 = (u32)((u8 *)mem_end - (u8 *)ptr2);
+
+                        ptr2 = find_pattern_with_mask(ptr2, mem_size2, pattern, mask, sizeof(pattern));
+                        if (ptr2) {
+                            DPRINTF("IGR: found padOpen call at 0x%08x\n", (int)ptr2);
+
+                            patched = 1;
+
+                            fncall = (u32)ptr2;
+
+                            // Get PadOpen call Jump Instruction type (JAL or J).
+                            inst = (ptr2[0] & 0xfc000000);
+
+                            // Get Hook_PadOpen call Instruction code
+                            if (padopen_patterns[i].type == IGR_LIBPAD) {
+                                DPRINTF("IGR: Hook_scePadPortOpen addr 0x%08x\n", (int)Hook_scePadPortOpen);
+                                inst |= 0x03ffffff & ((u32)Hook_scePadPortOpen >> 2);
+                            } else {
+                                DPRINTF("IGR: Hook_scePad2CreateSocket addr 0x%08x\n", (int)Hook_scePad2CreateSocket);
+                                inst |= 0x03ffffff & ((u32)Hook_scePad2CreateSocket >> 2);
+                            }
+
+                            DPRINTF("IGR: patching padopen call at addr 0x%08x with opcode %08x\n", (int)fncall, (int)inst);
+                            // Overwrite the original PadOpen function call with our function call
+                            _sw(inst, fncall);
+
+                            Pad_Data.libpad = padopen_patterns[i].type;
+                            Pad_Data.libversion = padopen_patterns[i].version;
+                        }
+                    }
+
+                    // Locate pointers to scePadOpen(), likely used for JALR.
+                    if (!patched) {
+                        DPRINTF("IGR: 2nd padOpen patch attempt...\n");
+
+                        // Make pattern with function address saved above
+                        pattern[0] = (u32)ptr;
+                        mask[0] = 0xffffffff;
+
+                        DPRINTF("IGR: searching opcode %08x witk mask %08x\n", (int)pattern[0], (int)mask[0]);
+
+                        // Search & patch for PadOpen function address
+                        ptr2 = (u32 *)mem_start;
+                        while (ptr2) {
+                            mem_size2 = (u32)((u8 *)mem_end - (u8 *)ptr2);
+
+                            ptr2 = find_pattern_with_mask(ptr2, mem_size2, pattern, mask, sizeof(pattern));
+                            if (ptr2) {
+                                DPRINTF("IGR: found padOpen call at 0x%08x\n", (int)ptr2);
+
+                                patched = 1;
+
+                                fncall = (u32)ptr2;
+
+                                // Get Hook_PadOpen function address
+                                if (padopen_patterns[i].type == IGR_LIBPAD) {
+                                    DPRINTF("IGR: Hook_scePadPortOpen addr 0x%08x\n", (int)Hook_scePadPortOpen);
+                                    inst = (u32)Hook_scePadPortOpen;
+                                } else {
+                                    DPRINTF("IGR: Hook_scePad2CreateSocket addr 0x%08x\n", (int)Hook_scePad2CreateSocket);
+                                    inst = (u32)Hook_scePad2CreateSocket;
+                                }
+
+                                DPRINTF("IGR: patching padopen call at addr 0x%08x with opcode %08x\n", (int)fncall, (int)inst);
+                                // Overwrite the original PadOpen function address with our function address
+                                _sw(inst, fncall);
+
+                                Pad_Data.libpad = padopen_patterns[i].type;
+                                Pad_Data.libversion = padopen_patterns[i].version;
+                            }
+                        }
+                    }
+                } else {
+                    DPRINTF("IGR: no hooking requested, breaking loop...\n");
+                    // Hooking is not required and padOpen function was found, so stop searching
+                    break;
+                }
+
+                // Increment search pointer
+                // ptr += padopen_patterns[i].size;
+                ptr += (padopen_patterns[i].size >> 2);
+            }
+        }
+
+        // If a padOpen function call was patched or ( hooking is not required and a padOpen function was found ), so stop the libpad version search loop
+        if (patched == 1 || (mode == PADOPEN_CHECK && found == 1)) {
+            DPRINTF("IGR: job done exiting...\n");
+            break;
+        }
+    }
+
+    // Done
+    if (EnableDebug)
+        BGCOLND(0x000000); // Black
+
+    return patched;
+}
