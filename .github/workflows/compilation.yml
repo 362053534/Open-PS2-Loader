@@ -1,4 +1,5 @@
 name: CI-compile
+permissions: write-all
 
 on:
   push:
@@ -10,64 +11,63 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    container: ghcr.io/362053534/ps2homebrew:main
     steps:
-    - name: git checkout
-      uses: actions/checkout@v6
+      - name: git checkout
+        uses: actions/checkout@v4
 
-    - run: |
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        git fetch --prune --unshallow
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --prune --unshallow
 
-    - name: Compile -> make clean release
-      run: make --trace clean release
+      - name: Compile -> make clean release
+        run: make --trace clean release
 
-    - name: Create detailed changelog
-      run: sh ./make_changelog.sh
+      - name: Create detailed changelog
+        run: sh ./make_changelog.sh
 
-    - name: Upload release artifact ELF
-      if: ${{ success() }}
-      uses: actions/upload-artifact@v7
-      with:
-        name: OPNPS2LD
-        path: |
-          OPNPS2LD-*.ELF
+      - name: Upload release artifact ELF
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPNPS2LD
+          path: |
+            OPNPS2LD-*.ELF
 
-    - name: Build ISO
-      env:
-        PS2_SYSAREA_B64: ${{ secrets.PS2_SYSAREA_B64 }}
-      run: |
-        (apk add --no-cache xorriso || (apt-get update && apt-get install -y xorriso))
-        mkdir -p iso_root
-        cp OPNPS2LD-*.ELF iso_root/FENG_001.29
-        printf 'BOOT2 = cdrom0:\\FENG_001.29;1\r\nVER = 1.00\r\n' > iso_root/SYSTEM.CNF
-        SYSAREA_OPT=""
-        if [ -n "$PS2_SYSAREA_B64" ]; then
-          printf '%s' "$PS2_SYSAREA_B64" | base64 -d > sysarea.bin
-          SYSAREA_OPT="-G sysarea.bin"
-        else
-          echo "::warning::PS2_SYSAREA_B64 secret not set, ISO built without logo"
-        fi
-        xorriso -as mkisofs -o FGOPL-1.2.9.iso -V FGOPL-1.2.9 -sysid PLAYSTATION $SYSAREA_OPT -iso-level 1 iso_root
+      - name: Build ISO
+        env:
+          PS2_SYSAREA_B64: ${{ secrets.PS2_SYSAREA_B64 }}
+        run: |
+          (apk add --no-cache xorriso || (apt-get update && apt-get install -y xorriso))
+          mkdir -p iso_root
+          cp OPNPS2LD-*.ELF iso_root/FENG_001.29
+          printf 'BOOT2 = cdrom0:\\FENG_001.29;1\r\nVER = 1.00\r\n' > iso_root/SYSTEM.CNF
+          SYSAREA_OPT=""
+          if [ -n "$PS2_SYSAREA_B64" ]; then
+            printf '%s' "$PS2_SYSAREA_B64" | base64 -d > sysarea.bin
+            SYSAREA_OPT="-G sysarea.bin"
+          else
+            echo "::warning::PS2_SYSAREA_B64 secret not set, ISO built without logo"
+          fi
+          xorriso -as mkisofs -o FGOPL-1.2.9.iso -V FGOPL-1.2.9 -sysid PLAYSTATION $SYSAREA_OPT -iso-level 1 iso_root
 
-    - name: Upload release artifact ISO
-      if: ${{ success() }}
-      uses: actions/upload-artifact@v7
-      with:
-        name: FGOPL-ISO
-        path: FGOPL-1.2.9.iso
-        archive: false
+      - name: Upload release artifact ISO
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: FGOPL-ISO
+          path: FGOPL-1.2.9.iso
 
-    - name: Upload release artifact info
-      if: ${{ success() }}
-      uses: actions/upload-artifact@v7
-      with:
-        name: INFO
-        path: |
-          DETAILED_CHANGELOG
-          CREDITS
-          LICENSE
-          README.md
+      - name: Upload release artifact info
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: INFO
+          path: |
+            DETAILED_CHANGELOG
+            CREDITS
+            LICENSE
+            README.md
 
   build-variants:
     strategy:
@@ -76,39 +76,39 @@ jobs:
         extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
         pademu: [PADEMU=0, PADEMU=1]
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    container: ghcr.io/362053534/ps2homebrew:main
     steps:
-    - name: git checkout
-      uses: actions/checkout@v6
+      - name: git checkout
+        uses: actions/checkout@v4
 
-    - run: |
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        git fetch --prune --unshallow
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --prune --unshallow
 
-    - name: Get version
-      run: |
-        echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
+      - name: Get version
+        run: |
+          echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
-    - name: Compile -> make ${{ matrix.extra }} ${{ matrix.pademu }} ${{ matrix.extra }} NOT_PACKED=1
-      run: |
-        make --trace ${{ matrix.pademu }} ${{ matrix.extra }} NOT_PACKED=1
-        mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.pademu }}-${{ matrix.extra }}.ELF
+      - name: Compile -> make ${{ matrix.extra }} ${{ matrix.pademu }} NOT_PACKED=1
+        run: |
+          make --trace ${{ matrix.pademu }} ${{ matrix.extra }} NOT_PACKED=1
+          mv opl.elf OPNPS2LD-${{ env.OPL_VERSION }}-${{ matrix.pademu }}-${{ matrix.extra }}.ELF
 
-    - name: Create detailed changelog
-      run: sh ./make_changelog.sh
+      - name: Create detailed changelog
+        run: sh ./make_changelog.sh
 
-    - name: Upload variants artifact ELF
-      uses: actions/upload-artifact@v7
-      with:
-        name: OPNPS2LD-VARIANTS ${{ matrix.pademu }} ${{ matrix.extra }}
-        path: OPNPS2LD*.ELF
+      - name: Upload variants artifact ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPNPS2LD-VARIANTS ${{ matrix.pademu }} ${{ matrix.extra }}
+          path: OPNPS2LD*.ELF
 
   merge-variants:
     runs-on: ubuntu-latest
     needs: build-variants
     steps:
       - name: Merge Artifacts
-        uses: actions/upload-artifact/merge@v7
+        uses: actions/upload-artifact/merge@v4
         with:
           name: OPNPS2LD-VARIANTS
           pattern: OPNPS2LD-VARIANTS*
@@ -116,71 +116,69 @@ jobs:
 
   build-lang:
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
+    container: ghcr.io/362053534/ps2homebrew:main
     steps:
-    - name: git checkout
-      uses: actions/checkout@v6
+      - name: git checkout
+        uses: actions/checkout@v4
 
-    - run: |
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        git fetch --prune --unshallow
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --prune --unshallow
 
-    - name: Compile -> make download_lng languages
-      run: make --trace download_lng languages
+      - name: Compile -> make download_lng languages
+        run: make --trace download_lng languages
 
-    - name: Create artifact
-      run: sh ./lng_pack.sh
+      - name: Create artifact
+        run: sh ./lng_pack.sh
 
-    - name: Upload release artifact
-      if: ${{ success() }}
-      uses: actions/upload-artifact@v7
-      with:
-        name: OPNPS2LD-LANGS
-        path: |
-          OPNPS2LD-LANGS-*.zip
+      - name: Upload release artifact
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPNPS2LD-LANGS
+          path: |
+            OPNPS2LD-LANGS-*.zip
 
   build-debug:
     strategy:
       fail-fast: false
       matrix:
         debug: [iopcore_debug, ingame_debug, eesio_debug, iopcore_ppctty_debug, ingame_ppctty_debug, DTL_T10000=1]
-        # container_commit: [":main", "@sha256:7df074b3007f918b81f911e8b21fce1f297eff73ca03508064651ce2c8713570"] Replace with desired docker image hash or tag
         container_commit: [":main"]
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/ps2homebrew${{ matrix.container_commit }}
+    container: ghcr.io/362053534/ps2homebrew${{ matrix.container_commit }}
     steps:
-    - name: git checkout
-      uses: actions/checkout@v6
+      - name: git checkout
+        uses: actions/checkout@v4
 
-    - run: |
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        git fetch --prune --unshallow
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --prune --unshallow
 
-    - name: Get version
-      run: |
-        echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
-        SHORT_COMMIT="${{ matrix.container_commit }}"
-        # Extract the last 4 characters
-        SHORT_COMMIT=${SHORT_COMMIT: -4}
-        echo "SHORT_COMMIT=$SHORT_COMMIT" >> $GITHUB_ENV
+      - name: Get version
+        run: |
+          echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
+          SHORT_COMMIT="${{ matrix.container_commit }}"
+          SHORT_COMMIT=${SHORT_COMMIT: -4}
+          echo "SHORT_COMMIT=$SHORT_COMMIT" >> $GITHUB_ENV
 
-    - name: Compile -> make debug
-      run: |
-        make ${{ matrix.debug }} --trace
-        mv opl.elf opl-${{ matrix.debug }}-${{ env.OPL_VERSION }}-${{ env.SHORT_COMMIT }}.elf
+      - name: Compile -> make debug
+        run: |
+          make ${{ matrix.debug }} --trace
+          mv opl.elf opl-${{ matrix.debug }}-${{ env.OPL_VERSION }}-${{ env.SHORT_COMMIT }}.elf
 
-    - name: Upload variants artifact ELF
-      uses: actions/upload-artifact@v7
-      with:
-        name: opl-${{ matrix.debug }}-${{ env.OPL_VERSION }}-${{ env.SHORT_COMMIT }}
-        path: opl-*.elf
+      - name: Upload variants artifact ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: opl-${{ matrix.debug }}-${{ env.OPL_VERSION }}-${{ env.SHORT_COMMIT }}
+          path: opl-*.elf
 
   merge-debug:
     runs-on: ubuntu-latest
     needs: build-debug
     steps:
       - name: Merge Artifacts
-        uses: actions/upload-artifact/merge@v7
+        uses: actions/upload-artifact/merge@v4
         with:
           name: OPNPS2LD-DEBUG
           pattern: opl-*
@@ -189,87 +187,92 @@ jobs:
   release:
     needs: [build, merge-variants, build-lang]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/362053534-patch-1'
-    env:
-      USERNAME: ${{ secrets.USERNAME }}
-      PASSWORD: ${{ secrets.PASSWORD }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
-    - name: git checkout
-      uses: actions/checkout@v6
+      - name: git checkout
+        uses: actions/checkout@v4
 
-    - run: git fetch --prune --unshallow
+      - run: git fetch --prune --unshallow
 
-    - name: Get version
-      run: |
-        echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
+      - name: Get version
+        run: |
+          echo "OPL_VERSION=$(make oplversion)" >> $GITHUB_ENV
 
-    # 只下载发布所需产物，避免无过滤下载全部（含debug/矩阵中间产物）导致超时失败
-    - name: Download OPNPS2LD
-      uses: actions/download-artifact@v8
-      with:
-        name: OPNPS2LD
-        path: OPNPS2LD
+      - name: Download OPNPS2LD
+        uses: actions/download-artifact@v4
+        with:
+          name: OPNPS2LD
+          path: OPNPS2LD
 
-    - name: Download INFO
-      uses: actions/download-artifact@v8
-      with:
-        name: INFO
-        path: INFO
+      - name: Download FGOPL-ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: FGOPL-ISO
+          path: FGOPL-ISO
 
-    - name: Download OPNPS2LD-VARIANTS
-      uses: actions/download-artifact@v8
-      with:
-        name: OPNPS2LD-VARIANTS
-        path: OPNPS2LD-VARIANTS
+      - name: Download INFO
+        uses: actions/download-artifact@v4
+        with:
+          name: INFO
+          path: INFO
 
-    - name: Download OPNPS2LD-LANGS
-      uses: actions/download-artifact@v8
-      with:
-        name: OPNPS2LD-LANGS
-        path: OPNPS2LD-LANGS
+      - name: Download OPNPS2LD-VARIANTS
+        uses: actions/download-artifact@v4
+        with:
+          name: OPNPS2LD-VARIANTS
+          path: OPNPS2LD-VARIANTS
 
-    - name: Prepare artifacts for release
-      run: |
-        echo packing release of OPL ${{ env.OPL_VERSION }}
-        cp INFO/* OPNPS2LD/
-        cp INFO/* OPNPS2LD-VARIANTS/
-        7z a -t7z OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD/*
-        7z a -t7z OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS/*
-        7z a -t7z OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z OPNPS2LD-LANGS/*
-        cp -f OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD.7z
-        cp -f OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS.7z
-        cp -f OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z OPNPS2LD-LANGS.7z
-        cp -f OPNPS2LD/OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD.ELF
+      - name: Download OPNPS2LD-LANGS
+        uses: actions/download-artifact@v4
+        with:
+          name: OPNPS2LD-LANGS
+          path: OPNPS2LD-LANGS
 
-    - name: Create prerelease
-      if: github.ref == 'refs/heads/362053534-patch-1'
-      uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        prerelease: true
-        automatic_release_tag: "latest"
-        title: "${{ env.OPL_VERSION }}"
-        files: |
-          OPNPS2LD-${{ env.OPL_VERSION }}.7z
-          OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z
-          OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z
-          OPNPS2LD.7z
-          OPNPS2LD-VARIANTS.7z
-          OPNPS2LD-LANGS.7z
-          OPNPS2LD.ELF
+      - name: Prepare artifacts for release
+        run: |
+          echo packing release of OPL ${{ env.OPL_VERSION }}
+          cp INFO/* OPNPS2LD/
+          cp INFO/* OPNPS2LD-VARIANTS/
+          7z a -t7z OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD/*
+          7z a -t7z OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS/*
+          7z a -t7z OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z OPNPS2LD-LANGS/*
+          cp -f OPNPS2LD-${{ env.OPL_VERSION }}.7z OPNPS2LD.7z
+          cp -f OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z OPNPS2LD-VARIANTS.7z
+          cp -f OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z OPNPS2LD-LANGS.7z
+          cp -f OPNPS2LD/OPNPS2LD-${{ env.OPL_VERSION }}.ELF OPNPS2LD.ELF
+          cp -f FGOPL-ISO/FGOPL-1.2.9.iso FGOPL-1.2.9.iso
 
-    - name: Create release
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        prerelease: "${{ contains(github.ref, '-rc') }}"
-        title: "${{ env.OPL_VERSION }}"
-        files: |
-          OPNPS2LD-${{ env.OPL_VERSION }}.7z
-          OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z
-          OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z
-          OPNPS2LD.7z
-          OPNPS2LD-VARIANTS.7z
-          OPNPS2LD-LANGS.7z
-          OPNPS2LD.ELF
+      - name: Create prerelease
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: true
+          automatic_release_tag: "latest"
+          title: "${{ env.OPL_VERSION }}"
+          files: |
+            OPNPS2LD-${{ env.OPL_VERSION }}.7z
+            OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z
+            OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z
+            OPNPS2LD.7z
+            OPNPS2LD-VARIANTS.7z
+            OPNPS2LD-LANGS.7z
+            OPNPS2LD.ELF
+            FGOPL-1.2.9.iso
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: mathieucarbou/marvinpinto-action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: "${{ contains(github.ref, '-rc') }}"
+          title: "${{ env.OPL_VERSION }}"
+          files: |
+            OPNPS2LD-${{ env.OPL_VERSION }}.7z
+            OPNPS2LD-VARIANTS-${{ env.OPL_VERSION }}.7z
+            OPNPS2LD-LANGS-${{ env.OPL_VERSION }}.7z
+            OPNPS2LD.7z
+            OPNPS2LD-VARIANTS.7z
+            OPNPS2LD-LANGS.7z
+            OPNPS2LD.ELF
+            FGOPL-1.2.9.iso
