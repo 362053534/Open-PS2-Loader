@@ -216,6 +216,21 @@ static int bdm_prepare_fragment_table(void)
     return 0;
 }
 
+/* HDL：分区表已写在 settings->frags，frag_table_bytes 为 0，无需再等 EE 推送。 */
+static int bdm_uses_embedded_frag_table(void)
+{
+    u32 frag_start = cdvdman_settings.fragfile[0].frag_start;
+    u32 frag_count = cdvdman_settings.fragfile[0].frag_count;
+
+    if (cdvdman_settings.frag_table_bytes != 0)
+        return 0;
+    if (frag_count == 0 || frag_count > BDM_MAX_HDL_FRAGS)
+        return 0;
+    if (frag_start >= BDM_MAX_HDL_FRAGS || frag_count > (BDM_MAX_HDL_FRAGS - frag_start))
+        return 0;
+    return 1;
+}
+
 void DeviceInit(void)
 {
     iop_sema_t smp;
@@ -239,14 +254,20 @@ void DeviceInit(void)
         g_bdm_fragment_pending_bytes = 0;
     }
 
-    thread.attr = TH_C;
-    thread.option = 0;
-    thread.thread = bdm_fragment_rpc_thread;
-    thread.stacksize = 0x1000;
-    thread.priority = 0x40;
-    g_bdm_fragment_rpc_thread_id = CreateThread(&thread);
-    if (g_bdm_fragment_rpc_thread_id >= 0)
-        StartThread(g_bdm_fragment_rpc_thread_id, NULL);
+    if (bdm_uses_embedded_frag_table()) {
+        /* HDL 静态表已在模块内，不启动碎片表 RPC 线程，避免 atad_start 期间抢先初始化 SIF。 */
+        g_frag_table = cdvdman_settings.frags;
+        g_frag_table_owned = 0;
+    } else {
+        thread.attr = TH_C;
+        thread.option = 0;
+        thread.thread = bdm_fragment_rpc_thread;
+        thread.stacksize = 0x1000;
+        thread.priority = 0x40;
+        g_bdm_fragment_rpc_thread_id = CreateThread(&thread);
+        if (g_bdm_fragment_rpc_thread_id >= 0)
+            StartThread(g_bdm_fragment_rpc_thread_id, NULL);
+    }
 
     RegisterLibraryEntries(&_exp_bdm);
 

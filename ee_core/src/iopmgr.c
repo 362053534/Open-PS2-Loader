@@ -302,9 +302,14 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         config->GameMode == BDM_M4S_MODE ||
         config->GameMode == BDM_HDD_MODE ||
         config->GameMode == HDD_MODE) {
-        if (PushBDMFragmentTable(config) < 0) {
-            DPRINTF("BDM fragment table preload failed\n");
-            return;
+        /* HDL 使用模块内静态表，BDMFragmentTable 为空，跳过推送，但仍要提前 sceCdInit。 */
+        if (config->BDMFragmentTable != NULL &&
+            config->BDMFragmentTableBytes != 0 &&
+            config->BDMFragmentTableCount != 0) {
+            if (PushBDMFragmentTable(config) < 0) {
+                DPRINTF("BDM fragment table preload failed\n");
+                return;
+            }
         }
         if (InitBDMCDVDMan() < 0)
             DPRINTF("BDM CDVD initialization RPC failed\n");

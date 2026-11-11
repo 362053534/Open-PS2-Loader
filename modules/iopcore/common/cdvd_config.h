@@ -64,6 +64,9 @@ struct cdvdman_settings_smb
 } __attribute__((packed));
 
 #define BDM_MAX_FILES 1  // ISO
+/* APA HDL 的 part_specs 上限是 65（见 hddsupport.c 的 HDL_MAX_PART_SPECS），静态表只需覆盖这条路径。 */
+#define BDM_MAX_HDL_FRAGS 65
+
 
 struct cdvdman_fragfile
 {
@@ -88,9 +91,11 @@ struct cdvdman_settings_bdm
     // Indicates that the fragment table uses 512-byte APA/PFS sectors.
     u32 fragsAre512ByteSectors;
 
-    // 碎片表在启动后由 EE 传入 IOP，避免配置区被固定数组限制。
+    // 动态表（U盘/exFAT ISO/APA ISO）：启动后由 EE 经 RPC 传入，frag_table_bytes 为推送长度。
+    // HDL 静态表：frag_table_bytes 为 0，分区表放在下方 frags[]，随 cdvdman 模块一起加载。
     u32 frag_table_ee_addr;
     u32 frag_table_bytes;
+    bd_fragment_t frags[BDM_MAX_HDL_FRAGS];
 } __attribute__((packed));
 
 #define BDM_FRAGMENT_RPC_ID      0x800005A0
