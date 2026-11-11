@@ -912,44 +912,7 @@ struct UIItem diaAboutChinese[] = {
     {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_DEVS}}},
     {UI_BREAK},
     {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"峰哥GAMES", -1}}},
-    {UI_BREAK},
-
-    {UI_BREAK},
-
-    // Quality Assurance
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {NULL, _STR_QANDA}}},
-    {UI_BREAK},
-    // 中点两侧各留一个空格，保留姓名缩进并按简中字形宽度排为四行。
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"峰哥GAMES · 筱海- · 关山 · 换换爱 · anyi · ps玩家 · 诺斯菲- · 白云深处 · 穆特", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"蕾姆REMM · 水跃鱼 · rinnng8 · 后来提及 · 岁月如飞刀 · 耿关赫 · 四月的谎言", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"张楠 · 真心 · 自由自在 · 开心の清爽 · 无敌破坏王 · 真田幸村 · 沧海一栗 · AVA", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"铁拳钢达姆 · rm-rf/*(已黑化) · playstation荣 · 威宁四少 · /ka花样年华 · 1101", -1}}},
-    {UI_BREAK},
-
-    {UI_BREAK},
-
-    // 交流与反馈
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"交流与反馈", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"B站：space.bilibili.com/76478300", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"论坛：bbs.a9vg.com/thread-9027434-1-1.html", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"贴吧：tieba.baidu.com/p/9606048316", -1}}},
-    {UI_BREAK},
-    {UI_SPACER},
-    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"Q群：81534571 (暗号OPL)", -1}}},
+    {UI_LABEL, 0, 1, 1, -1, 0, 15, {.label = {"小力力", -1}}},
     {UI_BREAK},
 
     {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
