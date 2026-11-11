@@ -1,6 +1,6 @@
 VERSION = 1
 SUBVERSION = 2
-PATCHLEVEL = 0
+PATCHLEVEL = 9
 EXTRAVERSION = Beta
 
 # How to DEBUG?
@@ -119,8 +119,8 @@ TRANSLATIONS = Albanian Arabic Bulgarian Cebuano Croatian Czech Danish Dutch Eng
 
 EE_BIN = opl.elf
 EE_BIN_STRIPPED = opl_stripped.elf
-EE_BIN_PACKED = OPNPS2LD.ELF
-EE_VPKD = OPNPS2LD-$(OPL_VERSION)
+EE_BIN_PACKED = FGOPL.ELF
+EE_VPKD = FGOPL-$(OPL_VERSION)
 EE_SRC_DIR = src/
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
