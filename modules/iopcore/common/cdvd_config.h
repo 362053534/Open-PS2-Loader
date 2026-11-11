@@ -109,7 +109,13 @@ struct bdm_fragment_rpc
     u32 fragment_bytes;
     u32 iop_address;
     s32 result;
+    /* 补齐到 32 字节，避免 SIF DMA 按 16 字节上取整写穿相邻 BSS。现有字段偏移不变。 */
+    u8 pad[12];
 } __attribute__((packed));
+
+/* EE/IOP 旧工具链不一定提供 _Static_assert，用数组长度做编译期检查。 */
+typedef char bdm_fragment_rpc_size_ok[(sizeof(struct bdm_fragment_rpc) == 32 &&
+                                       (sizeof(struct bdm_fragment_rpc) & 0xF) == 0) ? 1 : -1];
 
 #define CDVDMAN_SETTINGS_DEFAULT_COMMON                    \
     {                                                      \

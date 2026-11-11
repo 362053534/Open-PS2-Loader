@@ -201,6 +201,19 @@ static int bdm_prepare_fragment_table(void)
     }
 
     bd_defrag_index_reset(&g_bd_defrag_index);
+    /* 重复 prepare 时先释放旧检查点，避免泄漏。分配失败只退回线性查找，不让表准备失败。 */
+    if (g_bd_defrag_checkpoints != NULL) {
+        FreeSysMemory(g_bd_defrag_checkpoints);
+        g_bd_defrag_checkpoints = NULL;
+    }
+    if (checkpoint_count > 0 &&
+        checkpoint_count <= 0xFFFFFFFFU / sizeof(bd_defrag_checkpoint_t)) {
+        g_bd_defrag_checkpoints = AllocSysMemory(ALLOC_FIRST,
+                                                 checkpoint_count * sizeof(bd_defrag_checkpoint_t),
+                                                 NULL);
+        if (g_bd_defrag_checkpoints == NULL)
+            DPRINTF("fragment index allocation failed; using linear lookup\n");
+    }
     if (g_bd_defrag_checkpoints != NULL &&
         bd_defrag_index_build(&g_bd_defrag_index,
                               &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
