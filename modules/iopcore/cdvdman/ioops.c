@@ -94,7 +94,13 @@ int cdvdman_fs_init(void)
 
     memset(&cdvdman_fdhandles[0], 0, MAX_FDHANDLES * sizeof(FHANDLE));
 
+#ifdef BDM_DRIVER
+    /* BDM：PVD 读失败时不置 fs_inited，sceCdInit 返回 0，下次调用会重新执行 DeviceFSInit 并重读 PVD。 */
+    if (cdvdman_searchfile_init() < 0)
+        return 0;
+#else
     cdvdman_searchfile_init();
+#endif
 
     fs_inited = 1;
     return 1;

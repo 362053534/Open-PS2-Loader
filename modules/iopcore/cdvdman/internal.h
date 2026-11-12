@@ -115,7 +115,7 @@ extern void cdvdman_cb_event(int reason);
 
 extern int cdvdman_init(void);
 extern int cdvdman_fs_init(void);
-extern void cdvdman_searchfile_init(void);
+extern int cdvdman_searchfile_init(void);
 extern void cdvdman_initdev(void);
 
 extern struct CDVDMAN_SETTINGS_TYPE cdvdman_settings;

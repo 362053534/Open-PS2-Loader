@@ -228,12 +228,23 @@ int sceCdLayerSearchFile(sceCdlFILE *fp, const char *name, int layer)
     return cdvdman_findfile(fp, name, layer);
 }
 
-void cdvdman_searchfile_init(void)
+int cdvdman_searchfile_init(void)
 {
+#ifdef BDM_DRIVER
+    /* 先预置读错误：ZSO 探测读失败时底层直接返回，不会改写错误码，避免把失败误判为成功。 */
+    cdvdman_stat.err = SCECdErREAD;
+#endif
     // Read the volume descriptor
     while (sceCdRead(16, 1, cdvdman_buf, NULL) == 0)
         sceCdSync(0);
     sceCdSync(0);
+#ifdef BDM_DRIVER
+    /* BDM：IOP 刚重启时首次读盘可能失败。失败时不解析 PVD，交给调用方下次重试，避免用错误的 PVD 永久锁定。 */
+    if (cdvdman_stat.err != SCECdErNO) {
+        DPRINTF("cdvdman_searchfile_init PVD read failed err=%d\n", cdvdman_stat.err);
+        return -1;
+    }
+#endif
 
     struct dirTocEntry *tocEntryPointer = (struct dirTocEntry *)&cdvdman_buf[0x9c];
     layer_info[0].rootDirtocLBA = tocEntryPointer->fileLBA;
@@ -252,9 +263,19 @@ void cdvdman_searchfile_init(void)
             u32 lsn0 = mediaLsnCount;
             // So that CdRead below can read more than first layer.
             mediaLsnCount = 0;
+#ifdef BDM_DRIVER
+            cdvdman_stat.err = SCECdErREAD;
+#endif
             while (sceCdRead(layer1_start + 16, 1, cdvdman_buf, NULL) == 0)
                 sceCdSync(0);
             sceCdSync(0);
+#ifdef BDM_DRIVER
+            /* 第二层 PVD 同样不能带着读错误锁定，下次初始化会整体重读。 */
+            if (cdvdman_stat.err != SCECdErNO) {
+                DPRINTF("cdvdman_searchfile_init DVD9 L1 PVD read failed err=%d\n", cdvdman_stat.err);
+                return -1;
+            }
+#endif
             tocEntryPointer = (struct dirTocEntry *)&cdvdman_buf[0x9c];
             layer_info[1].rootDirtocLBA = layer1_start + tocEntryPointer->fileLBA;
             layer_info[1].rootDirtocLength = tocEntryPointer->fileSize;
@@ -266,4 +287,6 @@ void cdvdman_searchfile_init(void)
             DPRINTF("cdvdman_searchfile_init DVD9 mediaLsnCount=%d\n", mediaLsnCount);
         }
     }
+
+    return 0;
 }

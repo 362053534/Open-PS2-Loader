@@ -27,7 +27,8 @@ static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
 
 #define CDVD_INIT_RPC_ID      0x80000592
-#define BDM_CDVD_INIT_RETRIES 3
+/* IOP 刚重启时硬盘可能尚未就绪，重试间隔约零点几秒（delay(1) 为忙等，非精确计时）。 */
+#define BDM_INIT_RETRIES      10
 static SifRpcClientData_t cdvd_init_rpc_client __attribute__((aligned(64)));
 static int cdvd_init_rpc_mode __attribute__((aligned(64)));
 static int cdvd_init_rpc_result[4] __attribute__((aligned(64)));
@@ -101,7 +102,7 @@ static int InitBDMCDVDMan(void)
     }
 
     cdvd_init_rpc_mode = SCECdINIT;
-    for (attempt = 0; attempt < BDM_CDVD_INIT_RETRIES; attempt++) {
+    for (attempt = 0; attempt < BDM_INIT_RETRIES; attempt++) {
         memset(cdvd_init_rpc_result, 0, sizeof(cdvd_init_rpc_result));
         rpc_result = SifCallRpc(&cdvd_init_rpc_client, 0, 0,
                                 &cdvd_init_rpc_mode, sizeof(cdvd_init_rpc_mode),
@@ -112,6 +113,9 @@ static int InitBDMCDVDMan(void)
         /* 短暂的SIF拉取失败不应直接把PS2LOGO交给未就绪的CDVDMAN。 */
         DPRINTF("BDM CDVD initialization attempt %d failed (%d, %d)\n",
                 attempt + 1, rpc_result, cdvd_init_rpc_result[0]);
+        /* 两次尝试之间稍等，给硬盘恢复时间；最后一次失败后不再等待。 */
+        if (attempt < BDM_INIT_RETRIES - 1)
+            delay(1);
     }
 
     return rpc_result < 0 ? rpc_result : -1;
@@ -309,9 +313,21 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         if (config->BDMFragmentTable != NULL &&
             config->BDMFragmentTableBytes != 0 &&
             config->BDMFragmentTableCount != 0) {
-            if (PushBDMFragmentTable(config) < 0) {
-                DPRINTF("BDM fragment table preload failed\n");
-                return;
+            int attempt;
+
+            for (attempt = 0; attempt < BDM_INIT_RETRIES; attempt++) {
+                if (PushBDMFragmentTable(config) >= 0)
+                    break;
+                DPRINTF("BDM fragment table preload attempt %d failed\n", attempt + 1);
+                if (attempt < BDM_INIT_RETRIES - 1)
+                    delay(1);
+            }
+            if (attempt >= BDM_INIT_RETRIES) {
+                /* 没有碎片表游戏无法读盘，与其静默黑屏，不如红屏停机，便于用户反馈。
+                 * GS BGCOLOR 低字节为 R，0x0000FF 即红色（与 igs_api.c 中的红色一致）。 */
+                DBGCOL(0x0000FF, IOPMGR, "BDM fragment table push failed");
+                while (1)
+                    ;
             }
         }
         if (InitBDMCDVDMan() < 0)
