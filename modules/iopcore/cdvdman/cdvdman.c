@@ -737,6 +737,13 @@ int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf)
     sync_flag = 0;
     SetEventFlag(cdvdman_stat.intr_ef, 9);
 
+#ifdef SMB_DRIVER
+    /* 兼容模式 2 的同步读占着 sync_flag 期间，流填充会失败并等重排；
+     * 这里一释放就主动补一次，不用等闹钟或游戏下一次 sceCdStRead。 */
+    if (Stm0Callback != NULL)
+        cdvdman_stream_kick();
+#endif
+
     return 1;
 }
 
@@ -1034,7 +1041,10 @@ static void cdvdman_cdread_Thread(void *args)
         use_pending = (cdvdman_settings.common.flags & IOPCORE_COMPAT_SMB_PENDING) != 0;
 
         do {
+            /* 流读期间让 smb_ReadFile 使用大分块，读完立即恢复。 */
+            smb_stream_read_tid = (cdread_owner == SMB_READ_OWNER_STREAM) ? GetThreadId() : -1;
             cdvdman_read(cdvdman_stat.cdread_lba, cdvdman_stat.cdread_sectors, cdvdman_stat.sector_size, cdvdman_stat.cdread_buf);
+            smb_stream_read_tid = -1;
 
             /* pending 链路固定带 5ms 批次窗。 */
             if (use_pending && cdread_owner == SMB_READ_OWNER_NORMAL && !cdread_pending)

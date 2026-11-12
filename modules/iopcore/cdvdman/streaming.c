@@ -116,6 +116,14 @@ static void StStartFillStreamBuffer(void)
 }
 
 
+#ifdef SMB_DRIVER
+/* 供同步读结束后调用：流正在运行时补一次缓冲，已在读或缓冲已满时什么也不做。 */
+void cdvdman_stream_kick(void)
+{
+    if (cdvdman_stat.StreamingData.StStat)
+        StStartFillStreamBuffer();
+}
+#endif
 
 int sceCdStInit(u32 bufmax, u32 bankmax, void *iop_bufaddr)
 {

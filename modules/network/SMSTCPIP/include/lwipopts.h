@@ -97,7 +97,8 @@ a lot of data that needs to be copied, this should be set high. */
 /* ---------- Pbuf options ---------- */
 /* PBUF_POOL_SIZE: the number of buffers in the pbuf pool. */
 #ifdef INGAME_DRIVER
-#define PBUF_POOL_SIZE 8
+/* 流读分块提到 16KB 后窗口随之放大，pbuf 按上游 8KB/10240/8 的比例同步加到 16 个。 */
+#define PBUF_POOL_SIZE 16
 #else
 #define PBUF_POOL_SIZE 25
 #endif
@@ -143,7 +144,8 @@ a lot of data that needs to be copied, this should be set high. */
 
 /* TCP receive window. */
 #ifdef INGAME_DRIVER
-#define TCP_WND 10240
+/* 需大于 cdvdman 流读分块 SMB_STREAM_RECV_SIZE（16KB）；普通读仍是 8KB，行为不变。 */
+#define TCP_WND 20480
 #else
 #define TCP_WND 32768
 #endif

@@ -512,6 +512,7 @@ int smb_TreeConnectAndX(char *ShareName);
 int smb_OpenAndX(char *filename, u8 *FID, int Write); // process a Open AndX message
 int smb_Close(int FID);
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes);
+extern int smb_stream_read_tid;
 int smb_WriteFile(u16 FID, u32 offsetlow, u32 offsethigh, void *writebuf, int nbytes);
 int smb_ReadCD(unsigned int lsn, unsigned int nsectors, void *buf, int part_num);
 int smb_Echo(void);

@@ -106,6 +106,8 @@ extern int cdvdman_SyncRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 #ifdef SMB_DRIVER
 extern int cdvdman_AsyncStreamRead(u32 lsn, u32 sectors, u16 sector_size, void *buf);
 extern void cdvdman_cancel_pending_read(void);
+/* 流在运行时主动补一次流缓冲（streaming.c）。 */
+extern void cdvdman_stream_kick(void);
 extern void cdvdman_kick_rthread(int from_intr);
 /* 返回 1 表示没有排队的读，调用方不能把上一笔 LBA 再读一遍。 */
 extern int smb_read_thread_on_wake(int read_busy);

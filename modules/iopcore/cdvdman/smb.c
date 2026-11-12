@@ -37,6 +37,10 @@
 #define CLIENT_MAX_BUFFER_SIZE 8192      //Allow up to 8192 bytes to be received.
 #define CLIENT_MAX_XMIT_SIZE   USHRT_MAX //Allow up to 65535 bytes to be transmitted.
 #define CLIENT_MAX_RECV_SIZE   8192      //Allow up to 8192 bytes to be received.
+/* 流读（sceCdSt）专用分块：每 8KB 一轮往返在高延迟路由器下跟不上播片消耗，
+ * 流读单次请求提到 16KB，往返次数减半；普通读仍保持 8KB 不变。
+ * 必须小于 in-game TCP 接收窗口（见 lwipopts.h），否则会触发服务器拥塞控制。 */
+#define SMB_STREAM_RECV_SIZE   16384
 /* Echo 保活探测的超时上限：不能用 setsockopt(SO_RCVTIMEO) —— 那会让 lwip 的每一次
  * 收包都走 sys_arch_sem_wait() 的 alarm 分支而不是裸 WaitSema，实测正是 PCM 播片
  * 杂音的直接来源。这里改成自己用 MSG_DONTWAIT 轮询等回包。 */
@@ -49,6 +53,8 @@
 #define SMB_READ_LINK_CHECK_POLLS 1000
 
 int smb_io_sema = -1;
+/* 正在执行流读的线程 ID，-1 表示当前没有流读；只有该线程的读才用大分块。 */
+int smb_stream_read_tid = -1;
 
 #define WAITIOSEMA(x)   WaitSema(x)
 #define SIGNALIOSEMA(x) SignalSema(x)
@@ -848,17 +854,19 @@ static int smb_ReadAndX(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, i
 
 int smb_ReadFile(u16 FID, u32 offsetlow, u32 offsethigh, void *readbuf, int nbytes)
 {
-    int result, remaining, toRead;
+    int result, remaining, toRead, chunk;
     char *ptr;
 
     remaining = nbytes;
     ptr = readbuf;
+    /* 只有读线程在做流读时才用大分块，其他线程同期的读（如文件 I/O）不受影响。 */
+    chunk = (smb_stream_read_tid >= 0 && smb_stream_read_tid == GetThreadId()) ? SMB_STREAM_RECV_SIZE : CLIENT_MAX_RECV_SIZE;
 
     WAITIOSEMA(smb_io_sema);
     smb_in_data_read = 1;
 
     while (remaining > 0) {
-        toRead = remaining > CLIENT_MAX_RECV_SIZE ? CLIENT_MAX_RECV_SIZE : remaining;
+        toRead = remaining > chunk ? chunk : remaining;
 
         result = smb_ReadAndX(FID, offsetlow, offsethigh, ptr, toRead);
         if (result <= 0) {
