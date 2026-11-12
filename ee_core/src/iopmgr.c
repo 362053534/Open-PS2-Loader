@@ -300,9 +300,12 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     if (config->GameMode == BDM_USB_MODE ||
         config->GameMode == BDM_ILK_MODE ||
         config->GameMode == BDM_M4S_MODE ||
-        config->GameMode == BDM_HDD_MODE ||
-        config->GameMode == HDD_MODE) {
-        /* HDL 使用模块内静态表，BDMFragmentTable 为空，跳过推送，但仍要提前 sceCdInit。 */
+        config->GameMode == BDM_HDD_MODE) {
+        /*
+         * HDL（HDD_MODE）已改用模块内静态碎片表，无需趁 EE 内存未被覆盖时提前拉表，
+         * 因此不再提前 sceCdInit，交由 PS2LOGO/游戏自行初始化，恢复原版时序，
+         * 避免 IOP 刚重启、硬盘尚未就绪时抢先读 PVD 失败并被永久锁定。
+         */
         if (config->BDMFragmentTable != NULL &&
             config->BDMFragmentTableBytes != 0 &&
             config->BDMFragmentTableCount != 0) {
