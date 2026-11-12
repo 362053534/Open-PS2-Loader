@@ -759,7 +759,8 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     settings->smb_port = gPCPort;
     strcpy(settings->smb_share, gPCShareName);
     strcpy(settings->smb_prefix, gETHPrefix);
-    strcpy(settings->smb_user, gPCUserName);
+    // 用户名为空时 EE 端可能已改用 PS2 登录成功，游戏内必须用同一用户名，否则会话建立失败
+    strcpy(settings->smb_user, gPCLoginUser[0] ? gPCLoginUser : gPCUserName);
     strcpy(settings->smb_password, gPCPassword);
 
     // Initialize layer 1 information.
