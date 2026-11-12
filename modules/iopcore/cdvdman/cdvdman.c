@@ -437,8 +437,9 @@ static int cdvdman_read_sectors(u32 lsn, unsigned int sectors, void *buf)
                 TargetTime.hi = 0;
                 TargetTime.lo = accu_budget;
                 ClearEventFlag(cdvdman_stat.intr_ef, ~0x1000);
-                SetAlarm(&TargetTime, &cdvdemu_read_end_cb, NULL);
-                accu_armed = 1;
+                /* 闹钟设置失败（如 IOP 闹钟资源耗尽）时不等待，本块按设备速度读完，避免永久卡死。 */
+                if (SetAlarm(&TargetTime, &cdvdemu_read_end_cb, NULL) >= 0)
+                    accu_armed = 1;
             }
         }
 
@@ -927,10 +928,20 @@ void cdvdman_cb_event(int reason)
 
         DPRINTF("cdvdman_cb_event reason: %d - setting cb alarm...\n", reason);
 
-        if (QueryIntrContext())
-            iSetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data);
-        else
-            SetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data);
+        if (QueryIntrContext()) {
+            /* 闹钟设置失败时直接执行回调，避免读结束信号和用户回调永远不到。 */
+            if (iSetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data) < 0)
+                event_alarm_cb(&cb_data);
+        } else {
+            if (SetAlarm(&gCallbackSysClock, &event_alarm_cb, &cb_data) < 0) {
+                int OldState;
+
+                /* 回调原本在闹钟中断里运行，线程上下文补执行时先关中断，保持相同语义。 */
+                CpuSuspendIntr(&OldState);
+                event_alarm_cb(&cb_data);
+                CpuResumeIntr(OldState);
+            }
+        }
     } else {
         cdvdman_signal_read_end();
     }

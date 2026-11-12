@@ -11,9 +11,13 @@ static int ReadSectors(int maxcount, void *buffer);
 static int StFillStreamBuffer(void);
 static void StStartFillStreamBuffer(void);
 
+/* 测试：流重排间隔由约 200ms（0x00704000）改为约 16ms，验证高速网络下约 200ms 周期卡顿。 */
+#define STM_RESCHEDULE_TICKS 0x00090000
+#define STM_RESCHEDULE_US    (16 * 1000)
+
 static unsigned int StmScheduleCb(void *arg)
 {
-    return ((StFillStreamBuffer() >= 0) ? 0 : 0x00704000);
+    return ((StFillStreamBuffer() >= 0) ? 0 : STM_RESCHEDULE_TICKS);
 }
 
 static void StmCallback(void)
@@ -98,9 +102,20 @@ static void StStartFillStreamBuffer(void)
 
     if (StFillStreamBuffer() < 0) {
         DPRINTF("StmCallback: Rescheduling read.\n");
-        StmScheduleClock.lo = 0x00704000;
+        StmScheduleClock.lo = STM_RESCHEDULE_TICKS;
         StmScheduleClock.hi = 0;
-        SetAlarm(&StmScheduleClock, &StmScheduleCb, &cdvdman_stat.StreamingData);
+        if (SetAlarm(&StmScheduleClock, &StmScheduleCb, &cdvdman_stat.StreamingData) < 0) {
+            /*
+             * 闹钟设置失败时无法延后重排：线程上下文里延时一个重排间隔（与闹钟一致）
+             * 后直接重试填充一次；仍失败或处于中断上下文时，交给下一次 sceCdStRead
+             * 或下一块读完再触发。
+             */
+            DPRINTF("StmCallback: SetAlarm failed.\n");
+            if (!QueryIntrContext()) {
+                DelayThread(STM_RESCHEDULE_US);
+                StFillStreamBuffer();
+            }
+        }
     }
 }
 
