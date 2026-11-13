@@ -8,7 +8,6 @@
 */
 
 #include <iopcontrol.h>
-#include <libcdvd-common.h>
 #include <sifcmd.h>
 #include <sifdma.h>
 
@@ -26,12 +25,8 @@ extern int _iop_reboot_count;
 static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
 
-#define CDVD_INIT_RPC_ID      0x80000592
-/* IOP 刚重启时硬盘可能尚未就绪，重试间隔约零点几秒（delay(1) 为忙等，非精确计时）。 */
+/* 推表失败重试次数，重试间隔约零点几秒（delay(1) 为忙等，非精确计时）。 */
 #define BDM_INIT_RETRIES      10
-static SifRpcClientData_t cdvd_init_rpc_client __attribute__((aligned(64)));
-static int cdvd_init_rpc_mode __attribute__((aligned(64)));
-static int cdvd_init_rpc_result[4] __attribute__((aligned(64)));
 static SifRpcClientData_t bdm_fragment_rpc_client __attribute__((aligned(64)));
 static struct bdm_fragment_rpc bdm_fragment_rpc_packet __attribute__((aligned(64)));
 
@@ -82,43 +77,6 @@ static int PushBDMFragmentTable(const struct EECoreConfig_t *config)
                             &bdm_fragment_rpc_packet, sizeof(bdm_fragment_rpc_packet),
                             NULL, NULL);
     return (rpc_result >= 0 && bdm_fragment_rpc_packet.result == 0) ? 0 : -1;
-}
-
-static int InitBDMCDVDMan(void)
-{
-    int attempt;
-    int rpc_result = -1;
-
-    memset(&cdvd_init_rpc_client, 0, sizeof(cdvd_init_rpc_client));
-
-    /*
-     * 复用CDVDFSV现有初始化RPC，可让所有BDM设备在PS2LOGO运行前进入
-     * DeviceFSInit，同时避免EE Core引入完整libcdvd状态。
-     */
-    while (1) {
-        if (SifBindRpc(&cdvd_init_rpc_client, CDVD_INIT_RPC_ID, 0) >= 0 &&
-            cdvd_init_rpc_client.server != NULL)
-            break;
-    }
-
-    cdvd_init_rpc_mode = SCECdINIT;
-    for (attempt = 0; attempt < BDM_INIT_RETRIES; attempt++) {
-        memset(cdvd_init_rpc_result, 0, sizeof(cdvd_init_rpc_result));
-        rpc_result = SifCallRpc(&cdvd_init_rpc_client, 0, 0,
-                                &cdvd_init_rpc_mode, sizeof(cdvd_init_rpc_mode),
-                                cdvd_init_rpc_result, sizeof(cdvd_init_rpc_result), NULL, NULL);
-        if (rpc_result >= 0 && cdvd_init_rpc_result[0] != 0)
-            return 0;
-
-        /* 短暂的SIF拉取失败不应直接把PS2LOGO交给未就绪的CDVDMAN。 */
-        DPRINTF("BDM CDVD initialization attempt %d failed (%d, %d)\n",
-                attempt + 1, rpc_result, cdvd_init_rpc_result[0]);
-        /* 两次尝试之间稍等，给硬盘恢复时间；最后一次失败后不再等待。 */
-        if (attempt < BDM_INIT_RETRIES - 1)
-            delay(1);
-    }
-
-    return rpc_result < 0 ? rpc_result : -1;
 }
 
 /*
@@ -306,9 +264,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         config->GameMode == BDM_M4S_MODE ||
         config->GameMode == BDM_HDD_MODE) {
         /*
-         * HDL（HDD_MODE）已改用模块内静态碎片表，无需趁 EE 内存未被覆盖时提前拉表，
-         * 因此不再提前 sceCdInit，交由 PS2LOGO/游戏自行初始化，恢复原版时序，
-         * 避免 IOP 刚重启、硬盘尚未就绪时抢先读 PVD 失败并被永久锁定。
+         * 碎片表已由 EE 在 PS2LOGO 前推送到 IOP，不再提前 sceCdInit，交由 PS2LOGO/游戏
+         * 自行初始化，恢复原版时序，避免 IOP 刚重启时阻塞读盘导致无提示黑屏。
          */
         if (config->BDMFragmentTable != NULL &&
             config->BDMFragmentTableBytes != 0 &&
@@ -330,8 +287,6 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
                     ;
             }
         }
-        if (InitBDMCDVDMan() < 0)
-            DPRINTF("BDM CDVD initialization RPC failed\n");
     }
 
 }

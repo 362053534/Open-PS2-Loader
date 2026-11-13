@@ -267,8 +267,19 @@ void DeviceInit(void)
         g_bdm_fragment_pending_bytes = 0;
     }
 
+    RegisterLibraryEntries(&_exp_bdm);
+
+#ifdef USE_BDM_ATA
+    RegisterLibraryEntries(&_exp_atad);
+    // Initialize ATA interface which will register the HDD as a block device.
+    atad_start();
+    atad_inited = 1;
+#endif
+
+    /* 碎片表 RPC 线程放在 atad_start 之后启动，避免其在 ATA 初始化期间抢先初始化 SIF；
+       EE 侧绑定会循环等待服务注册，推表时序不受影响。 */
     if (bdm_uses_embedded_frag_table()) {
-        /* HDL 静态表已在模块内，不启动碎片表 RPC 线程，避免 atad_start 期间抢先初始化 SIF。 */
+        /* HDL 静态表已在模块内，不启动碎片表 RPC 线程。 */
         g_frag_table = cdvdman_settings.frags;
         g_frag_table_owned = 0;
     } else {
@@ -281,15 +292,6 @@ void DeviceInit(void)
         if (g_bdm_fragment_rpc_thread_id >= 0)
             StartThread(g_bdm_fragment_rpc_thread_id, NULL);
     }
-
-    RegisterLibraryEntries(&_exp_bdm);
-
-#ifdef USE_BDM_ATA
-    RegisterLibraryEntries(&_exp_atad);
-    // Initialize ATA interface which will register the HDD as a block device.
-    atad_start();
-    atad_inited = 1;
-#endif
 }
 
 void DeviceDeinit(void)
