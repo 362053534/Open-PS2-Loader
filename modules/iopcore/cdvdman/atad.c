@@ -721,11 +721,11 @@ static void ata_shutdown_cb(void)
 static int ata_read_identify_data_2(int device, u16 *identify_data)
 {
     USE_ATA_REGS;
-    int i, result;
+    int i, didx, delay, result;
     u16 status;
 
     if ((result = ata_device_select(device)) != 0)
-        return result;
+        goto out;
 
     ata_hwport->r_control = 0;
     ata_hwport->r_feature = 0;
@@ -736,19 +736,74 @@ static int ata_read_identify_data_2(int device, u16 *identify_data)
     ata_hwport->r_select = ((device << 4) | ATA_SEL_LBA) & 0xff;
     ata_hwport->r_command = ATA_C_IDENTIFY_DEVICE;
 
-    if ((result = ata_wait_busy()) != 0)
-        return result;
+    /* ATA 规范：写命令后至少等 400ns 才能看状态。连读 3 次备用状态凑够延时，
+       否则转接板尚未置 BSY 时会误判为“无数据”，并让 DRQ 一直挂着，导致下一条命令等满约 31 秒。 */
+    (void)(ata_hwport->r_control);
+    (void)(ata_hwport->r_control);
+    (void)(ata_hwport->r_control);
+
+    /* 有限轮询，直到 BSY=0 且 DRQ 或 ERR 置位。分段延时与 gen_ata_wait_busy 相同，
+       SSD 正常在 1ms 内完成，最坏约 31 秒，不超过原有等待上限。 */
+    result = ATA_RES_ERR_TIMEOUT;
+    for (i = 0; i < 80; i++) {
+        status = ata_hwport->r_control & 0xff;
+        if (!(status & ATA_STAT_BUSY) && (status & (ATA_STAT_DRQ | ATA_STAT_ERR))) {
+            result = 0;
+            break;
+        }
+
+        didx = i / 10;
+        switch (didx) {
+            case 0:
+                continue;
+            case 1:
+                delay = 100;
+                break;
+            case 2:
+                delay = 1000;
+                break;
+            case 3:
+                delay = 10000;
+                break;
+            case 4:
+                delay = 100000;
+                break;
+            default:
+                delay = 1000000;
+        }
+
+        DelayThread(delay);
+    }
+    if (result != 0)
+        goto out;
 
     status = ata_hwport->r_status & 0xff;
-    if (status & ATA_STAT_ERR)
-        return ATA_RES_ERR_IO;
-    if (!(status & ATA_STAT_DRQ))
-        return ATA_RES_ERR_NODATA;
+    if (status & ATA_STAT_ERR) {
+        result = ATA_RES_ERR_IO;
+        goto out;
+    }
+    if (!(status & ATA_STAT_DRQ)) {
+        result = ATA_RES_ERR_NODATA;
+        goto out;
+    }
 
     for (i = 0; i < 256; i++)
         identify_data[i] = ata_hwport->r_data;
 
-    return 0;
+out:
+    /* 任何出口：设备不忙且 DRQ 仍置位时把剩余数据读空（最多 256 个字），
+       避免设备停在“等待主机取数据”状态，使后续命令在设备选择时超时。 */
+    for (i = 0; i < 256; i++) {
+        status = ata_hwport->r_control & 0xff;
+        if ((status & ATA_STAT_BUSY) || !(status & ATA_STAT_DRQ))
+            break;
+        (void)(ata_hwport->r_data);
+    }
+
+    /* 最后读一次主状态寄存器，清除可能残留的 INTRQ。 */
+    (void)(ata_hwport->r_status);
+
+    return result;
 }
 
 static unsigned int ata_get_logical_sector_size_2(int device)
