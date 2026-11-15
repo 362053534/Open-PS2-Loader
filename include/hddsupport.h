@@ -56,6 +56,8 @@ int hddCheck(void);
 u32 hddGetTotalSectors(void);
 int hddIs48bit(void);
 int hddSetTransferMode(int type, int mode);
+void hddProbeHighestUdmaMode(void);
+int hddGetHighestUdmaMode(void);
 void hddSetIdleTimeout(int timeout);
 void hddSetIdleImmediate(void);
 int hddGetHDLGamelist(hdl_games_list_t *game_list);

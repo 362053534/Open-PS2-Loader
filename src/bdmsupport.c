@@ -1348,6 +1348,8 @@ int bdmUpdateDeviceData(item_list_t *itemList, int discoveryOnly)
             // If the device is backed by the ATA driver then get the supported LBA size for the drive.
             if (pDeviceData->bdmDeviceType == BDM_TYPE_ATA) {
                 bdmResolveLBA_UDMA(pDeviceData);
+                // 设置传输模式之后再探测一次最高UDMA模式并缓存，供模式设置页使用
+                hddProbeHighestUdmaMode();
                 LOG("Mass device: %d (%d LBA%d UDMA%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, (pDeviceData->bdmHddIsLBA48 == 1 ? 48 : 28), pDeviceData->ataHighestUDMAMode, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);
             } else
                 LOG("Mass device: %d (%d) %s -> %s\n", itemList->mode, pDeviceData->massDeviceIndex, pDeviceData->bdmPrefix, pDeviceData->bdmDriver);

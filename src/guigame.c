@@ -82,15 +82,6 @@ static void guiGameLoadPadMacroConfig(config_set_t *configSet, config_set_t *con
 static int guiGameSaveOSDLanguageGameConfig(config_set_t *configSet, int result);
 static void guiGameLoadOSDLanguageConfig(config_set_t *configSet, config_set_t *configGame);
 
-static int getHighestUdmaMode()
-{
-    int highestMode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
-    if ((highestMode < 0) || (highestMode > 7))
-        highestMode = 4;
-
-    return highestMode;
-}
-
 int guiGameAltStartupNameHandler(char *text, int maxLen)
 {
     int i;
@@ -995,7 +986,9 @@ void guiGameShowCompatConfig(int id, item_list_t *support, config_set_t *configS
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         const char *settingsSource[] = {_l(_STR_GLOBAL_SETTINGS), _l(_STR_PERGAME_SETTINGS), NULL};
         diaSetEnum(diaCompatConfig, COMPAT_DMASOURCE, settingsSource);
-        int ataHighestUDMAMode = getHighestUdmaMode();
+        /* 使用初始化硬盘时缓存的最高UDMA模式，不在进入模式页时发 IDENTIFY。
+           部分硬盘在 IDENTIFY 后紧接着退出页面时的设置传输模式会卡死。 */
+        int ataHighestUDMAMode = hddGetHighestUdmaMode();
         if (ataHighestUDMAMode == 5) {
             const char *dmaModes[] = {"MDMA 0", "MDMA 1", "MDMA 2", "UDMA 0", "UDMA 1", "UDMA 2", "UDMA 3", _l(_STR_DMA_UDMA4_DEFAULT), _l(_STR_DMA_UDMA5_HIGHEST), "UDMA 6", _l(_STR_DMA_UDMA7_EXTREME), NULL};
             diaSetEnum(diaCompatConfig, COMPAT_DMA, dmaModes);

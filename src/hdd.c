@@ -63,6 +63,31 @@ int hddIs48bit(void)
 }
 
 //-------------------------------------------------------------------------
+// 初始化硬盘时探测到的最高UDMA模式，-1 表示尚未探测
+static int hddHighestUdmaMode = -1;
+
+// 只探测一次并缓存，供模式设置页使用。需放在初始化时设置传输模式之后调用
+void hddProbeHighestUdmaMode(void)
+{
+    int mode;
+
+    if (hddHighestUdmaMode >= 0)
+        return;
+
+    mode = fileXioDevctl("xhdd0:", ATA_DEVCTL_GET_HIGHEST_UDMA_MODE, NULL, 0, NULL, 0);
+    if ((mode < 0) || (mode > 7))
+        mode = 4;
+
+    hddHighestUdmaMode = mode;
+}
+
+// 未探测时按 UDMA 4 处理
+int hddGetHighestUdmaMode(void)
+{
+    return (hddHighestUdmaMode >= 0) ? hddHighestUdmaMode : 4;
+}
+
+//-------------------------------------------------------------------------
 int hddSetTransferMode(int type, int mode)
 {
     hddAtaSetMode_t *args = (hddAtaSetMode_t *)IOBuffer;

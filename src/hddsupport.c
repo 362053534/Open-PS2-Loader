@@ -499,6 +499,9 @@ int hddLoadSupportModules(void)
         else if (gDmaMode >= 0 && gDmaMode <= 2)
             hddSetTransferMode(0x20, gDmaMode);
 
+        // 设置传输模式之后再探测一次最高UDMA模式并缓存，供模式设置页使用
+        hddProbeHighestUdmaMode();
+
         //// debug
         // char debugFileDir[64];
         // strcpy(debugFileDir, "mass0:debug-UDMA.txt");
