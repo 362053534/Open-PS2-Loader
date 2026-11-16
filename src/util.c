@@ -63,12 +63,45 @@ int getFileSize(int fd)
     return size;
 }
 
+// 判断记忆卡上的文件是否存在
+static int mcFileExists(const char *path)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return 0;
+    close(fd);
+    return 1;
+}
+
 static int checkMC()
 {
     int mc0_is_ps2card, mc1_is_ps2card;
     int mc0_has_folder, mc1_has_folder;
 
     if (mcID == -1) {
+        // 优先选有配置文件的卡，而不是只看有没有OPL文件夹。
+        // 否则1号口的卡只有空OPL文件夹或别的配置时，会忽略2号口卡上真正的配置。
+        // 顺序：conf_fgopl.cfg（1号口、2号口），再到官方conf_opl.cfg（1号口、2号口），都没有时沿用原来的规则
+        if (mcFileExists("mc0:OPL/conf_fgopl.cfg")) {
+            mcID = '0';
+            return mcID;
+        }
+
+        if (mcFileExists("mc1:OPL/conf_fgopl.cfg")) {
+            mcID = '1';
+            return mcID;
+        }
+
+        if (mcFileExists("mc0:OPL/conf_opl.cfg")) {
+            mcID = '0';
+            return mcID;
+        }
+
+        if (mcFileExists("mc1:OPL/conf_opl.cfg")) {
+            mcID = '1';
+            return mcID;
+        }
+
         mc0_is_ps2card = 0;
         DIR *mc0_root_dir = opendir("mc0:/");
         if (mc0_root_dir != NULL) {
