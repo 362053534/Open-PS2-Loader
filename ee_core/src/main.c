@@ -83,6 +83,7 @@ static int eecoreInit(int argc, char **argv)
     DPRINTF("ModStorageEnd = 0x%08X\n", config->ModStorageEnd);
 
     DPRINTF("GameID = %s\n", config->GameID);
+    DPRINTF("BootFile = %s\n", config->BootFile);
 
     // g_compat_mask is used on ASM directly.
     g_compat_mask = config->_CompatMask;

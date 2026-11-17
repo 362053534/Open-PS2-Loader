@@ -796,6 +796,11 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     }
     settings->common.layer1_start = layer1_start;
 
+    /* 界面/列表 ID 必须在 deinit 释放 game 之前拷出；filename 仍为实际引导 ELF。 */
+    char gameid[GAME_STARTUP_MAX];
+    memcpy(gameid, game->startup, GAME_STARTUP_MAX - 1);
+    gameid[GAME_STARTUP_MAX - 1] = '\0';
+
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
 
@@ -825,7 +830,7 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
 
     // 普通 ISO 不再同步预读；该设置只保留给原有 ZSO 解压缓存。
     settings->common.zso_cache = smbCacheSize;
-    sysLaunchLoaderElf(filename, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, 0, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask, NULL, 0);
+    sysLaunchLoaderElf(filename, gameid, "ETH_MODE", size_smb_cdvdman_irx, smb_cdvdman_irx, 0, size_mcemu_irx, smb_mcemu_irx, EnablePS2Logo, compatmask, NULL, 0);
 }
 
 static config_set_t *ethGetConfig(item_list_t *itemList, int id)
