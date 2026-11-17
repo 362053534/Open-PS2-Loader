@@ -96,7 +96,6 @@ int _start(int argc, char **argv)
         // sndIopRpcFunc
         *(vu32 *)(m->text_start + 0x00000d58) = JAL((u32)&_lock_RpcFunc);
         *(vu32 *)(m->text_start + 0x00000d64) = 0x00000000; // nop
-        *(vu32 *)(m->text_start + 0x00000d80) = 0xac233d24; // sw v1, $3d24(at) - Replace instruction at 0xd64.
         *(vu32 *)(m->text_start + 0x00000f54) = JAL((u32)&_unlock);
         *(vu32 *)(m->text_start + 0x00000f58) = 0x00000000; // nop
 
