@@ -65,7 +65,6 @@ I_GetThreadId
 I_TerminateThread
 I_DeleteThread
 I_DelayThread
-I_GetSystemStatusFlag
 I_SetAlarm
 I_iSetAlarm
 I_CancelAlarm
@@ -87,6 +86,7 @@ thevent_IMPORTS_end
 #include <sifcmd.h>
 
 sifcmd_IMPORTS_start
+I_sceSifInitRpc
 I_sceSifSetRpcQueue
 I_sceSifRegisterRpc
 I_sceSifRpcLoop

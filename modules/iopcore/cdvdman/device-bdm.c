@@ -162,11 +162,7 @@ static void *bdm_fragment_rpc_handler(int function, void *buffer, int length)
 static void bdm_fragment_rpc_thread(void *arg)
 {
     (void)arg;
-    /* 不调用 sceSifInitRpc：UDNL 还没结束时再进 sceSifInitCmd，会和 LOADFILE 抢同一次握手。
-       0x800 由那次初始化留下，WEF_AND 不清除。轮询是为了不在系统状态旗上再排一个等待者。 */
-    while (PollEventFlag(GetSystemStatusFlag(), 0x800, WEF_AND, NULL) != 0)
-        DelayThread(1000);
-
+    sceSifInitRpc(0);
     sceSifSetRpcQueue(&g_bdm_fragment_rpc_queue, GetThreadId());
     sceSifRegisterRpc(&g_bdm_fragment_rpc_server, BDM_FRAGMENT_RPC_ID,
                       bdm_fragment_rpc_handler, g_bdm_fragment_rpc_buffer,
