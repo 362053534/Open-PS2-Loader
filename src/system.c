@@ -841,13 +841,15 @@ void sysPrintEECoreConfig(struct EECoreConfig_t *config)
     LOG("ModStorageEnd = 0x%08X\n", config->ModStorageEnd);
 
     LOG("GameID = %s\n", config->GameID);
+    LOG("BootFile = %s\n", config->BootFile);
 
     LOG("Compat Mask = 0x%02x\n", config->_CompatMask);
 }
 #endif
 
-void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags, void *frag_table, unsigned int frag_count)
+void sysLaunchLoaderElf(const char *filename, const char *gameid, const char *mode_str, int size_cdvdman_irx, void **cdvdman_irx, int cdvdman_settings_offset, int size_mcemu_irx, void **mcemu_irx, int EnablePS2Logo, unsigned int compatflags, void *frag_table, unsigned int frag_count)
 {
+    /* 补丁与兼容性匹配用界面 ID；filename 只用于真正引导和 OSD 历史。 */
     unsigned int modules, ModuleStorageSize;
     void *ModuleStorage, *ModuleStorageEnd;
     u8 local_ip_address[4], local_netmask[4], local_gateway[4];
@@ -882,7 +884,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
 #pragma GCC diagnostic pop
 
     modules = 0;
-    ModuleStorage = GetModStorageLocation(filename, compatflags);
+    ModuleStorage = GetModStorageLocation(gameid, compatflags);
 
 #ifdef __DECI2_DEBUG
     modules |= CORE_IRX_DECI2 | CORE_IRX_ETH;
@@ -896,7 +898,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     modules |= CORE_IRX_VMC;
 
     LOG("SYSTEM LaunchLoaderElf loading modules\n");
-    ModuleStorageSize = (sendIrxKernelRAM(filename, mode_str, modules, ModuleStorage, size_cdvdman_irx, cdvdman_irx, cdvdman_settings_offset, size_mcemu_irx, mcemu_irx, frag_table, frag_count) + 0x3F) & ~0x3F;
+    ModuleStorageSize = (sendIrxKernelRAM(gameid, mode_str, modules, ModuleStorage, size_cdvdman_irx, cdvdman_irx, cdvdman_settings_offset, size_mcemu_irx, mcemu_irx, frag_table, frag_count) + 0x3F) & ~0x3F;
 
     ModuleStorageEnd = (void *)((u8 *)ModuleStorage + ModuleStorageSize);
 
@@ -905,7 +907,7 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     eh = (elf_header_t *)boot_elf;
     eph = (elf_pheader_t *)(boot_elf + eh->phoff);
 
-    ApplyDeckardXParam(filename);
+    ApplyDeckardXParam(gameid);
 
     // Get the kernel to use our EELOAD module and to begin erasure after module storage. EE core will erase any memory before the module storage (if any).
     if (initKernel((void *)eh->entry, ModuleStorageEnd, &eeloadCopy, &initUserMemory) != 0) { // Should not happen, but...
@@ -1010,10 +1012,13 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     config->BDMFragmentTableBytes = bdmFragmentTableBytes;
     config->BDMFragmentTableCount = bdmFragmentTableCount;
 
-    strncpy(config->GameID, filename, CORE_GAME_ID_MAX_LEN);
+    strncpy(config->GameID, gameid, CORE_GAME_ID_MAX_LEN);
+    config->GameID[CORE_GAME_ID_MAX_LEN - 1] = '\0';
+    strncpy(config->BootFile, filename, CORE_GAME_ID_MAX_LEN);
+    config->BootFile[CORE_GAME_ID_MAX_LEN - 1] = '\0';
 
     config->_CompatMask = compatflags;
-    config->EnableHddUsbd = sbNeedHddUsbd(filename);
+    config->EnableHddUsbd = sbNeedHddUsbd(gameid);
 
 #ifdef __DEBUG
 

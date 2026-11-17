@@ -947,7 +947,9 @@ void apply_patches(const char *path)
     // Some patches hack into specific ELF files
     // make sure the filename and gameid match for those patches
     // This prevents games with multiple ELF's from being corrupted by the patch
-    int file_eq_gameid = !_strncmp(&path[8], config->GameID, 11); // starting after 'cdrom0:\'
+    /* 游戏身份仍按 GameID 过滤；是否主 ELF 改为与实际引导文件名比较，
+     * 避免界面 ID 与引导 ELF 不同时漏打主 ELF 或误打后续子 ELF。 */
+    int file_eq_bootelf = !_strncmp(&path[8], config->BootFile, 11); // starting after 'cdrom0:\'
     if ((config->GameMode == HDD_MODE) || (config->GameMode == ETH_MODE))
         mode = config->GameMode;
     else
@@ -964,32 +966,32 @@ void apply_patches(const char *path)
                     AC9B_generic_patches();
                     break;
                 case PATCH_GENERIC_SLOW_READS:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
                     // 1扇区保底已在 cdvdfsv 全局生效（不靠模式1）。空转钩会叠延迟，默认不打。
-                    if (0 && file_eq_gameid)
+                    if (0 && file_eq_bootelf)
                         ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         SDF_Macross_patch();
                     break;
                 case PATCH_GENERIC_CAPCOM:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         generic_capcom_protection_patches(p->patch.val); // Capcom anti cdvd emulator protection patch
                     break;
                 case PATCH_SRW_IMPACT:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         SRWI_IMPACT_patches();
                     break;
                 case PATCH_RNC_UYA:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         RnC3_UYA_patches((unsigned int *)p->patch.val);
                     break;
                 case PATCH_ZOMBIE_ZONE:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         ZombieZone_patches(p->patch.val);
                     break;
                 case PATCH_DOT_HACK:
@@ -999,14 +1001,14 @@ void apply_patches(const char *path)
                     SOSPatch(p->patch.val);
                     break;
                 case PATCH_VIRTUA_QUEST:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         VirtuaQuest_patches();
                     break;
                 case PATCH_ULT_PRO_PINBALL:
                     UltProPinballPatch(path);
                     break;
                 case PATCH_EUTECHNYX_WU_TID:
-                    if (file_eq_gameid)
+                    if (file_eq_bootelf)
                         EutechnyxWakeupTIDPatch(p->patch.val);
                     break;
                 case PATCH_PRO_SNOWBOARDER:

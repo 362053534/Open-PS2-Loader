@@ -951,6 +951,11 @@ vmc_prepared:;
         saveConfig(CONFIG_LAST, 0);
     }
 
+    /* 界面/列表 ID 必须在 deinit 释放 game 之前拷出；filename 仍为实际引导 ELF。 */
+    char gameid[GAME_STARTUP_MAX];
+    memcpy(gameid, game->startup, GAME_STARTUP_MAX - 1);
+    gameid[GAME_STARTUP_MAX - 1] = '\0';
+
     if (configGetStrCopy(configSet, CONFIG_ITEM_ALTSTARTUP, filename, sizeof(filename)) == 0)
         sbGetStartupExecNameForLaunch(partname, game->startup, filename, sizeof(filename) - 1);
 
@@ -1004,17 +1009,17 @@ vmc_prepared:;
     LOG("bdm pre sysLaunchLoaderElf\n");
     if (!strcmp(bdmCurrentDriver, "usb")) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_USBD;
-        sysLaunchLoaderElf(filename, "BDM_USB_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
+        sysLaunchLoaderElf(filename, gameid, "BDM_USB_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "sd") && strlen(bdmCurrentDriver) == 2) {
         settings->common.fakemodule_flags |= 0 /* TODO! fake ilinkman ? */;
-        sysLaunchLoaderElf(filename, "BDM_ILK_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
+        sysLaunchLoaderElf(filename, gameid, "BDM_ILK_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "sdc") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= 0;
-        sysLaunchLoaderElf(filename, "BDM_M4S_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
+        sysLaunchLoaderElf(filename, gameid, "BDM_M4S_MODE", irx_size, irx, index, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     } else if (!strcmp(bdmCurrentDriver, "ata") && strlen(bdmCurrentDriver) == 3) {
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
-        sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, index, size_mcemu_irx, usePfsVMC ? pfs_bdm_mcemu_irx : bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
+        sysLaunchLoaderElf(filename, gameid, "BDM_ATA_MODE", irx_size, irx, index, size_mcemu_irx, usePfsVMC ? pfs_bdm_mcemu_irx : bdm_mcemu_irx, EnablePS2Logo, compatmask, frag_table, iTotalFragCount);
     }
 }
 

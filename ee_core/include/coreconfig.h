@@ -58,6 +58,8 @@ struct EECoreConfig_t
     u32 BDMFragmentTableCount;
 
     char GameID[CORE_GAME_ID_MAX_LEN];
+    /* 实际引导 ELF 文件名（可与界面 GameID 不同），供主 ELF 补丁守卫使用。 */
+    char BootFile[CORE_GAME_ID_MAX_LEN];
 
     u32 _CompatMask;
 

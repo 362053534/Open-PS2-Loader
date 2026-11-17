@@ -1099,6 +1099,11 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.NumParts = 1;
     settings->common.media = hdl_header->discType;
 
+    /* 界面/列表 ID 必须在 deinit 释放 game 之前拷出；filename 仍为实际引导 ELF。 */
+    char gameid[GAME_STARTUP_MAX];
+    memcpy(gameid, game->startup, GAME_STARTUP_MAX - 1);
+    gameid[GAME_STARTUP_MAX - 1] = '\0';
+
     // Boot-file resolution order (highest priority first):
     //   1. $AltStartup    - explicit per-game override set by the user.
     //   2. on-disc SYSTEM.CNF (BOOT2) - matches HD Loader, fixes special images
@@ -1143,7 +1148,7 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 
     // adjust ZSO cache
     settings->common.zso_cache = hddCacheSize;
-    sysLaunchLoaderElf(filename, "HDD_MODE", size_irx, irx, settings_index, size_mcemu_irx, pfs_bdm_mcemu_irx, EnablePS2Logo, compatMode, NULL, 0);
+    sysLaunchLoaderElf(filename, gameid, "HDD_MODE", size_irx, irx, settings_index, size_mcemu_irx, pfs_bdm_mcemu_irx, EnablePS2Logo, compatMode, NULL, 0);
 }
 
 static config_set_t *hddGetConfig(item_list_t *itemList, int id)
