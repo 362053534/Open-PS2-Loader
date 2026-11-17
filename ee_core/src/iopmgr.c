@@ -32,6 +32,7 @@ static struct bdm_fragment_rpc bdm_fragment_rpc_packet __attribute__((aligned(64
 
 static int PushBDMFragmentTable(const struct EECoreConfig_t *config)
 {
+    int attempt;
     int dma_id;
     int rpc_result;
     SifDmaTransfer_t dma;
@@ -41,12 +42,17 @@ static int PushBDMFragmentTable(const struct EECoreConfig_t *config)
         config->BDMFragmentTableCount == 0)
         return -1;
 
-    memset(&bdm_fragment_rpc_client, 0, sizeof(bdm_fragment_rpc_client));
-    while (1) {
+    /* 服务要等 LOADFILE 握手结束后才注册。绑定失败不能空转，否则紫屏之后永久黑屏。 */
+    for (attempt = 0; attempt < BDM_INIT_RETRIES; attempt++) {
+        memset(&bdm_fragment_rpc_client, 0, sizeof(bdm_fragment_rpc_client));
         if (SifBindRpc(&bdm_fragment_rpc_client, BDM_FRAGMENT_RPC_ID, 0) >= 0 &&
             bdm_fragment_rpc_client.server != NULL)
             break;
+        if (attempt < BDM_INIT_RETRIES - 1)
+            delay(1);
     }
+    if (attempt >= BDM_INIT_RETRIES)
+        return -1;
 
     memset(&bdm_fragment_rpc_packet, 0, sizeof(bdm_fragment_rpc_packet));
     bdm_fragment_rpc_packet.command = BDM_FRAGMENT_RPC_PREPARE;
