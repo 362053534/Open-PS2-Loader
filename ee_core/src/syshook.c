@@ -86,6 +86,9 @@ void sysLoadElf(char *filename, int argc, char **argv)
     iop_reboot_count = 1;
 
     SifInitRpc(0);
+    /* [黑屏定位] SifInitRpc 已返回、LoadFileInit 之前：灰色；LoadFileInit 返回后为下面的绿色 */
+    if (EnableDebug)
+        DBGCOL(0x808080, SYSHOOK, "SifInitRpc() done");
     LoadFileInit();
 
     DPRINTF("t_loadElf: elf path = '%s'\n", filename);

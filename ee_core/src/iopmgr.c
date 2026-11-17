@@ -357,8 +357,9 @@ int New_Reset_Iop(const char *arg, int arglen)
     if (set_reg_disabled)
         set_reg_hook = 4;
 
+    /* [黑屏定位] IOP 重启和推表全部完成：青色（原为设黑） */
     if (EnableDebug)
-        BGCOLND(0x000000);
+        DBGCOL(0xFFFF00, IOPMGR, "New_Reset_Iop() complete");
 
     return 1;
 }
