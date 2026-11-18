@@ -87,10 +87,6 @@ struct cdvdman_settings_bdm
 
     // Indicates that the fragment table uses 512-byte APA/PFS sectors.
     u32 fragsAre512ByteSectors;
-
-    // 碎片表在启动后由 EE 经 RPC 传入，避免配置区被固定数组限制。
-    u32 frag_table_ee_addr;
-    u32 frag_table_bytes;
 } __attribute__((packed));
 
 #define BDM_FRAGMENT_RPC_ID      0x800005A0

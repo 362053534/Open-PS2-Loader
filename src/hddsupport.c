@@ -1091,8 +1091,6 @@ void hddLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     iso_frag = &settings->fragfile[0];
     iso_frag->frag_start = 0;
     iso_frag->frag_count = frag_count;
-    settings->frag_table_ee_addr = 0;
-    settings->frag_table_bytes = 0;
     for (i = 0; i < (int)frag_count; i++) {
         frag_table[i].sector = hdl_header->part_specs[i].data_start;
         frag_table[i].count = hdl_header->part_specs[i].part_size >> 9;

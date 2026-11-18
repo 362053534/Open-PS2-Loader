@@ -23,17 +23,16 @@ extern struct cdvdman_settings_bdm cdvdman_settings;
 #define INVALID_BD_GENERIC_SECTOR ((u64)-1)
 #endif
 static struct block_device *g_bd = NULL;
-static u32 g_bd_sectors_per_sector = 4;
 static int bdm_io_sema;
 #ifdef USE_BDM_ATA
 static u8 *g_bd_generic_sector_buffer_2 = NULL;
 static u32 g_bd_generic_sector_buffer_size_2 = 0;
 static u64 g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 #endif
+/* 内嵌静态表已取消，提交后的碎片表统一由本模块释放。 */
 static bd_fragment_t *g_frag_table = NULL;
 static bd_fragment_t *g_bdm_fragment_pending = NULL;
 static u32 g_bdm_fragment_pending_bytes = 0;
-static u8 g_frag_table_owned = 0;
 static volatile u8 g_bdm_fragment_rpc_registered = 0;
 static volatile u8 g_bdm_fragment_rpc_committed = 0;
 static SifRpcServerData_t g_bdm_fragment_rpc_server;
@@ -224,7 +223,6 @@ void bdm_connect_bd(struct block_device *bd)
 #ifdef USE_BDM_ATA
         g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 #endif
-        g_bd_sectors_per_sector = (2048 / bd->sectorSize);
         // Free usage of block device
         SignalSema(bdm_io_sema);
     }
@@ -293,7 +291,6 @@ static void *bdm_fragment_rpc_handler(int function, void *buffer, int length)
             return buffer;
 
         g_frag_table = g_bdm_fragment_pending;
-        g_frag_table_owned = 1;
         g_bdm_fragment_pending = NULL;
         g_bdm_fragment_pending_bytes = 0;
         cdvdman_settings.fragfile[0].frag_count = request->fragment_count;
@@ -396,11 +393,9 @@ void DeviceDeinit(void)
     slim_cursor_reset();
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
     if (g_frag_table != NULL) {
-        if (g_frag_table_owned)
-            FreeSysMemory(g_frag_table);
+        FreeSysMemory(g_frag_table);
         g_frag_table = NULL;
     }
-    g_frag_table_owned = 0;
     if (g_bdm_fragment_pending != NULL) {
         FreeSysMemory(g_bdm_fragment_pending);
         g_bdm_fragment_pending = NULL;
