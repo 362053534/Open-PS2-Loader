@@ -538,6 +538,48 @@ int Skip_Videos_sceMpegIsEnd(void)
         return 0;
 }
 
+typedef struct SOSPatchProfile {
+    u32 call;
+    u32 call_ex;
+    u32 load_module;
+    u32 alloc_heap;
+    u32 free_heap;
+    u32 load_buffer;
+    u32 buffer_core;
+} sos_patch_profile_t;
+
+/* 两版共用 SLPS_251.13 入口，必须由实际加载的 ELF 指令选择地址。 */
+static const sos_patch_profile_t sos_jp_profiles[] = {
+    {0x001d08b4, 0x001d08d0, 0x001d0680, 0x001cfc30, 0x001cfd20, 0x001d0640, 0x001d0070},
+    {0x001d08f4, 0x001d0910, 0x001d06c0, 0x001cfc70, 0x001cfd60, 0x001d0680, 0x001d00b0}
+};
+static const sos_patch_profile_t *sos_jp_profile;
+
+static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args, int *modres, int fno);
+
+static int SOSProfileMatches(const sos_patch_profile_t *profile)
+{
+    u32 original = JAL(profile->load_module);
+    u32 hook = JAL((u32)&SOS_SifLoadModuleHook);
+    u32 call = _lw(profile->call);
+    u32 call_ex = _lw(profile->call_ex);
+
+    /* 所有入口同时校验后再写入；接受自己的钩，避免重复应用时误判版本。 */
+    return (call == original || call == hook) &&
+           (call_ex == original || call_ex == hook) &&
+           _lw(profile->call + 4) == 0x03a0382d &&
+           _lw(profile->call_ex + 4) == 0x0000402d &&
+           _lw(profile->load_module) == 0x27bdff80 &&
+           _lw(profile->alloc_heap) == 0x3c030027 &&
+           _lw(profile->alloc_heap + 4) == 0x27bdffd0 &&
+           _lw(profile->alloc_heap + 0x38) == 0x24050001 &&
+           _lw(profile->free_heap) == 0x3c030027 &&
+           _lw(profile->free_heap + 4) == 0x27bdffd0 &&
+           _lw(profile->free_heap + 0x40) == 0x24050002 &&
+           _lw(profile->load_buffer) == 0x27bdffe0 &&
+           _lw(profile->load_buffer + 8) == JAL(profile->buffer_core);
+}
+
 static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args, int *modres, int fno)
 {
     int (*_pSifLoadModule)(const char *path, int arg_len, const char *args, int *modres, int fno);
@@ -546,17 +588,19 @@ static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args
     int (*pSifLoadModuleBuffer)(void *ptr, int arg_len, const char *args);
     void *iopmem;
     SifDmaTransfer_t sifdma;
-    int dma_id, ret, ret2;
-    void *iremsndpatch_irx;
-    unsigned int iremsndpatch_irx_size;
-    char modIdStr[3];
+    int dma_id, ret, ret2, i;
+    void *iremsndpatch_irx = NULL;
+    unsigned int iremsndpatch_irx_size = 0;
+    char modIdStr[9];
 
     switch (g_mode) {
         case 0: // NTSC-J
-            _pSifLoadModule = (void *)0x001d0680;
-            pSifAllocIopHeap = (void *)0x001cfc30;
-            pSifFreeIopHeap = (void *)0x001cfd20;
-            pSifLoadModuleBuffer = (void *)0x001d0640;
+            if (sos_jp_profile == NULL)
+                return -1;
+            _pSifLoadModule = (void *)sos_jp_profile->load_module;
+            pSifAllocIopHeap = (void *)sos_jp_profile->alloc_heap;
+            pSifFreeIopHeap = (void *)sos_jp_profile->free_heap;
+            pSifLoadModuleBuffer = (void *)sos_jp_profile->load_buffer;
             break;
         case 1: // NTSC-U/C
             _pSifLoadModule = (void *)0x001d0580;
@@ -571,40 +615,45 @@ static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args
             pSifLoadModuleBuffer = (void *)0x001d1180;
             break;
         default:
-            _pSifLoadModule = NULL;
-            pSifAllocIopHeap = NULL;
-            pSifFreeIopHeap = NULL;
-            pSifLoadModuleBuffer = NULL;
-            // Should not happen.
-            asm volatile("break\n");
+            return -1;
     }
 
     ret = _pSifLoadModule(path, arg_len, args, modres, fno);
 
     if ((ret >= 0) && (_strcmp(path, "cdrom0:\\IOP\\IREMSND.IRX;1") == 0)) {
-        GetOPLModInfo(OPL_MODULE_ID_IOP_PATCH, &iremsndpatch_irx, &iremsndpatch_irx_size);
+        if (GetOPLModInfo(OPL_MODULE_ID_IOP_PATCH, &iremsndpatch_irx, &iremsndpatch_irx_size) < 0 ||
+            iremsndpatch_irx == NULL || iremsndpatch_irx_size == 0) {
+            DPRINTF("SOS patch module is unavailable.\n");
+            return ret;
+        }
 
         iopmem = pSifAllocIopHeap(iremsndpatch_irx_size);
-        if (iopmem != NULL) {
-            sifdma.src = iremsndpatch_irx;
-            sifdma.dest = iopmem;
-            sifdma.size = iremsndpatch_irx_size;
-            sifdma.attr = 0;
-            do {
-                dma_id = SifSetDma(&sifdma, 1);
-            } while (!dma_id);
+        if (iopmem == NULL) {
+            DPRINTF("SOS patch heap allocation failed.\n");
+            return ret;
+        }
 
-            modIdStr[0] = NIBBLE2CHAR((ret >> 4) & 0xF);
-            modIdStr[1] = NIBBLE2CHAR(ret & 0xF);
-            modIdStr[2] = '\0';
+        sifdma.src = iremsndpatch_irx;
+        sifdma.dest = iopmem;
+        sifdma.size = iremsndpatch_irx_size;
+        sifdma.attr = 0;
+        do {
+            dma_id = SifSetDma(&sifdma, 1);
+        } while (!dma_id);
+        /* 补丁模块必须完整到达 IOP 后才能交给加载器执行。 */
+        while (SifDmaStat(dma_id) >= 0) {
+        }
 
-            do {
-                ret2 = pSifLoadModuleBuffer(iopmem, sizeof(modIdStr), modIdStr);
-            } while (ret2 < 0);
+        /* 模块 ID 可能超过 255，不能只传递最低两位十六进制字符。 */
+        for (i = 0; i < 8; i++)
+            modIdStr[i] = NIBBLE2CHAR(((u32)ret >> ((7 - i) * 4)) & 0xF);
+        modIdStr[8] = '\0';
 
-            pSifFreeIopHeap(iopmem);
-        } else
-            asm volatile("break\n");
+        /* 校验失败或内存不足时返回游戏原有加载结果，避免无限重试卡住。 */
+        ret2 = pSifLoadModuleBuffer(iopmem, sizeof(modIdStr), modIdStr);
+        pSifFreeIopHeap(iopmem);
+        if (ret2 < 0)
+            DPRINTF("SOS patch module load failed: %d.\n", ret2);
     }
 
     return ret;
@@ -612,11 +661,23 @@ static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args
 
 static void SOSPatch(int region)
 {
+    unsigned int i;
+
     g_mode = region;
 
     switch (region) { // JAL SOS_SifLoadModuleHook - replace call to _SifLoadModule.
         case 0:       // NTSC-J
-            _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
+            for (i = 0; i < sizeof(sos_jp_profiles) / sizeof(sos_jp_profiles[0]); i++) {
+                const sos_patch_profile_t *profile = &sos_jp_profiles[i];
+
+                if (SOSProfileMatches(profile)) {
+                    sos_jp_profile = profile;
+                    _sw(JAL((u32)&SOS_SifLoadModuleHook), profile->call);
+                    _sw(JAL((u32)&SOS_SifLoadModuleHook), profile->call_ex);
+                    return;
+                }
+            }
+            DPRINTF("SOS patch skipped: unknown Japanese ELF signature.\n");
             break;
         case 1: // NTSC-U/C
             _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d07b4);
