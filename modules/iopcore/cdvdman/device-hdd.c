@@ -7,6 +7,7 @@
 #include "internal.h"
 
 #include "device.h"
+#include "cdvdman_bdm_fragment_rpc.h"
 
 #include "../../isofs/zso.h"
 
@@ -133,4 +134,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     }
 
     return SCECdErNO;
+}
+
+void cdvdman_register_bdm_fragment_rpc(SifRpcDataQueue_t *qd)
+{
+    (void)qd;
 }

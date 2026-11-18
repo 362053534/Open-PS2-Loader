@@ -5,6 +5,7 @@
 */
 
 #include "cdvdfsv-internal.h"
+#include "cdvdman_bdm_fragment_rpc.h"
 
 #define MODNAME "cdvd_ee_driver"
 IRX_ID(MODNAME, 2, 2);
@@ -128,6 +129,10 @@ static void cdvdfsv_rpc0_th(void *args)
 
     sceSifRegisterRpc(&S596_rpcSD, 0x80000596, &cbrpc_S596, S596_rpcbuf, NULL, NULL, &rpc0_DQ);
     sceSifRegisterRpc(&cddiskready2_rpcSD, 0x8000059c, &cbrpc_cddiskready2, cddiskready2_rpcbuf, NULL, NULL, &rpc0_DQ);
+    /* 在已有 rpc0 队列上追加碎片表 SID，不新建线程。
+     * BDM/BDM ATA（含 APA HDL 实际选用的 bdm_ata_cdvdman）会真正注册；
+     * 其他变体的空 stub 只为链接，不是对 HDL 缺 server 的补救。 */
+    cdvdman_register_bdm_fragment_rpc(&rpc0_DQ);
 
     sceSifRpcLoop(&rpc0_DQ);
 }

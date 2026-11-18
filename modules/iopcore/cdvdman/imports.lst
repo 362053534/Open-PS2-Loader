@@ -7,10 +7,12 @@ stdio_IMPORTS_start
 I_printf
 stdio_IMPORTS_end
 
+#ifdef __USE_DEV9
 dmacman_IMPORTS_start
 I_dmac_get_dpcr2
 I_dmac_set_dpcr2
 dmacman_IMPORTS_end
+#endif
 
 intrman_IMPORTS_start
 I_CpuSuspendIntr
@@ -21,7 +23,9 @@ I_RegisterIntrHandler
 intrman_IMPORTS_end
 
 sysmem_IMPORTS_start
+#ifdef __IOPCORE_DEBUG
 I_Kprintf
+#endif
 I_AllocSysMemory
 I_FreeSysMemory
 #ifdef __IOPCORE_DEBUG
@@ -34,7 +38,9 @@ I_FlushDcache
 I_FlushIcache
 I_RegisterLibraryEntries
 I_GetLoadcoreInternalData
+#ifdef __USE_DEV9
 I_QueryBootMode
+#endif
 loadcore_IMPORTS_end
 
 sysclib_IMPORTS_start
@@ -45,7 +51,9 @@ I_strchr
 I_strrchr
 I_strstr
 I_strncpy
+#ifdef SMB_DRIVER
 I_sprintf
+#endif
 I_memcpy
 sysclib_IMPORTS_end
 
@@ -55,22 +63,23 @@ I_SignalSema
 I_iSignalSema
 I_WaitSema
 I_DeleteSema
+#ifdef SMB_DRIVER
 I_PollSema
+#endif
 thsemap_IMPORTS_end
 
 thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
-I_GetThreadId
-I_TerminateThread
-I_DeleteThread
 I_DelayThread
 I_SetAlarm
 I_iSetAlarm
 I_CancelAlarm
 I_USec2SysClock
+#ifdef __USE_DEV9
 I_SleepThread
 I_iWakeupThread
+#endif
 thbase_IMPORTS_end
 
 thevent_IMPORTS_start
@@ -80,18 +89,15 @@ I_iClearEventFlag
 I_SetEventFlag
 I_iSetEventFlag
 I_WaitEventFlag
+#ifdef HD_PRO
 I_PollEventFlag
+#endif
 thevent_IMPORTS_end
 
 #include <sifcmd.h>
 
 sifcmd_IMPORTS_start
-I_sceSifInitRpc
-I_sceSifSetRpcQueue
 I_sceSifRegisterRpc
-I_sceSifRpcLoop
-I_sceSifRemoveRpc
-I_sceSifRemoveRpcQueue
 sifcmd_IMPORTS_end
 
 sifman_IMPORTS_start

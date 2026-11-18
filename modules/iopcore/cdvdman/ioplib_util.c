@@ -75,7 +75,9 @@ static struct FakeModule modulefake_list[] = {
     {NULL, NULL, 0, 0}};
 
 //--------------------------------------------------------------
-/* Neutrino i_dev9_hidden semantics for games that must not touch OPL's NIC (UYA on SMB). */
+#ifdef SMB_DRIVER
+/* Neutrino i_dev9_hidden semantics for games that must not touch OPL's NIC (UYA on SMB).
+ * 仅 ETH/SMB 前端会置 FAKE_MODULE_FLAG_HIDE_DEV9。USB/BDM/ATA/HDD 变体不编译这些分支。 */
 static int fakeModHideDev9(void)
 {
     return (cdvdman_settings.common.fakemodule_flags & FAKE_MODULE_FLAG_HIDE_DEV9) != 0;
@@ -85,6 +87,7 @@ static int fakeModIsNic(const struct FakeModule *mod)
 {
     return (mod->id == FAKE_MODULE_ID_DEV9 || mod->id == FAKE_MODULE_ID_SMAP);
 }
+#endif
 
 int getModInfo(char *modname, modinfo_t *info)
 {
@@ -160,6 +163,7 @@ static int Hook_LoadStartModule(char *modpath, int arg_len, char *args, int *mod
 
     mod = checkFakemodByFile(modpath, modulefake_list);
     if (mod != NULL && mod->flag) {
+#ifdef SMB_DRIVER
         if (fakeModHideDev9() && fakeModIsNic(mod)) {
             if (mod->id == FAKE_MODULE_ID_DEV9) {
                 *modres = 1; /* MODULE_NO_RESIDENT_END — no adapter */
@@ -167,6 +171,7 @@ static int Hook_LoadStartModule(char *modpath, int arg_len, char *args, int *mod
             }
             return -200; /* KE_LINKERR — SMAP/ENT_SMAP depend on DEV9 */
         }
+#endif
         *modres = mod->returnValue;
         return mod->id;
     }
@@ -183,6 +188,7 @@ static int Hook_StartModule(int id, char *modname, int arg_len, char *args, int 
 
     mod = checkFakemodById(id, modulefake_list);
     if (mod != NULL && mod->flag) {
+#ifdef SMB_DRIVER
         if (fakeModHideDev9() && fakeModIsNic(mod)) {
             if (mod->id == FAKE_MODULE_ID_DEV9) {
                 *modres = 1;
@@ -190,6 +196,7 @@ static int Hook_StartModule(int id, char *modname, int arg_len, char *args, int 
             }
             return -202; /* KE_UNKNOWN_MODULE */
         }
+#endif
         *modres = mod->returnValue;
         return mod->id;
     }
@@ -206,8 +213,10 @@ static int Hook_LoadModuleBuffer(void *ptr)
 
     mod = checkFakemodByName(((char *)ptr + 0x8e), modulefake_list);
     if (mod != NULL && mod->flag) {
+#ifdef SMB_DRIVER
         if (fakeModHideDev9() && fakeModIsNic(mod) && mod->id == FAKE_MODULE_ID_SMAP)
             return -200;
+#endif
         return mod->id;
     }
 
@@ -253,8 +262,10 @@ static int Hook_SearchModuleByName(char *modname)
 
     mod = checkFakemodByName(modname, modulefake_list);
     if (mod != NULL && mod->flag) {
+#ifdef SMB_DRIVER
         if (fakeModHideDev9() && fakeModIsNic(mod))
             return -202; /* not resident / not loaded */
+#endif
         return mod->id;
     }
 

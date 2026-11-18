@@ -616,7 +616,8 @@ static void SOSPatch(int region)
 
     switch (region) { // JAL SOS_SifLoadModuleHook - replace call to _SifLoadModule.
         case 0:       // NTSC-J
-            _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
+            /* 绝体绝命都市（SLPS_251.13 / 启动 ELF SLPS_250.26）音频兼容钩暂时禁用，以后可能会继续启用。 */
+            // _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
             break;
         case 1: // NTSC-U/C
             _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d07b4);
@@ -970,8 +971,7 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    // 1扇区保底已在 cdvdfsv 全局生效（不靠模式1）。空转钩会叠延迟，默认不打。
-                    if (0 && file_eq_bootelf)
+                    if (file_eq_bootelf)
                         ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:

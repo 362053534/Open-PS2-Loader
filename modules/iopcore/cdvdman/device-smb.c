@@ -8,6 +8,7 @@
 #include "internal.h"
 
 #include "device.h"
+#include "cdvdman_bdm_fragment_rpc.h"
 
 /* 空闲 1 分钟发一次 Echo。拍长仍是 2 秒，重连的 DelayThread 不变。 */
 #define SMB_ECHO_INTERVAL_US 2000000
@@ -356,4 +357,9 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 
     smb_in_read = 0;
     return rv;
+}
+
+void cdvdman_register_bdm_fragment_rpc(SifRpcDataQueue_t *qd)
+{
+    (void)qd;
 }

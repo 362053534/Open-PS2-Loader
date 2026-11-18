@@ -36,6 +36,7 @@ I_sceCdSetTimeout
 I_sceCdReadModelID
 I_sceCdReadDvdDualInfo
 I_sceCdLayerSearchFile
+I_cdvdman_register_bdm_fragment_rpc
 cdvdman_IMPORTS_end
 
 intrman_IMPORTS_start
@@ -68,7 +69,6 @@ thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
 I_DelayThread
-I_GetSystemTime
 I_ExitDeleteThread
 I_GetThreadId
 I_ChangeThreadPriority

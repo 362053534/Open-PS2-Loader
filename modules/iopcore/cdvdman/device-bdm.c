@@ -5,6 +5,7 @@
 */
 
 #include "internal.h"
+#include "cdvdman_bdm_fragment_rpc.h"
 
 #include <bdm.h>
 #include <bd_defrag.h>
@@ -18,13 +19,17 @@ char atad_inited = 0;
 #endif
 
 extern struct cdvdman_settings_bdm cdvdman_settings;
+#ifdef USE_BDM_ATA
 #define INVALID_BD_GENERIC_SECTOR ((u64)-1)
+#endif
 static struct block_device *g_bd = NULL;
 static u32 g_bd_sectors_per_sector = 4;
 static int bdm_io_sema;
+#ifdef USE_BDM_ATA
 static u8 *g_bd_generic_sector_buffer_2 = NULL;
 static u32 g_bd_generic_sector_buffer_size_2 = 0;
 static u64 g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+#endif
 static bd_defrag_cursor_t g_bd_defrag_cursor;
 static bd_defrag_index_t g_bd_defrag_index;
 static bd_fragment_t *g_frag_table = NULL;
@@ -32,11 +37,11 @@ static bd_defrag_checkpoint_t *g_bd_defrag_checkpoints = NULL;
 static bd_fragment_t *g_bdm_fragment_pending = NULL;
 static u32 g_bdm_fragment_pending_bytes = 0;
 static u8 g_frag_table_owned = 0;
-static int g_bdm_fragment_rpc_thread_id = -1;
 static volatile u8 g_bdm_fragment_rpc_registered = 0;
-static SifRpcDataQueue_t g_bdm_fragment_rpc_queue __attribute__((aligned(64)));
-static SifRpcServerData_t g_bdm_fragment_rpc_server __attribute__((aligned(64)));
-static u8 g_bdm_fragment_rpc_buffer[64] __attribute__((aligned(64)));
+static volatile u8 g_bdm_fragment_rpc_committed = 0;
+static SifRpcServerData_t g_bdm_fragment_rpc_server;
+/* 32 字节专用接收/回包缓冲，16 字节对齐。不与 NCMD/SCMD 的 1024 字节缓冲共用。 */
+static u8 g_bdm_fragment_rpc_buffer[32] __attribute__((aligned(16)));
 enum bdm_frag_table_state {
     BDM_FRAG_TABLE_EMPTY = 0,
     BDM_FRAG_TABLE_LOADING,
@@ -83,7 +88,9 @@ void bdm_connect_bd(struct block_device *bd)
         g_bd = bd;
         bd_defrag_index_reset(&g_bd_defrag_index);
         bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+#ifdef USE_BDM_ATA
         g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+#endif
         g_bd_sectors_per_sector = (2048 / bd->sectorSize);
         // Free usage of block device
         SignalSema(bdm_io_sema);
@@ -103,7 +110,9 @@ void bdm_disconnect_bd(struct block_device *bd)
             g_bd = NULL;
             bd_defrag_cursor_reset(&g_bd_defrag_cursor);
             bd_defrag_index_reset(&g_bd_defrag_index);
+#ifdef USE_BDM_ATA
             g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+#endif
         }
     }
 }
@@ -121,6 +130,9 @@ static void *bdm_fragment_rpc_handler(int function, void *buffer, int length)
         return buffer;
 
     request->result = -1;
+    /* COMMIT 成功后服务保持注册。再次调用只失败返回，不再分配，也不重新初始化光盘。 */
+    if (g_bdm_fragment_rpc_committed)
+        return buffer;
     if (request->fragment_count == 0 ||
         request->fragment_count > 0xFFFFFFFFU / sizeof(bd_fragment_t))
         return buffer;
@@ -154,21 +166,23 @@ static void *bdm_fragment_rpc_handler(int function, void *buffer, int length)
         g_bdm_fragment_pending_bytes = 0;
         cdvdman_settings.fragfile[0].frag_count = request->fragment_count;
         request->result = 0;
+        g_bdm_fragment_rpc_committed = 1;
     }
 
     return buffer;
 }
 
-static void bdm_fragment_rpc_thread(void *arg)
+void cdvdman_register_bdm_fragment_rpc(SifRpcDataQueue_t *qd)
 {
-    (void)arg;
-    sceSifInitRpc(0);
-    sceSifSetRpcQueue(&g_bdm_fragment_rpc_queue, GetThreadId());
+    if (qd == NULL || g_bdm_fragment_rpc_registered)
+        return;
+
+    /* 队列已由 cdvdfsv 完成 SetRpcQueue。不要在这里 InitRpc 或建线程。
+     * 回包源是本模块 BSS 缓冲，在 ExecRequest 回包期间保持有效。 */
     sceSifRegisterRpc(&g_bdm_fragment_rpc_server, BDM_FRAGMENT_RPC_ID,
                       bdm_fragment_rpc_handler, g_bdm_fragment_rpc_buffer,
-                      NULL, NULL, &g_bdm_fragment_rpc_queue);
+                      NULL, NULL, qd);
     g_bdm_fragment_rpc_registered = 1;
-    sceSifRpcLoop(&g_bdm_fragment_rpc_queue);
 }
 
 static int bdm_prepare_fragment_table(void)
@@ -229,25 +243,9 @@ static int bdm_prepare_fragment_table(void)
     return 0;
 }
 
-/* HDL：分区表已写在 settings->frags，frag_table_bytes 为 0，无需再等 EE 推送。 */
-static int bdm_uses_embedded_frag_table(void)
-{
-    u32 frag_start = cdvdman_settings.fragfile[0].frag_start;
-    u32 frag_count = cdvdman_settings.fragfile[0].frag_count;
-
-    if (cdvdman_settings.frag_table_bytes != 0)
-        return 0;
-    if (frag_count == 0 || frag_count > BDM_MAX_HDL_FRAGS)
-        return 0;
-    if (frag_start >= BDM_MAX_HDL_FRAGS || frag_count > (BDM_MAX_HDL_FRAGS - frag_start))
-        return 0;
-    return 1;
-}
-
 void DeviceInit(void)
 {
     iop_sema_t smp;
-    iop_thread_t thread;
 
     DPRINTF("%s\n", __func__);
 
@@ -260,7 +258,9 @@ void DeviceInit(void)
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
     bd_defrag_index_reset(&g_bd_defrag_index);
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
+#ifdef USE_BDM_ATA
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+#endif
     if (g_bdm_fragment_pending != NULL) {
         FreeSysMemory(g_bdm_fragment_pending);
         g_bdm_fragment_pending = NULL;
@@ -275,41 +275,17 @@ void DeviceInit(void)
     atad_start();
     atad_inited = 1;
 #endif
-
-    /* 碎片表 RPC 线程放在 atad_start 之后启动，避免其在 ATA 初始化期间抢先初始化 SIF；
-       EE 侧绑定会循环等待服务注册，推表时序不受影响。 */
-    if (bdm_uses_embedded_frag_table()) {
-        /* HDL 静态表已在模块内，不启动碎片表 RPC 线程。 */
-        g_frag_table = cdvdman_settings.frags;
-        g_frag_table_owned = 0;
-    } else {
-        thread.attr = TH_C;
-        thread.option = 0;
-        thread.thread = bdm_fragment_rpc_thread;
-        thread.stacksize = 0x1000;
-        thread.priority = 0x40;
-        g_bdm_fragment_rpc_thread_id = CreateThread(&thread);
-        if (g_bdm_fragment_rpc_thread_id >= 0)
-            StartThread(g_bdm_fragment_rpc_thread_id, NULL);
-    }
+    /* CDVDMAN 先于 CDVDFSV 启动。碎片表 SID 由随后的 cdvdfsv rpc0
+     * 在 SetRpcQueue 之后调用 cdvdman_register_bdm_fragment_rpc 注册。
+     * EE 的 BindRpc 会等到服务出现；此处不提前 sceCdInit。 */
 }
 
 void DeviceDeinit(void)
 {
     DPRINTF("%s\n", __func__);
 
-    /* IGR通常会重启整个IOP，但模块卸载时仍要显式撤销RPC和线程。 */
-    if (g_bdm_fragment_rpc_registered) {
-        sceSifRemoveRpc(&g_bdm_fragment_rpc_server, &g_bdm_fragment_rpc_queue);
-        sceSifRemoveRpcQueue(&g_bdm_fragment_rpc_queue);
-        g_bdm_fragment_rpc_registered = 0;
-    }
-    if (g_bdm_fragment_rpc_thread_id >= 0) {
-        TerminateThread(g_bdm_fragment_rpc_thread_id);
-        DeleteThread(g_bdm_fragment_rpc_thread_id);
-        g_bdm_fragment_rpc_thread_id = -1;
-    }
-
+    /* 服务留在 cdvdfsv 的永久队列上（COMMIT 后 fail-closed）。
+     * IGR 会重启整个 IOP，cdvdman 与 cdvdfsv 一并卸载。不要再清理已删除的专用线程。 */
     bd_defrag_cursor_reset(&g_bd_defrag_cursor);
     bd_defrag_index_reset(&g_bd_defrag_index);
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
@@ -328,6 +304,7 @@ void DeviceDeinit(void)
         FreeSysMemory(g_bd_defrag_checkpoints);
         g_bd_defrag_checkpoints = NULL;
     }
+#ifdef USE_BDM_ATA
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 
     if (g_bd_generic_sector_buffer_2 != NULL) {
@@ -335,6 +312,7 @@ void DeviceDeinit(void)
         g_bd_generic_sector_buffer_2 = NULL;
         g_bd_generic_sector_buffer_size_2 = 0;
     }
+#endif
 }
 
 int DeviceReady(void)
@@ -389,6 +367,7 @@ void DeviceUnmount(void)
     DPRINTF("%s\n", __func__);
 }
 
+#ifdef USE_BDM_ATA
 static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sectors)
 {
     u8 *destination;
@@ -591,6 +570,8 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
     return SCECdErNO;
 }
 
+#endif
+
 int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
 {
     int rv = SCECdErNO;
@@ -611,10 +592,17 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         return SCECdErREAD;
     }
 
+#ifdef USE_BDM_ATA
     if (g_bd->sectorSize != 512) {
         SignalSema(bdm_io_sema);
         return DeviceReadSectorsGeneric_2(lsn, buffer, sectors);
     }
+#else
+    if (g_bd->sectorSize != 512) {
+        SignalSema(bdm_io_sema);
+        return SCECdErREAD;
+    }
+#endif
 
     isMX4SIO = g_bd->name[0] == 's' && g_bd->name[1] == 'd' && g_bd->name[2] == 'c' && g_bd->name[3] == '\0';
     u64 sector = ((u64)lsn) * 4;
@@ -662,7 +650,9 @@ void bdm_writeSector(u32 lba, unsigned short int nsectors, const unsigned char *
     DPRINTF("%s\n", __func__);
 
     WaitSema(bdm_io_sema);
+#ifdef USE_BDM_ATA
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
+#endif
     g_bd->write(g_bd, (u64)lba, buffer, nsectors);
     SignalSema(bdm_io_sema);
 }
