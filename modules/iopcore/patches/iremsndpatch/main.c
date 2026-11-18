@@ -96,6 +96,7 @@ int _start(int argc, char **argv)
         // sndIopRpcFunc
         *(vu32 *)(m->text_start + 0x00000d58) = JAL((u32)&_lock_RpcFunc);
         *(vu32 *)(m->text_start + 0x00000d64) = 0x00000000; // nop
+        *(vu32 *)(m->text_start + 0x00000d80) = 0xac233d24; // 与 0xd64 的 NOP 配套，保留历史补丁的写入副作用。
         *(vu32 *)(m->text_start + 0x00000f54) = JAL((u32)&_unlock);
         *(vu32 *)(m->text_start + 0x00000f58) = 0x00000000; // nop
 

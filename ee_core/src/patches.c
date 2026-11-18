@@ -616,8 +616,7 @@ static void SOSPatch(int region)
 
     switch (region) { // JAL SOS_SifLoadModuleHook - replace call to _SifLoadModule.
         case 0:       // NTSC-J
-            /* 绝体绝命都市（SLPS_251.13 / 启动 ELF SLPS_250.26）音频兼容钩暂时禁用，以后可能会继续启用。 */
-            // _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
+            _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
             break;
         case 1: // NTSC-U/C
             _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d07b4);
