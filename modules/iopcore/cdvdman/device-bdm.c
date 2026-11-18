@@ -61,12 +61,9 @@ typedef struct {
 static slim_cursor_t g_slim_cursor;
 
 #if SLIM_DEFRAG_CHECKPOINTS > 0
-typedef struct {
-    u64 offset;
-    u32 index;
-} slim_checkpoint_t;
-
-static slim_checkpoint_t g_slim_cp[SLIM_DEFRAG_CHECKPOINTS];
+/* 分开保存偏移与下标，避免每个检查点因对齐产生尾部填充。 */
+static u64 g_slim_cp_offsets[SLIM_DEFRAG_CHECKPOINTS];
+static u32 g_slim_cp_indices[SLIM_DEFRAG_CHECKPOINTS];
 static u32 g_slim_cp_count;
 #endif
 
@@ -81,21 +78,23 @@ static void slim_checkpoints_build(u32 fragcount, const bd_fragment_t *frags)
 {
     u32 i;
     u32 stride;
+    u32 next_checkpoint = 0;
     u64 off = 0;
 
     g_slim_cp_count = 0;
     if (fragcount == 0 || frags == NULL)
         return;
 
-    stride = (fragcount + (SLIM_DEFRAG_CHECKPOINTS - 1)) / SLIM_DEFRAG_CHECKPOINTS;
-    if (stride == 0)
-        stride = 1;
+    /* 空表已返回，减一后向上取整可避免大碎片数加法溢出。 */
+    stride = (fragcount - 1) / SLIM_DEFRAG_CHECKPOINTS + 1;
 
     for (i = 0; i < fragcount && g_slim_cp_count < (u32)SLIM_DEFRAG_CHECKPOINTS; i++) {
-        if ((i % stride) == 0) {
-            g_slim_cp[g_slim_cp_count].offset = off;
-            g_slim_cp[g_slim_cp_count].index = i;
+        /* 固定步长推进采样位置，避免逐个碎片取模。 */
+        if (i == next_checkpoint) {
+            g_slim_cp_offsets[g_slim_cp_count] = off;
+            g_slim_cp_indices[g_slim_cp_count] = i;
             g_slim_cp_count++;
+            next_checkpoint += stride;
         }
         off += frags[i].count;
     }
@@ -112,13 +111,13 @@ static void slim_start_from_checkpoints(u64 sector, u32 *index, u64 *offset)
         return;
     }
     for (i = 1; i < g_slim_cp_count; i++) {
-        if (g_slim_cp[i].offset <= sector)
+        if (g_slim_cp_offsets[i] <= sector)
             best = i;
         else
             break;
     }
-    *index = g_slim_cp[best].index;
-    *offset = g_slim_cp[best].offset;
+    *index = g_slim_cp_indices[best];
+    *offset = g_slim_cp_offsets[best];
 }
 #endif
 
