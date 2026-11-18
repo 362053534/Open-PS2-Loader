@@ -3,9 +3,12 @@ I_AddDrv
 I_DelDrv
 ioman_IMPORTS_end
 
+/* USB/BDM 发布版没有打印调用，避免保留未使用的 stdio 导入表。 */
+#if !defined(BDM_DRIVER) || defined(USE_BDM_ATA) || defined(__USE_DEV9) || defined(__IOPCORE_DEBUG)
 stdio_IMPORTS_start
 I_printf
 stdio_IMPORTS_end
+#endif
 
 #ifdef __USE_DEV9
 dmacman_IMPORTS_start
