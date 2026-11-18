@@ -30,10 +30,7 @@ static u8 *g_bd_generic_sector_buffer_2 = NULL;
 static u32 g_bd_generic_sector_buffer_size_2 = 0;
 static u64 g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 #endif
-static bd_defrag_cursor_t g_bd_defrag_cursor;
-static bd_defrag_index_t g_bd_defrag_index;
 static bd_fragment_t *g_frag_table = NULL;
-static bd_defrag_checkpoint_t *g_bd_defrag_checkpoints = NULL;
 static bd_fragment_t *g_bdm_fragment_pending = NULL;
 static u32 g_bdm_fragment_pending_bytes = 0;
 static u8 g_frag_table_owned = 0;
@@ -49,24 +46,161 @@ enum bdm_frag_table_state {
     BDM_FRAG_TABLE_FAILED
 };
 static volatile u8 g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
-/* 大文件以64个碎片为步长，限制随机定位时的线性扫描长度。 */
-#define BDM_DEFRAG_CHECKPOINT_STRIDE 64
-/* 该边界覆盖APA HDL和单个PFS inode能够提供的完整区段表。 */
-#define BDM_DEFRAG_DENSE_INDEX_LIMIT 114
 
-static u32 bdm_get_checkpoint_stride(u32 fragcount)
+/* t223u: local fragment-table reader. Does not call SDK bd_defrag_* so -lbdm
+ * is not required and the 2664-byte bd_defrag.o is not pulled in.
+ * LINEAR: official-style walk from fragment 0 on every call.
+ * CURSOR: resume from the last fragment if the target is at or past it.
+ * CHECKPOINTS: also a fixed BSS table of N (offset,index) samples, no heap.
+ * All state is only touched under bdm_io_sema (read / prepare / connect).
+ */
+typedef struct {
+    u32 index;
+    u64 offset;
+} slim_cursor_t;
+
+static slim_cursor_t g_slim_cursor;
+
+#if SLIM_DEFRAG_CHECKPOINTS > 0
+typedef struct {
+    u64 offset;
+    u32 index;
+} slim_checkpoint_t;
+
+static slim_checkpoint_t g_slim_cp[SLIM_DEFRAG_CHECKPOINTS];
+static u32 g_slim_cp_count;
+#endif
+
+static void slim_cursor_reset(void)
 {
-    /* 小表为每个碎片建立检查点，避免随机读取仍从表头扫描。 */
-    return fragcount < BDM_DEFRAG_DENSE_INDEX_LIMIT ? 1 : BDM_DEFRAG_CHECKPOINT_STRIDE;
+    g_slim_cursor.index = 0;
+    g_slim_cursor.offset = 0;
 }
 
-static u32 bdm_get_checkpoint_count(u32 fragcount, u32 stride)
+#if SLIM_DEFRAG_CHECKPOINTS > 0
+static void slim_checkpoints_build(u32 fragcount, const bd_fragment_t *frags)
 {
-    u32 count = fragcount / stride;
+    u32 i;
+    u32 stride;
+    u64 off = 0;
 
-    if ((fragcount % stride) != 0)
-        count++;
-    return count;
+    g_slim_cp_count = 0;
+    if (fragcount == 0 || frags == NULL)
+        return;
+
+    stride = (fragcount + (SLIM_DEFRAG_CHECKPOINTS - 1)) / SLIM_DEFRAG_CHECKPOINTS;
+    if (stride == 0)
+        stride = 1;
+
+    for (i = 0; i < fragcount && g_slim_cp_count < (u32)SLIM_DEFRAG_CHECKPOINTS; i++) {
+        if ((i % stride) == 0) {
+            g_slim_cp[g_slim_cp_count].offset = off;
+            g_slim_cp[g_slim_cp_count].index = i;
+            g_slim_cp_count++;
+        }
+        off += frags[i].count;
+    }
+}
+
+static void slim_start_from_checkpoints(u64 sector, u32 *index, u64 *offset)
+{
+    u32 i;
+    u32 best = 0;
+
+    if (g_slim_cp_count == 0) {
+        *index = 0;
+        *offset = 0;
+        return;
+    }
+    for (i = 1; i < g_slim_cp_count; i++) {
+        if (g_slim_cp[i].offset <= sector)
+            best = i;
+        else
+            break;
+    }
+    *index = g_slim_cp[best].index;
+    *offset = g_slim_cp[best].offset;
+}
+#endif
+
+static void slim_on_table_ready(u32 fragcount, const bd_fragment_t *frags)
+{
+    slim_cursor_reset();
+#if SLIM_DEFRAG_CHECKPOINTS > 0
+    slim_checkpoints_build(fragcount, frags);
+#else
+    (void)fragcount;
+    (void)frags;
+#endif
+}
+
+static int slim_defrag_read(struct block_device *bd, u32 fragcount, const bd_fragment_t *frags,
+                            u64 sector, void *buffer, u32 count)
+{
+    u64 sector_start = sector;
+    u32 count_left = count;
+    u32 i;
+    u64 offset;
+
+    if (bd == NULL || frags == NULL)
+        return -1;
+    if (count == 0)
+        return 0;
+
+#if SLIM_DEFRAG_CURSOR
+    if (g_slim_cursor.index < fragcount && g_slim_cursor.offset <= sector_start) {
+        i = g_slim_cursor.index;
+        offset = g_slim_cursor.offset;
+    } else
+#endif
+    {
+#if SLIM_DEFRAG_CHECKPOINTS > 0
+        slim_start_from_checkpoints(sector_start, &i, &offset);
+#else
+        i = 0;
+        offset = 0;
+#endif
+    }
+
+    while (count_left > 0) {
+        const bd_fragment_t *f = NULL;
+        u32 count_read;
+
+        for (; i < fragcount; i++) {
+            f = &frags[i];
+            if (offset <= sector_start && (offset + f->count) > sector_start)
+                break;
+            offset += f->count;
+        }
+        if (i == fragcount)
+            return -1;
+
+        count_read = count_left;
+        if ((sector_start + count_read) > (offset + f->count))
+            count_read = (u32)((offset + f->count) - sector_start);
+
+        if (bd->read(bd, f->sector + (sector_start - offset), buffer, count_read) != (int)count_read)
+            return -1;
+
+#if SLIM_DEFRAG_CURSOR
+        g_slim_cursor.index = i;
+        g_slim_cursor.offset = offset;
+#endif
+
+        sector_start += count_read;
+        count_left -= count_read;
+        buffer = (u8 *)buffer + (count_read * bd->sectorSize);
+        if (sector_start >= (offset + f->count)) {
+            offset += f->count;
+            i++;
+#if SLIM_DEFRAG_CURSOR
+            g_slim_cursor.index = i;
+            g_slim_cursor.offset = offset;
+#endif
+        }
+    }
+
+    return (int)count;
 }
 
 extern struct irx_export_table _exp_bdm;
@@ -86,8 +220,7 @@ void bdm_connect_bd(struct block_device *bd)
     if (g_bd == NULL && bd->devNr == cdvdman_settings.bdDeviceId) {
         DPRINTF("attaching to %s%dp%d\n", bd->name, bd->devNr, bd->parNr);
         g_bd = bd;
-        bd_defrag_index_reset(&g_bd_defrag_index);
-        bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+        slim_cursor_reset();
 #ifdef USE_BDM_ATA
         g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 #endif
@@ -108,8 +241,7 @@ void bdm_disconnect_bd(struct block_device *bd)
         WaitSema(bdm_io_sema);
         if (g_bd == bd) {
             g_bd = NULL;
-            bd_defrag_cursor_reset(&g_bd_defrag_cursor);
-            bd_defrag_index_reset(&g_bd_defrag_index);
+            slim_cursor_reset();
 #ifdef USE_BDM_ATA
             g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
 #endif
@@ -189,8 +321,6 @@ static int bdm_prepare_fragment_table(void)
 {
     unsigned int i;
     u32 fragcount = cdvdman_settings.fragfile[0].frag_count;
-    u32 stride = bdm_get_checkpoint_stride(fragcount);
-    u32 checkpoint_count = bdm_get_checkpoint_count(fragcount, stride);
 
     if (g_bd == NULL)
         return -1;
@@ -214,29 +344,7 @@ static int bdm_prepare_fragment_table(void)
         cdvdman_settings.fragsAre512ByteSectors = 0;
     }
 
-    bd_defrag_index_reset(&g_bd_defrag_index);
-    /* 重复 prepare 时先释放旧检查点，避免泄漏。分配失败只退回线性查找，不让表准备失败。 */
-    if (g_bd_defrag_checkpoints != NULL) {
-        FreeSysMemory(g_bd_defrag_checkpoints);
-        g_bd_defrag_checkpoints = NULL;
-    }
-    if (checkpoint_count > 0 &&
-        checkpoint_count <= 0xFFFFFFFFU / sizeof(bd_defrag_checkpoint_t)) {
-        g_bd_defrag_checkpoints = AllocSysMemory(ALLOC_FIRST,
-                                                 checkpoint_count * sizeof(bd_defrag_checkpoint_t),
-                                                 NULL);
-        if (g_bd_defrag_checkpoints == NULL)
-            DPRINTF("fragment index allocation failed; using linear lookup\n");
-    }
-    if (g_bd_defrag_checkpoints != NULL &&
-        bd_defrag_index_build(&g_bd_defrag_index,
-                              &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                              fragcount,
-                              stride,
-                              g_bd_defrag_checkpoints,
-                              checkpoint_count) < 0)
-        DPRINTF("fragment index build failed; using linear lookup\n");
-    bd_defrag_cursor_reset(&g_bd_defrag_cursor);
+    slim_on_table_ready(fragcount, &g_frag_table[cdvdman_settings.fragfile[0].frag_start]);
 
     /* 表、扇区单位和索引全部就绪后再允许光盘读取。 */
     g_frag_table_state = BDM_FRAG_TABLE_READY;
@@ -255,8 +363,7 @@ void DeviceInit(void)
     smp.option = 0;
     smp.attr = SA_THPRI;
     bdm_io_sema = CreateSema(&smp);
-    bd_defrag_cursor_reset(&g_bd_defrag_cursor);
-    bd_defrag_index_reset(&g_bd_defrag_index);
+    slim_cursor_reset();
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
 #ifdef USE_BDM_ATA
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
@@ -286,8 +393,7 @@ void DeviceDeinit(void)
 
     /* 服务留在 cdvdfsv 的永久队列上（COMMIT 后 fail-closed）。
      * IGR 会重启整个 IOP，cdvdman 与 cdvdfsv 一并卸载。不要再清理已删除的专用线程。 */
-    bd_defrag_cursor_reset(&g_bd_defrag_cursor);
-    bd_defrag_index_reset(&g_bd_defrag_index);
+    slim_cursor_reset();
     g_frag_table_state = BDM_FRAG_TABLE_EMPTY;
     if (g_frag_table != NULL) {
         if (g_frag_table_owned)
@@ -299,10 +405,6 @@ void DeviceDeinit(void)
         FreeSysMemory(g_bdm_fragment_pending);
         g_bdm_fragment_pending = NULL;
         g_bdm_fragment_pending_bytes = 0;
-    }
-    if (g_bd_defrag_checkpoints != NULL) {
-        FreeSysMemory(g_bd_defrag_checkpoints);
-        g_bd_defrag_checkpoints = NULL;
     }
 #ifdef USE_BDM_ATA
     g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
@@ -413,9 +515,9 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
                 sectors_to_read = 0xffff / blocks_per_iso_sector;
             block_count = sectors_to_read * blocks_per_iso_sector;
 
-            if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count,
+            if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count,
                                       &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                      &g_bd_defrag_index, file_sector, destination, block_count, &g_bd_defrag_cursor) != block_count) {
+                                      file_sector, destination, block_count) != block_count) {
                 u64 totalSectorCount = 0;
                 unsigned int i;
 
@@ -428,9 +530,9 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
                 else if (block_count > totalSectorCount - file_sector) {
                     u32 validBlockCount = totalSectorCount - file_sector;
 
-                    if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                    if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count,
                                               &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                              &g_bd_defrag_index, file_sector, destination, validBlockCount, &g_bd_defrag_cursor) != validBlockCount) {
+                                              file_sector, destination, validBlockCount) != validBlockCount) {
                         SignalSema(bdm_io_sema);
                         return SCECdErREAD;
                     }
@@ -484,9 +586,9 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
             if (block_count > 0xffff)
                 block_count = 0xffff;
 
-            if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count,
+            if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count,
                                       &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                      &g_bd_defrag_index, file_sector, destination, block_count, &g_bd_defrag_cursor) != block_count) {
+                                      file_sector, destination, block_count) != block_count) {
                 u64 totalSectorCount = 0;
                 unsigned int i;
 
@@ -498,9 +600,9 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
                 else if (block_count > totalSectorCount - file_sector) {
                     u32 validBlockCount = totalSectorCount - file_sector;
 
-                    if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                    if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count,
                                               &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                              &g_bd_defrag_index, file_sector, destination, validBlockCount, &g_bd_defrag_cursor) != validBlockCount) {
+                                              file_sector, destination, validBlockCount) != validBlockCount) {
                         SignalSema(bdm_io_sema);
                         return SCECdErREAD;
                     }
@@ -536,9 +638,9 @@ static int DeviceReadSectorsGeneric_2(u32 lsn, void *buffer, unsigned int sector
 
             if (g_bd_generic_sector_buffer_sector_2 != file_sector) {
                 g_bd_generic_sector_buffer_sector_2 = INVALID_BD_GENERIC_SECTOR;
-                if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count,
+                if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count,
                                           &g_frag_table[cdvdman_settings.fragfile[0].frag_start],
-                                          &g_bd_defrag_index, file_sector, g_bd_generic_sector_buffer_2, 1, &g_bd_defrag_cursor) != 1) {
+                                          file_sector, g_bd_generic_sector_buffer_2, 1) != 1) {
                     u64 totalSectorCount = 0;
                     unsigned int i;
 
@@ -608,7 +710,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
     u64 sector = ((u64)lsn) * 4;
     unsigned int sectorCount = sectors * 4;
     bd_fragment_t *frags = &g_frag_table[cdvdman_settings.fragfile[0].frag_start];
-    if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, &g_bd_defrag_index, sector, buffer, sectorCount, &g_bd_defrag_cursor) != (int)sectorCount) {
+    if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, sectorCount) != (int)sectorCount) {
         u64 totalSectorCount = 0;
         unsigned int i;
 
@@ -620,7 +722,7 @@ int DeviceReadSectors(u32 lsn, void *buffer, unsigned int sectors)
         else if (sectorCount > totalSectorCount - sector) {
             unsigned int validSectorCount = totalSectorCount - sector;
 
-            if (bd_defrag_read_cached_indexed(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, &g_bd_defrag_index, sector, buffer, validSectorCount, &g_bd_defrag_cursor) == (int)validSectorCount)
+            if (slim_defrag_read(g_bd, cdvdman_settings.fragfile[0].frag_count, frags, sector, buffer, validSectorCount) == (int)validSectorCount)
                 memset((u8 *)buffer + validSectorCount * 512, 0, (sectorCount - validSectorCount) * 512);
             else
                 rv = isMX4SIO ? SCECdErTRMOPN : SCECdErREAD;
