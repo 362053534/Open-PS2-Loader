@@ -44,6 +44,7 @@ typedef struct
 #define PATCH_ZOMBIE_ZONE        0xEEE62525
 #define PATCH_DOT_HACK           0x0D074A37
 #define PATCH_SOS                0x30303030
+#define PATCH_SOS_NO_HDD         0x30303031
 #define PATCH_ULT_PRO_PINBALL    0xBA11BA11
 #define PATCH_EUTECHNYX_WU_TID   0x0012FCC8
 #define PATCH_PRO_SNOWBOARDER    0x01020199
@@ -116,7 +117,11 @@ static const patchlist_t patch_list[] = {
     {"SLES_524.68", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Quarantine PAL
     {"SLUS_205.61", ALL_MODE, {PATCH_SOS, 0x00000001, 0x00000000}},                // Disaster Report
     {"SLES_513.01", ALL_MODE, {PATCH_SOS, 0x00000002, 0x00000000}},                // SOS: The Final Escape
+    /* 日版统一使用固定占位，不编入真实音频补丁分发。 */
+#if 0
     {"SLPS_251.13", ALL_MODE, {PATCH_SOS, 0x00000000, 0x00000000}},                // Zettai Zetsumei Toshi
+#endif
+    {"SLPS_251.13", ALL_MODE, {PATCH_SOS_NO_HDD, 0x00000000, 0x00000000}},       // 日版 1.05/2.00：跳过游戏自身的硬盘初始化
     {"SLES_535.08", ALL_MODE, {PATCH_ULT_PRO_PINBALL, 0x00000000, 0x00000000}},    // Ultimate Pro Pinball
     {"SLUS_200.02", BDM_MODE, {0x002c7758, 0x0000182d, 0x8c436d18}},               // Ridge Racer V (NTSC-U/C) - workaround disabling (bugged?) streaming code in favour of processing all data at once, for USB devices.
     {"SCES_500.00", BDM_MODE, {0x002c9760, 0x0000182d, 0x8c43a2f8}},               // Ridge Racer V (PAL) - workaround by disabling (bugged?) streaming code in favour of processing all data at once, for USB devices.
@@ -552,12 +557,15 @@ static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args
     char modIdStr[3];
 
     switch (g_mode) {
+    /* 日版入口已停用，同步排除不可达的区域地址表，避免挤占 EE Core。 */
+#if 0
         case 0: // NTSC-J
             _pSifLoadModule = (void *)0x001d0680;
             pSifAllocIopHeap = (void *)0x001cfc30;
             pSifFreeIopHeap = (void *)0x001cfd20;
             pSifLoadModuleBuffer = (void *)0x001d0640;
             break;
+#endif
         case 1: // NTSC-U/C
             _pSifLoadModule = (void *)0x001d0580;
             pSifAllocIopHeap = (void *)0x001cfb30;
@@ -615,9 +623,12 @@ static void SOSPatch(int region)
     g_mode = region;
 
     switch (region) { // JAL SOS_SifLoadModuleHook - replace call to _SifLoadModule.
+    /* 日版采用启动阶段占位，不安装真实音频补丁的加载钩子。 */
+#if 0
         case 0:       // NTSC-J
             _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
             break;
+#endif
         case 1: // NTSC-U/C
             _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d07b4);
             break;
@@ -625,6 +636,46 @@ static void SOSPatch(int region)
             // _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d13f4);
             break;
     }
+}
+
+static void SOSNoHDDPatch(void)
+{
+    static const struct {
+        u32 address;
+        u32 word;
+    } guards[] = {
+        {0x00136524, 0x0c07bc04}, {0x00136528, 0x70002628},
+        {0x0013652c, 0x0c07bc18}, {0x00136530, 0x70002628},
+        {0x00136534, 0x3c020032}, {0x00136538, 0x244478d8},
+        {0x0013653c, 0x3c020026}, {0x00136544, 0x2445cd00},
+        {0x00136548, 0x70408628}, {0x0013654c, 0x12000009},
+        {0x00136588, 0x3c020032}, {0x0013658c, 0x24040001},
+        {0x00136590, 0x0c07b018}, {0x00136594, 0x24457930},
+        {0x0025cd00, 0x00327758}, {0x0025cd04, 0x00327768},
+        {0x0025cd08, 0x00327778}, {0x0025cd0c, 0x00327780},
+        {0x0025cd10, 0x00000000}
+    };
+    u32 version_offset = _lw(0x00136540) - 0x0c07a3f8;
+    unsigned int i;
+
+    /* 无符号差值只允许 0 或 0x10，未知模块入口仍拒绝修改。 */
+    if (version_offset & ~0x10U)
+        return;
+
+    /* 共用循环保留全部校验，仅 JAL 的调用目标随版本整体平移。 */
+    for (i = 0; i < sizeof(guards) / sizeof(guards[0]); i++) {
+        u32 address = guards[i].address;
+        u32 expected = guards[i].word;
+
+        if ((expected >> 26) == 3)
+            expected += version_offset;
+        if (_lw(address) != expected)
+            return;
+    }
+
+    /* 保留状态清零，直接进入普通初始化，并清空跳转的延迟槽。 */
+    _sw(0x10000014, 0x00136534);
+    _sw(0x00000000, 0x00136538);
 }
 
 static void VirtuaQuest_patches(void)
@@ -999,6 +1050,10 @@ void apply_patches(const char *path)
                     break;
                 case PATCH_SOS:
                     SOSPatch(p->patch.val);
+                    break;
+                case PATCH_SOS_NO_HDD:
+                    if (file_eq_bootelf)
+                        SOSNoHDDPatch();
                     break;
                 case PATCH_VIRTUA_QUEST:
                     if (file_eq_bootelf)
