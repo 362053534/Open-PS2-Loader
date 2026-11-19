@@ -262,7 +262,8 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     if (config->GameMode == BDM_USB_MODE ||
         config->GameMode == BDM_ILK_MODE ||
         config->GameMode == BDM_M4S_MODE ||
-        config->GameMode == BDM_HDD_MODE) {
+        config->GameMode == BDM_HDD_MODE ||
+        config->GameMode == HDD_MODE) {
         /*
          * 碎片表已由 EE 在 PS2LOGO 前推送到 IOP，不再提前 sceCdInit，交由 PS2LOGO/游戏
          * 自行初始化，恢复原版时序，避免 IOP 刚重启时阻塞读盘导致无提示黑屏。

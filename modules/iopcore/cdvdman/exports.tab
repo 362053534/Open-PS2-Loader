@@ -125,6 +125,7 @@ DECLARE_EXPORT_TABLE(cdvdman, 1, 1)
 	DECLARE_EXPORT(_dummy)
 	DECLARE_EXPORT(_dummy)
 	DECLARE_EXPORT(_dummy)
+	DECLARE_EXPORT(cdvdman_register_bdm_fragment_rpc)
 END_EXPORT_TABLE
 
 // cdvdstm export table
