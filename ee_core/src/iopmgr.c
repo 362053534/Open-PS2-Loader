@@ -259,33 +259,29 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             break;
     };
 
-    if (config->GameMode == BDM_USB_MODE ||
-        config->GameMode == BDM_ILK_MODE ||
-        config->GameMode == BDM_M4S_MODE ||
-        config->GameMode == BDM_HDD_MODE) {
-        /*
-         * 碎片表已由 EE 在 PS2LOGO 前推送到 IOP，不再提前 sceCdInit，交由 PS2LOGO/游戏
-         * 自行初始化，恢复原版时序，避免 IOP 刚重启时阻塞读盘导致无提示黑屏。
-         */
-        if (config->BDMFragmentTable != NULL &&
-            config->BDMFragmentTableBytes != 0 &&
-            config->BDMFragmentTableCount != 0) {
-            int attempt;
+    /* 由已有表的有效性决定推送，避免再按游戏模式重复分流。 */
+    /*
+     * 碎片表已由 EE 在 PS2LOGO 前推送到 IOP，不再提前 sceCdInit，交由 PS2LOGO/游戏
+     * 自行初始化，恢复原版时序，避免 IOP 刚重启时阻塞读盘导致无提示黑屏。
+     */
+    if (config->BDMFragmentTable != NULL &&
+        config->BDMFragmentTableBytes != 0 &&
+        config->BDMFragmentTableCount != 0) {
+        int attempt;
 
-            for (attempt = 0; attempt < BDM_INIT_RETRIES; attempt++) {
-                if (PushBDMFragmentTable(config) >= 0)
-                    break;
-                DPRINTF("BDM fragment table preload attempt %d failed\n", attempt + 1);
-                if (attempt < BDM_INIT_RETRIES - 1)
-                    delay(1);
-            }
-            if (attempt >= BDM_INIT_RETRIES) {
-                /* 没有碎片表游戏无法读盘，与其静默黑屏，不如红屏停机，便于用户反馈。
-                 * GS BGCOLOR 低字节为 R，0x0000FF 即红色（与 igs_api.c 中的红色一致）。 */
-                DBGCOL(0x0000FF, IOPMGR, "BDM fragment table push failed");
-                while (1)
-                    ;
-            }
+        for (attempt = 0; attempt < BDM_INIT_RETRIES; attempt++) {
+            if (PushBDMFragmentTable(config) >= 0)
+                break;
+            DPRINTF("BDM fragment table preload attempt %d failed\n", attempt + 1);
+            if (attempt < BDM_INIT_RETRIES - 1)
+                delay(1);
+        }
+        if (attempt >= BDM_INIT_RETRIES) {
+            /* 没有碎片表游戏无法读盘，与其静默黑屏，不如红屏停机，便于用户反馈。
+             * GS BGCOLOR 低字节为 R，0x0000FF 即红色（与 igs_api.c 中的红色一致）。 */
+            DBGCOL(0x0000FF, IOPMGR, "BDM fragment table push failed");
+            while (1)
+                ;
         }
     }
 

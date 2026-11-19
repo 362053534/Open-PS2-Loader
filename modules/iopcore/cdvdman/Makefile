@@ -32,8 +32,7 @@ ifeq ($(USE_BDM),1)
 IOP_BIN  = bdm_cdvdman.irx
 IOP_OBJS_DIR = obj.bdm/
 IOP_OBJS += device-bdm.o
-IOP_CFLAGS += -DBDM_DRIVER
-IOP_LIBS += -L$(PS2SDK)/iop/lib -lbdm
+IOP_CFLAGS += -DBDM_DRIVER -DSLIM_DEFRAG_CURSOR=1
 ifeq ($(IOPCORE_DEBUG),1)
 USE_DEV9 = 1
 endif
@@ -43,7 +42,7 @@ ifeq ($(USE_BDM_ATA),1)
 IOP_BIN  = bdm_ata_cdvdman.irx
 IOP_OBJS_DIR = obj.bdm_ata/
 IOP_OBJS += device-bdm.o atad.o
-IOP_CFLAGS += -DBDM_DRIVER -DUSE_BDM_ATA
+IOP_CFLAGS += -DBDM_DRIVER -DUSE_BDM_ATA -DSLIM_DEFRAG_CURSOR=1
 IOP_LIBS += -L$(PS2SDK)/iop/lib -lbdm
 USE_DEV9 = 1
 ifeq ($(IOPCORE_DEBUG),1)

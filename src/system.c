@@ -657,8 +657,6 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
             memcpy(frag_dst, frag_table, frag_bytes);
             if (frag_transfer_bytes > frag_bytes)
                 memset((u8 *)frag_dst + frag_bytes, 0, frag_transfer_bytes - frag_bytes);
-            settings->frag_table_ee_addr = 0;
-            settings->frag_table_bytes = frag_transfer_bytes;
             settings->fragfile[0].frag_start = 0;
             settings->fragfile[0].frag_count = frag_count;
             bdmFragmentTableEEAddress = frag_dst;

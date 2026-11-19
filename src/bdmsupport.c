@@ -789,8 +789,6 @@ vmc_prepared:;
     }
     settings->fragfile[0].frag_start = 0;
     settings->fragfile[0].frag_count = 0;
-    settings->frag_table_ee_addr = 0;
-    settings->frag_table_bytes = 0;
     int iTotalFragCount = 0;
 
     //
