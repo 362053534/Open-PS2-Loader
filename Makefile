@@ -82,8 +82,11 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 		sio2man.o padman.o mcman.o mcserv.o \
 		httpclient-iop.o netman.o ps2ips.o \
 		bdm_mcemu.o pfs_bdm_mcemu.o smb_mcemu.o \
-		iremsndpatch.o apemodpatch.o f2techioppatch.o rcuyapatch.o cleareffects.o resetspu.o \
+		apemodpatch.o f2techioppatch.o rcuyapatch.o cleareffects.o resetspu.o \
 		libsd.o audsrv.o
+
+# 本轮停用音频补丁，保留源码但不将模块资源链接进 ELF。
+# IOP_OBJS += iremsndpatch.o
 
 EECORE_OBJS = ee_core.o ioprp.o util.o \
 		udnl.o imgdrv.o eesync.o \

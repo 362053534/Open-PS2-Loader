@@ -44,6 +44,7 @@ typedef struct
 #define PATCH_ZOMBIE_ZONE        0xEEE62525
 #define PATCH_DOT_HACK           0x0D074A37
 #define PATCH_SOS                0x30303030
+#define PATCH_SOS_NO_HDD         0x30303031
 #define PATCH_ULT_PRO_PINBALL    0xBA11BA11
 #define PATCH_EUTECHNYX_WU_TID   0x0012FCC8
 #define PATCH_PRO_SNOWBOARDER    0x01020199
@@ -114,9 +115,13 @@ static const patchlist_t patch_list[] = {
     {"SLES_524.67", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Mutation PAL
     {"SLES_524.69", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Outbreak PAL
     {"SLES_524.68", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Quarantine PAL
+    /* 本轮停用整组音频钩，保留入口供后续对照。 */
+#if 0
     {"SLUS_205.61", ALL_MODE, {PATCH_SOS, 0x00000001, 0x00000000}},                // Disaster Report
     {"SLES_513.01", ALL_MODE, {PATCH_SOS, 0x00000002, 0x00000000}},                // SOS: The Final Escape
     {"SLPS_251.13", ALL_MODE, {PATCH_SOS, 0x00000000, 0x00000000}},                // Zettai Zetsumei Toshi
+#endif
+    {"SLPS_251.13", ALL_MODE, {PATCH_SOS_NO_HDD, 0x00000000, 0x00000000}},      // 日版两种版本共用，忽略游戏自身的硬盘支持
     {"SLES_535.08", ALL_MODE, {PATCH_ULT_PRO_PINBALL, 0x00000000, 0x00000000}},    // Ultimate Pro Pinball
     {"SLUS_200.02", BDM_MODE, {0x002c7758, 0x0000182d, 0x8c436d18}},               // Ridge Racer V (NTSC-U/C) - workaround disabling (bugged?) streaming code in favour of processing all data at once, for USB devices.
     {"SCES_500.00", BDM_MODE, {0x002c9760, 0x0000182d, 0x8c43a2f8}},               // Ridge Racer V (PAL) - workaround by disabling (bugged?) streaming code in favour of processing all data at once, for USB devices.
@@ -538,6 +543,8 @@ int Skip_Videos_sceMpegIsEnd(void)
         return 0;
 }
 
+/* 保留音频补丁实现供后续对照；禁编译以免留下 EE 钩子和辅助数据。 */
+#if 0
 typedef struct SOSPatchProfile {
     u32 call;
     u32 call_ex;
@@ -687,6 +694,33 @@ static void SOSPatch(int region)
             break;
     }
 }
+#endif
+
+static void SOSNoHDDPatch(void)
+{
+    u32 load_modules = _lw(0x00136540);
+
+    /* 仅跳过游戏自己的硬盘模块组，OPL 的 HDD/SMB 后端仍照常工作。
+     * 两版调用位置一致，目标函数相差 0x40，须同时核对上下文和模块表。
+     * 沿用无硬盘分支清零可用标志，避免进入安装与关盘线程。
+     */
+    if ((load_modules == 0x0c07a3f8 || load_modules == 0x0c07a408) &&
+        _lw(0x00136534) == 0x3c020032 &&
+        _lw(0x00136538) == 0x244478d8 &&
+        _lw(0x0013653c) == 0x3c020026 &&
+        _lw(0x00136544) == 0x2445cd00 &&
+        _lw(0x00136548) == 0x70408628 &&
+        _lw(0x0013654c) == 0x12000009 &&
+        _lw(0x0025cd00) == 0x00327758 &&
+        _lw(0x0025cd04) == 0x00327768 &&
+        _lw(0x0025cd08) == 0x00327778 &&
+        _lw(0x0025cd0c) == 0x00327780 &&
+        _lw(0x0025cd10) == 0x00000000) {
+        /* 保留原延迟槽，并按游戏原有控制流报告硬盘不可用。 */
+        _sw(0x0000102d, 0x00136540);
+    }
+}
+
 
 static void VirtuaQuest_patches(void)
 {
@@ -1057,8 +1091,14 @@ void apply_patches(const char *path)
                 case PATCH_DOT_HACK:
                     DotHack_patches(path);
                     break;
+#if 0
                 case PATCH_SOS:
                     SOSPatch(p->patch.val);
+                    break;
+#endif
+                case PATCH_SOS_NO_HDD:
+                    if (file_eq_bootelf)
+                        SOSNoHDDPatch();
                     break;
                 case PATCH_VIRTUA_QUEST:
                     if (file_eq_bootelf)

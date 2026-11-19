@@ -67,7 +67,10 @@ IMPORT_BIN2C(ioptrap_irx);
 
 IMPORT_BIN2C(isofs_irx);
 
+/* 与构建对象和补丁入口一同停用，避免重新引入音频补丁资源。 */
+#if 0
 IMPORT_BIN2C(iremsndpatch_irx);
+#endif
 
 IMPORT_BIN2C(libsd_irx);
 
