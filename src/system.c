@@ -416,7 +416,7 @@ typedef struct
 static const patchlist_t iop_patch_list[] = {
     {"SLUS_205.61", "", &iremsndpatch_irx, &size_iremsndpatch_irx},     // Disaster Report
     {"SLES_513.01", "", &iremsndpatch_irx, &size_iremsndpatch_irx},     // SOS: The Final Escape
-    {"SLPS_251.13", "", &iremsndpatch_irx, &size_iremsndpatch_irx},     // Zettai Zetsumei Toshi
+    /* 日版调试路径不传输真实音频补丁，美欧版继续使用原资源。 */
     {"SLES_535.08", "", &apemodpatch_irx, &size_apemodpatch_irx},       // Ultimate Pro Pinball
     {"SLUS_204.13", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (NTSC-U/C)
     {"SLES_504.46", "", &f2techioppatch_irx, &size_f2techioppatch_irx}, // Shadow Man: 2econd Coming (PAL)
@@ -1014,6 +1014,13 @@ void sysLaunchLoaderElf(const char *filename, const char *gameid, const char *mo
     config->GameID[CORE_GAME_ID_MAX_LEN - 1] = '\0';
     strncpy(config->BootFile, filename, CORE_GAME_ID_MAX_LEN);
     config->BootFile[CORE_GAME_ID_MAX_LEN - 1] = '\0';
+    /* 三个区域的绝体绝命都市统一走日版占位路径：占位大小不依赖汉化文本、ELF 版本或调试按键。
+     * 美版与欧版镜像本身已是 no-HDD，因此不需要 SOSNoHDDPatch，只需要同一份 IOP 堆占位。 */
+    config->SOSIopPadBytes = (!strcmp(gameid, "SLPS_251.13")
+                              || !strcmp(gameid, "SLUS_205.61")
+                              || !strcmp(gameid, "SLES_513.01"))
+                                 ? 15 * 1024
+                                 : 0;
 
     config->_CompatMask = compatflags;
     config->EnableHddUsbd = sbNeedHddUsbd(gameid);

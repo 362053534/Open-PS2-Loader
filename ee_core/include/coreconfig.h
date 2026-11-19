@@ -33,6 +33,8 @@ struct EECoreConfig_t
 
     char GameMode;
     char GameModeDesc[CORE_GAME_MODE_DESC_MAX_LEN];
+    /* 使用原有对齐空隙，避免扩大 EE Core 配置常驻区。 */
+    u16 SOSIopPadBytes;
 
     int EnableDebug;
 

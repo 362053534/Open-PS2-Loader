@@ -199,6 +199,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
     LoadFileInit();
     sbv_patch_enable_lmb();
 
+    /* 占位保留到下一次 IOP 重启，再重新申请，避免游戏运行时被后续模块复用。 */
+    if (config->SOSIopPadBytes && !SifAllocIopHeap(config->SOSIopPadBytes))
+        goto iop_setup_failed;
+
     DPRINTF("Loading extra IOP modules...\n");
 
     /* 单人由原 EE 补丁处理；只有多人 ELF 才在设备模块之前预留固定地址。 */
@@ -277,9 +281,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
                 delay(1);
         }
         if (attempt >= BDM_INIT_RETRIES) {
-            /* 没有碎片表游戏无法读盘，与其静默黑屏，不如红屏停机，便于用户反馈。
+            /* 推表或占位失败都无法按预期条件继续实验，统一红屏停机。
              * GS BGCOLOR 低字节为 R，0x0000FF 即红色（与 igs_api.c 中的红色一致）。 */
-            DBGCOL(0x0000FF, IOPMGR, "BDM fragment table push failed");
+        iop_setup_failed:
+            DBGCOL(0x0000FF, IOPMGR, "IOP memory preparation failed");
             while (1)
                 ;
         }
