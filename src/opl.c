@@ -2015,7 +2015,7 @@ static void _loadConfig(void)
             if (officialCfgPath[0] == '\0') {
                 char mcPath[64];
                 snprintf(mcPath, sizeof(mcPath), "%s/conf_opl.cfg", gBaseMCDir);
-                value = open(mcPath, O_RDONLY);
+                value = openFile(mcPath, O_RDONLY);
                 if (value >= 0) {
                     close(value);
                     snprintf(officialCfgPath, sizeof(officialCfgPath), "%s", gBaseMCDir);
