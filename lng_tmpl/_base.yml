@@ -824,3 +824,7 @@ gui_strings:
   string: 你的硬盘是混合分区，确定要启用当前模式吗？
 - label: MSG_LIST_SEPARATOR
   string: 、
+- label: CALLBACK_TIMER
+  string: 光驱回调延迟
+- label: HINT_CALLBACK_TIMER
+  string: 延后光驱命令完成回调，调节兼容时序（每单位250微秒）

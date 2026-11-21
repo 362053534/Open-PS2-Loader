@@ -431,6 +431,11 @@ struct UIItem diaCompatConfig[] = {
     {UI_BOOL, COMPAT_MODE_BASE + 5, 1, 1, _STR_HINT_MODE6, -10, 0, {.intvalue = {0, 0}}},
     {UI_BREAK},
 
+    {UI_BREAK},
+    {UI_LABEL, 0, 1, 1, -1, -30, 0, {.label = {NULL, _STR_CALLBACK_TIMER}}},
+    {UI_SPACER},
+    {UI_INT, COMPAT_CDVDMAN_TIMER, 1, 1, _STR_HINT_CALLBACK_TIMER, 0, 0, {.intvalue = {0, 0, 0, 255}}},
+
     /* 关掉下载默认值入口，实现仍留在 guiShowNetCompatUpdateSingle。 */
     {UI_BUTTON, COMPAT_DL_DEFAULTS, 0, 0, -1, 0, 0, {.label = {NULL, _STR_DL_DEFAULTS}}},
     {UI_SPLITTER},

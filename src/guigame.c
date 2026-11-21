@@ -1077,6 +1077,13 @@ int guiGameSaveConfig(config_set_t *configSet, item_list_t *support)
     else
         configRemoveKey(configSet, CONFIG_ITEM_COMPAT);
 
+    int callbackTimer = 0;
+    diaGetInt(diaCompatConfig, COMPAT_CDVDMAN_TIMER, &callbackTimer);
+    if (callbackTimer != 0)
+        result = configSetInt(configSet, CONFIG_ITEM_CDVDMAN_TIMER, callbackTimer);
+    else
+        configRemoveKey(configSet, CONFIG_ITEM_CDVDMAN_TIMER);
+
     /// DMA ///
     if (support->flags & MODE_FLAG_COMPAT_DMA) {
         diaGetInt(diaCompatConfig, COMPAT_DMASOURCE, &gDmaSource);
@@ -1538,6 +1545,10 @@ void guiGameLoadConfig(item_list_t *support, config_set_t *configSet)
     loadedMode1 = (compatMode & COMPAT_MODE_1) != 0;
     for (int i = 0; i < COMPAT_MODE_COUNT; ++i)
         diaSetInt(diaCompatConfig, COMPAT_MODE_BASE + i, (compatMode & (1 << i)) > 0 ? 1 : 0);
+
+    int callbackTimer = 0;
+    configGetInt(configSet, CONFIG_ITEM_CDVDMAN_TIMER, &callbackTimer);
+    diaSetInt(diaCompatConfig, COMPAT_CDVDMAN_TIMER, callbackTimer < 0 ? 0 : (callbackTimer > 255 ? 255 : callbackTimer));
 
     guiGameLoadGSMConfig(configSet, configGame);
 
