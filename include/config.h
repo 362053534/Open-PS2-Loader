@@ -34,6 +34,7 @@ enum CONFIG_INDEX {
 #define CONFIG_ITEM_ALTSTARTUP   "$AltStartup"
 #define CONFIG_ITEM_VMC          "$VMC"
 #define CONFIG_ITEM_COMPAT       "$Compatibility"
+#define CONFIG_ITEM_CDVDMAN_TIMER "$CallbackTimer"
 /* 用户动过模式1后不再套用总开关；有此字段时模式1完全跟随 $Compatibility。 */
 #define CONFIG_ITEM_MANUAL_MODE1 "$ManualMode1"
 #define CONFIG_ITEM_DMA          "$DMA"
