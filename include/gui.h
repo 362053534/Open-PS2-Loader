@@ -94,6 +94,8 @@ void guiIntroFrame(void);
 /** invokes the main loop */
 void guiMainLoop();
 
+unsigned int guiGetRem1DelayMs(void);
+
 /** Hooks a single per-frame callback */
 void guiSetFrameHook(gui_callback_t cback);
 

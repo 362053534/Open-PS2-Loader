@@ -5,6 +5,7 @@
 */
 
 #include "cdvdfsv-internal.h"
+#include "rem1_debug.h"
 
 typedef struct
 {
@@ -99,7 +100,8 @@ enum CDVD_ST_CMDS {
 };
 
 /* 余数 1 扇区：上一笔 EE 读 >1 扇区且 LSN 紧挨着。连续 1 扇区（目录）不拖。 */
-#define REM1_MIN_US 30000u
+/* 启动时在模块镜像中写入界面值，volatile 防止默认 0 被编译成常量。 */
+static volatile struct cdvdfsv_rem1_debug rem1_debug = {{REM1_DEBUG_MAGIC_0, REM1_DEBUG_MAGIC_1}, 0};
 
 static u32 rem1_next_lsn;
 static unsigned int rem1_prev_sectors;
@@ -121,14 +123,15 @@ static void rem1_pad_elapsed(int rem1, const iop_sys_clock_t *t0)
 {
     iop_sys_clock_t t1;
     u32 elapsed_us;
+    u32 min_us = rem1_debug.min_us;
 
-    if (!rem1)
+    if (!rem1 || min_us == 0)
         return;
     GetSystemTime(&t1);
-    /* 36.864MHz，/37 得到微秒；慢设备已经超过 30ms 就不再 DelayThread。 */
+    /* 沿用原来的耗时换算，慢设备已达到界面下限时不再补时。 */
     elapsed_us = (t1.lo - t0->lo) / 37u;
-    if (elapsed_us < REM1_MIN_US)
-        DelayThread(REM1_MIN_US - elapsed_us);
+    if (elapsed_us < min_us)
+        DelayThread(min_us - elapsed_us);
 }
 
 //--------------------------------------------------------------

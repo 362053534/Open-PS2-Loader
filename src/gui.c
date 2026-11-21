@@ -25,12 +25,21 @@
 #include "include/sound.h"
 #include "include/guigame.h"
 #include "include/texcache.h"
+#include "modules/iopcore/common/rem1_debug.h"
 
 #include <limits.h>
 #include <stdlib.h>
 #include <libvux.h>
 
 static int BdmStarted = 0; // BDM模式已启动
+
+/* 仅供本次启动调试，不写配置文件。 */
+static unsigned int gRem1DelayMs = 0;
+
+unsigned int guiGetRem1DelayMs(void)
+{
+    return gRem1DelayMs;
+}
 
 static int gScheduledOps;
 static int gCompletedOps;
@@ -1649,6 +1658,10 @@ static int endIntro = 0; // Break intro loop and start 'Last Played Auto Start' 
 static int busyAlpha = 0x00; // Fully transparant
 static void guiDrawOverlays()
 {
+    char rem1Text[40];
+    snprintf(rem1Text, sizeof(rem1Text), "REM1: %u ms  [L3 +1]", gRem1DelayMs);
+    fntRenderString(gTheme->fonts[0], screenWidth / 2, 10, ALIGN_HCENTER, 0, 0, rem1Text, GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80));
+
     // are there any pending operations?
     int pending = (ioHasPendingRequests() || !mainScreenInitDone || texLoading > 0);
 
@@ -1731,6 +1744,10 @@ static void guiReadPads()
         guiInactiveFrames = 0;
     else
         guiInactiveFrames++;
+
+    /* 只响应按下边沿，按住 L3 不连续增加。 */
+    if (getKeyOn(KEY_L3) && gRem1DelayMs < REM1_DEBUG_MAX_MS)
+        gRem1DelayMs++;
 }
 
 // renders the screen and handles inputs. Also handles screen transitions between numerous

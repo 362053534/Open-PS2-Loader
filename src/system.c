@@ -508,7 +508,7 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
     size_ioprp_image = size_IOPRP_img + size_cdvdman_irx + size_cdvdfsv_irx + size_eesync_irx + 256;
     LOG("IOPRP image size calculated: %d\n", size_ioprp_image);
     ioprp_image = malloc(size_ioprp_image);
-    size_ioprp_image = patch_IOPRP_image(ioprp_image, cdvdman_irx, size_cdvdman_irx, &cdvdman_offset);
+    size_ioprp_image = patch_IOPRP_image(ioprp_image, cdvdman_irx, size_cdvdman_irx, &cdvdman_offset, guiGetRem1DelayMs());
     LOG("IOPRP image size actual:     %d\n", size_ioprp_image);
 
     modcount = 0;

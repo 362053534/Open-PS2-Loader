@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "include/ioprp.h"
+#include "modules/iopcore/common/rem1_debug.h"
 
 struct romdir_entry
 {
@@ -22,14 +23,14 @@ extern unsigned int size_IOPRP_img;
 
 /* Local function prototypes */
 static inline void patch_CDVDMAN(void *image_offset, struct romdir_entry *entryinfo, void *cdvdman, unsigned int size);
-static inline void patch_CDVDFSV(void *image_offset, struct romdir_entry *entryinfo);
+static inline void patch_CDVDFSV(void *image_offset, struct romdir_entry *entryinfo, unsigned int rem1_delay_ms);
 static inline void patch_EESYNC(void *image_offset, struct romdir_entry *entryinfo);
 static inline void Align_offsets(void *base_address, unsigned int *offset_in, struct romdir_entry *romdir_in, unsigned int *offset_out, struct romdir_entry *romdir_out);
 
 /*----------------------------------------------------------------------------------------
     Replace modules in a IOPRP image.
 ------------------------------------------------------------------------------------------*/
-unsigned int patch_IOPRP_image(void *ioprp_image, void *cdvdman_module, unsigned int size_cdvdman, unsigned int *cdvdman_offset)
+unsigned int patch_IOPRP_image(void *ioprp_image, void *cdvdman_module, unsigned int size_cdvdman, unsigned int *cdvdman_offset, unsigned int rem1_delay_ms)
 {
     unsigned int offset_in, offset_out; /* For processing purposes */
     struct romdir_entry *romdir_in, *romdir_out;
@@ -51,7 +52,7 @@ unsigned int patch_IOPRP_image(void *ioprp_image, void *cdvdman_module, unsigned
             patch_CDVDMAN((void *)((u8 *)ioprp_image + offset_out), romdir_out, cdvdman_module, size_cdvdman);
         }
         else if (!strcmp(romdir_in->fileName, "CDVDFSV"))
-            patch_CDVDFSV((void *)((u8 *)ioprp_image + offset_out), romdir_out);
+            patch_CDVDFSV((void *)((u8 *)ioprp_image + offset_out), romdir_out, rem1_delay_ms);
         else if (!strcmp(romdir_in->fileName, "EESYNC"))
             patch_EESYNC((void *)((u8 *)ioprp_image + offset_out), romdir_out);
         else {                                                                                                      /* Other modules that should not be tampered with */
@@ -83,10 +84,21 @@ static inline void patch_CDVDMAN(void *image_offset, struct romdir_entry *entryi
 /*----------------------------------------------------------------------------------------
     Patch CDVDFSV in an IOPRP image
 ------------------------------------------------------------------------------------------*/
-static inline void patch_CDVDFSV(void *image_offset, struct romdir_entry *entryinfo)
+static inline void patch_CDVDFSV(void *image_offset, struct romdir_entry *entryinfo, unsigned int rem1_delay_ms)
 {
+    unsigned int offset;
+
     memcpy(image_offset, cdvdfsv_irx, size_cdvdfsv_irx);
     entryinfo->fileSize = size_cdvdfsv_irx;
+
+    /* 修改打包副本，保留模板标记和默认值，IOP 重启后仍加载同一调试值。 */
+    for (offset = 0; offset + sizeof(struct cdvdfsv_rem1_debug) <= size_cdvdfsv_irx; offset += 4) {
+        struct cdvdfsv_rem1_debug *debug = (void *)((u8 *)image_offset + offset);
+        if (debug->magic[0] == REM1_DEBUG_MAGIC_0 && debug->magic[1] == REM1_DEBUG_MAGIC_1) {
+            debug->min_us = rem1_delay_ms * 1000u;
+            break;
+        }
+    }
 }
 
 /*----------------------------------------------------------------------------------------
