@@ -64,10 +64,10 @@ struct UIItem
         } intvalue;
 
         struct
-        { // fixed 32 character string (including NULL terminator)
+        { // 与背景音乐路径容量保持一致，避免设置界面截断路径。
             // default value
-            char def[32];
-            char text[32];
+            char def[128];
+            char text[128];
             int (*handler)(char *text, int maxLen);
         } stringvalue;
 
