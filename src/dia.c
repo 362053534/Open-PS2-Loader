@@ -693,7 +693,7 @@ static int diaHandleInput(struct UIItem *item, int *modified)
         } else
             *modified = 0;
     } else if ((item->type == UI_STRING) || (item->type == UI_PASSWORD)) {
-        char tmp[32];
+        char tmp[128];
         strncpy(tmp, item->stringvalue.text, sizeof(tmp));
 
         if (item->stringvalue.handler) {
@@ -1039,11 +1039,12 @@ int diaGetString(struct UIItem *ui, int id, char *value, int length)
 {
     struct UIItem *item = diaFindByID(ui, id);
 
-    if (!item)
+    if (!item || length <= 0)
         return 0;
 
     if ((item->type == UI_STRING) || (item->type == UI_PASSWORD)) {
         strncpy(value, item->stringvalue.text, length);
+        value[length - 1] = '\0';
         return 1;
     }
 
