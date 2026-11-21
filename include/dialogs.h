@@ -208,6 +208,8 @@ enum UI_ITEMS {
     COMPAT_MODE_BASE = 200,
 #endif
 
+    COMPAT_CDVDMAN_TIMER = 300,
+
     // 关于页专用布局项使用新增 ID，不改变旧控件 ID。
     ABOUT_SWITCH_PAGE = 500,
     ABOUT_TITLE_SPACER,

@@ -1997,6 +1997,11 @@ int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman,
     }
     settings->flags = 0;
 
+    /* 每次覆盖模板定位标记，缺键时不能沿用标记或上个游戏的值。 */
+    int callbackTimer = 0;
+    configGetInt(configSet, CONFIG_ITEM_CDVDMAN_TIMER, &callbackTimer);
+    settings->callback_timer = callbackTimer < 0 ? 0 : (callbackTimer > 255 ? 255 : callbackTimer);
+
     if (compatmask & COMPAT_MODE_1) {
         settings->flags |= IOPCORE_COMPAT_ACCU_READS;
     }

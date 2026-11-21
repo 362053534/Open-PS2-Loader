@@ -34,7 +34,7 @@ struct cdvdman_settings_common
     u8 DiscID[5];
     u8 zso_cache;
     u8 fakemodule_flags;
-    u8 padding;
+    u8 callback_timer; /* 复用填充字节，保持启动参数布局；单位为 250 微秒。 */
 } __attribute__((packed));
 
 struct cdvdman_settings_hdd

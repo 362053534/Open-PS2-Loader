@@ -1214,7 +1214,7 @@ int _start(int argc, char **argv)
     RegisterLibraryEntries(&_exp_oplutils);
 
     // Setup the callback timer.
-    USec2SysClock((cdvdman_settings.common.flags & IOPCORE_COMPAT_ACCU_READS) ? 5000 : 0, &gCallbackSysClock);
+    USec2SysClock((u32)cdvdman_settings.common.callback_timer * 250, &gCallbackSysClock);
 
     // create SCMD/searchfile semaphores
     cdvdman_create_semaphores();
