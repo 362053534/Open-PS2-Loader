@@ -304,7 +304,8 @@ static int ProbeZSO(u8 *buffer)
 /* 模式1：按 8 扇区 闹钟→读→等（对齐官方），ticks 用 CAV。
  * 不做机芯预读：扣空闲会让流式视频每隔几秒抖一下。
  * seek 只加在第一块（时间目前为 0）。
- * 余数 1 扇区保底在 cdvdfsv（按游戏一笔 EE 读判断），不放这里：ncmd 会把 9 扇区拆成 8+1。
+ * 余数 1 扇区保底原本在 cdvdfsv（按游戏一笔 EE 读判断），因对其它游戏读盘时序有影响已停用；
+ * 那段代码仍保留在 ncmd.c 的 #if 0 里，以后可能会继续启用。
  * 下面这些宏是调试旋钮：改毫秒/扇区即可。 */
 #define ACCU_PSXCLK 36864000u
 #define ACCU_MS_TO_TICKS(ms) ((ACCU_PSXCLK * (ms)) / 1000u)

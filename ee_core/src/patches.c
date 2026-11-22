@@ -1021,8 +1021,8 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    // 1扇区保底已在 cdvdfsv 全局生效（不靠模式1）。空转钩会叠延迟，默认不打。
-                    if (0 && file_eq_bootelf)
+                    // 吉翁前线的空转钩重新启用：余数 1 扇区全局补时已停用（cdvdfsv 里保留为 #if 0）。
+                    if (file_eq_bootelf)
                         ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:
