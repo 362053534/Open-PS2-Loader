@@ -98,8 +98,11 @@ enum CDVD_ST_CMDS {
     CDVD_ST_CMD_SEEKF
 };
 
+/* 余数 1 扇区补时：实测对其它游戏的读盘时序仍有影响，先整体停用，代码保留，以后可能会继续启用。
+ * 启用时把下面这些 #if 0 一并打开，并恢复 imports.lst 里的 I_GetSystemTime。 */
+#if 0
 /* 余数 1 扇区：上一笔 EE 读 >1 扇区且 LSN 紧挨着。连续 1 扇区（目录）不拖。 */
-#define REM1_MIN_US 30000u
+#define REM1_MIN_US 10000u
 
 static u32 rem1_next_lsn;
 static unsigned int rem1_prev_sectors;
@@ -125,11 +128,12 @@ static void rem1_pad_elapsed(int rem1, const iop_sys_clock_t *t0)
     if (!rem1)
         return;
     GetSystemTime(&t1);
-    /* 36.864MHz，/37 得到微秒；慢设备已经超过 30ms 就不再 DelayThread。 */
+    /* 36.864MHz，/37 得到微秒；慢设备已经超过 10ms 就不再 DelayThread。 */
     elapsed_us = (t1.lo - t0->lo) / 37u;
     if (elapsed_us < REM1_MIN_US)
         DelayThread(REM1_MIN_US - elapsed_us);
 }
+#endif // REM1 停用
 
 //--------------------------------------------------------------
 static inline void cdvd_readee(void *buf)
@@ -142,21 +146,25 @@ static inline void cdvd_readee(void *buf)
     void *eeaddr_64b, *eeaddr2_64b;
     cdvdfsv_readee_t readee;
     RpcCdvd_t *r = (RpcCdvd_t *)buf;
+#if 0 // REM1 停用，以后可能会继续启用
     u32 orig_lsn;
     u32 orig_sectors;
     int rem1;
     iop_sys_clock_t rem1_t0;
+#endif
 
     if (r->sectors == 0) {
         *(int *)buf = 0;
         return;
     }
 
+#if 0 // REM1 停用，以后可能会继续启用
     orig_lsn = r->lsn;
     orig_sectors = r->sectors;
     rem1 = rem1_is_remainder(orig_lsn, orig_sectors);
     if (rem1)
         GetSystemTime(&rem1_t0);
+#endif
 
     sector_size = 2048;
 
@@ -212,11 +220,13 @@ static inline void cdvd_readee(void *buf)
                 sysmemSendEE((void *)curlsn_buf, (void *)r->eeaddr2, 16);
 
                 *(int *)buf = nbytes;
+#if 0 // REM1 停用，以后可能会继续启用
                 if (sceCdGetError() != SCECdErABRT) {
                     /* 余数 dest 是 bounce，SendEE 之后再补时仍挡着 EE 下一笔盖堆。 */
                     rem1_pad_elapsed(rem1, &rem1_t0);
                     rem1_note_read(orig_lsn, orig_sectors);
                 }
+#endif
                 return;
             }
 

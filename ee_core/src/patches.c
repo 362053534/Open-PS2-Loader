@@ -87,9 +87,9 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00220000, 0x0021E320}},       // 吉翁前线 NTSC-U：空转加倍到 0x220000，给 VIF1 多一截抽旧堆
-    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00220000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
-    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00220000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
+    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00202000, 0x0021E320}},       // 吉翁前线 NTSC-U：补时 0x202000 轮（约 50 ms），只在余数 1 扇区命中
+    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00202000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
+    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00202000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -258,15 +258,32 @@ static void generic_delayed_cdRead_patches(u32 patch_addr, u32 delay_cycles)
     _sw(JAL((u32)delayed_cdRead), patch_addr);
 }
 
-// 先空转再发 sceCdRead。现有 delayed_cdRead 是“请求已经发出之后”才拖时间，
-// 挡不住下一笔读启动过早、IOP 立刻往 VIF1 还在抽的复用堆里写。
-// 此游戏在 BDM/SMB/APA 和任意兼容模式下都会复现，USB 只是测试通道，不是根因。
+/* 先空转再发 sceCdRead。cdvdfsv 的 delayed_cdRead 是“请求已经发出之后”才拖时间，
+ * 挡不住下一笔读启动过早、IOP 立刻往 VIF1 还在抽的复用堆里写；此游戏在 BDM/SMB/APA
+ * 和任意兼容模式下都会复现，USB 只是测试通道，不是根因。
+ * 只补“大读之后紧跟的 1 扇区余数读”这一种形态（判据与 cdvdfsv 里停用的 REM1 一致：
+ * 上一笔 >1 扇区、LSN 紧接、当前 1 扇区），其余读不再付代价；补时点在发请求之前，
+ * 挡的是这笔读自己要写进去的那块堆。
+ * g_delay_cycles 是自旋轮数而非周期数：每轮 4 个 NOP 加循环控制约 6~7 个 EE 周期，
+ * 50 ms 在 294.912 MHz 下约 0x202000 轮：7 周期 49.97 ms，6 周期 42.83 ms。 */
+static u32 zf_prev_lsn;
+static unsigned int zf_prev_sectors;
+static int zf_have_prev;
+
 static int predelayed_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
 {
-    unsigned int count = g_delay_cycles;
+    unsigned int count;
+    int rem1 = (nsectors == 1 && zf_have_prev && zf_prev_sectors > 1 && lsn == zf_prev_lsn + zf_prev_sectors);
 
-    while (count--)
-        asm("nop\nnop\nnop\nnop");
+    if (rem1) {
+        count = g_delay_cycles;
+        while (count--)
+            asm("nop\nnop\nnop\nnop");
+    }
+
+    zf_prev_lsn = lsn;
+    zf_prev_sectors = nsectors;
+    zf_have_prev = 1;
 
     return cdReadPtr(lsn, nsectors, buf, mode);
 }
@@ -921,8 +938,8 @@ void apply_patches(const char *path)
                         generic_delayed_cdRead_patches(p->patch.check, p->patch.val); // slow reads generic patch
                     break;
                 case PATCH_ZEONIC_FRONT:
-                    // 1扇区保底已在 cdvdfsv 全局生效（不靠模式1）。空转钩会叠延迟，默认不打。
-                    if (0 && file_eq_bootelf)
+                    // 吉翁前线的空转钩改为条件补时：只补余数 1 扇区，cdvdfsv 里的全局补时仍停用（#if 0）。
+                    if (file_eq_bootelf)
                         ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:

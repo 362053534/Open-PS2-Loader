@@ -69,7 +69,10 @@ thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
 I_DelayThread
+#if 0
+/* REM1 停用后 cdvdfsv 不再使用 GetSystemTime；以后重新启用 REM1 时一并恢复。 */
 I_GetSystemTime
+#endif
 I_ExitDeleteThread
 I_GetThreadId
 I_ChangeThreadPriority
