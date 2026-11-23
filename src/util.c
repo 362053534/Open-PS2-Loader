@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <malloc.h>
+#include <stdarg.h>
 #include <rom0_info.h>
 
 #include "include/hdd.h"
@@ -856,6 +857,71 @@ void logfile(char *text)
     int fd = open("mass:/opl_log.txt", O_APPEND | O_CREAT | O_WRONLY);
     write(fd, text, strlen(text));
     close(fd);
+}
+
+/* T1 调试探针：先试 mass0，再退到记忆卡，保证没有 USB 盘时也能拿到证据。
+ * 用 FILE 流是因为要一次写完多段参数；写完立即 fclose，避免 deinit 后句柄失效。 */
+static FILE *oplProbeOpen(void)
+{
+    static const char *paths[] = {"mass0:/opl_t1_probe.txt", "mass1:/opl_t1_probe.txt", "mc0:/opl_t1_probe.txt"};
+    unsigned int i;
+    FILE *fp;
+
+    for (i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+        fp = fopen(paths[i], "a");
+        if (fp != NULL)
+            return fp;
+    }
+
+    return NULL;
+}
+
+void oplProbeLog(const char *fmt, ...)
+{
+    static int inProbe = 0;
+    va_list ap;
+    FILE *fp;
+
+    /* 探针自己也会走 fileXio，防止递归。 */
+    if (inProbe)
+        return;
+    inProbe = 1;
+
+    fp = oplProbeOpen();
+    if (fp != NULL) {
+        va_start(ap, fmt);
+        vfprintf(fp, fmt, ap);
+        va_end(ap);
+        fputc('\n', fp);
+        fclose(fp);
+    }
+
+    inProbe = 0;
+}
+
+/* 记录一次"路径能否打开"的结果，用来判断 deinit 后 pfs 是否还能读。 */
+void oplProbeMark(const char *label, const char *path)
+{
+    int fd;
+    DIR *dir;
+
+    if (path == NULL || path[0] == '\0') {
+        oplProbeLog("%s: path empty", label);
+        return;
+    }
+
+    fd = open((char *)path, O_RDONLY);
+    oplProbeLog("%s: open=%d", label, fd);
+    if (fd >= 0) {
+        close(fd);
+        return;
+    }
+
+    /* 目录路径用 open 本来就会失败，再补一次 opendir 才能区分"目录"还是"通路断了"。 */
+    dir = opendir((char *)path);
+    oplProbeLog("%s: opendir=%s", label, dir != NULL ? "ok" : "fail");
+    if (dir != NULL)
+        closedir(dir);
 }
 
 void logbuffer(char *path, void *buf, size_t size)

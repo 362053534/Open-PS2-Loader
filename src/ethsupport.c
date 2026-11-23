@@ -911,8 +911,14 @@ static void ethShutdown(item_list_t *itemList)
 
         ethDeinitModules();
 
+        oplProbeLog("ethShutdown: ownedDev9=%d dev9Count=%d", ethOwnedDev9, sysGetDev9InitCount());
+
+        /* T1：验证 APA 应用黑屏是否因为交接前 DEV9 被断电。
+         * 调试版暂时不关 DEV9，正式修复后再决定关机时机。 */
+#if 0
         if (ethOwnedDev9)
             sysShutdownDev9();
+#endif
     }
 }
 
