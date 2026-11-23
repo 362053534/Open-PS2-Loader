@@ -911,7 +911,10 @@ static void ethShutdown(item_list_t *itemList)
 
         ethDeinitModules();
 
-        if (ethOwnedDev9)
+        /* T1 实验：APA 应用黑屏是否由交接前 DEV9 被 DDIOC_OFF 断电引起。
+         * DEV9 同时挂着 ATA 接口，断电后 pfs 读会直接不可用，而 APPS/POPS 的 ELF
+         * 是在 deinit 之后才从 pfs 读的。本轮先不关机，验证完再决定正式做法。 */
+        if (0 && ethOwnedDev9)
             sysShutdownDev9();
     }
 }
