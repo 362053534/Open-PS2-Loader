@@ -172,7 +172,10 @@ void sysShutdownDev9(void)
         --dev9InitCount;
 
         if (dev9InitCount == 0) { /* Switch off DEV9 once nothing needs it. */
-            if (dev9Loaded) {
+            /* T1b 实验：交接时不断 DEV9 电。DEV9 同时挂 ATA，断电后 pfs 读不可用，
+             * 而 APA 的 APPS/POPS 都是在 deinit 之后才继续读 pfs 的。
+             * 计数照常递减，只停掉真正下电这一步。 */
+            if (0 && dev9Loaded) {
                 while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
                 };
             }
