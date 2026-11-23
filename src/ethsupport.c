@@ -893,6 +893,13 @@ static void ethCleanUp(item_list_t *itemList, int exception)
 // This may be called, even if ethInit() was not.
 static void ethShutdown(item_list_t *itemList)
 {
+    /* T2 实验：交接时整段跳过网络栈拆除（断 SMB + 卸 netman/smap/ps2ip/smbman）。
+     * DEV9 的网卡与 ATA 共用同一套 DEV9 寄存器和中断，卸网卡驱动很可能连带
+     * 弄坏 pfs 的读写通路；而 APA 的 APPS/POPS 恰好在 deinit 之后才继续读 pfs。
+     * 验证完再决定正式做法（只卸必要模块，或延后到真正不再需要 pfs 时）。 */
+    if (1)
+        return;
+
     artPackDeviceEnd(ETH_MODE);
 
     if (ethGameList.enabled) {
