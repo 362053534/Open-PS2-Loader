@@ -14,7 +14,6 @@ void sysShutdownDev9(void);
 void sysReset(int modload_mask);
 void sysExecExit(void);
 void sysPowerOff(void);
-void sysRebootToBrowser(void);
 #ifdef __DECI2_DEBUG
 int sysInitDECI2(void);
 #endif
