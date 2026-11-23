@@ -334,9 +334,7 @@ void hddReleaseModulesBDM(void)
         if (hddModulesLoadCount == 0) {
             // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
             // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
-            /* T1b 实验：交接时不让硬盘立即进 IDLE，排除"读 ELF 前盘被挂起"这一可能。 */
-            if (0)
-                hddSetIdleImmediate();
+            hddSetIdleImmediate();
         }
 
         // Only shut down dev9 from here, if it was initialized from here before.
@@ -1274,9 +1272,7 @@ static void hddShutdown(item_list_t *itemList)
         if (hddModulesLoadCount == 0) {
             // DEV9 will remain active if ETH is in use, so put the HDD in IDLE state.
             // The HDD should still enter standby state after 21 minutes & 15 seconds, as per the ATAD defaults.
-            /* T1b 实验：交接时不让硬盘立即进 IDLE，排除"读 ELF 前盘被挂起"这一可能。 */
-            if (0)
-                hddSetIdleImmediate();
+            hddSetIdleImmediate();
         }
 
         // Only shut down dev9 from here, if it was initialized from here before.
