@@ -1999,6 +1999,37 @@ static void appPreparePOPSLauncher(void)
     appPOPSPrepareStatus = 0;
 }
 
+/* 交接后大块读取探测：pfs 的 stat 可能还通，但整块读会失败。
+ * 读成功返回 1，失败返回 0。只用于判断能不能启动，不保留任何内容。 */
+static int appProbeReadable(const char *path)
+{
+    int fd, total = 0, rd, ok = 0;
+    void *buf;
+
+    if (path == NULL || path[0] == '\0')
+        return 0;
+
+    fd = open((char *)path, O_RDONLY);
+    if (fd < 0)
+        return 0;
+
+    buf = malloc(256 * 1024);
+    if (buf != NULL) {
+        while (total < 4 * 1024 * 1024) {
+            rd = read(fd, buf, 256 * 1024);
+            if (rd <= 0)
+                break;
+            total += rd;
+        }
+        ok = (total > 0);
+        free(buf);
+    }
+
+    close(fd);
+
+    return ok;
+}
+
 static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int fd;
@@ -2368,7 +2399,18 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromFileWithPartition(filename, partition, argc, argv);
+        /* 实验：ps2sdk loader 会用残留的 IOP 直接 SifLoadElf 读 pfs0: 里的 ELF。
+         * 先启动过 SMB 时这条通路会失效，表现为黑屏。这里先探一次：
+         * 读不动就重建 APA 通路再探；仍读不动就回浏览器，把黑屏和失败区分开。 */
+        if (mode == HDD_MODE && !appProbeReadable(filename)) {
+            hddRebuildReadPath();
+
+            if (!appProbeReadable(filename))
+                sysRebootToBrowser();
+        }
+
+        if (LoadELFFromFileWithPartition(filename, partition, argc, argv) < 0)
+            sysRebootToBrowser();
     } else {
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
     }

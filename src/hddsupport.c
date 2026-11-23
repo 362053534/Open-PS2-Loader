@@ -394,26 +394,67 @@ int hddDetectNonSonyFileSystem()
     return result;
 }
 
+static char hddarg[] = "-o"
+                       "\0"
+                       "4"
+                       "\0"
+                       "-n"
+                       "\0"
+                       "20";
+static char pfsarg[] = "-m" // 最大挂载点数量
+                       "\0"
+                       "2" // 同时保留pfs0和pfs1
+                       "\0"
+                       "-o" // max open
+                       "\0"
+                       "6" // Default value: 2
+                       "\0"
+                       "-n" // Number of buffers
+                       "\0"
+                       "24"; // Default value: 8 | Max value: 127
+
+/* 交接后重建 APA 读取通路（供 APPS/POPS 启动使用）。
+ * 先启动过 SMB 时，IOP 里残留的是网络栈初始化过的 DEV9/ATA 状态，deinit 之后
+ * 大块读 pfs 会失败（小文件 stat 反而正常），APPS 的 ELF 和 POPS 的 VCD 都卡在这。
+ * 这里照游戏启动的做法：IOP 复位后从内嵌 IRX 按干净顺序重载 dev9/atad/hdd/pfs，
+ * 再重新挂载 OPL 分区。 */
+int hddRebuildReadPath(void)
+{
+    int ret;
+
+    sysReset(SYS_LOAD_MC_MODULES | SYS_LOAD_USB_MODULES | SYS_LOAD_ISOFS_MODULE);
+    mcInit(MC_TYPE_XMC);
+
+    /* dev9 + atad/xhdd。sysReset() 内部已清过 hdd 的加载计数与标志。 */
+    hddLoadModules();
+
+    if (gOPLPart[0] == '\0')
+        hddFindOPLPartition();
+
+    ret = sysLoadModuleBuffer(&ps2hdd_irx, size_ps2hdd_irx, sizeof(hddarg), hddarg);
+    if (ret < 0)
+        return -1;
+
+    if (hddCheck() < 0)
+        return -1;
+
+    ret = sysLoadModuleBuffer(&ps2fs_irx, size_ps2fs_irx, sizeof(pfsarg), pfsarg);
+    if (ret < 0)
+        return -1;
+
+    fileXioUmount(hddPrefix);
+
+    ret = fileXioMount(hddPrefix, gOPLPart, FIO_MT_RDWR);
+    if (ret < 0)
+        return -1;
+
+    hddSupportModulesLoaded = 1;
+
+    return 0;
+}
+
 int hddLoadSupportModules(void)
 {
-    static char hddarg[] = "-o"
-                           "\0"
-                           "4"
-                           "\0"
-                           "-n"
-                           "\0"
-                           "20";
-    static char pfsarg[] = "-m" // 最大挂载点数量
-                           "\0"
-                           "2" // 同时保留pfs0和pfs1
-                           "\0"
-                           "-o" // max open
-                           "\0"
-                           "6" // Default value: 2
-                           "\0"
-                           "-n" // Number of buffers
-                           "\0"
-                           "24"; // Default value: 8 | Max value: 127
 
     LOG("HDDSUPPORT LoadSupportModules\n");
     hddSupportErrorCode = ERROR_HDD_NOT_DETECTED;

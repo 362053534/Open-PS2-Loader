@@ -74,6 +74,8 @@ void hddReleaseModulesBDM(void);
 // 返回 0：APA；1：MBR/GPT；2：APA 与 exFAT 混合分区；-1：读取失败或认不出。
 int hddDetectNonSonyFileSystem(void);
 int hddLoadSupportModules(void);
+/* 交接后重建 APA 读取通路（dev9/atad/hdd/pfs + 重新挂载 OPL 分区） */
+int hddRebuildReadPath(void);
 void hddReportSupportError(void);
 void hddSetConfigSource(void);
 int hddIsConfigSource(void);
