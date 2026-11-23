@@ -53,8 +53,9 @@ int CheckPS2Logo(int fd, u32 lba);
 
 void delay(int count);
 
-/* T1 调试探针：实机看不到 LOG 输出，改为追写 mass0 根目录的 txt，便于取回复盘。 */
+/* T1 调试探针：实机看不到 LOG 输出，改为先存内存、启动完成后再落盘到 mass0 根目录的 txt。 */
 void oplProbeLog(const char *fmt, ...);
+void oplProbeFlush(const char *tag);
 void oplProbeMark(const char *label, const char *path);
 
 #endif

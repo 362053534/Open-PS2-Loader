@@ -2007,6 +2007,8 @@ void guiMainLoop(void)
                         refreshMenuPosition();
                     bdmDefaultNeedsCorrection = 0;
                     mainScreenInitDone = 1;
+                    /* T1 探针：主界面就绪、设备已稳定，此时落盘最安全。 */
+                    oplProbeFlush("startup-done");
                     // 设备初始化完成后再启动背景音乐，避免音乐所在设备尚未挂载。
                     if (gEnableBGM)
                         bgmStart();

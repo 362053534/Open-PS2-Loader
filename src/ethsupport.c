@@ -913,9 +913,10 @@ static void ethShutdown(item_list_t *itemList)
 
         oplProbeLog("ethShutdown: ownedDev9=%d dev9Count=%d", ethOwnedDev9, sysGetDev9InitCount());
 
-        /* T1：验证 APA 应用黑屏是否因为交接前 DEV9 被断电。
-         * 调试版暂时不关 DEV9，正式修复后再决定关机时机。 */
-#if 0
+        /* T1 实验开关：置 1 时交接前不关 DEV9，用于验证 APA 应用黑屏是否由断电引起。
+         * 上一版置 1 时启动就卡住，无法区分原因，本轮先回到基线行为（置 0）。 */
+#define OPL_T1_SKIP_DEV9_SHUTDOWN 0
+#if !OPL_T1_SKIP_DEV9_SHUTDOWN
         if (ethOwnedDev9)
             sysShutdownDev9();
 #endif

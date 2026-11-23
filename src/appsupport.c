@@ -2005,6 +2005,10 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
     char filename[256];
     const char *argv1;
 
+    /* T1 探针：记录启动入口，并用它作为第一次落盘点。 */
+    oplProbeLog("appLaunchItem: id=%d pops=%d path=%s", id, appsList[id].popstarter, appsList[id].path);
+    oplProbeFlush("launch-enter");
+
     if (gAutoDetectPS1Apps && appIsPOPSLauncher(&appsList[id])) {
         char cheatPath[APP_PATH_MAX + 14];
         char cheatPrompt[APP_HDD_PARTITION_MAX + APP_PATH_MAX + 64];
@@ -2306,9 +2310,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             snprintf(probePath, sizeof(probePath), "%s", appsList[id].path);
             oplProbeLog("POPS pre-deinit: mode=%d dev9=%d reg=%04x path=%s", mode, sysGetDev9InitCount(), sysReadDev9Reg(), probePath);
             oplProbeMark("POPS pre-deinit", probePath);
+            oplProbeFlush("POPS pre-deinit");
             deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-            oplProbeLog("POPS post-deinit: dev9=%d reg=%04x", sysGetDev9InitCount(), sysReadDev9Reg());
+            oplProbeLog("POPS post-deinit: dev9=%d", sysGetDev9InitCount());
             oplProbeMark("POPS post-deinit", probePath);
+            oplProbeFlush("POPS post-deinit");
         }
         LoadELFFromMemoryNoResetWithResidentData(launchELF, residentData, residentSize, 1, argv);
         if (restoreHDDPOPSPartition)
@@ -2381,9 +2387,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
         /* T1 探针：APA 的 ELF 是在 deinit 之后才从 pfs 读的，若这里 open 失败就是黑屏直接原因。 */
         oplProbeLog("APPS pre-deinit: mode=%d dev9=%d reg=%04x file=%s", mode, sysGetDev9InitCount(), sysReadDev9Reg(), filename);
         oplProbeMark("APPS pre-deinit", filename);
+        oplProbeFlush("APPS pre-deinit");
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        oplProbeLog("APPS post-deinit: dev9=%d reg=%04x", sysGetDev9InitCount(), sysReadDev9Reg());
+        oplProbeLog("APPS post-deinit: dev9=%d", sysGetDev9InitCount());
         oplProbeMark("APPS post-deinit", filename);
+        oplProbeFlush("APPS post-deinit");
         LoadELFFromFileWithPartition(filename, partition, argc, argv);
     } else {
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);

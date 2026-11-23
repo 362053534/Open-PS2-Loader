@@ -859,11 +859,21 @@ void logfile(char *text)
     close(fd);
 }
 
-/* T1 调试探针：先试 mass0，再退到记忆卡，保证没有 USB 盘时也能拿到证据。
- * 用 FILE 流是因为要一次写完多段参数；写完立即 fclose，避免 deinit 后句柄失效。 */
+/* T1 调试探针：只在内存里累积，绝不在这期间做文件 I/O。
+ * 之前直接在 sysInitDev9() 里调 fopen，设备还没就绪时会把 IO 线程卡死（启动即卡住）。
+ * 现在改为启动完成或启动应用前由 oplProbeFlush() 一次性落盘。 */
+#define OPL_PROBE_BUF_SIZE 4096
+
+static char oplProbeBuf[OPL_PROBE_BUF_SIZE];
+static unsigned int oplProbeLen;
+static int oplProbeBusy;
+
 static FILE *oplProbeOpen(void)
 {
-    static const char *paths[] = {"mass0:/opl_t1_probe.txt", "mass1:/opl_t1_probe.txt", "mc0:/opl_t1_probe.txt"};
+    /* 由快到慢、由大到小都试一遍，USB 被拔掉或不是 mass0 时也能留证。 */
+    static const char *paths[] = {
+        "mass0:/opl_t1_probe.txt", "mass1:/opl_t1_probe.txt", "mass2:/opl_t1_probe.txt",
+        "mc0:/opl_t1_probe.txt", "mc1:/opl_t1_probe.txt"};
     unsigned int i;
     FILE *fp;
 
@@ -878,25 +888,45 @@ static FILE *oplProbeOpen(void)
 
 void oplProbeLog(const char *fmt, ...)
 {
-    static int inProbe = 0;
     va_list ap;
+    int n;
+
+    if (oplProbeBusy || oplProbeLen + 8 >= sizeof(oplProbeBuf))
+        return;
+
+    va_start(ap, fmt);
+    n = vsnprintf(oplProbeBuf + oplProbeLen, sizeof(oplProbeBuf) - oplProbeLen - 2, fmt, ap);
+    va_end(ap);
+
+    if (n > 0) {
+        oplProbeLen += n;
+        oplProbeBuf[oplProbeLen++] = '\n';
+        oplProbeBuf[oplProbeLen] = '\0';
+    }
+}
+
+/* 把缓冲内容追加到 txt。tag 标明在哪个阶段落盘，便于判断"卡在哪一步之前"。 */
+void oplProbeFlush(const char *tag)
+{
     FILE *fp;
 
-    /* 探针自己也会走 fileXio，防止递归。 */
-    if (inProbe)
+    if (oplProbeBusy)
         return;
-    inProbe = 1;
+    oplProbeBusy = 1;
 
     fp = oplProbeOpen();
     if (fp != NULL) {
-        va_start(ap, fmt);
-        vfprintf(fp, fmt, ap);
-        va_end(ap);
-        fputc('\n', fp);
+        fprintf(fp, "=== flush: %s ===\n", tag != NULL ? tag : "?");
+        if (oplProbeLen > 0)
+            fwrite(oplProbeBuf, 1, oplProbeLen, fp);
         fclose(fp);
+
+        /* 已经落盘的内容不再重复写。 */
+        oplProbeLen = 0;
+        oplProbeBuf[0] = '\0';
     }
 
-    inProbe = 0;
+    oplProbeBusy = 0;
 }
 
 /* 记录一次"路径能否打开"的结果，用来判断 deinit 后 pfs 是否还能读。 */
