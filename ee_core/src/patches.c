@@ -1022,7 +1022,7 @@ void apply_patches(const char *path)
                     break;
                 case PATCH_ZEONIC_FRONT:
                     // 吉翁前线的空转钩重新启用：余数 1 扇区全局补时已停用（cdvdfsv 里保留为 #if 0）。
-                    if (0 && file_eq_bootelf)
+                    if (file_eq_bootelf)
                         ZeonicFront_patches(p->patch.val, p->patch.check);
                     break;
                 case PATCH_SDF_MACROSS:
