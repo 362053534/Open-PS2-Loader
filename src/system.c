@@ -1015,7 +1015,7 @@ void sysLaunchLoaderElf(const char *filename, const char *gameid, const char *mo
     strncpy(config->BootFile, filename, CORE_GAME_ID_MAX_LEN);
     config->BootFile[CORE_GAME_ID_MAX_LEN - 1] = '\0';
     /* 日版各版本统一占位，不依赖汉化文本、ELF 版本或调试按键。 */
-    config->SOSIopPadBytes = !strcmp(gameid, "SLPS_251.13") ? 12 * 1024 : 0;
+    config->SOSIopPadBytes = !strcmp(gameid, "SLPS_251.13") ? 13 * 1024 : 0;
 
     config->_CompatMask = compatflags;
     config->EnableHddUsbd = sbNeedHddUsbd(gameid);
