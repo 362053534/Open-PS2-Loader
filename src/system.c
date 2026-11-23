@@ -164,8 +164,6 @@ void sysInitDev9(void)
     }
 
     dev9InitCount++;
-    /* T1 探针：记录 DEV9 引用增长，确认是哪个设备拉起的。 */
-    oplProbeLog("DEV9 init: count=%d loaded=%d", (int)dev9InitCount, (int)dev9Loaded);
 }
 
 void sysShutdownDev9(void)
@@ -174,30 +172,12 @@ void sysShutdownDev9(void)
         --dev9InitCount;
 
         if (dev9InitCount == 0) { /* Switch off DEV9 once nothing needs it. */
-            /* T1 探针：这一行后 DEV9 会被 DDIOC_OFF 断电，ATA/PFS 随之不可用。 */
-            oplProbeLog("DEV9 shutdown: count=0 -> DDIOC_OFF (loaded=%d) reg=%04x", (int)dev9Loaded, sysReadDev9Reg());
             if (dev9Loaded) {
                 while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
                 };
             }
-            oplProbeLog("DEV9 shutdown: off done reg=%04x", sysReadDev9Reg());
-        } else {
-            oplProbeLog("DEV9 shutdown: count=%d", (int)dev9InitCount);
         }
-    } else {
-        oplProbeLog("DEV9 shutdown: count already 0");
     }
-}
-
-int sysGetDev9InitCount(void)
-{
-    return (int)dev9InitCount;
-}
-
-/* DEV9 版本/状态寄存器，断电后读回值会变化，可用来区分"芯片被关"和"只是读写失败"。 */
-unsigned short sysReadDev9Reg(void)
-{
-    return *(volatile unsigned short *)0xBF80146E;
 }
 
 void sysReset(int modload_mask)

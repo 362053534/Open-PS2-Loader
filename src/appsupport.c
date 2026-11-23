@@ -2298,18 +2298,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             configSetStr(configGetByType(CONFIG_LAST), "last_played_name", appGetItemName(itemList, id)); // 保存列表显示的名称
             saveConfig(CONFIG_LAST, 0);
         }
-        /* T1 探针：记录交接前的 DEV9 状态，并在 deinit 后实测 pfs 能否再访问。
-         * deinit 会释放 appsList，所以先把待测路径拷到局部数组。 */
-        {
-            char probePath[128];
-
-            snprintf(probePath, sizeof(probePath), "%s", appsList[id].path);
-            oplProbeLog("POPS pre-deinit: mode=%d dev9=%d reg=%04x path=%s", mode, sysGetDev9InitCount(), sysReadDev9Reg(), probePath);
-            oplProbeMark("POPS pre-deinit", probePath);
-            deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-            oplProbeLog("POPS post-deinit: dev9=%d reg=%04x", sysGetDev9InitCount(), sysReadDev9Reg());
-            oplProbeMark("POPS post-deinit", probePath);
-        }
+        deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
         LoadELFFromMemoryNoResetWithResidentData(launchELF, residentData, residentSize, 1, argv);
         if (restoreHDDPOPSPartition)
             oplEnsureHDDPOPSScratchPartition(OPL_HDD_POPS_PARTITION);
@@ -2378,12 +2367,7 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             configSetStr(configGetByType(CONFIG_LAST), "last_played_name", appGetItemName(itemList, id)); // 保存列表显示的名称
             saveConfig(CONFIG_LAST, 0);
         }
-        /* T1 探针：APA 的 ELF 是在 deinit 之后才从 pfs 读的，若这里 open 失败就是黑屏直接原因。 */
-        oplProbeLog("APPS pre-deinit: mode=%d dev9=%d reg=%04x file=%s", mode, sysGetDev9InitCount(), sysReadDev9Reg(), filename);
-        oplProbeMark("APPS pre-deinit", filename);
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        oplProbeLog("APPS post-deinit: dev9=%d reg=%04x", sysGetDev9InitCount(), sysReadDev9Reg());
-        oplProbeMark("APPS post-deinit", filename);
         LoadELFFromFileWithPartition(filename, partition, argc, argv);
     } else {
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
