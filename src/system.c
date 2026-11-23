@@ -180,8 +180,7 @@ void sysShutdownDev9(void)
                 while (fileXioDevctl("dev9x:", DDIOC_OFF, NULL, 0, NULL, 0) < 0) {
                 };
             }
-            /* 断电后再读 DEV9 寄存器有把 EE 总线卡死的风险，这里只记状态不读寄存器。 */
-            oplProbeLog("DEV9 shutdown: off done");
+            oplProbeLog("DEV9 shutdown: off done reg=%04x", sysReadDev9Reg());
         } else {
             oplProbeLog("DEV9 shutdown: count=%d", (int)dev9InitCount);
         }
