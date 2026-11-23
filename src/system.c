@@ -297,6 +297,24 @@ void sysReset(int modload_mask)
     poweroffSetCallback(&poweroffHandler, NULL);
 }
 
+/* 诊断用：deinit 之后 GUI 已经拆掉、fileXio 也已退出，黑屏无法区分成因。
+ * 这里直接重启到 PS2 浏览器，用可见行为代替日志。 */
+void sysRebootToBrowser(void)
+{
+    SifInitRpc(0);
+
+    while (!SifIopReset("rom0:OSDSYS", 0))
+        ;
+    while (!SifIopSync())
+        ;
+    SifInitRpc(0);
+
+    LoadExecPS2("rom0:OSDSYS", 0, NULL);
+
+    while (1)
+        ;
+}
+
 static void poweroffHandler(void *arg)
 {
     sysPowerOff();

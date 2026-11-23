@@ -2368,7 +2368,11 @@ static void appLaunchItem(item_list_t *itemList, int id, config_set_t *configSet
             saveConfig(CONFIG_LAST, 0);
         }
         deinit(UNMOUNT_EXCEPTION, mode); // CAREFUL: deinit will call appCleanUp, so configApps/cur will be freed
-        LoadELFFromFileWithPartition(filename, partition, argc, argv);
+        /* 诊断：LoadELFFromFileWithPartition 只做 stat 预检查 + ExecPS2 内嵌 loader，
+         * 返回负值就说明 deinit 之后连 stat 都失败，OPL 会静默退出黑屏。
+         * 失败时回浏览器，用"黑屏不动"和"回到浏览器"区分到底是哪一段出问题。 */
+        if (LoadELFFromFileWithPartition(filename, partition, argc, argv) < 0)
+            sysRebootToBrowser();
     } else {
         guiMsgBox(_l(_STR_ERR_FILE_INVALID), 0, NULL);
     }
