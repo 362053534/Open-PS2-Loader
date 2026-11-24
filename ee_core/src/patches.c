@@ -87,9 +87,9 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00138000, 0x0021E320}},       // 吉翁前线 NTSC-U：补时 0x138000 轮（约 30 ms），只在余数 1 扇区命中
-    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00138000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
-    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00138000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
+    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x000B0000, 0x0021E320}},       // 吉翁前线 NTSC-U：补时 0xB0000 轮（约 17 ms，一帧）
+    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x000B0000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
+    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x000B0000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -261,11 +261,19 @@ static void generic_delayed_cdRead_patches(u32 patch_addr, u32 delay_cycles)
 /* 先空转再发 sceCdRead。cdvdfsv 的 delayed_cdRead 是“请求已经发出之后”才拖时间，
  * 挡不住下一笔读启动过早、IOP 立刻往 VIF1 还在抽的复用堆里写；此游戏在 BDM/SMB/APA
  * 和任意兼容模式下都会复现，USB 只是测试通道，不是根因。
- * 只补“大读之后紧跟的 1 扇区余数读”这一种形态（判据与 cdvdfsv 里停用的 REM1 一致：
- * 上一笔 >1 扇区、LSN 紧接、当前 1 扇区），其余读不再付代价；补时点在发请求之前，
- * 挡的是这笔读自己要写进去的那块堆。
+ * 判据三档，缺一档都会留下实测仍会花屏的读：
+ *  1) 当前读 <=3 扇区：批头（002）、尾读（001）、同 LSN 重读这类零碎小读本身就是随机寻址后的
+ *     第一笔。原先“余数 1 扇区 + LSN 紧接”的判据只覆盖到其中一个形态，同 LSN 连读的第二笔起
+ *     全部逃逸（日志里 0978981 三连、0956381 四连都是这个形态），所以这里不看上一笔、直接补。
+ *  2) 上一笔 >1 扇区且当前读不是它的自然续读（lsn != prev_lsn + prev_sectors）：跳走再读的中块，
+ *     那一块堆刚被填过、正被 VIF1 抽。
+ *  3) 顺序续读（任意大小）一律不补：流式 FMV 与资源突发都是 16/17/64 扇区严格 +N 递进，
+ *     实测节奏分别为 2.39 s/128 KB 与 16.6 ms/35 KB，补时对它们只有拖慢没有收益。
+ * 代价：1~3 扇区的读在 2x CD 上本身约 2~10 ms，补到 17 ms 以上只影响零碎读串，不碰流式。
  * g_delay_cycles 是自旋轮数而非周期数：每轮 4 个 NOP 加循环控制约 6~7 个 EE 周期，
- * 30 ms 在 294.912 MHz 下约 0x138000 轮。 */
+ * 17 ms（约一帧）在 294.912 MHz 下约 0x0B0000 轮：7 周期 17.1 ms，6 周期 14.7 ms。 */
+#define ZF_SMALL_SECTORS 3
+
 static u32 zf_prev_lsn;
 static unsigned int zf_prev_sectors;
 static int zf_have_prev;
@@ -273,9 +281,10 @@ static int zf_have_prev;
 static int predelayed_cdRead(u32 lsn, u32 nsectors, void *buf, int *mode)
 {
     unsigned int count;
-    int rem1 = (nsectors == 1 && zf_have_prev && zf_prev_sectors > 1 && lsn == zf_prev_lsn + zf_prev_sectors);
 
-    if (rem1) {
+    /* 小读一律补；大读只在其后的跳读补；顺序续读放行。 */
+    if (nsectors <= ZF_SMALL_SECTORS ||
+        (zf_have_prev && zf_prev_sectors > 1 && lsn != zf_prev_lsn + zf_prev_sectors)) {
         count = g_delay_cycles;
         while (count--)
             asm("nop\nnop\nnop\nnop");
