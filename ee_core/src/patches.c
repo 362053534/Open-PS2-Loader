@@ -87,9 +87,9 @@ static const patchlist_t patch_list[] = {
     {"SLES_528.22", ETH_MODE, {PATCH_GENERIC_SLOW_READS, 0x000c0000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLES_528.22", HDD_MODE, {PATCH_GENERIC_SLOW_READS, 0x00040000, 0x0060f4dc}}, // Prince of Persia: Warrior Within PAL - slow down cdvd reads
     {"SLUS_214.32", ALL_MODE, {PATCH_GENERIC_SLOW_READS, 0x00080000, 0x002baf34}}, // NRA Gun Club NTSC U
-    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00138000, 0x0021E320}},       // 吉翁前线 NTSC-U：补时 0x138000 轮（约 30 ms），只在余数 1 扇区命中
-    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00138000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
-    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00138000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
+    {"SLUS_202.33", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00202000, 0x0021E320}},       // 吉翁前线 NTSC-U：补时 0x202000 轮（约 50 ms），只在余数 1 扇区命中
+    {"SLPS_250.48", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00202000, 0x0021CFA0}},       // 吉翁前线 NTSC-J：jal 点同美版，sceCdRead 在 0x0021CFA0
+    {"SLPM_685.02", ALL_MODE, {PATCH_ZEONIC_FRONT, 0x00202000, 0x0021D180}},       // 吉翁前线 NTSC-J 特别版：jal 点同美版，sceCdRead 在 0x0021D180
     {"SLUS_209.77", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Quest
     {"SLPM_656.32", ALL_MODE, {PATCH_VIRTUA_QUEST, 0x00000000, 0x00000000}},       // Virtua Fighter Cyber Generation: Judgment Six No Yabou
     {"SLPM_654.05", HDD_MODE, {PATCH_SDF_MACROSS, 0x00200000, 0x00249b84}},        // Super Dimensional Fortress Macross JPN
@@ -265,7 +265,7 @@ static void generic_delayed_cdRead_patches(u32 patch_addr, u32 delay_cycles)
  * 上一笔 >1 扇区、LSN 紧接、当前 1 扇区），其余读不再付代价；补时点在发请求之前，
  * 挡的是这笔读自己要写进去的那块堆。
  * g_delay_cycles 是自旋轮数而非周期数：每轮 4 个 NOP 加循环控制约 6~7 个 EE 周期，
- * 30 ms 在 294.912 MHz 下约 0x138000 轮。 */
+ * 50 ms 在 294.912 MHz 下约 0x202000 轮：7 周期 49.97 ms，6 周期 42.83 ms。 */
 static u32 zf_prev_lsn;
 static unsigned int zf_prev_sectors;
 static int zf_have_prev;
