@@ -1014,8 +1014,13 @@ void sysLaunchLoaderElf(const char *filename, const char *gameid, const char *mo
     config->GameID[CORE_GAME_ID_MAX_LEN - 1] = '\0';
     strncpy(config->BootFile, filename, CORE_GAME_ID_MAX_LEN);
     config->BootFile[CORE_GAME_ID_MAX_LEN - 1] = '\0';
-    /* 日版各版本统一占位，不依赖汉化文本、ELF 版本或调试按键。 */
-    config->SOSIopPadBytes = !strcmp(gameid, "SLPS_251.13") ? 15 * 1024 : 0;
+    /* 三个区域的绝体绝命都市统一走日版占位路径：占位大小不依赖汉化文本、ELF 版本或调试按键。
+     * 美版与欧版镜像本身已是 no-HDD，因此不需要 SOSNoHDDPatch，只需要同一份 IOP 堆占位。 */
+    config->SOSIopPadBytes = (!strcmp(gameid, "SLPS_251.13")
+                              || !strcmp(gameid, "SLUS_205.61")
+                              || !strcmp(gameid, "SLES_513.01"))
+                                 ? 15 * 1024
+                                 : 0;
 
     config->_CompatMask = compatflags;
     config->EnableHddUsbd = sbNeedHddUsbd(gameid);

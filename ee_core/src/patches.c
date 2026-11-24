@@ -43,7 +43,6 @@ typedef struct
 #define PATCH_RNC_UYA            0x00398498
 #define PATCH_ZOMBIE_ZONE        0xEEE62525
 #define PATCH_DOT_HACK           0x0D074A37
-#define PATCH_SOS                0x30303030
 #define PATCH_SOS_NO_HDD         0x30303031
 #define PATCH_ULT_PRO_PINBALL    0xBA11BA11
 #define PATCH_EUTECHNYX_WU_TID   0x0012FCC8
@@ -115,12 +114,8 @@ static const patchlist_t patch_list[] = {
     {"SLES_524.67", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Mutation PAL
     {"SLES_524.69", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Outbreak PAL
     {"SLES_524.68", ALL_MODE, {PATCH_DOT_HACK, 0x00000000, 0x00000000}},           // .hack//Quarantine PAL
-    {"SLUS_205.61", ALL_MODE, {PATCH_SOS, 0x00000001, 0x00000000}},                // Disaster Report
-    {"SLES_513.01", ALL_MODE, {PATCH_SOS, 0x00000002, 0x00000000}},                // SOS: The Final Escape
-    /* 日版统一使用固定占位，不编入真实音频补丁分发。 */
-#if 0
-    {"SLPS_251.13", ALL_MODE, {PATCH_SOS, 0x00000000, 0x00000000}},                // Zettai Zetsumei Toshi
-#endif
+    /* 美/欧/日版都不再挂 IREMSND 注入钩子：该补丁实测无效，三个区统一走 SOSNoHDDPatch，
+     * 顺带省掉 SOS_SifLoadModuleHook 的整段 text 与区域地址表。 */
     {"SLPS_251.13", ALL_MODE, {PATCH_SOS_NO_HDD, 0x00000000, 0x00000000}},       // 日版 1.05/2.00：跳过游戏自身的硬盘初始化
     {"SLES_535.08", ALL_MODE, {PATCH_ULT_PRO_PINBALL, 0x00000000, 0x00000000}},    // Ultimate Pro Pinball
     {"SLUS_200.02", BDM_MODE, {0x002c7758, 0x0000182d, 0x8c436d18}},               // Ridge Racer V (NTSC-U/C) - workaround disabling (bugged?) streaming code in favour of processing all data at once, for USB devices.
@@ -560,101 +555,6 @@ int Skip_Videos_sceMpegIsEnd(void)
         return 0;
 }
 
-static int SOS_SifLoadModuleHook(const char *path, int arg_len, const char *args, int *modres, int fno)
-{
-    int (*_pSifLoadModule)(const char *path, int arg_len, const char *args, int *modres, int fno);
-    void *(*pSifAllocIopHeap)(int size);
-    int (*pSifFreeIopHeap)(void *addr);
-    int (*pSifLoadModuleBuffer)(void *ptr, int arg_len, const char *args);
-    void *iopmem;
-    SifDmaTransfer_t sifdma;
-    int dma_id, ret, ret2;
-    void *iremsndpatch_irx;
-    unsigned int iremsndpatch_irx_size;
-    char modIdStr[3];
-
-    switch (g_mode) {
-    /* 日版入口已停用，同步排除不可达的区域地址表，避免挤占 EE Core。 */
-#if 0
-        case 0: // NTSC-J
-            _pSifLoadModule = (void *)0x001d0680;
-            pSifAllocIopHeap = (void *)0x001cfc30;
-            pSifFreeIopHeap = (void *)0x001cfd20;
-            pSifLoadModuleBuffer = (void *)0x001d0640;
-            break;
-#endif
-        case 1: // NTSC-U/C
-            _pSifLoadModule = (void *)0x001d0580;
-            pSifAllocIopHeap = (void *)0x001cfb30;
-            pSifFreeIopHeap = (void *)0x001cfc20;
-            pSifLoadModuleBuffer = (void *)0x001d0540;
-            break;
-        case 2: // PAL
-            _pSifLoadModule = (void *)0x001d11c0;
-            pSifAllocIopHeap = (void *)0x001d0770;
-            pSifFreeIopHeap = (void *)0x001d0860;
-            pSifLoadModuleBuffer = (void *)0x001d1180;
-            break;
-        default:
-            _pSifLoadModule = NULL;
-            pSifAllocIopHeap = NULL;
-            pSifFreeIopHeap = NULL;
-            pSifLoadModuleBuffer = NULL;
-            // Should not happen.
-            asm volatile("break\n");
-    }
-
-    ret = _pSifLoadModule(path, arg_len, args, modres, fno);
-
-    if ((ret >= 0) && (_strcmp(path, "cdrom0:\\IOP\\IREMSND.IRX;1") == 0)) {
-        GetOPLModInfo(OPL_MODULE_ID_IOP_PATCH, &iremsndpatch_irx, &iremsndpatch_irx_size);
-
-        iopmem = pSifAllocIopHeap(iremsndpatch_irx_size);
-        if (iopmem != NULL) {
-            sifdma.src = iremsndpatch_irx;
-            sifdma.dest = iopmem;
-            sifdma.size = iremsndpatch_irx_size;
-            sifdma.attr = 0;
-            do {
-                dma_id = SifSetDma(&sifdma, 1);
-            } while (!dma_id);
-
-            modIdStr[0] = NIBBLE2CHAR((ret >> 4) & 0xF);
-            modIdStr[1] = NIBBLE2CHAR(ret & 0xF);
-            modIdStr[2] = '\0';
-
-            do {
-                ret2 = pSifLoadModuleBuffer(iopmem, sizeof(modIdStr), modIdStr);
-            } while (ret2 < 0);
-
-            pSifFreeIopHeap(iopmem);
-        } else
-            asm volatile("break\n");
-    }
-
-    return ret;
-}
-
-static void SOSPatch(int region)
-{
-    g_mode = region;
-
-    switch (region) { // JAL SOS_SifLoadModuleHook - replace call to _SifLoadModule.
-    /* 日版采用启动阶段占位，不安装真实音频补丁的加载钩子。 */
-#if 0
-        case 0:       // NTSC-J
-            _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d08b4);
-            break;
-#endif
-        case 1: // NTSC-U/C
-            _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d07b4);
-            break;
-        case 2: // PAL
-            // _sw(JAL((u32)&SOS_SifLoadModuleHook), 0x001d13f4);
-            break;
-    }
-}
-
 static void SOSNoHDDPatch(void)
 {
     static const struct {
@@ -1064,9 +964,6 @@ void apply_patches(const char *path)
                     break;
                 case PATCH_DOT_HACK:
                     DotHack_patches(path);
-                    break;
-                case PATCH_SOS:
-                    SOSPatch(p->patch.val);
                     break;
                 case PATCH_SOS_NO_HDD:
                     if (file_eq_bootelf)
