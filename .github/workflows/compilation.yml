@@ -75,10 +75,6 @@ jobs:
       matrix:
         extra: [EXTRA_FEATURES=0, EXTRA_FEATURES=1]
         pademu: [PADEMU=0, PADEMU=1]
-        exclude:
-          # 全功能组合（PADEMU + IGS）会让 ee_core 的 .bss 越过 ram84 区上界 0x96E00 约 44 字节，链接必然失败
-          - extra: EXTRA_FEATURES=1
-            pademu: PADEMU=1
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/ps2homebrew:main
     steps:
