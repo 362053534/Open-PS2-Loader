@@ -262,6 +262,8 @@ gui_strings:
   string: 模拟DVD-DL
 - label: HINT_MODE6
   string: 禁用IGR，软复位会失效，但极大提升兼容性
+- label: HINT_MODE7
+  string: 游戏请求重启IOP时不做真重启，只伪装成成功。修复少数游戏重启IOP后手柄失灵
 - label: HINT_VMC_SIZE
   string: 改变大小将会重新格式化虚拟记忆卡
 - label: CREATE
@@ -360,6 +362,8 @@ gui_strings:
   string: 模式 5
 - label: MODE6
   string: 模式 6
+- label: MODE7
+  string: 模式 7
 - label: GSCONFIG
   string: 配置GSM
 - label: ETH_OPMODE
