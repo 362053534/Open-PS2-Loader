@@ -80,52 +80,24 @@ static int PushBDMFragmentTable(const struct EECoreConfig_t *config)
 }
 
 /*
- * 游戏的 IOP 重置请求有两种常见形态：
- *   "rom0:UDNL cdrom0:\IOPRP300.IMG;1"  —— 要装回它自己的 IOPRP 模块
- *   "rom0:UDNL rom0:EELOADCNF"          —— 只需要 EELOAD 的启动参数
- *
- * 前者必须交给带参数的那一轮 UDNL，否则游戏拿不回自己的 IOPRP：OPL 只会给它
- * 一个"仅 OPL IOPRP"的 IOP，游戏随后重新加载的 sio2man/padman 会撞在和它期望
- * 不一致的环境上。UDNL 的名字既可能是 rom0:UDNL 也可能是 rom1:UDNL，两者都要
- * 识别；模块列表也可能指向 cdrom 之外的设备，一律原样交给 UDNL。
- *
- * 只有 EELOADCNF 这一种继续排除：历史经验是把它交给第二轮 UDNL 会出现
- * SIFCMD 未初始化的问题，这类请求仍复用 OPL 已准备好的 IOPRP 镜像。
+ * 0.9.3 之前只有通过 ROM UDNL 加载游戏 CDROM IOPRP 的请求会保留给第二轮
+ * UDNL。其余参数（包括 "rom0:UDNL rom0:EELOADCNF"）均复用 OPL 已准备
+ * 的 IOPRP 镜像，并走无参数路径。保持这一分流规则可避免 SIFCMD 未初始化。
  *
  * 此处同时统一两种 arglen 约定：可指向内容末尾，或把末尾 NUL 也计入长度。
  */
-static int IsEELoadCnfRequest(const char *args, int arglen)
+static int GetCDROMIOPRPArgs(const char *arg, int arglen, const char **args, unsigned int *argslen)
 {
-    static const char eeloadcnf[] = "rom0:EELOADCNF";
-    const int len = sizeof(eeloadcnf) - 1;
+    static const char udnl_prefix[] = "rom0:UDNL ";
+    const int prefix_len = sizeof(udnl_prefix) - 1;
 
-    if (arglen < len || _strncmp(args, eeloadcnf, len))
-        return 0;
-
-    /* 后面是结尾或分隔符，说明这条请求就是 EELOADCNF 本身 */
-    if (arglen == len)
-        return 1;
-
-    return (args[len] == '\0' || args[len] == ' ') ? 1 : 0;
-}
-
-/* 识别游戏的重启请求，返回三态：
- *   0 = 无法识别（不能重启，只伪装握手，见 New_Reset_Iop 里的说明）
- *   1 = 能识别但不需要装游戏 IOPRP（如 EELOADCNF），走 OPL 原有的无参数路径
- *   2 = 能识别且需要把游戏的 IOPRP 交给 UDNL（args/argslen 返回模块列表） */
-static int GetGameIOPRPRequest(const char *arg, int arglen, const char **args, unsigned int *argslen)
-{
-    static const char udnl_prefix0[] = "rom0:UDNL ";
-    static const char udnl_prefix1[] = "rom1:UDNL ";
-    const int prefix_len = sizeof(udnl_prefix0) - 1;
-
-    if (arg == NULL || arglen <= prefix_len)
+    if (arg == NULL || arglen < prefix_len + 5)
         return 0;
 
     if (arglen > RESET_ARG_MAX)
         arglen = RESET_ARG_MAX;
 
-    if (_strncmp(arg, udnl_prefix0, prefix_len) && _strncmp(arg, udnl_prefix1, prefix_len))
+    if (_strncmp(arg, udnl_prefix, prefix_len))
         return 0;
 
     arg += prefix_len;
@@ -134,12 +106,9 @@ static int GetGameIOPRPRequest(const char *arg, int arglen, const char **args, u
     if (arglen > 0 && arg[arglen - 1] == '\0')
         arglen--;
 
-    if (arglen < 1)
+    /* 仅把游戏 CDROM IOPRP 请求交给带参数的第二轮 UDNL。 */
+    if (arglen < 5 || _strncmp(arg, "cdrom", 5))
         return 0;
-
-    /* EELOADCNF 这类请求只要 EELOAD 的启动参数，不需要装 IOPRP。 */
-    if (IsEELoadCnfRequest(arg, arglen))
-        return 1;
 
     /* command 还需要一个分隔 NUL、"host0:" 和它的末尾 NUL。 */
     if (arglen > RESET_ARG_MAX - sizeof("host0:"))
@@ -147,7 +116,7 @@ static int GetGameIOPRPRequest(const char *arg, int arglen, const char **args, u
 
     *args = arg;
     *argslen = arglen;
-    return 2;
+    return 1;
 }
 
 static void ResetIopSpecial(const char *args, unsigned int arglen)
@@ -331,7 +300,7 @@ int New_Reset_Iop(const char *arg, int arglen)
     USE_LOCAL_EECORE_CONFIG;
     const char *ioprp_args;
     unsigned int ioprp_arglen;
-    int ioprp_req;
+    int has_game_ioprp;
 
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
@@ -344,8 +313,8 @@ int New_Reset_Iop(const char *arg, int arglen)
      * 就会撞在和它期望不一致的 IOP 环境上（表现为手柄数据不再更新，而读盘和声音正常）。
      * 这里保持 IOP 原样，只让游戏以为重启成功。
      */
-    ioprp_req = (arglen > 0) ? GetGameIOPRPRequest(arg, arglen, &ioprp_args, &ioprp_arglen) : 1;
-    if (ioprp_req == 0) {
+    has_game_ioprp = (arglen > 0) && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen);
+    if (arglen > 0 && !has_game_ioprp) {
         DPRINTF("New_Reset_Iop: unknown IOPRP request, skip rebooting\n");
 
         // 游戏的 SifResetIop 之后还会写 4 次 SifSetReg，照常吞掉，让它以为重启完成
@@ -379,7 +348,7 @@ int New_Reset_Iop(const char *arg, int arglen)
     if (EnableDebug)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
-    if (ioprp_req == 2) {
+    if (has_game_ioprp) {
         ResetIopSpecial(ioprp_args, ioprp_arglen);
         if (EnableDebug)
             DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
