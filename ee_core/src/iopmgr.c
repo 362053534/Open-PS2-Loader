@@ -24,6 +24,10 @@
 extern int _iop_reboot_count;
 static int imgdrv_offset_ioprpimg = 0;
 static int imgdrv_offset_ioprpsiz = 0;
+static int imgdrv_offset_ioprpsrc = 0;
+
+/* 方案 B 用的游戏 IOPRP 路径上限（沿用游戏请求里的 cdrom0: 路径）。 */
+#define GAME_IMAGE_PATH_MAX 320
 
 /* 推表失败重试次数，重试间隔约零点几秒（delay(1) 为忙等，非精确计时）。 */
 #define BDM_INIT_RETRIES      10
@@ -119,13 +123,49 @@ static int GetCDROMIOPRPArgs(const char *arg, int arglen, const char **args, uns
     return 1;
 }
 
-static void ResetIopSpecial(const char *args, unsigned int arglen)
+static unsigned int iop_path_len(const char *s)
+{
+    unsigned int n = 0;
+
+    while (s[n] != '\0')
+        n++;
+
+    return n;
+}
+
+/*
+ * 方案 B：imgdrv 用游戏自己给的 cdrom0: 路径去读那份 IOPRP。cdrom0: 文件系统由
+ * OPL 的 cdvdman 提供（modules/iopcore/cdvdman/ioops.c），在游戏发起重启之前就已
+ * 经可用，所以这里不需要把路径换算成设备路径，原样交给 imgdrv 即可。
+ * 返回 0 表示可用；<0 表示参数不可用，调用方退回旧行为。
+ */
+static int GetGameIoprpImagePath(const char *args, unsigned int arglen, char *out, unsigned int outlen)
+{
+    if (args == NULL || out == NULL || arglen < 5 || arglen + 1 > outlen)
+        return -1;
+
+    memcpy(out, args, arglen);
+    out[arglen] = '\0';
+
+    return 0;
+}
+
+static void ResetIopSpecial(const char *args, unsigned int arglen, const char *gameimage)
 {
     USE_LOCAL_EECORE_CONFIG;
     int i;
-    void *pIOP_buffer, *IOPRP_img, *imgdrv_irx;
-    unsigned int length_rounded, CommandLen, size_IOPRP_img, size_imgdrv_irx;
+    void *pIOP_buffer, *IOPRP_img, *imgdrv_irx, *pImagePath;
+    unsigned int length_rounded, CommandLen, size_IOPRP_img, size_imgdrv_irx, imagepathlen;
     char command[RESET_ARG_MAX + 1];
+
+    /* 方案 B：把合并镜像的读取路径先放进 IOP 堆，imgdrv 会从那里取用。 */
+    pImagePath = NULL;
+    if (gameimage != NULL) {
+        imagepathlen = iop_path_len(gameimage) + 1;
+        pImagePath = SifAllocIopHeap((imagepathlen + 0xF) & ~0xF);
+        if (pImagePath != NULL)
+            CopyToIop((void *)gameimage, imagepathlen, pImagePath);
+    }
 
     if (arglen > RESET_ARG_MAX - sizeof("host0:")) {
         /* 防御性回落：没有空间安全附加 host0:。 */
@@ -133,7 +173,11 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         arglen = 0;
     }
 
-    if (arglen > 0) {
+    if (pImagePath != NULL) {
+        /* 合并镜像已经包含游戏 IOPRP 的全部条目，UDNL 只需读 host0:。 */
+        _strcpy(command, "host0:");
+        CommandLen = 6;
+    } else if (arglen > 0) {
         memcpy(command, args, arglen);
         command[arglen] = '\0'; /* In a normal IOP reset process, the IOP reset command line will be NULL-terminated properly somewhere.
                         Since we're now taking things into our own hands, NULL terminate it here.
@@ -153,7 +197,7 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
 
     CopyToIop(IOPRP_img, length_rounded, pIOP_buffer);
 
-    if (imgdrv_offset_ioprpimg == 0 || imgdrv_offset_ioprpsiz == 0) {
+    if (imgdrv_offset_ioprpimg == 0 || imgdrv_offset_ioprpsiz == 0 || imgdrv_offset_ioprpsrc == 0) {
         for (i = 0; i < size_imgdrv_irx; i += 4) {
             if (*(u32 *)((&((unsigned char *)imgdrv_irx)[i])) == 0xDEC1DEC1) {
                 imgdrv_offset_ioprpimg = i;
@@ -161,11 +205,17 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             if (*(u32 *)((&((unsigned char *)imgdrv_irx)[i])) == 0xDEC2DEC2) {
                 imgdrv_offset_ioprpsiz = i;
             }
+            if (*(u32 *)((&((unsigned char *)imgdrv_irx)[i])) == 0xDEC3DEC3) {
+                imgdrv_offset_ioprpsrc = i;
+            }
         }
     }
 
     *(void **)(UNCACHED_SEG(&((unsigned char *)imgdrv_irx)[imgdrv_offset_ioprpimg])) = pIOP_buffer;
     *(u32 *)(UNCACHED_SEG(&((unsigned char *)imgdrv_irx)[imgdrv_offset_ioprpsiz])) = size_IOPRP_img;
+    /* 未提供路径时保持哨兵值，imgdrv 会退回“只交补丁镜像”的旧行为。 */
+    if (pImagePath != NULL && imgdrv_offset_ioprpsrc != 0)
+        *(u32 *)(UNCACHED_SEG(&((unsigned char *)imgdrv_irx)[imgdrv_offset_ioprpsrc])) = (u32)pImagePath;
 
     LoadMemModule(0, imgdrv_irx, size_imgdrv_irx, 0, NULL);
 
@@ -300,6 +350,8 @@ int New_Reset_Iop(const char *arg, int arglen)
     USE_LOCAL_EECORE_CONFIG;
     const char *ioprp_args;
     unsigned int ioprp_arglen;
+    static char gameimage[GAME_IMAGE_PATH_MAX];
+    int merged;
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
         DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
@@ -321,21 +373,34 @@ int New_Reset_Iop(const char *arg, int arglen)
     LoadFileInit();
     sbv_patch_enable_lmb();
 
-    ResetIopSpecial(NULL, 0);
+    /*
+     * 方案 B：游戏请求重启时，把它自带的 IOPRP（例如 MODULES\\IOPRP250.IMG）
+     * 读出来，用 OPL 的 cdvdman/cdvdfsv/eesync 顶掉同名条目后合成一份镜像，
+     * 再让 UDNL 只读这一份（host0:），最终 IOP 里只存在一套基础模块 —— 这一点
+     * 与 Neutrino 的做法一致（原来是两份叠加：游戏的 IOPRP + OPL 的补丁镜像）。
+     * 重启次数沿用原来的骨架：先用 OPL 的栈（提供 cdrom0:），再做合并那一次。
+     * 条件不足时退回“只装 OPL 的 IOPRP”的老行为，游戏自带 IOPRP 不再叠加。
+     */
+    merged = 0;
+    gameimage[0] = '\0';
+    if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
+        if (GetGameIoprpImagePath(ioprp_args, ioprp_arglen, gameimage, sizeof(gameimage)) == 0)
+            merged = 1;
+    }
+
+    ResetIopSpecial(NULL, 0, NULL);
     if (EnableDebug)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
-    if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
-        /*
-         * 不再把游戏请求的 IOPRP 叠加到 OPL 的 IOPRP 之上。
-         * 原来这里会再重启一次，让 UDNL 把游戏自带的 IOPRP（例如
-         * MODULES\\IOPRP250.IMG）和 OPL 的 IOPRP（host0:）一起装进 IOP，
-         * 结果是 IOP 里同时存在两份 cdvdman/cdvdfsv（游戏自带 + OPL 自带）。
-         * 游戏用到的 SIO2MAN/PADMAN 等模块由游戏在重启后自己 loadmodule，
-         * 不依赖这里装它的 IOPRP，所以只保留 OPL 的 IOPRP 这一套基础模块。
-         */
-        (void)ioprp_args;
-        (void)ioprp_arglen;
+    /*
+     * 合并镜像要在 OPL 的 IOP 栈装好之后才能读：读取用的是 cdrom0: 文件系统，
+     * 它由 OPL 的 cdvdman 提供（见上一步）。imgdrv 在本代 IOP 里把合并结果放进
+     * IOP 内存，再随 host0: 交给 UDNL，所以这一次重启之后 IOP 里只有一套基础模块。
+     */
+    if (merged) {
+        ResetIopSpecial(NULL, 0, gameimage);
+        if (EnableDebug)
+            DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (merged game IOPRP) finished!");
     }
 
     if (iop_reboot_count >= 2) {
