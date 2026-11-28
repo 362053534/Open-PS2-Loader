@@ -62,7 +62,7 @@ extern u32 g_compat_mask;
 #define COMPAT_MODE_4 0x08
 #define COMPAT_MODE_5 0x10
 #define COMPAT_MODE_6 0x20
-#define COMPAT_MODE_7 0x40 // 忽略游戏请求的 IOP 重启（只伪装握手）
+#define COMPAT_MODE_7 0x40
 #define COMPAT_MODE_8 0x80
 
 enum GAME_MODE {
