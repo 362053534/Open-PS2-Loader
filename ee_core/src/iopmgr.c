@@ -300,32 +300,9 @@ int New_Reset_Iop(const char *arg, int arglen)
     USE_LOCAL_EECORE_CONFIG;
     const char *ioprp_args;
     unsigned int ioprp_arglen;
-    int has_game_ioprp;
-
     DPRINTF("New_Reset_Iop start!\n");
     if (EnableDebug)
         DBGCOL(0xFF00FF, IOPMGR, "New_Reset_Iop()");
-
-    /*
-     * 带参数的重启只可能来自游戏自己的 IOP 重置请求，参数就是它要装回的 IOPRP 模块列表。
-     * 这条请求认不出来时不能做重启：下面两轮只会把 IOP 清成"仅 OPL IOPRP"的状态，
-     * 游戏已加载的模块被冲掉却拿不回自己的 IOPRP，它随后重新加载的 sio2man/padman
-     * 就会撞在和它期望不一致的 IOP 环境上（表现为手柄数据不再更新，而读盘和声音正常）。
-     * 这里保持 IOP 原样，只让游戏以为重启成功。
-     */
-    has_game_ioprp = (arglen > 0) && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen);
-    if (arglen > 0 && !has_game_ioprp) {
-        DPRINTF("New_Reset_Iop: unknown IOPRP request, skip rebooting\n");
-
-        // 游戏的 SifResetIop 之后还会写 4 次 SifSetReg，照常吞掉，让它以为重启完成
-        if (set_reg_disabled)
-            set_reg_hook = 4;
-
-        if (EnableDebug)
-            DBGCOL(0x00FF00, IOPMGR, "New_Reset_Iop() skipped (unknown IOPRP)");
-
-        return 1;
-    }
 
     SifInitRpc(0);
 
@@ -348,7 +325,7 @@ int New_Reset_Iop(const char *arg, int arglen)
     if (EnableDebug)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
-    if (has_game_ioprp) {
+    if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
         ResetIopSpecial(ioprp_args, ioprp_arglen);
         if (EnableDebug)
             DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
