@@ -48,17 +48,24 @@ u32 New_SifSetDma(SifDmaTransfer_t *sdd, s32 len)
     struct _iop_reset_pkt *reset_pkt = (struct _iop_reset_pkt *)sdd->src;
 
     /*
-     * 模式 7：忽略游戏请求的 IOP 重启。
-     * 真重启会把游戏已经加载的 IOP 模块全部冲掉；有游戏在重启后重新加载
-     * sio2man/padman，此时手柄数据就不再更新（画面和声音却依然正常）。
-     * 这里保持 IOP 原样，只把游戏 SifIopReset 之后的寄存器握手伪装成功。
+     * 模式 7：只让游戏做的第一次 IOP 重启生效，之后的重启一律跳过。
+     *
+     * 第一次重启是游戏启动流程的一部分（把它的 IOPRP 装上），跳过会直接黑屏；
+     * 而运行期再次重启时，重启会把已经加载的 IOP 模块全部冲掉，有的游戏重启后
+     * 重新加载 sio2man/padman，手柄数据就不再更新（画面和声音却依然正常）。
      */
-    if (g_compat_mask & COMPAT_MODE_7) {
-        /* 游戏随后还会写 4 次 SifSetReg（SIFINIT/CMDINIT/RPCINIT/SUBADDR），
-         * 照常吞掉，让它以为重启完成。它自己在 SifIopReset 开头写入的
-         * SMFLAG=BOOTEND 已经落到硬件上，所以 SifIopSync() 仍会返回成功。 */
-        set_reg_hook = 4;
-        return 1;
+    {
+        static int game_iop_resets = 0;
+
+        if ((g_compat_mask & COMPAT_MODE_7) && game_iop_resets > 0) {
+            /* 游戏随后还会写 4 次 SifSetReg（SIFINIT/CMDINIT/RPCINIT/SUBADDR），
+             * 照常吞掉，让它以为重启完成。它自己在 SifIopReset 开头写入的
+             * SMFLAG=BOOTEND 已经落到硬件上，所以 SifIopSync() 仍会返回成功。 */
+            set_reg_hook = 4;
+            return 1;
+        }
+
+        game_iop_resets++;
     }
 
     // Hook padOpen function to install In Game Reset
