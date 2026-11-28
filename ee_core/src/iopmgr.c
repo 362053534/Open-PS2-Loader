@@ -326,9 +326,16 @@ int New_Reset_Iop(const char *arg, int arglen)
         DBGCOL(0x00A5FF, IOPMGR, "ResetIopSpecial (without args) finished!");
 
     if (arglen > 0 && GetCDROMIOPRPArgs(arg, arglen, &ioprp_args, &ioprp_arglen)) {
-        ResetIopSpecial(ioprp_args, ioprp_arglen);
-        if (EnableDebug)
-            DBGCOL(0x00FFFF, IOPMGR, "ResetIopSpecial (with args) finished!");
+        /*
+         * 不再把游戏请求的 IOPRP 叠加到 OPL 的 IOPRP 之上。
+         * 原来这里会再重启一次，让 UDNL 把游戏自带的 IOPRP（例如
+         * MODULES\\IOPRP250.IMG）和 OPL 的 IOPRP（host0:）一起装进 IOP，
+         * 结果是 IOP 里同时存在两份 cdvdman/cdvdfsv（游戏自带 + OPL 自带）。
+         * 游戏用到的 SIO2MAN/PADMAN 等模块由游戏在重启后自己 loadmodule，
+         * 不依赖这里装它的 IOPRP，所以只保留 OPL 的 IOPRP 这一套基础模块。
+         */
+        (void)ioprp_args;
+        (void)ioprp_arglen;
     }
 
     if (iop_reboot_count >= 2) {
